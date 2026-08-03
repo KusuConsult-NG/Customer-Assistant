@@ -220,7 +220,7 @@ export default function DashboardPage() {
           value={stats.contacts}
           subtitle="Registered CRM profiles"
           icon={<Users className="w-5 h-5 text-blue-400" />}
-          badge="+14% this month"
+          badge={`${timeRange} active`}
           badgeColor="bg-blue-500/10 text-blue-400 border-blue-500/20"
         />
         <KpiCard
@@ -228,7 +228,7 @@ export default function DashboardPage() {
           value={stats.leads}
           subtitle="In conversion pipeline"
           icon={<Activity className="w-5 h-5 text-purple-400" />}
-          badge="+22% new"
+          badge={`${stats.openTickets} open tickets`}
           badgeColor="bg-purple-500/10 text-purple-400 border-purple-500/20"
         />
         <KpiCard
@@ -236,7 +236,7 @@ export default function DashboardPage() {
           value={stats.calls}
           subtitle="Processed by Telephony"
           icon={<PhoneCall className="w-5 h-5 text-emerald-400" />}
-          badge="98.4% success"
+          badge={`${timeRange} calls`}
           badgeColor="bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
         />
         <KpiCard

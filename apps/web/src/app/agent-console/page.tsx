@@ -188,6 +188,23 @@ export default function AgentConsolePage() {
     return map[channel] || 'bg-gray-500/15 text-gray-400 border-gray-500/20';
   };
 
+  const handleToggleHandoff = async () => {
+    if (!activeId) return;
+    const newStatus = !isHumanActive;
+    setIsHumanActive(newStatus);
+    try {
+      await fetch(`${API_URL}/api/conversations/${activeId}/handoff`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handoff: newStatus }),
+      });
+      fetchConversations();
+    } catch (err) {
+      console.error('Failed to toggle handoff:', err);
+      setIsHumanActive(!newStatus);
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-8.5rem)] gap-4">
       {/* Left: Conversation List */}
@@ -308,7 +325,7 @@ export default function AgentConsolePage() {
               </div>
 
               <button
-                onClick={() => setIsHumanActive(!isHumanActive)}
+                onClick={handleToggleHandoff}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   isHumanActive
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'

@@ -38,12 +38,22 @@ export default function TelephonyPage() {
     setLogsLoading(true);
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/telephony/calls`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCallLogs(data || []);
+      const headers = { Authorization: `Bearer ${token}` };
+      const [logsRes, orgRes] = await Promise.allSettled([
+        fetch(`${API_URL}/api/telephony/calls`, { headers }),
+        fetch(`${API_URL}/api/organizations/me`, { headers }),
+      ]);
+
+      if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
+        setCallLogs((await logsRes.value.json()) || []);
+      }
+      if (orgRes.status === 'fulfilled' && orgRes.value.ok) {
+        const orgData = await orgRes.value.json();
+        if (orgData?.telephonyConfigs?.[0]) {
+          const cfg = orgData.telephonyConfigs[0];
+          if (cfg.provider) setProvider(cfg.provider);
+          if (cfg.phoneNumber) setPhoneNumber(cfg.phoneNumber);
+        }
       }
     } catch {
       setCallLogs([]);
