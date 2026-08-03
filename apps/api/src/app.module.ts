@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { CrmModule } from './crm/crm.module';
@@ -42,6 +43,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     WidgetModule,
     WorkflowsModule,
   ],
+  controllers: [AppController],
   providers: [
     VoiceStreamGateway,
     // Apply the default throttle tier globally to every route.

@@ -1,62 +1,85 @@
 services:
-  # ─── 1. API Backend (NestJS) ────────────────────────────────────────────────
+  # ─── 1. API Backend (NestJS) ─────────────────────────────────────────────────
   - type: web
     name: ace-api
     env: node
     region: oregon
-    plan: free
-    buildCommand: DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" DIRECT_URL="postgresql://dummy:dummy@localhost:5432/dummy" npm install --include=dev && npx prisma generate --schema=packages/database/prisma/schema.prisma && npm run build
+    plan: starter          # upgrade to standard for 24/7 uptime (no spin-down)
+    rootDir: .
+    buildCommand: >
+      npm install --include=dev &&
+      DATABASE_URL="postgresql://dummy:dummy@localhost/dummy"
+      DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
+      npx prisma generate --schema=packages/database/prisma/schema.prisma &&
+      npm run build --workspace=apps/api
     startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
+      # Set these in Render Dashboard → ace-api → Environment
       - key: API_BASE_URL
-        sync: false
+        sync: false           # e.g. https://ace-api.onrender.com
       - key: WEB_BASE_URL
-        sync: false
+        sync: false           # e.g. https://ace-web.onrender.com
       - key: CORS_ORIGIN
-        value: "*"
+        sync: false           # e.g. https://ace-web.onrender.com
       - key: DATABASE_URL
-        value: "postgresql://postgres.xnicrtzlqgnnivdzmbvw:_)(*!%40%23%24%25%5EJo2030%25%26%24%5E@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+        sync: false           # your Supabase pooler URL (port 6543, pgbouncer=true)
       - key: DIRECT_URL
-        value: "postgresql://postgres.xnicrtzlqgnnivdzmbvw:_)(*!%40%23%24%25%5EJo2030%25%26%24%5E@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
+        sync: false           # your Supabase direct URL (port 5432)
       - key: JWT_SECRET
-        value: "super_secret_ace_platform_jwt_signing_key_2026_min_32_chars"
+        sync: false
       - key: JWT_REFRESH_SECRET
-        value: "super_secret_ace_platform_refresh_key_2026"
+        sync: false
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: JWT_REFRESH_TTL
+        value: 7d
       - key: OPENAI_API_KEY
-        value: "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"
+        sync: false
       - key: WHATSAPP_ACCESS_TOKEN
-        value: "EAAWS63E8ei8BSHYYpgr0SOm6Ff7YEPfLAfkoo2ST7w3ieZCtqRm1iwZA9zDVZA8KFJWmlWBnVHZCKO9QEIJZBhMqEBugVDuXQMiUyy8V8SZA1aHateBIvsY3wq9A9TKFMkgVVLE0iLSAHuODWTOwdkZBWzH6HxghnIm89zyASaslhgHFWaRZAsLppj2Sta1a3VCYoQZDZD"
+        sync: false
       - key: WHATSAPP_BUSINESS_ID
-        value: "1490006933166588"
+        sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID
-        value: "1274545329070986"
-      - key: META_APP_ID
-        value: "1568914798311983"
-      - key: META_BUSINESS_ID
-        value: "1584597283199331"
+        sync: false
       - key: WHATSAPP_VERIFY_TOKEN
-        value: ACE_SECURE_VERIFY_TOKEN_2026
+        sync: false
       - key: WHATSAPP_APP_SECRET
-        value: "60fae93f36f40cdd89ca1c23c5551b10"
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_BUSINESS_ID
+        sync: false
       - key: RESEND_API_KEY
-        value: "re_Lkg1cz7K_3okUvQqmTx2fT57QK9tcyxWU"
+        sync: false
       - key: EMAIL_FROM
-        value: ACE Platform <noreply@kusuconsult.com>
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
+        sync: false
 
   # ─── 2. Web Dashboard (Next.js) ──────────────────────────────────────────────
   - type: web
     name: ace-web
     env: node
     region: oregon
-    plan: free
-    buildCommand: DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" DIRECT_URL="postgresql://dummy:dummy@localhost:5432/dummy" npm install --include=dev && npx prisma generate --schema=packages/database/prisma/schema.prisma && npm run build
-    startCommand: cd apps/web && npm run start
+    plan: starter
+    rootDir: .
+    buildCommand: >
+      npm install --include=dev &&
+      DATABASE_URL="postgresql://dummy:dummy@localhost/dummy"
+      DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
+      npx prisma generate --schema=packages/database/prisma/schema.prisma &&
+      npm run build --workspace=apps/web
+    startCommand: npm run start --workspace=apps/web
+    healthCheckPath: /
     envVars:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        sync: false
+        sync: false           # must match ace-api URL, e.g. https://ace-api.onrender.com
