@@ -45,7 +45,9 @@ export default function TelephonyPage() {
       ]);
 
       if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
-        setCallLogs((await logsRes.value.json()) || []);
+        const raw = await logsRes.value.json();
+        const list = Array.isArray(raw) ? raw : (raw?.data || []);
+        setCallLogs(list);
       }
       if (orgRes.status === 'fulfilled' && orgRes.value.ok) {
         const orgData = await orgRes.value.json();
