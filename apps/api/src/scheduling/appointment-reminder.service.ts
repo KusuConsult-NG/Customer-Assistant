@@ -124,6 +124,38 @@ export class AppointmentReminderService implements OnModuleInit {
         data: { notes: `${booking.notes ?? ''} [REMINDED_24H]` },
       });
     }
+
+    // ── 4. 6-Hour Short-Notice SMS Reminders (for bookings < 24h to due date) ─
+    const start6h = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const end6h   = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+
+    const bookings6h = await prisma.booking.findMany({
+      where: {
+        startTime: { gte: start6h, lte: end6h },
+        status: 'CONFIRMED',
+        NOT: { notes: { contains: '[REMINDED_6H]' } },
+      },
+      include: { contact: true, organization: true },
+    });
+
+    for (const booking of bookings6h) {
+      const createdAt = new Date(booking.createdAt).getTime();
+      const startTime = new Date(booking.startTime).getTime();
+      const hoursBetweenCreationAndDue = (startTime - createdAt) / (1000 * 60 * 60);
+
+      // Rule: Send 6-hour SMS reminder for short-notice bookings (< 24h notice)
+      if (hoursBetweenCreationAndDue <= 24 || !booking.notes?.includes('[REMINDED_24H]')) {
+        await this.sendSmsNotification(
+          booking.contact?.phoneNumber,
+          `Urgent Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is in 6 hours (due at ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`
+        );
+      }
+
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { notes: `${booking.notes ?? ''} [REMINDED_6H]` },
+      });
+    }
   }
 
   private async sendBookingEmailReminder(booking: any, timeUntil: string) {
