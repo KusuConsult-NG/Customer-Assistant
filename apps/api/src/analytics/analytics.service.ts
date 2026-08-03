@@ -34,7 +34,7 @@ export class AnalyticsService {
     let periodBookings = 0;
 
     let totalCallMinutes = 0;
-    let weeklyData = { labels: [], conversations: [], calls: [] };
+    let weeklyData: { labels: string[]; conversations: number[]; calls: number[] } = { labels: [], conversations: [], calls: [] };
     let recentCalls: any[] = [];
     let recentConversations: any[] = [];
 
