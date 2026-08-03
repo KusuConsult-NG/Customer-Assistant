@@ -10,6 +10,7 @@
   "scripts": {
     "build": "npx turbo run build",
     "dev": "npx turbo run dev",
+    "start": "npx turbo run start",
     "lint": "npx turbo run lint",
     "test": "npx turbo run test",
     "db:generate": "npm run --prefix packages/database generate",
