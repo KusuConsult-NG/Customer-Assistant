@@ -235,17 +235,17 @@ export default function WorkflowsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <GitFork className="w-6 h-6 text-blue-400" /> Visual Workflow Automation Engine
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Build visual decision graphs to automate AI responses, CRM lead routing, and human handoff triggers.
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
           >
             <Plus className="w-4 h-4" /> New Automation Graph
           </button>
@@ -267,14 +267,14 @@ export default function WorkflowsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left column: Workflows list */}
         <div className="lg:col-span-1 space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Workflows ({workflows.length})</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Workflows ({workflows.length})</h3>
           
           {loading ? (
             <div className="space-y-2">
-              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white/[0.03] rounded-xl animate-pulse" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl animate-pulse" />)}
             </div>
           ) : workflows.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06] text-center text-xs text-gray-400">
+            <div className="p-6 rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800 text-center text-xs text-slate-600 dark:text-slate-400">
               No workflows saved. Click "New Automation Graph" to build your first flow.
             </div>
           ) : (
@@ -284,16 +284,16 @@ export default function WorkflowsPage() {
                 onClick={() => setActiveWorkflow(wf)}
                 className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 ${
                   activeWorkflow?.id === wf.id
-                    ? 'bg-blue-500/10 border-blue-500/40 text-white shadow-lg'
-                    : 'bg-white/[0.02] border-white/[0.06] text-gray-400 hover:text-white hover:bg-white/[0.04]'
+                    ? 'bg-blue-500/10 border-blue-500/40 text-slate-900 dark:text-white shadow-lg'
+                    : 'bg-white/[0.02] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-white/[0.04]'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-white truncate">{wf.name}</span>
+                  <span className="font-bold text-sm text-slate-900 dark:text-white truncate">{wf.name}</span>
                   <span className={`w-2 h-2 rounded-full ${wf.isActive ? 'bg-emerald-400' : 'bg-gray-600'}`} />
                 </div>
-                <p className="text-xs text-gray-500 truncate">{wf.description || 'Custom trigger graph'}</p>
-                <div className="flex items-center justify-between text-[10px] text-gray-500 pt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{wf.description || 'Custom trigger graph'}</p>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1">
                   <span className="font-mono">{wf.triggerType}</span>
                   <span>{wf.nodes?.length || 0} nodes</span>
                 </div>
@@ -309,25 +309,25 @@ export default function WorkflowsPage() {
               <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px] opacity-5 pointer-events-none" />
 
               {/* Canvas Header Toolbar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.06] pb-4 relative z-10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4 relative z-10">
                 <div>
                   <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-bold text-white">{activeWorkflow.name}</h2>
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{activeWorkflow.name}</h2>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                       activeWorkflow.isActive
                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                        : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                        : 'bg-gray-500/10 text-slate-600 dark:text-slate-400 border-gray-500/20'
                     }`}>
                       {activeWorkflow.isActive ? 'ACTIVE' : 'PAUSED'}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400 mt-0.5">{activeWorkflow.description || 'No description provided'}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{activeWorkflow.description || 'No description provided'}</p>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleToggleActive(activeWorkflow.id, activeWorkflow.isActive)}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-gray-300 hover:text-white font-medium"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white font-medium"
                   >
                     {activeWorkflow.isActive ? 'Pause Workflow' : 'Activate Workflow'}
                   </button>
@@ -339,13 +339,13 @@ export default function WorkflowsPage() {
                   </button>
                   <button
                     onClick={handleSaveWorkflow}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-500/20"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white text-xs font-semibold shadow-lg shadow-blue-500/20"
                   >
                     <Save className="w-3.5 h-3.5" /> Save Graph
                   </button>
                   <button
                     onClick={() => handleDeleteWorkflow(activeWorkflow.id)}
-                    className="p-2 rounded-xl text-gray-500 hover:text-red-400 transition-colors"
+                    className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-red-400 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -357,16 +357,16 @@ export default function WorkflowsPage() {
                 {(activeWorkflow.nodes || []).map((node, index) => (
                   <React.Fragment key={node.id}>
                     {/* Node Card */}
-                    <div className="w-full max-w-md p-5 rounded-2xl bg-white/[0.03] border border-white/[0.08] shadow-xl hover:border-blue-500/40 transition-all group relative">
+                    <div className="w-full max-w-md p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] shadow-xl hover:border-blue-500/40 transition-all group relative">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className={`w-3 h-3 rounded-full bg-gradient-to-r ${node.color || 'from-blue-500 to-indigo-600'}`} />
-                          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{node.type}</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{node.type}</span>
                         </div>
-                        <span className="text-[10px] font-mono text-gray-500">Step #{index + 1}</span>
+                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">Step #{index + 1}</span>
                       </div>
-                      <h4 className="font-bold text-white text-base mb-1">{node.label}</h4>
-                      <p className="text-xs text-gray-400">{node.detail}</p>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-base mb-1">{node.label}</h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">{node.detail}</p>
                     </div>
 
                     {/* Connector Arrow */}
@@ -382,7 +382,7 @@ export default function WorkflowsPage() {
                 {/* Add Step Node Button */}
                 <button
                   onClick={() => setShowNodeModal(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-dashed border-white/20 text-gray-400 hover:text-white hover:border-blue-400 transition-all text-xs font-semibold mt-4"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-dashed border-white/20 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:border-blue-400 transition-all text-xs font-semibold mt-4"
                 >
                   <Plus className="w-4 h-4" /> Add Action / Condition Step
                 </button>
@@ -391,13 +391,13 @@ export default function WorkflowsPage() {
           ) : (
             <div className="p-12 rounded-2xl bg-[#0b0f1d] border border-white/[0.08] text-center flex flex-col items-center justify-center min-h-[400px]">
               <GitFork className="w-12 h-12 text-blue-400 mb-3" />
-              <p className="text-gray-300 font-medium mb-1">Select or Create a Visual Automation Graph</p>
-              <p className="text-xs text-gray-500 max-w-sm mb-4">
+              <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">Select or Create a Visual Automation Graph</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
                 Automate real-time triggers across WhatsApp, Telephony calls, and CRM lead pipelines.
               </p>
               <button
                 onClick={() => setShowNewModal(true)}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
               >
                 Create Automation Flow
               </button>
@@ -409,35 +409,35 @@ export default function WorkflowsPage() {
       {/* Modal 1: Create New Workflow */}
       {showNewModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-[#0d1225] border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <GitFork className="w-5 h-5 text-blue-400" /> New Visual Workflow
               </h2>
-              <button onClick={() => setShowNewModal(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setShowNewModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateWorkflow} className="space-y-4 text-xs">
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Workflow Name</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Workflow Name</label>
                 <input
                   required
                   type="text"
                   value={wfName}
                   onChange={(e) => setWfName(e.target.value)}
                   placeholder="e.g. VIP Customer Lead Qualification"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Trigger Event</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Trigger Event</label>
                 <select
                   value={wfTrigger}
                   onChange={(e) => setWfTrigger(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 >
                   <option value="WHATSAPP_INBOUND">Incoming WhatsApp Message</option>
                   <option value="VOICE_CALL_INBOUND">Incoming Phone Call</option>
@@ -447,13 +447,13 @@ export default function WorkflowsPage() {
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Description (Optional)</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Description (Optional)</label>
                 <textarea
                   rows={2}
                   value={wfDescription}
                   onChange={(e) => setWfDescription(e.target.value)}
                   placeholder="Summarize what this automation graph handles..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -461,13 +461,13 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={() => setShowNewModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-gray-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/20"
                 >
                   Build Graph
                 </button>
@@ -480,23 +480,23 @@ export default function WorkflowsPage() {
       {/* Modal 2: Add Node Step */}
       {showNodeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-[#0d1225] border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Plus className="w-5 h-5 text-blue-400" /> Add Step Node
               </h2>
-              <button onClick={() => setShowNodeModal(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setShowNodeModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4 text-xs">
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Node Type</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Node Type</label>
                 <select
                   value={nodeType}
                   onChange={(e) => setNodeType(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 >
                   <option value="ACTION">ACTION (Execute Task)</option>
                   <option value="CONDITION">CONDITION (Filter Branch)</option>
@@ -504,22 +504,22 @@ export default function WorkflowsPage() {
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Step Title</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Step Title</label>
                 <input
                   type="text"
                   value={nodeLabel}
                   onChange={(e) => setNodeLabel(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Step Specification Detail</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Step Specification Detail</label>
                 <input
                   type="text"
                   value={nodeDetail}
                   onChange={(e) => setNodeDetail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -527,14 +527,14 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={() => setShowNodeModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-gray-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleAddNode}
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/20"
                 >
                   Add Node
                 </button>

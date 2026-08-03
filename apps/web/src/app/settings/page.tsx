@@ -9,9 +9,9 @@ import {
 
 type Tab = 'profile' | 'general' | 'whatsapp' | 'voice' | 'team';
 
-const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
+const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
 const selectCls = `${inputCls} appearance-none cursor-pointer`;
-const labelCls = "text-xs font-semibold text-gray-400 mb-1.5 block uppercase tracking-wider";
+const labelCls = "text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block uppercase tracking-wider";
 
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   return (
@@ -26,10 +26,10 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
-      <div className="px-6 py-4 border-b border-white/[0.06]">
-        <h3 className="font-semibold text-white">{title}</h3>
-        {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+    <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+        <h3 className="font-semibold text-slate-900 dark:text-white">{title}</h3>
+        {description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</p>}
       </div>
       <div className="p-6 space-y-4">{children}</div>
     </div>
@@ -75,20 +75,20 @@ export default function SettingsPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Settings className="w-6 h-6 text-blue-400" /> Settings
         </h1>
-        <p className="text-sm text-gray-400 mt-1">Configure your AI platform, integrations, and team.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure your AI platform, integrations, and team.</p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] w-fit">
+      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 w-fit">
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+              tab === t.id ? 'bg-blue-600 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-white/5'
             }`}
           >
             {t.icon} {t.label}
@@ -187,7 +187,7 @@ function ProfileTab({ authHeaders, showToast }: any) {
             <input type="password" required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={inputCls} placeholder="Confirm your new password" />
           </div>
           <div className="flex justify-end pt-2">
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
               {saving ? 'Updating...' : 'Update Password'}
             </button>
@@ -259,7 +259,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       </Section>
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
@@ -324,14 +324,14 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
               className={`${inputCls} pr-12`}
               placeholder="EAA..."
             />
-            <button type="button" onClick={() => setShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+            <button type="button" onClick={() => setShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
               {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
       </Section>
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save WhatsApp Config'}
         </button>
@@ -390,7 +390,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
               <label className={labelCls}>Auth Token</label>
               <div className="relative">
                 <input type={showSecret ? 'text' : 'password'} value={authToken} onChange={e => setAuthToken(e.target.value)} className={`${inputCls} pr-12`} placeholder="••••••••" />
-                <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
                   {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
@@ -402,7 +402,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
             <label className={labelCls}>API Key</label>
             <div className="relative">
               <input type={showSecret ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)} className={`${inputCls} pr-12`} placeholder="Your API key" />
-              <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
                 {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
@@ -414,7 +414,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
         </div>
       </Section>
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Voice Config'}
         </button>
@@ -498,34 +498,34 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
     OWNER: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
     ADMIN: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     AGENT: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    VIEWER: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+    VIEWER: 'bg-gray-500/10 text-slate-600 dark:text-slate-400 border-gray-500/20',
   };
 
   return (
     <div className="space-y-6">
       <Section title="Team Members & Role Access Control (RBAC)" description="Manage member access levels, roles, and granular platform permissions">
         {loadingMembers ? (
-          <div className="py-8 text-center text-gray-500 text-sm flex items-center justify-center gap-2">
+          <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Loading team members...
           </div>
         ) : members.length === 0 ? (
-          <div className="py-8 text-center text-gray-500 text-sm">No team members yet. Invite your first agent below.</div>
+          <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">No team members yet. Invite your first agent below.</div>
         ) : (
           <div className="space-y-3">
             {members.map((m: any) => (
-              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-all gap-4">
+              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 hover:bg-white/[0.05] transition-all gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
                     {(m.fullName || m.email || 'U')[0].toUpperCase()}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-200">{m.fullName || 'Team Member'}</p>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{m.fullName || 'Team Member'}</p>
                       <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
                         {m.isActive !== false ? 'ACTIVE' : 'SUSPENDED'}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500">{m.email}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{m.email}</p>
                   </div>
                 </div>
 
@@ -534,7 +534,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   <select
                     value={m.role}
                     onChange={e => handleRoleChange(m.id, e.target.value)}
-                    className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.1] text-xs font-semibold text-gray-200 focus:outline-none cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.1] text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
                   >
                     <option value="OWNER">OWNER</option>
                     <option value="ADMIN">ADMIN</option>
@@ -587,11 +587,11 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
               </select>
             </div>
             <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {saving ? 'Inviting...' : 'Send Invite'}
               </button>
-              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-gray-200 text-sm transition-all">
+              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 text-sm transition-all">
                 Cancel
               </button>
             </div>
@@ -600,7 +600,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
       ) : (
         <button
           onClick={() => setShowForm(true)}
-          className="w-full py-3 rounded-xl border border-dashed border-white/[0.10] text-gray-500 hover:text-gray-300 hover:border-white/20 text-sm font-medium flex items-center justify-center gap-2 transition-all"
+          className="w-full py-3 rounded-xl border border-dashed border-white/[0.10] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 hover:border-white/20 text-sm font-medium flex items-center justify-center gap-2 transition-all"
         >
           <Plus className="w-4 h-4" /> Invite New Team Member
         </button>
@@ -610,23 +610,23 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
       <Section title="Role Access Permission Matrix" description="System access levels assigned per user role">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-white/[0.04] text-gray-400 uppercase tracking-wider font-semibold border-b border-white/[0.06]">
+            <thead className="bg-white/[0.04] text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="px-4 py-3">Platform Module</th>
                 <th className="px-4 py-3 text-purple-400">OWNER</th>
                 <th className="px-4 py-3 text-blue-400">ADMIN</th>
                 <th className="px-4 py-3 text-emerald-400">AGENT</th>
-                <th className="px-4 py-3 text-gray-400">VIEWER</th>
+                <th className="px-4 py-3 text-slate-600 dark:text-slate-400">VIEWER</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.04] text-gray-300">
+            <tbody className="divide-y divide-white/[0.04] text-slate-700 dark:text-slate-300">
               {matrix.map((row: any, i: number) => (
                 <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="px-4 py-3 font-medium text-white">{row.module}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{row.module}</td>
                   <td className="px-4 py-3 font-semibold text-purple-300">{row.OWNER}</td>
                   <td className="px-4 py-3 font-semibold text-blue-300">{row.ADMIN}</td>
                   <td className="px-4 py-3 font-semibold text-emerald-300">{row.AGENT}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-400">{row.VIEWER}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400">{row.VIEWER}</td>
                 </tr>
               ))}
             </tbody>

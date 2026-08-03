@@ -223,23 +223,23 @@ export default function BroadcastsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Send className="w-6 h-6 text-blue-400" /> WhatsApp Template Broadcasts & Campaigns
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Send approved Meta WhatsApp template messages in bulk to multi-recipient target customer segments.
           </p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowTemplateModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-gray-300 hover:text-white text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white text-sm font-semibold transition-all"
           >
             <Plus className="w-4 h-4" /> Create Template
           </button>
           <button
             onClick={() => setShowBroadcastModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
           >
             <Send className="w-4 h-4" /> New Broadcast Campaign
           </button>
@@ -258,13 +258,13 @@ export default function BroadcastsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-white/[0.06] gap-8">
+      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-8">
         <button
           onClick={() => setActiveTab('campaigns')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'campaigns'
               ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-400 hover:text-gray-200'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
           <Send className="w-4 h-4" /> Broadcast History ({broadcasts.length})
@@ -274,7 +274,7 @@ export default function BroadcastsPage() {
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'templates'
               ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-400 hover:text-gray-200'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
           <FileText className="w-4 h-4" /> WhatsApp Templates ({templates.length})
@@ -283,30 +283,30 @@ export default function BroadcastsPage() {
 
       {/* Tab 1: Broadcast Campaigns History */}
       {activeTab === 'campaigns' && (
-        <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+        <div className="rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800 overflow-hidden">
           {loading ? (
             <div className="p-8 space-y-3">
-              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white/[0.03] rounded-xl animate-pulse" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl animate-pulse" />)}
             </div>
           ) : broadcasts.length === 0 ? (
             <div className="p-12 text-center flex flex-col items-center justify-center">
-              <div className="w-12 h-12 rounded-full bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-gray-400 mb-3">
+              <div className="w-12 h-12 rounded-full bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-slate-600 dark:text-slate-400 mb-3">
                 <Send className="w-6 h-6 text-blue-400" />
               </div>
-              <p className="text-gray-300 font-medium mb-1">No Broadcast Campaigns Sent Yet</p>
-              <p className="text-xs text-gray-500 max-w-sm mb-4">
+              <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">No Broadcast Campaigns Sent Yet</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
                 Launch a multi-recipient WhatsApp template campaign to reach your CRM contacts instantly.
               </p>
               <button
                 onClick={() => setShowBroadcastModal(true)}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
               >
                 Send First Campaign
               </button>
             </div>
           ) : (
             <table className="w-full text-sm text-left">
-              <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400 text-xs uppercase tracking-wider">
+              <thead className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wider">
                 <tr>
                   <th className="px-5 py-3.5">Campaign Name</th>
                   <th className="px-5 py-3.5">Template</th>
@@ -319,11 +319,11 @@ export default function BroadcastsPage() {
               <tbody className="divide-y divide-white/[0.04]">
                 {broadcasts.map((b) => (
                   <tr key={b.id} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="px-5 py-4 font-bold text-white">{b.name}</td>
+                    <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{b.name}</td>
                     <td className="px-5 py-4 font-mono text-xs text-purple-400">
                       {b.template?.name || 'Standard Template'}
                     </td>
-                    <td className="px-5 py-4 font-medium text-gray-300">
+                    <td className="px-5 py-4 font-medium text-slate-700 dark:text-slate-300">
                       {b.totalCount} contacts
                     </td>
                     <td className="px-5 py-4 text-xs font-mono">
@@ -341,7 +341,7 @@ export default function BroadcastsPage() {
                         {b.status}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-xs text-gray-500">
+                    <td className="px-5 py-4 text-xs text-slate-500 dark:text-slate-400">
                       {b.sentAt ? new Date(b.sentAt).toLocaleString() : new Date(b.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
@@ -356,47 +356,47 @@ export default function BroadcastsPage() {
       {activeTab === 'templates' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.length === 0 ? (
-            <div className="col-span-full p-12 text-center rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+            <div className="col-span-full p-12 text-center rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800">
               <FileText className="w-10 h-10 text-purple-400 mx-auto mb-2" />
-              <p className="text-gray-300 font-medium">No Templates Created</p>
-              <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">
+              <p className="text-slate-700 dark:text-slate-300 font-medium">No Templates Created</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-4">
                 Meta requires pre-approved templates for outgoing broadcast messages outside 24-hour customer windows.
               </p>
               <button
                 onClick={() => setShowTemplateModal(true)}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs"
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white font-semibold text-xs"
               >
                 Create Template
               </button>
             </div>
           ) : (
             templates.map((tpl) => (
-              <div key={tpl.id} className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4 hover:border-purple-500/30 transition-all flex flex-col justify-between">
+              <div key={tpl.id} className="p-5 rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800 space-y-4 hover:border-purple-500/30 transition-all flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-base">{tpl.name}</span>
+                    <span className="font-bold text-slate-900 dark:text-white text-base">{tpl.name}</span>
                     <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-mono uppercase font-bold">
                       {tpl.category}
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/[0.04] text-xs text-gray-300 font-sans space-y-2">
+                  <div className="p-3 rounded-xl bg-black/40 border border-white/[0.04] text-xs text-slate-700 dark:text-slate-300 font-sans space-y-2">
                     <p className="whitespace-pre-wrap">{tpl.bodyText}</p>
                     {tpl.footerText && (
-                      <p className="text-[10px] text-gray-500 border-t border-white/[0.06] pt-1.5">{tpl.footerText}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 pt-1.5">{tpl.footerText}</p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs">
-                  <span className="text-gray-500 font-mono">{tpl.language}</span>
+                <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3 text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 font-mono">{tpl.language}</span>
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
                       APPROVED
                     </span>
                     <button
                       onClick={() => handleDeleteTemplate(tpl.id)}
-                      className="p-1 rounded text-gray-500 hover:text-red-400 transition-colors"
+                      className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-red-400 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -411,36 +411,36 @@ export default function BroadcastsPage() {
       {/* Modal 1: Create Template */}
       {showTemplateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-[#0d1225] border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <FileText className="w-5 h-5 text-purple-400" /> Create WhatsApp Template
               </h2>
-              <button onClick={() => setShowTemplateModal(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setShowTemplateModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateTemplate} className="space-y-4 text-xs">
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Template Name (Unique)</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Template Name (Unique)</label>
                 <input
                   required
                   type="text"
                   value={tplName}
                   onChange={(e) => setTplName(e.target.value)}
                   placeholder="e.g. promo_discount_offer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white focus:border-purple-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-purple-500 outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-gray-400 font-medium mb-1">Category</label>
+                  <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Category</label>
                   <select
                     value={tplCategory}
                     onChange={(e) => setTplCategory(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-white outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                   >
                     <option value="MARKETING">MARKETING</option>
                     <option value="UTILITY">UTILITY</option>
@@ -448,11 +448,11 @@ export default function BroadcastsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-400 font-medium mb-1">Language</label>
+                  <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Language</label>
                   <select
                     value={tplLanguage}
                     onChange={(e) => setTplLanguage(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-white outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                   >
                     <option value="en_US">English (en_US)</option>
                     <option value="es">Spanish (es)</option>
@@ -462,24 +462,24 @@ export default function BroadcastsPage() {
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Body Text (Use {"{{1}}"} for variable parameters)</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Body Text (Use {"{{1}}"} for variable parameters)</label>
                 <textarea
                   required
                   rows={4}
                   value={tplBody}
                   onChange={(e) => setTplBody(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white focus:border-purple-500 outline-none font-mono"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-purple-500 outline-none font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Footer Text (Optional)</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Footer Text (Optional)</label>
                 <input
                   type="text"
                   value={tplFooter}
                   onChange={(e) => setTplFooter(e.target.value)}
                   placeholder="e.g. Reply STOP to unsubscribe"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -487,14 +487,14 @@ export default function BroadcastsPage() {
                 <button
                   type="button"
                   onClick={() => setShowTemplateModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-gray-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   disabled={creatingTemplate}
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-purple-500/20 disabled:opacity-50"
                 >
                   {creatingTemplate ? 'Saving...' : 'Save & Register Template'}
                 </button>
@@ -507,36 +507,36 @@ export default function BroadcastsPage() {
       {/* Modal 2: Send Broadcast Campaign */}
       {showBroadcastModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-[#0d1225] border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Send className="w-5 h-5 text-blue-400" /> Send Multi-Recipient WhatsApp Broadcast
               </h2>
-              <button onClick={() => setShowBroadcastModal(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setShowBroadcastModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSendBroadcast} className="space-y-4 text-xs">
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Campaign Title</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Campaign Title</label>
                 <input
                   required
                   type="text"
                   value={campaignName}
                   onChange={(e) => setCampaignName(e.target.value)}
                   placeholder="e.g. August Customer Special Offer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Select Approved Template</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Select Approved Template</label>
                 <select
                   required
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 >
                   <option value="">-- Choose WhatsApp Template --</option>
                   {templates.map((t) => (
@@ -548,18 +548,18 @@ export default function BroadcastsPage() {
               </div>
 
               <div>
-                <label className="block text-gray-400 font-medium mb-1">Variable {"{{1}}"} Substitution</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Variable {"{{1}}"} Substitution</label>
                 <input
                   type="text"
                   value={varValue1}
                   onChange={(e) => setVarValue1(e.target.value)}
                   placeholder="e.g. Valued Customer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
               <div className="space-y-2 pt-1">
-                <label className="flex items-center gap-2 text-gray-300 font-medium cursor-pointer">
+                <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium cursor-pointer">
                   <input
                     type="checkbox"
                     checked={useAllContacts}
@@ -571,7 +571,7 @@ export default function BroadcastsPage() {
 
                 {!useAllContacts && (
                   <div>
-                    <label className="block text-gray-400 font-medium mb-1">
+                    <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">
                       Recipient Phone Numbers (one per line or comma-separated)
                     </label>
                     <textarea
@@ -579,7 +579,7 @@ export default function BroadcastsPage() {
                       value={recipientsText}
                       onChange={(e) => setRecipientsText(e.target.value)}
                       placeholder="+2348030000000, +2348120000000"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white font-mono outline-none"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white font-mono outline-none"
                     />
                   </div>
                 )}
@@ -589,14 +589,14 @@ export default function BroadcastsPage() {
                 <button
                   type="button"
                   onClick={() => setShowBroadcastModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-gray-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   disabled={sendingBroadcast}
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
                 >
                   {sendingBroadcast ? 'Sending...' : <><Send className="w-4 h-4" /> Launch Broadcast</>}
                 </button>

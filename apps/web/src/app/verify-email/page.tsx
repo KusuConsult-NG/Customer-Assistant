@@ -42,22 +42,22 @@ function VerifyEmailContent() {
   }, [token]);
 
   return (
-    <div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-[#0d1225] border border-white/10 p-8 rounded-2xl shadow-2xl text-center space-y-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0f1e] flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-white/10 p-8 rounded-2xl shadow-2xl text-center space-y-6">
         {status === 'loading' && (
           <div className="space-y-4">
             <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto" />
-            <h2 className="text-xl font-bold text-white">Verifying...</h2>
-            <p className="text-gray-400 text-sm">Please wait while we verify your email.</p>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Verifying...</h2>
+            <p className="text-slate-600 dark:text-slate-400 text-sm">Please wait while we verify your email.</p>
           </div>
         )}
         {status === 'success' && (
           <div className="space-y-4">
             <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-            <h2 className="text-xl font-bold text-white">{message}</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{message}</h2>
             <button
               onClick={() => router.push('/login')}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-lg shadow-blue-500/20"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all shadow-lg shadow-blue-500/20"
             >
               Go to Login
             </button>
@@ -66,11 +66,11 @@ function VerifyEmailContent() {
         {status === 'error' && (
           <div className="space-y-4">
             <XCircle className="w-12 h-12 text-red-400 mx-auto" />
-            <h2 className="text-xl font-bold text-white">Verification Failed</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Verification Failed</h2>
             <p className="text-sm text-red-400 bg-red-500/10 p-3 rounded-xl border border-red-500/20">{message}</p>
             <button
               onClick={() => router.push('/login')}
-              className="w-full py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white hover:bg-white/10 font-semibold transition-all"
+              className="w-full py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white hover:bg-white/10 font-semibold transition-all"
             >
               Back to Login
             </button>

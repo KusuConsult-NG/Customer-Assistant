@@ -7,8 +7,8 @@ import {
   Zap, Shield, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
-const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
-const labelCls = "text-xs font-semibold text-gray-400 mb-1.5 block uppercase tracking-wider";
+const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
+const labelCls = "text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block uppercase tracking-wider";
 
 const WEBHOOK_EVENTS = [
   { key: 'call.started', label: 'Call Started', desc: 'Fired when a voice call begins' },
@@ -125,10 +125,10 @@ export default function WhiteLabelPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Palette className="w-6 h-6 text-purple-400" /> White-Label & API
         </h1>
-        <p className="text-sm text-gray-400 mt-1">Customize your brand identity and configure developer integrations.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Customize your brand identity and configure developer integrations.</p>
       </div>
 
       {loading ? (
@@ -138,10 +138,10 @@ export default function WhiteLabelPage() {
           {/* Left column: Config */}
           <div className="xl:col-span-3 space-y-5">
             {/* Branding */}
-            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/[0.06] flex items-center gap-2">
+            <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
                 <Palette className="w-4 h-4 text-purple-400" />
-                <h3 className="font-semibold text-white">Brand Identity</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">Brand Identity</h3>
               </div>
               <form onSubmit={saveBranding} className="p-6 space-y-4">
                 <div className="flex items-center gap-4">
@@ -164,7 +164,7 @@ export default function WhiteLabelPage() {
                 <div>
                   <label className={labelCls}>Custom Domain</label>
                   <div className="relative">
-                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
                     <input type="text" value={customDomain} onChange={e => setCustomDomain(e.target.value)} className={`${inputCls} pl-10`} placeholder="app.yourcompany.com" />
                   </div>
                   <p className="text-xs text-gray-600 mt-1.5">Point your domain's CNAME to <code className="text-blue-400">platform.ace-ai.io</code> then enter it here.</p>
@@ -189,7 +189,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Branding
                 </button>
@@ -197,10 +197,10 @@ export default function WhiteLabelPage() {
             </div>
 
             {/* API Key */}
-            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/[0.06] flex items-center gap-2">
+            <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
                 <Key className="w-4 h-4 text-amber-400" />
-                <h3 className="font-semibold text-white">API Access</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">API Access</h3>
               </div>
               <div className="p-6 space-y-4">
                 <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
@@ -210,18 +210,18 @@ export default function WhiteLabelPage() {
                 <div>
                   <label className={labelCls}>Your API Key</label>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-white/[0.08] font-mono text-sm text-gray-300 overflow-hidden">
+                    <div className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-white/[0.08] font-mono text-sm text-slate-700 dark:text-slate-300 overflow-hidden">
                       {maskedKey}
                     </div>
                     <button
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-gray-200 transition-all"
+                      className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
                     >
                       {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={() => { navigator.clipboard.writeText(apiKey); showToast('API key copied!'); }}
-                      className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-gray-200 transition-all"
+                      className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
                     >
                       <Copy className="w-4 h-4" />
                     </button>
@@ -234,10 +234,10 @@ export default function WhiteLabelPage() {
             </div>
 
             {/* Webhooks */}
-            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/[0.06] flex items-center gap-2">
+            <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
                 <Webhook className="w-4 h-4 text-blue-400" />
-                <h3 className="font-semibold text-white">Webhook Subscriptions</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-white">Webhook Subscriptions</h3>
               </div>
               <form onSubmit={saveWebhooks} className="p-6 space-y-5">
                 <div>
@@ -252,8 +252,8 @@ export default function WhiteLabelPage() {
                     {WEBHOOK_EVENTS.map(ev => (
                       <div key={ev.key} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all">
                         <div>
-                          <p className="text-sm font-medium text-gray-200">{ev.label}</p>
-                          <p className="text-xs text-gray-500">{ev.desc}</p>
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{ev.label}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{ev.desc}</p>
                         </div>
                         <button type="button" onClick={() => toggleEvent(ev.key)} className="flex-shrink-0">
                           {enabledEvents.includes(ev.key)
@@ -266,7 +266,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Webhooks
                 </button>
@@ -277,30 +277,30 @@ export default function WhiteLabelPage() {
           {/* Right column: Live preview */}
           <div className="xl:col-span-2">
             <div className="sticky top-4 space-y-4">
-              <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
-                <div className="px-5 py-4 border-b border-white/[0.06]">
-                  <h3 className="font-semibold text-white text-sm flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-gray-400" /> Live Brand Preview
+              <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className="font-semibold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-slate-600 dark:text-slate-400" /> Live Brand Preview
                   </h3>
                 </div>
                 <div className="p-5">
                   {/* Mini platform preview */}
                   <div className="rounded-xl overflow-hidden border border-white/[0.08]" style={{ background: '#0a0f1e' }}>
                     {/* Fake topbar */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]"
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800"
                       style={{ background: `linear-gradient(135deg, ${primaryColor}20, ${secondaryColor}10)` }}>
                       <div className="flex items-center gap-2">
                         {logoPreview
                           ? <img src={logoPreview} alt="" className="w-6 h-6 rounded-lg object-cover" />
                           : <div className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black" style={{ background: primaryColor }}>{(companyName || 'A')[0]}</div>
                         }
-                        <span className="text-xs font-bold text-white">{companyName || 'Your Company'}</span>
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">{companyName || 'Your Company'}</span>
                       </div>
                       <div className="w-5 h-5 rounded-full" style={{ background: primaryColor }} />
                     </div>
                     {/* Fake sidebar + content */}
                     <div className="flex" style={{ height: '200px' }}>
-                      <div className="w-1/3 border-r border-white/[0.06] p-3 space-y-2">
+                      <div className="w-1/3 border-r border-slate-200 dark:border-slate-800 p-3 space-y-2">
                         {['Dashboard', 'CRM', 'Agent Console', 'Knowledge'].map((item, i) => (
                           <div key={item} className="px-2 py-1.5 rounded-lg text-[10px] font-medium" style={{
                             background: i === 0 ? `${primaryColor}30` : 'transparent',
@@ -311,8 +311,8 @@ export default function WhiteLabelPage() {
                       <div className="flex-1 p-3 space-y-2">
                         <div className="h-3 rounded-full w-3/4" style={{ background: `${primaryColor}30` }} />
                         <div className="grid grid-cols-2 gap-2">
-                          <div className="h-14 rounded-xl border border-white/[0.06]" style={{ background: `${primaryColor}10` }} />
-                          <div className="h-14 rounded-xl border border-white/[0.06]" style={{ background: `${secondaryColor}10` }} />
+                          <div className="h-14 rounded-xl border border-slate-200 dark:border-slate-800" style={{ background: `${primaryColor}10` }} />
+                          <div className="h-14 rounded-xl border border-slate-200 dark:border-slate-800" style={{ background: `${secondaryColor}10` }} />
                         </div>
                         <div className="h-3 rounded-full w-1/2" style={{ background: 'rgba(255,255,255,0.05)' }} />
                       </div>
@@ -320,22 +320,22 @@ export default function WhiteLabelPage() {
                   </div>
 
                   <div className="mt-4 space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-gray-500">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                       <span>Primary Color</span>
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: primaryColor }} />
-                        <code className="text-gray-400">{primaryColor}</code>
+                        <code className="text-slate-600 dark:text-slate-400">{primaryColor}</code>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-gray-500">
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                       <span>Secondary Color</span>
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: secondaryColor }} />
-                        <code className="text-gray-400">{secondaryColor}</code>
+                        <code className="text-slate-600 dark:text-slate-400">{secondaryColor}</code>
                       </div>
                     </div>
                     {customDomain && (
-                      <div className="flex items-center justify-between text-gray-500">
+                      <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                         <span>Custom Domain</span>
                         <code className="text-blue-400">{customDomain}</code>
                       </div>
@@ -345,17 +345,17 @@ export default function WhiteLabelPage() {
               </div>
 
               {/* API docs link */}
-              <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-5">
+              <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="w-4 h-4 text-amber-400" />
-                  <h4 className="text-sm font-semibold text-white">Developer Docs</h4>
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Developer Docs</h4>
                 </div>
-                <p className="text-xs text-gray-500 mb-3">Full REST API reference with request/response examples.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Full REST API reference with request/response examples.</p>
                 <a
                   href={`${API_URL}/api`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-sm text-gray-300 hover:text-white hover:bg-white/[0.08] transition-all"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white hover:bg-white/[0.08] transition-all"
                 >
                   <Key className="w-3.5 h-3.5" /> View API Reference
                 </a>

@@ -71,12 +71,12 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#0a0f1e]">
+    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-[#0a0f1e]">
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e] sticky top-0 h-screen">
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 opacity-40"></div>
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-7 h-7 text-white" />
+            <Sparkles className="w-7 h-7 text-slate-900 dark:text-white" />
           </div>
           <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
             ACE Platform
@@ -84,10 +84,10 @@ export default function RegisterPage() {
         </div>
         
         <div className="relative z-10">
-          <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
+          <h2 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
             Start Your Journey <br/><span className="text-blue-400">with ACE Today</span>
           </h2>
-          <ul className="space-y-4 text-gray-300 text-lg">
+          <ul className="space-y-4 text-slate-700 dark:text-slate-300 text-lg">
             <li className="flex items-center gap-3">
               <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Unify your CRM, Communications, and AI
@@ -103,7 +103,7 @@ export default function RegisterPage() {
           </ul>
         </div>
         
-        <div className="relative z-10 text-sm text-gray-500">
+        <div className="relative z-10 text-sm text-slate-500 dark:text-slate-400">
           © 2024 ACE Platform. All rights reserved.
         </div>
       </div>
@@ -111,8 +111,8 @@ export default function RegisterPage() {
       <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 md:p-12 min-h-screen">
         <div className="w-full max-w-md space-y-6 py-6">
           <div className="text-center lg:text-left">
-            <h2 className="text-3xl font-bold text-white mb-2">Create Account</h2>
-            <p className="text-gray-400">Join thousands of businesses growing with ACE</p>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Create Account</h2>
+            <p className="text-slate-600 dark:text-slate-400">Join thousands of businesses growing with ACE</p>
           </div>
 
           {status === 'success' && (
@@ -129,77 +129,77 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Organization Name *</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Organization Name *</label>
               <input
                 type="text"
                 name="orgName"
                 required
                 value={formData.orgName}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 placeholder="Acme Corp"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Your Full Name *</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Your Full Name *</label>
               <input
                 type="text"
                 name="fullName"
                 required
                 value={formData.fullName}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 placeholder="Jane Doe"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Work Email *</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Work Email *</label>
               <input
                 type="email"
                 name="email"
                 required
                 value={formData.email}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 placeholder="jane@example.com"
               />
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Industry</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Industry</label>
                 <select
                   name="industry"
                   value={formData.industry}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none"
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none"
                 >
-                  <option className="bg-[#0d1225] text-white" value="HOSPITALITY">Hospitality</option>
-                  <option className="bg-[#0d1225] text-white" value="HEALTHCARE">Healthcare</option>
-                  <option className="bg-[#0d1225] text-white" value="RETAIL">Retail</option>
-                  <option className="bg-[#0d1225] text-white" value="FINANCE">Finance</option>
-                  <option className="bg-[#0d1225] text-white" value="EDUCATION">Education</option>
-                  <option className="bg-[#0d1225] text-white" value="REAL_ESTATE">Real Estate</option>
-                  <option className="bg-[#0d1225] text-white" value="OTHER">Other</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="HOSPITALITY">Hospitality</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="HEALTHCARE">Healthcare</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="RETAIL">Retail</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="FINANCE">Finance</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="EDUCATION">Education</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="REAL_ESTATE">Real Estate</option>
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="OTHER">Other</option>
                 </select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Country</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Country</label>
                 <input
                   type="text"
                   name="country"
                   value={formData.country}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Password *</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Password *</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -208,13 +208,13 @@ export default function RegisterPage() {
                   minLength={8}
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 pr-12 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  className="w-full px-4 py-3 pr-12 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                   placeholder="Min 8 characters"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white p-1 transition-colors"
                   title={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -223,14 +223,14 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Confirm Password *</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Confirm Password *</label>
               <input
                 type="password"
                 name="confirmPassword"
                 required
                 value={formData.confirmPassword}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                 placeholder="Confirm password"
               />
             </div>
@@ -238,7 +238,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={status === 'loading'}
-              className="w-full py-3 mt-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all disabled:opacity-50 flex justify-center items-center"
+              className="w-full py-3 mt-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-slate-900 dark:text-white font-medium transition-all disabled:opacity-50 flex justify-center items-center"
             >
               {status === 'loading' ? (
                 <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
@@ -249,7 +249,7 @@ export default function RegisterPage() {
           </form>
           
           <div className="mt-8 pt-6 border-t border-white/10 text-center">
-             <div className="text-sm text-gray-500">
+             <div className="text-sm text-slate-500 dark:text-slate-400">
                Already have an account?{' '}
                <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium">Sign in</Link>
              </div>

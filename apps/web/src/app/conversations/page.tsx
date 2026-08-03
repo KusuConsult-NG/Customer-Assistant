@@ -180,7 +180,7 @@ export default function ConversationsPage() {
   return (
     <div className="flex h-[calc(100vh-80px)] -m-6 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-[#080c18]">
       {/* Left Panel - Conversation List */}
-      <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1225] ${selectedId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-white dark:bg-slate-900 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -214,7 +214,7 @@ export default function ConversationsPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mr-2 font-medium">{conv.lastMessagePreview || 'New conversation'}</p>
                   {!!conv.unreadCount && conv.unreadCount > 0 && (
-                    <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    <span className="w-4 h-4 rounded-full bg-indigo-600 text-slate-900 dark:text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                       {conv.unreadCount}
                     </span>
                   )}
@@ -233,7 +233,7 @@ export default function ConversationsPage() {
             <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-[#080c18] z-10 shadow-sm flex-shrink-0">
               <div className="flex items-center gap-3">
                 <button 
-                  className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                  className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:text-white"
                   onClick={() => setSelectedId(null)}
                 >
                   ←
@@ -242,7 +242,7 @@ export default function ConversationsPage() {
                   {selectedConversation?.contactName?.slice(0, 2).toUpperCase() || 'U'}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">{selectedConversation?.contactName || selectedConversation?.contactPhone}</h3>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white">{selectedConversation?.contactName || selectedConversation?.contactPhone}</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{selectedConversation?.contactPhone}</p>
                 </div>
               </div>
@@ -257,7 +257,7 @@ export default function ConversationsPage() {
                 </div>
                 <button 
                   onClick={handleReturnToAI}
-                  className="text-xs px-3 py-1 bg-amber-100 dark:bg-white/5 hover:bg-amber-200 dark:hover:bg-white/10 rounded-lg text-amber-900 dark:text-white border border-amber-300 dark:border-white/10 transition-colors font-bold"
+                  className="text-xs px-3 py-1 bg-amber-100 dark:bg-white/5 hover:bg-amber-200 dark:hover:bg-white/10 rounded-lg text-amber-900 dark:text-slate-900 dark:text-white border border-amber-300 dark:border-white/10 transition-colors font-bold"
                 >
                   Return to AI
                 </button>
@@ -274,10 +274,10 @@ export default function ConversationsPage() {
                   <div key={msg.id || i} className={`flex ${isCustomer ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                       isCustomer 
-                        ? 'bg-indigo-600 text-white rounded-tr-sm shadow-sm font-medium' 
+                        ? 'bg-indigo-600 text-slate-900 dark:text-white rounded-tr-sm shadow-sm font-medium' 
                         : isAI 
-                          ? 'bg-slate-100 dark:bg-[#1a233a] text-slate-900 dark:text-gray-200 rounded-tl-sm border border-slate-200 dark:border-white/[0.06] font-medium' 
-                          : 'bg-emerald-600 text-white rounded-tl-sm font-medium' // Human agent
+                          ? 'bg-slate-100 dark:bg-[#1a233a] text-slate-900 dark:text-slate-800 dark:text-slate-200 rounded-tl-sm border border-slate-200 dark:border-slate-200 dark:border-slate-800 font-medium' 
+                          : 'bg-emerald-600 text-slate-900 dark:text-white rounded-tl-sm font-medium' // Human agent
                     }`}>
                       {!isCustomer && (
                         <div className="flex items-center gap-1.5 mb-1 text-[10px] opacity-70 font-medium">
@@ -286,7 +286,7 @@ export default function ConversationsPage() {
                         </div>
                       )}
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <div className={`text-[10px] mt-1 text-right ${isCustomer ? 'text-blue-200' : 'text-gray-500'}`}>
+                      <div className={`text-[10px] mt-1 text-right ${isCustomer ? 'text-blue-200' : 'text-slate-500 dark:text-slate-400'}`}>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
@@ -297,19 +297,19 @@ export default function ConversationsPage() {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 border-t border-white/[0.06] bg-[#0d1225] flex-shrink-0">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
               <form onSubmit={handleSendMessage} className="flex gap-2">
                 <input
                   type="text"
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
-                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50"
+                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50"
                 />
                 <button
                   type="submit"
                   disabled={!newMessage.trim()}
-                  className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl flex items-center justify-center transition-colors"
+                  className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-slate-900 dark:text-white rounded-xl flex items-center justify-center transition-colors"
                 >
                   <Send className="w-5 h-5" />
                 </button>
@@ -317,7 +317,7 @@ export default function ConversationsPage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center flex-col text-gray-500">
+          <div className="flex-1 flex items-center justify-center flex-col text-slate-500 dark:text-slate-400">
             <MessageCircle className="w-12 h-12 mb-4 opacity-20" />
             <p>Select a conversation to start messaging</p>
           </div>

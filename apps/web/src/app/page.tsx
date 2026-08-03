@@ -194,27 +194,27 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1 uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" /> Executive Command Center
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Welcome back, {orgName} 👋</h1>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white tracking-tight">Welcome back, {orgName} 👋</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Here is your live AI customer assistance performance & pipeline overview for {today}.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl">
-            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
-            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
-            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>90d</button>
           </div>
           <button
             onClick={fetchAll}
-            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors shadow-sm"
+            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white transition-colors shadow-sm"
             title="Refresh Data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <Link
             href="/agent-console"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
           >
-            <Bot className="w-4 h-4 text-white" /> Open Live Console
+            <Bot className="w-4 h-4 text-slate-900 dark:text-white" /> Open Live Console
           </Link>
         </div>
       </div>
@@ -261,7 +261,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 Omnichannel Conversation Volume
               </h3>
@@ -327,7 +327,7 @@ export default function DashboardPage() {
         {/* AI Performance Gauge & Metrics */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6 flex flex-col justify-between">
           <div>
-            <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+            <h3 className="font-bold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-500" />
               AI Agent Efficiency
             </h3>
@@ -365,7 +365,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3">
               <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
               <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-white">System Status: Optimal</p>
+                <p className="text-xs font-bold text-slate-900 dark:text-slate-900 dark:text-white">System Status: Optimal</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">All gateways (WhatsApp, Voice, CRM) active</p>
               </div>
             </div>
@@ -378,7 +378,7 @@ export default function DashboardPage() {
         {/* Live Activity Timeline */}
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-slate-400" /> Recent Live Activity
             </h3>
             <Link href="/agent-console" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold">
@@ -431,7 +431,7 @@ export default function DashboardPage() {
 
         {/* Quick Launch & System Shortcuts */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
             <Layers className="w-4 h-4 text-purple-500" /> Platform Shortcuts
           </h3>
 
@@ -453,7 +453,7 @@ export default function DashboardPage() {
                   <p className={`text-xs font-bold ${s.color}`}>{s.label}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.desc}</p>
                 </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-white transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-slate-900 dark:text-white transition-colors" />
               </Link>
             ))}
           </div>
@@ -471,7 +471,7 @@ function KpiCard({ title, value, subtitle, icon, badge, badgeColor }: any) {
         <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/50">{icon}</div>
       </div>
       <div>
-        <p className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{value}</p>
+        <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white tracking-tight">{value}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">{subtitle}</p>
       </div>
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60">
@@ -486,7 +486,7 @@ function ProgressMetric({ label, percentage, value, color }: any) {
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-xs">
         <span className="font-bold text-slate-900 dark:text-slate-200">{label}</span>
-        <span className="font-extrabold text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
+        <span className="font-extrabold text-slate-900 dark:text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
       </div>
       <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: percentage === 'N/A' ? '0%' : `${percentage}%` }} />

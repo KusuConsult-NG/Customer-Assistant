@@ -185,7 +185,7 @@ export default function AgentConsolePage() {
       VOICE: 'bg-purple-500/15 text-purple-400 border-purple-500/20',
       WEBCHAT: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
     };
-    return map[channel] || 'bg-gray-500/15 text-gray-400 border-gray-500/20';
+    return map[channel] || 'bg-gray-500/15 text-slate-600 dark:text-slate-400 border-gray-500/20';
   };
 
   const handleToggleHandoff = async () => {
@@ -208,10 +208,10 @@ export default function AgentConsolePage() {
   return (
     <div className="flex h-[calc(100vh-8.5rem)] gap-4">
       {/* Left: Conversation List */}
-      <div className="w-80 flex-shrink-0 flex flex-col border border-white/[0.06] rounded-2xl bg-white/[0.02] overflow-hidden">
-        <div className="p-4 border-b border-white/[0.06] space-y-3">
+      <div className="w-80 flex-shrink-0 flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-white/[0.02] overflow-hidden">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-white text-sm flex items-center gap-2">
+            <h2 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
               <MessageSquareText className="w-4 h-4 text-blue-400" />
               Live Inbox
               <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-bold">
@@ -221,9 +221,9 @@ export default function AgentConsolePage() {
             <div className="flex items-center gap-2">
               {wsConnected
                 ? <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-bold"><Wifi className="w-3 h-3" /> Live</span>
-                : <span className="flex items-center gap-1 text-[10px] text-gray-500"><WifiOff className="w-3 h-3" /> Offline</span>
+                : <span className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400"><WifiOff className="w-3 h-3" /> Offline</span>
               }
-              <button onClick={fetchConversations} className="text-gray-500 hover:text-gray-300 transition-colors">
+              <button onClick={fetchConversations} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 transition-colors">
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -236,7 +236,7 @@ export default function AgentConsolePage() {
               placeholder="Search contacts..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-xs text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
+              className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/[0.04] border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500/30"
             />
           </div>
 
@@ -247,7 +247,7 @@ export default function AgentConsolePage() {
                 key={ch}
                 onClick={() => setChannelFilter(ch)}
                 className={`flex-1 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  channelFilter === ch ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                  channelFilter === ch ? 'bg-blue-600 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 hover:bg-white/5'
                 }`}
               >
                 {ch === 'WHATSAPP' ? 'WA' : ch}
@@ -259,11 +259,11 @@ export default function AgentConsolePage() {
         {/* List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {loading ? (
-            [1, 2, 3].map(i => <div key={i} className="h-16 bg-white/[0.03] rounded-xl animate-pulse" />)
+            [1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl animate-pulse" />)
           ) : filteredConvs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-600 px-4 text-center">
               <MessageCircle className="w-8 h-8 mb-2 opacity-30" />
-              <p className="text-sm text-gray-500">No conversations</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">No conversations</p>
               <p className="text-xs mt-1">Incoming customer chats will appear here automatically.</p>
             </div>
           ) : (
@@ -280,18 +280,18 @@ export default function AgentConsolePage() {
                 >
                   <div className="flex items-start gap-2.5">
                     <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
-                      isActive ? 'bg-blue-500/30 text-blue-300' : 'bg-white/[0.08] text-gray-400'
+                      isActive ? 'bg-blue-500/30 text-blue-300' : 'bg-white/[0.08] text-slate-600 dark:text-slate-400'
                     }`}>
                       {name[0]?.toUpperCase() || '?'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-semibold text-gray-200 truncate">{name}</span>
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{name}</span>
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold border ${channelBadge(conv.channel)}`}>
                           {conv.channel}
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                         {conv.messages?.[0]?.content || 'Active conversation'}
                       </p>
                     </div>
@@ -304,18 +304,18 @@ export default function AgentConsolePage() {
       </div>
 
       {/* Middle: Chat Window */}
-      <div className="flex-1 flex flex-col border border-white/[0.06] rounded-2xl bg-white/[0.02] overflow-hidden">
+      <div className="flex-1 flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-white/[0.02] overflow-hidden">
         {activeConv ? (
           <>
             {/* Header */}
-            <div className="h-16 px-5 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
+            <div className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">
                   {(activeConv.contact?.fullName || activeConv.contactName || '?')[0].toUpperCase()}
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-100 text-sm">{activeConv.contact?.fullName || activeConv.contactName || 'Unknown Contact'}</h3>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${channelBadge(activeConv.channel)}`}>
                       {activeConv.channel}
                     </span>
@@ -329,7 +329,7 @@ export default function AgentConsolePage() {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   isHumanActive
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                    : 'bg-white/[0.04] text-gray-400 border-white/[0.08] hover:border-white/20'
+                    : 'bg-white/[0.04] text-slate-600 dark:text-slate-400 border-white/[0.08] hover:border-white/20'
                 }`}
               >
                 {isHumanActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
@@ -356,15 +356,15 @@ export default function AgentConsolePage() {
                     <div key={msg.id || i} className={`flex ${isCustomer ? 'justify-start' : 'justify-end'}`}>
                       {isCustomer && (
                         <div className="w-7 h-7 rounded-full bg-white/[0.08] flex items-center justify-center mr-2 flex-shrink-0 mt-1">
-                          <User className="w-3.5 h-3.5 text-gray-400" />
+                          <User className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
                         </div>
                       )}
                       <div className={`max-w-[65%] rounded-2xl px-4 py-2.5 text-sm ${
                         isCustomer
-                          ? 'bg-white/[0.06] text-gray-200 rounded-tl-sm border border-white/[0.06]'
+                          ? 'bg-white/[0.06] text-slate-800 dark:text-slate-200 rounded-tl-sm border border-slate-200 dark:border-slate-800'
                           : isHumanMsg
-                            ? 'bg-emerald-600/80 text-white rounded-tr-sm'
-                            : 'bg-blue-600/80 text-white rounded-tr-sm'
+                            ? 'bg-emerald-600/80 text-slate-900 dark:text-white rounded-tr-sm'
+                            : 'bg-blue-600/80 text-slate-900 dark:text-white rounded-tr-sm'
                       }`}>
                         {!isCustomer && (
                           <div className="flex items-center gap-1.5 mb-1 opacity-70">
@@ -391,14 +391,14 @@ export default function AgentConsolePage() {
             {/* Quick replies bar */}
             {isHumanActive && (
               <div className="px-4 py-2 bg-black/30 border-t border-white/[0.04] flex items-center gap-2 overflow-x-auto">
-                <span className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 flex-shrink-0">
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1 flex-shrink-0">
                   <Zap className="w-3 h-3 text-amber-400" /> Quick Snippets:
                 </span>
                 {QUICK_REPLIES.map((reply, idx) => (
                   <button
                     key={idx}
                     onClick={() => handleSend(undefined, reply)}
-                    className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 text-xs truncate max-w-[200px] flex-shrink-0 border border-white/[0.06] transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-700 dark:text-slate-300 text-xs truncate max-w-[200px] flex-shrink-0 border border-slate-200 dark:border-slate-800 transition-colors"
                   >
                     {reply}
                   </button>
@@ -407,7 +407,7 @@ export default function AgentConsolePage() {
             )}
 
             {/* Input box */}
-            <div className="p-4 border-t border-white/[0.06] flex-shrink-0">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
               {!isHumanActive && (
                 <div className="mb-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 flex items-center gap-2">
                   <Bot className="w-3.5 h-3.5" />
@@ -421,12 +421,12 @@ export default function AgentConsolePage() {
                   onChange={e => setReplyText(e.target.value)}
                   placeholder={isHumanActive ? "Type your message to customer..." : "Enable Human Takeover to type"}
                   disabled={!isHumanActive || sending}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-40 text-sm"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-40 text-sm"
                 />
                 <button
                   type="submit"
                   disabled={!isHumanActive || !replyText.trim() || sending}
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center disabled:opacity-40 transition-all shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white flex items-center justify-center disabled:opacity-40 transition-all shadow-lg shadow-blue-500/20"
                 >
                   <Send className="w-4 h-4" />
                 </button>
@@ -436,8 +436,8 @@ export default function AgentConsolePage() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-600">
             <MessageSquareText className="w-14 h-14 mb-3 opacity-20" />
-            <h3 className="text-gray-400 font-semibold text-sm">Select a Conversation</h3>
-            <p className="text-xs text-center max-w-xs text-gray-500 mt-1">
+            <h3 className="text-slate-600 dark:text-slate-400 font-semibold text-sm">Select a Conversation</h3>
+            <p className="text-xs text-center max-w-xs text-slate-500 dark:text-slate-400 mt-1">
               Choose a customer thread from the left panel to inspect message history and engage in real time.
             </p>
           </div>
@@ -446,39 +446,39 @@ export default function AgentConsolePage() {
 
       {/* Right: Contact Context Panel */}
       {activeConv && (
-        <div className="w-72 flex-shrink-0 border border-white/[0.06] rounded-2xl bg-white/[0.02] p-4 space-y-4 overflow-y-auto hidden xl:block">
-          <div className="text-center pb-4 border-b border-white/[0.06]">
+        <div className="w-72 flex-shrink-0 border border-slate-200 dark:border-slate-800 rounded-2xl bg-white/[0.02] p-4 space-y-4 overflow-y-auto hidden xl:block">
+          <div className="text-center pb-4 border-b border-slate-200 dark:border-slate-800">
             <div className="w-14 h-14 rounded-full bg-blue-500/20 text-blue-400 font-bold text-lg flex items-center justify-center mx-auto mb-2">
               {(activeConv.contact?.fullName || activeConv.contactName || '?')[0].toUpperCase()}
             </div>
-            <h4 className="font-bold text-white text-sm">{activeConv.contact?.fullName || activeConv.contactName || 'Unknown Customer'}</h4>
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">{activeConv.contact?.fullName || activeConv.contactName || 'Unknown Customer'}</h4>
             <p className="text-xs font-mono text-blue-400 mt-0.5">{activeConv.contact?.phoneNumber || 'No phone'}</p>
           </div>
 
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email</p>
-              <p className="text-xs text-gray-300 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-gray-500" /> {activeConv.contact?.email || 'Not specified'}</p>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Email</p>
+              <p className="text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" /> {activeConv.contact?.email || 'Not specified'}</p>
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Channel Source</p>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Channel Source</p>
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${channelBadge(activeConv.channel)}`}>
                 {activeConv.channel}
               </span>
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tags</p>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Tags</p>
               <div className="flex gap-1 flex-wrap">
                 <span className="px-2 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20">Customer</span>
                 <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20">Active Chat</span>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-white/[0.06] space-y-2">
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Internal Notes</p>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-gray-400">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Internal Notes</p>
+              <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
                 Customer reached out regarding service inquiries. AI handled initial greeting.
               </div>
             </div>
