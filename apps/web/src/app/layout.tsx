@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
+import { API_URL } from '@/lib/api';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -39,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const token = localStorage.getItem('ace_token');
     if (token) {
-      const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000', {
+      const socket = io(API_URL, {
         auth: { token }
       });
       const handleEvent = (type: string) => (data: any) => {

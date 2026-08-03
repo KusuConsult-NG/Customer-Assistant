@@ -3,6 +3,7 @@
 import React, { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, CheckCircle2, Lock } from 'lucide-react';
+import { API_URL } from '@/lib/api';
 
 function SetupAccountContent() {
   const searchParams = useSearchParams();
@@ -29,7 +30,6 @@ function SetupAccountContent() {
     setLoading(true);
     setError('');
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
       const res = await fetch(`${API_URL}/api/auth/setup-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

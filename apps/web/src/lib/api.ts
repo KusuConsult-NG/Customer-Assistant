@@ -1,4 +1,12 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+export const getApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'https://ace-api.onrender.com';
+  }
+  return 'http://localhost:4000';
+};
+
+export const API_URL = getApiUrl();
 
 const getHeaders = () => {
   const token = typeof window !== "undefined" ? localStorage.getItem("ace_token") : null;
@@ -9,14 +17,20 @@ const getHeaders = () => {
 };
 
 const handleResponse = async (res: Response) => {
-  if (res.status === 401 && typeof window !== "undefined") {
-    localStorage.removeItem("ace_token");
-    localStorage.removeItem("ace_user");
-    window.location.href = "/login";
-  }
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
-    throw new Error((error as any).message || "An error occurred");
+    const msg = (error as any).message || "An error occurred";
+    // On 401, clear stale credentials but let the Router (layout) handle the redirect
+    // — avoids race conditions that cause white/blank screens on page load.
+    if (res.status === 401 && typeof window !== "undefined") {
+      const currentToken = localStorage.getItem("ace_token");
+      if (currentToken) {
+        localStorage.removeItem("ace_token");
+        localStorage.removeItem("ace_user");
+        window.location.replace("/login");
+      }
+    }
+    throw new Error(msg);
   }
   return res.json();
 };

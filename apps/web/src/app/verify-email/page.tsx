@@ -4,24 +4,25 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 
+import { API_URL } from '@/lib/api';
+
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const token = searchParams.get('token');
-  
-  const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [email, setEmail] = useState('');
+  const [resendStatus, setResendStatus] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     if (!token) {
       setStatus('error');
-      setMessage('Invalid or missing verification token.');
+      setMessage('No verification token provided.');
       return;
     }
-
     const verify = async () => {
       try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
         const res = await fetch(`${API_URL}/api/auth/verify-email?token=${token}`);
         if (res.ok) {
           setStatus('success');
@@ -43,7 +44,7 @@ function VerifyEmailContent() {
   return (
     <div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-[#0d1225] border border-white/10 p-8 rounded-2xl shadow-2xl text-center space-y-6">
-        {status === 'verifying' && (
+        {status === 'loading' && (
           <div className="space-y-4">
             <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto" />
             <h2 className="text-xl font-bold text-white">Verifying...</h2>
