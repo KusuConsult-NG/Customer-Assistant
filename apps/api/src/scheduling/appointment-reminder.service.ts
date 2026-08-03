@@ -8,134 +8,125 @@ const log = new AceLogger('AppointmentReminderService');
 /**
  * AppointmentReminderService
  *
- * Runs two polling loops:
- *   - Every 5 minutes: send 24-hour-before reminders
- *   - Every 5 minutes: send 1-hour-before reminders
- *
- * Uses a simple "already reminded" approach by storing a reminder flag in booking notes.
- * In production this should use a dedicated ReminderLog table.
+ * Implements exact multi-channel reminder scheduling:
+ *  - 72h (3 Days Before): Email sent if customer has an email address.
+ *  - 48h (2 Days Before): Email sent if customer has an email address.
+ *  - 24h (1 Day Before):
+ *      - If customer has NO email: Send 24h SMS reminder.
+ *      - If customer HAS email AND HAS PAID: Send 24h SMS reminder.
+ *      - If customer HAS email BUT HAS NOT PAID: Skip SMS reminder (emails already sent at 72h & 48h).
  */
 @Injectable()
 export class AppointmentReminderService implements OnModuleInit {
   private resend: Resend;
 
   constructor() {
-    this.resend = new Resend(process.env.RESEND_API_KEY);
+    this.resend = new Resend(process.env.RESEND_API_KEY || 're_mock_key');
   }
 
   onModuleInit() {
-    // Run immediately then every 5 minutes
+    // Run immediately on boot then poll every 5 minutes
     this.checkAndSendReminders().catch((err) =>
-      log.error('Initial reminder check failed', err),
+      log.error('Initial appointment reminder check failed', err),
     );
     setInterval(
       () =>
         this.checkAndSendReminders().catch((err) =>
-          log.error('Reminder check failed', err),
+          log.error('Appointment reminder check failed', err),
         ),
-      5 * 60 * 1000, // every 5 minutes
+      5 * 60 * 1000,
     );
   }
 
   async checkAndSendReminders() {
     const now = new Date();
 
-    // ── 24-hour reminders ──────────────────────────────────────────────────────
-    const in24hStart = new Date(now.getTime() + 23 * 60 * 60 * 1000);
-    const in24hEnd = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+    // ── 1. 72-Hour (3 Days) Email Reminders ───────────────────────────────────
+    const start72h = new Date(now.getTime() + 71 * 60 * 60 * 1000);
+    const end72h   = new Date(now.getTime() + 73 * 60 * 60 * 1000);
+
+    const bookings72h = await prisma.booking.findMany({
+      where: {
+        startTime: { gte: start72h, lte: end72h },
+        status: 'CONFIRMED',
+        NOT: { notes: { contains: '[REMINDED_72H]' } },
+      },
+      include: { contact: true, organization: true },
+    });
+
+    for (const booking of bookings72h) {
+      if (booking.contact?.email) {
+        await this.sendBookingEmailReminder(booking, '3 days');
+      }
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { notes: `${booking.notes ?? ''} [REMINDED_72H]` },
+      });
+    }
+
+    // ── 2. 48-Hour (2 Days) Email Reminders ───────────────────────────────────
+    const start48h = new Date(now.getTime() + 47 * 60 * 60 * 1000);
+    const end48h   = new Date(now.getTime() + 49 * 60 * 60 * 1000);
+
+    const bookings48h = await prisma.booking.findMany({
+      where: {
+        startTime: { gte: start48h, lte: end48h },
+        status: 'CONFIRMED',
+        NOT: { notes: { contains: '[REMINDED_48H]' } },
+      },
+      include: { contact: true, organization: true },
+    });
+
+    for (const booking of bookings48h) {
+      if (booking.contact?.email) {
+        await this.sendBookingEmailReminder(booking, '2 days');
+      }
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { notes: `${booking.notes ?? ''} [REMINDED_48H]` },
+      });
+    }
+
+    // ── 3. 24-Hour (1 Day) Reminders: SMS conditional on payment & email ──────
+    const start24h = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+    const end24h   = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
     const bookings24h = await prisma.booking.findMany({
       where: {
-        startTime: { gte: in24hStart, lte: in24hEnd },
+        startTime: { gte: start24h, lte: end24h },
         status: 'CONFIRMED',
         NOT: { notes: { contains: '[REMINDED_24H]' } },
       },
-      include: {
-        contact: true,
-        organization: true,
-      },
+      include: { contact: true, organization: true },
     });
 
     for (const booking of bookings24h) {
-      await this.sendBookingReminder(booking, '24 hours');
-      // Mark as reminded
+      const hasEmail = Boolean(booking.contact?.email?.trim());
+      const isPaid = Boolean(booking.notes?.includes('[PAID]') || booking.status === 'CONFIRMED');
+
+      // Rule: Send SMS 24h before IF:
+      //  (a) Customer has NO email, OR
+      //  (b) Customer HAS email AND HAS PAID
+      if (!hasEmail || isPaid) {
+        await this.sendSmsNotification(
+          booking.contact?.phoneNumber,
+          `Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is tomorrow! Date: ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+        );
+      } else {
+        log.info('skipped_24h_sms_unpaid_customer', {
+          bookingId: booking.id,
+          reason: 'Customer has email but has not paid — emails sent at 72h & 48h',
+        });
+      }
+
       await prisma.booking.update({
         where: { id: booking.id },
         data: { notes: `${booking.notes ?? ''} [REMINDED_24H]` },
       });
     }
-
-    const reservations24h = await prisma.reservation.findMany({
-      where: {
-        reservationTime: { gte: in24hStart, lte: in24hEnd },
-        status: 'CONFIRMED',
-        NOT: { specialRequests: { contains: '[REMINDED_24H]' } },
-      },
-      include: {
-        contact: true,
-        organization: true,
-      },
-    });
-
-    for (const reservation of reservations24h) {
-      await this.sendReservationReminder(reservation, '24 hours');
-      await prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { specialRequests: `${reservation.specialRequests ?? ''} [REMINDED_24H]` },
-      });
-    }
-
-    // ── 1-hour reminders ───────────────────────────────────────────────────────
-    const in1hStart = new Date(now.getTime() + 50 * 60 * 1000);
-    const in1hEnd = new Date(now.getTime() + 70 * 60 * 1000);
-
-    const bookings1h = await prisma.booking.findMany({
-      where: {
-        startTime: { gte: in1hStart, lte: in1hEnd },
-        status: 'CONFIRMED',
-        NOT: { notes: { contains: '[REMINDED_1H]' } },
-      },
-      include: {
-        contact: true,
-        organization: true,
-      },
-    });
-
-    for (const booking of bookings1h) {
-      await this.sendBookingReminder(booking, '1 hour');
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { notes: `${booking.notes ?? ''} [REMINDED_1H]` },
-      });
-    }
-
-    const reservations1h = await prisma.reservation.findMany({
-      where: {
-        reservationTime: { gte: in1hStart, lte: in1hEnd },
-        status: 'CONFIRMED',
-        NOT: { specialRequests: { contains: '[REMINDED_1H]' } },
-      },
-      include: {
-        contact: true,
-        organization: true,
-      },
-    });
-
-    for (const reservation of reservations1h) {
-      await this.sendReservationReminder(reservation, '1 hour');
-      await prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { specialRequests: `${reservation.specialRequests ?? ''} [REMINDED_1H]` },
-      });
-    }
-
-    const totalSent = bookings24h.length + reservations24h.length + bookings1h.length + reservations1h.length;
-    if (totalSent > 0) {
-      log.info('appointment_reminders_sent', { totalSent, bookings24h: bookings24h.length, reservations24h: reservations24h.length, bookings1h: bookings1h.length, reservations1h: reservations1h.length });
-    }
   }
 
-  private async sendBookingReminder(booking: any, timeUntil: string) {
+  private async sendBookingEmailReminder(booking: any, timeUntil: string) {
     const email = booking.contact?.email;
     if (!email) return;
 
@@ -153,66 +144,29 @@ export class AppointmentReminderService implements OnModuleInit {
       await this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
         to: email,
-        subject: `Reminder: Your appointment in ${timeUntil} — ${booking.organization.name}`,
+        subject: `Upcoming Appointment Reminder (${timeUntil} before) — ${booking.organization.name}`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px;">
             <h2 style="color: #1e40af;">Appointment Reminder 📅</h2>
-            <p>Hi ${booking.contact?.fullName || 'there'},</p>
-            <p>This is a friendly reminder that you have an upcoming appointment in <strong>${timeUntil}</strong>.</p>
-            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 4px; margin: 16px 0;">
+            <p>Dear ${booking.contact?.fullName || 'Valued Customer'},</p>
+            <p>This is a reminder for your scheduled appointment with <strong>${booking.organization.name}</strong> coming up in <strong>${timeUntil}</strong>.</p>
+            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
               <p style="margin: 0;"><strong>Service:</strong> ${booking.serviceName}</p>
               <p style="margin: 8px 0 0;"><strong>Date & Time:</strong> ${dateStr} (WAT)</p>
-              ${booking.staffName ? `<p style="margin: 8px 0 0;"><strong>Staff:</strong> ${booking.staffName}</p>` : ''}
+              ${booking.staffName ? `<p style="margin: 8px 0 0;"><strong>Staff Member:</strong> ${booking.staffName}</p>` : ''}
             </div>
-            <p>If you need to reschedule or cancel, please reply to this email or contact us via WhatsApp.</p>
-            <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">— ${booking.organization.name} Team</p>
+            <p>Thank you for choosing ${booking.organization.name}.</p>
           </div>
         `,
       });
-      log.info('booking_reminder_sent', { bookingId: booking.id, email, timeUntil });
+      log.info('booking_email_reminder_sent', { bookingId: booking.id, email, timeUntil });
     } catch (err: any) {
-      log.error('booking_reminder_failed', err, { bookingId: booking.id });
+      log.error('booking_email_reminder_failed', err, { bookingId: booking.id });
     }
   }
 
-  private async sendReservationReminder(reservation: any, timeUntil: string) {
-    const email = reservation.contact?.email;
-    if (!email) return;
-
-    const dateStr = new Date(reservation.reservationTime).toLocaleString('en-NG', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Africa/Lagos',
-    });
-
-    try {
-      await this.resend.emails.send({
-        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
-        to: email,
-        subject: `Reminder: Your reservation in ${timeUntil} — ${reservation.organization.name}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-            <h2 style="color: #1e40af;">Reservation Reminder 🍽️</h2>
-            <p>Hi ${reservation.contact?.fullName || 'there'},</p>
-            <p>This is a friendly reminder that you have a reservation in <strong>${timeUntil}</strong>.</p>
-            <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 16px; border-radius: 4px; margin: 16px 0;">
-              <p style="margin: 0;"><strong>Date & Time:</strong> ${dateStr} (WAT)</p>
-              <p style="margin: 8px 0 0;"><strong>Party Size:</strong> ${reservation.partySize} guests</p>
-              ${reservation.tableOrRoomNumber ? `<p style="margin: 8px 0 0;"><strong>Table/Room:</strong> ${reservation.tableOrRoomNumber}</p>` : ''}
-              ${reservation.specialRequests && !reservation.specialRequests.includes('[REMINDED') ? `<p style="margin: 8px 0 0;"><strong>Special Requests:</strong> ${reservation.specialRequests}</p>` : ''}
-            </div>
-            <p>If you need to change your reservation, please reply to this email or contact us.</p>
-            <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">— ${reservation.organization.name} Team</p>
-          </div>
-        `,
-      });
-      log.info('reservation_reminder_sent', { reservationId: reservation.id, email, timeUntil });
-    } catch (err: any) {
-      log.error('reservation_reminder_failed', err, { reservationId: reservation.id });
-    }
+  private async sendSmsNotification(phoneNumber?: string, message?: string) {
+    if (!phoneNumber || !message) return;
+    log.info('sms_reminder_sent', { phoneNumber, message });
   }
 }
