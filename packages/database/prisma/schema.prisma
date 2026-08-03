@@ -1,0 +1,499 @@
+datasource db {
+  provider  = "postgresql"
+  // DATABASE_URL  → Supabase connection POOLER (Supavisor) — used at runtime
+  // DIRECT_URL    → Supabase direct DB connection — used by `prisma migrate` only
+  // Get both from: Supabase Dashboard → Settings → Database → Connection string
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  AGENT
+  VIEWER
+}
+
+enum IndustryType {
+  HOSPITAL
+  CLINIC
+  HOTEL
+  RESTAURANT
+  SCHOOL
+  UNIVERSITY
+  CHURCH
+  LAW_FIRM
+  REAL_ESTATE
+  LOGISTICS
+  BANK
+  INSURANCE
+  GOVERNMENT
+  SALON_SPA
+  SME
+  ENTERPRISE
+  OTHER
+}
+
+enum ChannelType {
+  VOICE
+  WHATSAPP
+  WEBCHAT
+  SMS
+  EMAIL
+  INSTAGRAM
+  TELEGRAM
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  QUEUED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  BUSY
+  NO_ANSWER
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  HUMAN_AGENT
+  SYSTEM
+}
+
+enum HandoffReason {
+  LOW_CONFIDENCE
+  CUSTOMER_REQUEST
+  TOOL_FAILURE
+  COMPLEX_QUERY
+  URGENT_ESCALATION
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
+}
+
+enum DealStage {
+  DISCOVERY
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TelephonyProviderType {
+  TWILIO
+  PLIVO
+  TELNYX
+  AFRICAS_TALKING
+  NIGERIA_CARRIER_FORWARD
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  RESCHEDULED
+  COMPLETED
+  NO_SHOW
+}
+
+enum DocStatus {
+  PENDING
+  PROCESSING
+  INDEXED
+  FAILED
+}
+
+model Organization {
+  id                   String       @id @default(uuid())
+  name                 String
+  slug                 String       @unique
+  industry             IndustryType @default(SME)
+  country              String       @default("Nigeria")
+  timezone             String       @default("Africa/Lagos")
+  phone                String?
+  logoUrl              String?
+  aiPersonaPrompt      String?      @db.Text
+  welcomeMessage       String?      @db.Text
+  // ─── Subscription & Billing ────────────────────────────────────────────────
+  // Updated by BillingService when Paystack fires charge.success webhook.
+  // subscriptionPlan matches SubscriptionPlan enum values: STARTER | PROFESSIONAL | BUSINESS | ENTERPRISE
+  subscriptionPlan     String?
+  subscriptionStatus   String?      @default("TRIAL") // TRIAL | ACTIVE | CANCELLED | PAST_DUE
+  subscriptionRenewsAt DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  users                User[]
+  apiKeys              ApiKey[]
+  telephonyConfigs     TelephonyConfig[]
+  whatsAppConfigs      WhatsAppConfig[]
+  contacts             Contact[]
+  companies            Company[]
+  leads                Lead[]
+  deals                Deal[]
+  tickets              Ticket[]
+  conversations        Conversation[]
+  callLogs             CallLog[]
+  knowledgeDocuments   KnowledgeDocument[]
+  bookings             Booking[]
+  reservations         Reservation[]
+  calendarIntegrations CalendarIntegration[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                      String       @id @default(uuid())
+  organizationId          String
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email                   String       @unique
+  passwordHash            String
+  fullName                String
+  role                    UserRole     @default(AGENT)
+  avatarUrl               String?
+  isActive                Boolean      @default(true)
+  // ─── Password Reset ──────────────────────────────────────────────────────
+  // SHA-256 hash of the reset token (never store raw tokens in DB).
+  // Expires after 30 minutes. Cleared after successful reset.
+  passwordResetToken      String?
+  passwordResetExpiresAt  DateTime?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  assignedConversations Conversation[] @relation("AssignedAgent")
+  assignedTickets       Ticket[]       @relation("AssignedTicketAgent")
+  notes                 Note[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  keyName        String
+  keyHash        String       @unique
+  keyPrefix      String
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@map("api_keys")
+}
+
+model TelephonyConfig {
+  id               String                @id @default(uuid())
+  organizationId   String
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider         TelephonyProviderType @default(TWILIO)
+  accountSid       String?
+  authToken        String?
+  apiKey           String?
+  apiSecret        String?
+  phoneNumber      String
+  forwardingNumber String?               // Nigerian local number forwarding target (e.g. MTN/Airtel/Glo/9mobile)
+  isDefault        Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  callLogs CallLog[]
+
+  @@map("telephony_configs")
+}
+
+model WhatsAppConfig {
+  id                    String       @id @default(uuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumberId         String
+  whatsappBusinessId    String
+  accessToken           String       @db.Text
+  displayPhoneNumber    String
+  webhookVerifyToken    String
+  isActive              Boolean      @default(true)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@map("whatsapp_configs")
+}
+
+model Contact {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId      String?
+  company        Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  fullName       String
+  phoneNumber    String
+  email          String?
+  address        String?
+  city           String?
+  state          String?
+  tags           String[]     @default([])
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  leads         Lead[]
+  deals         Deal[]
+  tickets       Ticket[]
+  conversations Conversation[]
+  callLogs      CallLog[]
+  bookings      Booking[]
+  reservations  Reservation[]
+  notes         Note[]
+
+  @@unique([organizationId, phoneNumber])
+  @@map("contacts")
+}
+
+model Company {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  industry       String?
+  website        String?
+  phone          String?
+  email          String?
+  address        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  contacts Contact[]
+
+  @@map("companies")
+}
+
+model Lead {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  source         String       @default("AI_ASSISTANT")
+  status         LeadStatus   @default(NEW)
+  score          Int          @default(0)
+  notes          String?      @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("leads")
+}
+
+model Deal {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  title          String
+  amount         Float        @default(0.0)
+  currency       String       @default("NGN")
+  stage          DealStage    @default(DISCOVERY)
+  expectedClose  DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("deals")
+}
+
+model Ticket {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedUserId String?
+  assignedUser   User?          @relation("AssignedTicketAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  ticketNumber   String         @unique
+  subject        String
+  description    String         @db.Text
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@map("tickets")
+}
+
+model Note {
+  id             String   @id @default(uuid())
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  authorUserId   String?
+  authorUser     User?    @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  content        String   @db.Text
+  createdAt      DateTime @default(now())
+
+  @@map("notes")
+}
+
+model Conversation {
+  id                   String       @id @default(uuid())
+  organizationId       String
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId            String
+  contact              Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel              ChannelType  @default(WHATSAPP)
+  isHumanHandoffActive Boolean      @default(false)
+  handoffReason        HandoffReason?
+  assignedUserId       String?
+  assignedUser         User?        @relation("AssignedAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  lastMessageAt        DateTime     @default(now())
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         MessageSender
+  content        String        @db.Text
+  mediaUrl       String?
+  mediaType      String?
+  metadata       Json?
+  sentAt         DateTime      @default(now())
+
+  @@map("messages")
+}
+
+model CallLog {
+  id               String                @id @default(uuid())
+  organizationId   String
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  telephonyConfigId String?
+  telephonyConfig  TelephonyConfig?      @relation(fields: [telephonyConfigId], references: [id], onDelete: SetNull)
+  contactId        String?
+  contact          Contact?              @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  callSid          String                @unique
+  fromNumber       String
+  toNumber         String
+  direction        CallDirection         @default(INBOUND)
+  status           CallStatus            @default(QUEUED)
+  durationSeconds  Int                   @default(0)
+  recordingUrl     String?
+  transcript       String?               @db.Text
+  summary          String?               @db.Text
+  sentiment        String?
+  provider         TelephonyProviderType @default(TWILIO)
+  startedAt        DateTime              @default(now())
+  endedAt          DateTime?
+
+  @@map("call_logs")
+}
+
+model KnowledgeDocument {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  fileName       String
+  fileSize       Int
+  mimeType       String
+  storageUrl     String
+  status         DocStatus    @default(PENDING)
+  chunkCount     Int          @default(0)
+  errorMessage   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  chunks DocumentChunk[]
+
+  @@map("knowledge_documents")
+}
+
+model DocumentChunk {
+  id             String            @id @default(uuid())
+  documentId     String
+  document       KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  organizationId String
+  chunkIndex     Int
+  content        String            @db.Text
+  qdrantVectorId String?
+  createdAt      DateTime          @default(now())
+
+  @@map("document_chunks")
+}
+
+model Booking {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  serviceName    String
+  staffName      String?
+  startTime      DateTime
+  endTime        DateTime
+  status         BookingStatus @default(CONFIRMED)
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("bookings")
+}
+
+model Reservation {
+  id                String        @id @default(uuid())
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId         String
+  contact           Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  partySize         Int           @default(2)
+  reservationTime   DateTime
+  tableOrRoomNumber String?
+  specialRequests   String?       @db.Text
+  status            BookingStatus @default(CONFIRMED)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@map("reservations")
+}
+
+model CalendarIntegration {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String       // GOOGLE, OUTLOOK, ICAL
+  accessToken    String       @db.Text
+  refreshToken   String?      @db.Text
+  calendarId     String
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@map("calendar_integrations")
+}

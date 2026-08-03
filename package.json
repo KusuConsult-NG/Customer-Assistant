@@ -1,0 +1,27 @@
+{
+  "name": "ace-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise AI Customer Experience Platform (ACE Platform) for Nigeria & Global Businesses",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:generate": "npm run --prefix packages/database generate",
+    "db:push": "npm run --prefix packages/database push",
+    "db:studio": "npm run --prefix packages/database studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

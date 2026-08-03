@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# Environment variables — NEVER commit these
+.env
+.env.*
+*.env
+apps/*/.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Prisma
+packages/database/prisma/generated/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads (local dev only — production uses Supabase Storage)
+apps/api/uploads/
+
+# Test coverage
+coverage/
+.nyc_output/

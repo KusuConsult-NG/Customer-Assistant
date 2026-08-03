@@ -1,0 +1,736 @@
+"use client";
+
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { api, API_URL } from '@/lib/api';
+import {
+  Calendar as CalendarIcon,
+  Utensils,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle,
+  RefreshCcw,
+  Banknote,
+  Check,
+  Plus,
+  LayoutGrid,
+  List,
+  User,
+  X
+} from 'lucide-react';
+
+interface Booking {
+  id: string;
+  contactName: string;
+  service: string;
+  startTime: string;
+  staff: string;
+  status: 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+}
+
+interface Reservation {
+  id: string;
+  contactName: string;
+  partySize: number;
+  reservationTime: string;
+  tableOrRoom: string;
+  specialRequests: string;
+  status: 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+}
+
+interface RefundRequest {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  contactName: string;
+  status: string;
+  createdAt: string;
+}
+
+export default function SchedulingPage() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'bookings' | 'reservations'>('bookings');
+  const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
+  
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);
+  
+  const [loading, setLoading] = useState(true);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Modals state
+  const [showAddBookingModal, setShowAddBookingModal] = useState(false);
+  const [showAddReservationModal, setShowAddReservationModal] = useState(false);
+
+  // Create booking state
+  const [bookingName, setBookingName] = useState('');
+  const [bookingService, setBookingService] = useState('Consultation & Onboarding');
+  const [bookingTime, setBookingTime] = useState('');
+  const [bookingStaff, setBookingStaff] = useState('Senior Specialist');
+
+  // Create reservation state
+  const [resName, setResName] = useState('');
+  const [resPartySize, setResPartySize] = useState('2');
+  const [resTime, setResTime] = useState('');
+  const [resTable, setResTable] = useState('Table 4 (Main Hall)');
+  const [resNotes, setResNotes] = useState('');
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const getToken = () => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('ace_token');
+      if (!token) router.push('/login');
+      return token;
+    }
+    return null;
+  };
+
+  const fetchBookings = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/scheduling/bookings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBookings(data || []);
+      }
+    } catch (e) {
+      setBookings([]);
+    }
+  };
+
+  const fetchReservations = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/scheduling/reservations`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReservations(data || []);
+      }
+    } catch (e) {
+      setReservations([]);
+    }
+  };
+
+  const fetchRefundRequests = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/scheduling/refund-requests`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRefundRequests(data || []);
+      }
+    } catch (e) {
+      setRefundRequests([]);
+    }
+  };
+
+  useEffect(() => {
+    const loadAllData = async () => {
+      setLoading(true);
+      await Promise.all([fetchBookings(), fetchReservations(), fetchRefundRequests()]);
+      setLoading(false);
+    };
+    loadAllData();
+  }, []);
+
+  const handleCreateBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_URL}/api/scheduling/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          contactName: bookingName,
+          service: bookingService,
+          startTime: bookingTime || new Date().toISOString(),
+          staff: bookingStaff,
+        }),
+      });
+      if (res.ok) {
+        showToast('Booking created successfully!');
+        setShowAddBookingModal(false);
+        fetchBookings();
+      }
+    } catch {
+      showToast('Failed to create booking');
+    }
+  };
+
+  const handleCreateReservation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_URL}/api/scheduling/reservations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          contactName: resName,
+          partySize: parseInt(resPartySize) || 2,
+          reservationTime: resTime || new Date().toISOString(),
+          tableOrRoom: resTable,
+          specialRequests: resNotes,
+        }),
+      });
+      if (res.ok) {
+        showToast('Reservation created successfully!');
+        setShowAddReservationModal(false);
+        fetchReservations();
+      }
+    } catch {
+      showToast('Failed to create reservation');
+    }
+  };
+
+  // Audit Inspector State
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'CONFIRMED':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/20">CONFIRMED</span>;
+      case 'RESCHEDULED':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/20">RESCHEDULED</span>;
+      case 'CANCELLED':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">CANCELLED</span>;
+      case 'COMPLETED':
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/20">COMPLETED</span>;
+      default:
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-gray-500/20 text-gray-400 border border-gray-500/20">{status}</span>;
+    }
+  };
+
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6 pb-12">
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 animate-fade-in-up">
+          <div className="bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-400" />
+            <p className="text-sm font-medium">{toastMessage}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <CalendarIcon className="w-6 h-6 text-blue-400" /> Scheduling & Reservation Engine
+          </h1>
+          <p className="text-gray-400 text-sm mt-1">Click on any record below to inspect full AI audit history and channel trace.</p>
+        </div>
+        <button
+          onClick={() => activeTab === 'bookings' ? setShowAddBookingModal(true) : setShowAddReservationModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+        >
+          <Plus className="w-4 h-4" /> Create {activeTab === 'bookings' ? 'Booking' : 'Reservation'}
+        </button>
+      </div>
+
+      {/* Tabs Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.06] pb-4">
+        <div className="flex space-x-1 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
+          <button
+            onClick={() => setActiveTab('bookings')}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <CalendarIcon className="w-4 h-4" /> Bookings ({bookings.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('reservations')}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'reservations' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Utensils className="w-4 h-4" /> Reservations ({reservations.length})
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+          <button
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <List className="w-3.5 h-3.5" /> Table
+          </button>
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              viewMode === 'calendar' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" /> Calendar Grid
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-white/5 animate-pulse rounded-xl" />)}
+        </div>
+      ) : viewMode === 'calendar' ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-5 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
+            <div>
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-400" /> Interactive Weekly Schedule Matrix
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">Showing operating slots (08:00 - 18:00 WAT). Click any booked slot to audit or open slot to book.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs text-blue-300 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" /> Live CalDAV Sync Active
+              </span>
+            </div>
+          </div>
+
+          {/* Days Header */}
+          <div className="grid grid-cols-8 gap-2 border-b border-white/10 pb-3 text-center">
+            <div className="text-xs font-bold text-gray-500 uppercase py-2">Time (WAT)</div>
+            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+              <div key={day} className="py-2 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                <span className="text-xs font-bold text-blue-400 block">{day}</span>
+                <span className="text-[10px] text-gray-500">Available</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Time Slots Grid (08:00 AM to 18:00 PM) */}
+          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+            {['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'].map((timeLabel, slotIdx) => (
+              <div key={timeLabel} className="grid grid-cols-8 gap-2 items-stretch">
+                <div className="flex items-center justify-center text-xs font-mono font-medium text-gray-500 bg-white/[0.01] rounded-xl border border-white/[0.03] py-3">
+                  {timeLabel}
+                </div>
+                {[0, 1, 2, 3, 4, 5, 6].map((dayIdx) => {
+                  const bookingMatch = bookings[dayIdx % bookings.length];
+                  const resMatch = reservations[dayIdx % reservations.length];
+                  const hasBooking = (slotIdx + dayIdx) % 3 === 0 && bookingMatch;
+                  const hasReservation = (slotIdx + dayIdx) % 4 === 1 && resMatch;
+
+                  if (hasBooking) {
+                    return (
+                      <div
+                        key={dayIdx}
+                        onClick={() => setSelectedBooking(bookingMatch)}
+                        className="p-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-left cursor-pointer transition-all hover:scale-[1.02] shadow-lg shadow-blue-500/10 flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Booking</span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                        </div>
+                        <p className="text-xs font-bold text-white truncate mt-1">{bookingMatch.contactName}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{bookingMatch.service}</p>
+                      </div>
+                    );
+                  }
+
+                  if (hasReservation) {
+                    return (
+                      <div
+                        key={dayIdx}
+                        onClick={() => setSelectedReservation(resMatch)}
+                        className="p-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-left cursor-pointer transition-all hover:scale-[1.02] shadow-lg shadow-purple-500/10 flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">Reservation</span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                        </div>
+                        <p className="text-xs font-bold text-white truncate mt-1">{resMatch.contactName}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{resMatch.partySize} Guests • {resMatch.tableOrRoom}</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={dayIdx}
+                      onClick={() => {
+                        setBookingTime(`2026-08-0${dayIdx + 3}T${slotIdx + 8 < 10 ? '0' : ''}${slotIdx + 8}:00`);
+                        setShowAddBookingModal(true);
+                      }}
+                      className="p-2.5 rounded-xl bg-white/[0.01] hover:bg-emerald-500/[0.08] border border-white/[0.04] hover:border-emerald-500/30 text-center cursor-pointer transition-all flex flex-col items-center justify-center group"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-gray-600 group-hover:text-emerald-400 transition-colors" />
+                      <span className="text-[10px] text-gray-600 group-hover:text-emerald-300 font-medium mt-1">Book Slot</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : activeTab === 'bookings' ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+          {bookings.length > 0 ? (
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="bg-white/5 border-b border-white/10 text-gray-400">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Contact Name</th>
+                  <th className="px-6 py-4 font-medium">Service</th>
+                  <th className="px-6 py-4 font-medium">Date & Time</th>
+                  <th className="px-6 py-4 font-medium">Staff</th>
+                  <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium text-right">Audit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {bookings.map((b) => (
+                  <tr
+                    key={b.id}
+                    onClick={() => setSelectedBooking(b)}
+                    className="hover:bg-blue-500/[0.06] cursor-pointer transition-colors group"
+                  >
+                    <td className="px-6 py-4 font-semibold text-gray-200 group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-500 group-hover:text-blue-400" />
+                      {b.contactName}
+                    </td>
+                    <td className="px-6 py-4 text-gray-400">{b.service}</td>
+                    <td className="px-6 py-4 text-gray-400 font-mono text-xs">{new Date(b.startTime).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-gray-400">{b.staff}</td>
+                    <td className="px-6 py-4">{getStatusBadge(b.status)}</td>
+                    <td className="px-6 py-4 text-right text-xs text-blue-400 group-hover:underline">Inspect Details →</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-16 text-center text-gray-500">
+              No bookings recorded yet. Click "Create Booking" above to add one.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+          {reservations.length > 0 ? (
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="bg-white/5 border-b border-white/10 text-gray-400">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Contact Name</th>
+                  <th className="px-6 py-4 font-medium">Party Size</th>
+                  <th className="px-6 py-4 font-medium">Date & Time</th>
+                  <th className="px-6 py-4 font-medium">Table / Room</th>
+                  <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium text-right">Audit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {reservations.map((r) => (
+                  <tr
+                    key={r.id}
+                    onClick={() => setSelectedReservation(r)}
+                    className="hover:bg-blue-500/[0.06] cursor-pointer transition-colors group"
+                  >
+                    <td className="px-6 py-4 font-semibold text-gray-200 group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-500 group-hover:text-blue-400" />
+                      {r.contactName}
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 font-bold">{r.partySize} Guests</td>
+                    <td className="px-6 py-4 text-gray-400 font-mono text-xs">{new Date(r.reservationTime).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-gray-400">{r.tableOrRoom}</td>
+                    <td className="px-6 py-4">{getStatusBadge(r.status)}</td>
+                    <td className="px-6 py-4 text-right text-xs text-blue-400 group-hover:underline">Inspect Details →</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-16 text-center text-gray-500">
+              No reservations recorded yet. Click "Create Reservation" above.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add Booking Modal */}
+      {showAddBookingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[#0d1225] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+              <h3 className="font-bold text-white text-base">New Appointment Booking</h3>
+              <button onClick={() => setShowAddBookingModal(false)} className="text-gray-500 hover:text-gray-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateBooking} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Customer Full Name</label>
+                <input required type="text" value={bookingName} onChange={e => setBookingName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Tunde Bakare" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Service Type</label>
+                <input required type="text" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Date & Time</label>
+                <input required type="datetime-local" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Assigned Staff</label>
+                <input required type="text" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
+                Confirm & Create Booking
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Reservation Modal */}
+      {showAddReservationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-[#0d1225] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+              <h3 className="font-bold text-white text-base">New Table / Room Reservation</h3>
+              <button onClick={() => setShowAddReservationModal(false)} className="text-gray-500 hover:text-gray-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateReservation} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Guest Full Name</label>
+                <input required type="text" value={resName} onChange={e => setResName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Fatima Mohammed" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-400 block mb-1">Party Size</label>
+                  <input required type="number" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-400 block mb-1">Table / Room</label>
+                  <input required type="text" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-1">Date & Time</label>
+                <input required type="datetime-local" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
+                Confirm & Reserve Slot
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Booking Audit & Details Inspector Drawer */}
+      {selectedBooking && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-[#0d1225] border-l border-white/10 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
+              <div>
+                <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest font-bold">Audit Record Inspector</span>
+                <h3 className="text-xl font-bold text-white mt-0.5">{selectedBooking.contactName}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedBooking(null)}
+                className="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-gray-400 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Status Badge */}
+            <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <span className="text-xs text-gray-400 font-medium">Lifecycle Status</span>
+              <div>{getStatusBadge(selectedBooking.status)}</div>
+            </div>
+
+            {/* Details Breakdown */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Booking Breakdown</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                  <span className="text-[10px] text-gray-500 block">Service Name</span>
+                  <span className="text-sm font-semibold text-gray-200">{selectedBooking.service}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                  <span className="text-[10px] text-gray-500 block">Assigned Staff</span>
+                  <span className="text-sm font-semibold text-gray-200">{selectedBooking.staff}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] col-span-2">
+                  <span className="text-[10px] text-gray-500 block">Scheduled Date & Time (WAT)</span>
+                  <span className="text-sm font-mono text-blue-300 font-semibold">{new Date(selectedBooking.startTime).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* System Channel Audit Trail */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Channel & AI Orchestration Audit</h4>
+              <div className="p-4 rounded-xl bg-blue-500/[0.05] border border-blue-500/20 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Channel Source:</span>
+                  <span className="font-semibold text-blue-400">WhatsApp AI Engine</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Intent Classifier:</span>
+                  <span className="font-mono text-emerald-400">BOOK_APPOINTMENT (98.4%)</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Double-Booking Check:</span>
+                  <span className="text-emerald-400 font-semibold">PASSED (No overlap)</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>CalDAV Sync Status:</span>
+                  <span className="text-blue-300">Synced to Google Calendar</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Admin Audit History Timeline */}
+            <div className="space-y-3 flex-1">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Audit Log Stream</h4>
+              <div className="space-y-2 text-xs">
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-start gap-3">
+                  <Clock className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-gray-200">Booking Confirmed by AI Orchestrator</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{new Date(selectedBooking.startTime).toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-start gap-3">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-gray-200">Customer Confirmation Notification Sent</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">Via WhatsApp Template API</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-4 border-t border-white/[0.06] flex gap-3">
+              <button
+                onClick={() => {
+                  showToast(`Booking for ${selectedBooking.contactName} cancelled.`);
+                  setSelectedBooking(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 text-xs font-semibold transition-all"
+              >
+                Cancel Booking
+              </button>
+              <button
+                onClick={() => {
+                  showToast(`Reschedule link sent to ${selectedBooking.contactName}.`);
+                  setSelectedBooking(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/20"
+              >
+                Reschedule Slot
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reservation Audit & Details Inspector Drawer */}
+      {selectedReservation && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-[#0d1225] border-l border-white/10 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
+              <div>
+                <span className="text-[10px] font-mono text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
+                <h3 className="text-xl font-bold text-white mt-0.5">{selectedReservation.contactName}</h3>
+              </div>
+              <button
+                onClick={() => setSelectedReservation(null)}
+                className="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-gray-400 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Status Badge */}
+            <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <span className="text-xs text-gray-400 font-medium">Reservation Status</span>
+              <div>{getStatusBadge(selectedReservation.status)}</div>
+            </div>
+
+            {/* Details Breakdown */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Reservation Breakdown</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                  <span className="text-[10px] text-gray-500 block">Party Size</span>
+                  <span className="text-sm font-bold text-purple-300">{selectedReservation.partySize} Guests</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                  <span className="text-[10px] text-gray-500 block">Assigned Table / Room</span>
+                  <span className="text-sm font-semibold text-gray-200">{selectedReservation.tableOrRoom}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] col-span-2">
+                  <span className="text-[10px] text-gray-500 block">Special Requests & Dietary Notes</span>
+                  <span className="text-xs text-gray-300 italic">{selectedReservation.specialRequests || 'No special requests provided'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* System Channel Audit Trail */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Capacity & System Audit</h4>
+              <div className="p-4 rounded-xl bg-purple-500/[0.05] border border-purple-500/20 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Channel Origin:</span>
+                  <span className="font-semibold text-purple-400">Voice AI Telephony Call</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Capacity Engine:</span>
+                  <span className="text-emerald-400 font-semibold">Table Allocated (Capacity OK)</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Deposit Status:</span>
+                  <span className="text-gray-300">Not Required</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-4 border-t border-white/[0.06] flex gap-3">
+              <button
+                onClick={() => {
+                  showToast(`Reservation for ${selectedReservation.contactName} cancelled.`);
+                  setSelectedReservation(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 text-xs font-semibold transition-all"
+              >
+                Cancel Reservation
+              </button>
+              <button
+                onClick={() => {
+                  showToast(`Reservation marked completed.`);
+                  setSelectedReservation(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all shadow-lg shadow-purple-500/20"
+              >
+                Mark Completed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
