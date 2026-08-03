@@ -13,6 +13,7 @@ import { BillingModule } from './billing/billing.module';
 import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
+import { WorkflowsModule } from './workflows/workflows.module';
 import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -39,6 +40,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     EventsModule,
     WebhooksModule,
     WidgetModule,
+    WorkflowsModule,
   ],
   providers: [
     VoiceStreamGateway,

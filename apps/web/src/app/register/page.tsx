@@ -70,8 +70,8 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#0a0f1e]">
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e]">
+    <div className="flex min-h-screen w-full bg-[#0a0f1e]">
+      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e] sticky top-0 h-screen">
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light"></div>
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
@@ -88,15 +88,15 @@ export default function RegisterPage() {
           </h2>
           <ul className="space-y-4 text-gray-300 text-lg">
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Unify your CRM, Communications, and AI
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Intelligent WhatsApp integration
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Smart voice routing and transcriptions
             </li>
           </ul>
@@ -107,8 +107,8 @@ export default function RegisterPage() {
         </div>
       </div>
       
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 overflow-y-auto">
-        <div className="w-full max-w-md space-y-8 py-8">
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 md:p-12 min-h-screen">
+        <div className="w-full max-w-md space-y-6 py-6">
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-white mb-2">Create Account</h2>
             <p className="text-gray-400">Join thousands of businesses growing with ACE</p>
@@ -175,13 +175,13 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none"
                 >
-                  <option value="HOSPITALITY">Hospitality</option>
-                  <option value="HEALTHCARE">Healthcare</option>
-                  <option value="RETAIL">Retail</option>
-                  <option value="FINANCE">Finance</option>
-                  <option value="EDUCATION">Education</option>
-                  <option value="REAL_ESTATE">Real Estate</option>
-                  <option value="OTHER">Other</option>
+                  <option className="bg-[#0d1225] text-white" value="HOSPITALITY">Hospitality</option>
+                  <option className="bg-[#0d1225] text-white" value="HEALTHCARE">Healthcare</option>
+                  <option className="bg-[#0d1225] text-white" value="RETAIL">Retail</option>
+                  <option className="bg-[#0d1225] text-white" value="FINANCE">Finance</option>
+                  <option className="bg-[#0d1225] text-white" value="EDUCATION">Education</option>
+                  <option className="bg-[#0d1225] text-white" value="REAL_ESTATE">Real Estate</option>
+                  <option className="bg-[#0d1225] text-white" value="OTHER">Other</option>
                 </select>
               </div>
 

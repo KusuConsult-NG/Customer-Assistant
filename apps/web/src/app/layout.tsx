@@ -19,7 +19,8 @@ import {
   Bell,
   Menu,
   X,
-  Code
+  Code,
+  GitFork
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -159,22 +160,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {/* Nav */}
                 <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-1">Main</p>
-                  <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} />
-                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="CRM" pathname={pathname} />
-                  <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} />
-                  <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Conversations" pathname={pathname} />
-                  <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" pathname={pathname} />
+                  <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="CRM" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Conversations" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Visual Workflows" pathname={pathname} onClick={() => setSidebarOpen(false)} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Channels</p>
-                  <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} />
-                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} />
-                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Scheduling" pathname={pathname} />
-                  <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Web Chat & Voice Widget" pathname={pathname} />
+                  <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Scheduling" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Web Chat & Voice Widget" pathname={pathname} onClick={() => setSidebarOpen(false)} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Account</p>
-                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing" pathname={pathname} />
-                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="White Label" pathname={pathname} />
-                  <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="Settings" pathname={pathname} />
+                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="White Label" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="Settings" pathname={pathname} onClick={() => setSidebarOpen(false)} />
                 </nav>
 
                 {/* User footer */}
@@ -262,11 +264,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 
-function SidebarLink({ href, icon, label, pathname }: { href: string; icon: React.ReactNode; label: string; pathname: string }) {
+function SidebarLink({ href, icon, label, pathname, onClick }: { href: string; icon: React.ReactNode; label: string; pathname: string; onClick?: () => void }) {
   const isActive = pathname === href || (href !== '/' && pathname.startsWith(href));
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
         isActive
           ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
