@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   MessageSquareText,
+  MessageCircle,
   Users,
   BookOpen,
   Settings,
@@ -25,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string } | null>(null);
+  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -63,27 +64,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
     // Auth check & auto-login for demo environment
     const token = localStorage.getItem('ace_token');
-    if (!token) {
-      // Auto-authenticate demo admin account if no token present
-      fetch('http://localhost:4000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'admin@acedemo.com', password: 'Admin@2030!' })
-      })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && (data.accessToken || data.token)) {
-          localStorage.setItem('ace_token', data.accessToken || data.token);
-          if (data.user) localStorage.setItem('ace_user', JSON.stringify(data.user));
-          setUser(data.user || { fullName: 'ACE Admin', email: 'admin@acedemo.com', role: 'OWNER' });
-          if (pathname === '/login') router.replace('/');
-        } else if (pathname !== '/login') {
-          router.replace('/login');
-        }
-      })
-      .catch(() => {
-        if (pathname !== '/login') router.replace('/login');
-      });
+    if (!token && pathname !== '/login' && !pathname.startsWith('/register') && !pathname.startsWith('/forgot-password') && !pathname.startsWith('/verify-email') && !pathname.startsWith('/setup-account')) {
+      if (!didRedirect.current) {
+        didRedirect.current = true;
+        router.replace('/login');
+      }
     } else if (token && pathname === '/login') {
       router.replace('/');
     }
@@ -159,7 +144,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <div className="flex items-center gap-2 overflow-hidden min-w-0">
                     <Building2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
                     <span className="text-xs font-semibold truncate text-gray-200">
-                      {user?.fullName ? 'My Organization' : 'ACE Demo Co.'}
+                      {user?.organizationName || 'My Organization'}
                     </span>
                   </div>
                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2">LIVE</span>
@@ -171,6 +156,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} />
                   <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="CRM" pathname={pathname} />
                   <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} />
+                  <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Conversations" pathname={pathname} />
                   <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" pathname={pathname} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Channels</p>

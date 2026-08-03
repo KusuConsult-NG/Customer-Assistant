@@ -127,38 +127,59 @@ export class AnalyticsService {
 
   /** Builds a per-day trend array for the last N days */
   private async buildWeeklyTrend(organizationId: string, days: number) {
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const conversations = await prisma.conversation.findMany({
+      where: { organizationId, createdAt: { gte: startDate, lte: endDate } },
+      select: { createdAt: true },
+    });
+    const calls = await prisma.callLog.findMany({
+      where: { organizationId, startedAt: { gte: startDate, lte: endDate } },
+      select: { startedAt: true },
+    });
+
     const labels: string[] = [];
-    const conversationCounts: number[] = [];
-    const callCounts: number[] = [];
-
-    for (let i = days - 1; i >= 0; i--) {
-      const dayStart = new Date();
-      dayStart.setDate(dayStart.getDate() - i);
-      dayStart.setHours(0, 0, 0, 0);
-
-      const dayEnd = new Date(dayStart);
-      dayEnd.setHours(23, 59, 59, 999);
-
-      const dayLabel = dayStart.toLocaleDateString('en-GB', {
+    const convMap: Record<string, number> = {};
+    const callMap: Record<string, number> = {};
+    
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      const label = cursor.toLocaleDateString('en-GB', {
         weekday: days <= 7 ? 'short' : undefined,
         day: days > 7 ? 'numeric' : undefined,
         month: days > 7 ? 'short' : undefined,
       });
-
-      const [conversations, calls] = await Promise.all([
-        prisma.conversation.count({
-          where: { organizationId, createdAt: { gte: dayStart, lte: dayEnd } },
-        }),
-        prisma.callLog.count({
-          where: { organizationId, startedAt: { gte: dayStart, lte: dayEnd } },
-        }),
-      ]);
-
-      labels.push(dayLabel);
-      conversationCounts.push(conversations);
-      callCounts.push(calls);
+      labels.push(label);
+      convMap[label] = 0;
+      callMap[label] = 0;
+      cursor.setDate(cursor.getDate() + 1);
     }
 
-    return { labels, conversations: conversationCounts, calls: callCounts };
+    for (const c of conversations) {
+      const label = c.createdAt.toLocaleDateString('en-GB', {
+        weekday: days <= 7 ? 'short' : undefined,
+        day: days > 7 ? 'numeric' : undefined,
+        month: days > 7 ? 'short' : undefined,
+      });
+      if (convMap[label] !== undefined) convMap[label]++;
+    }
+    for (const c of calls) {
+      const label = c.startedAt.toLocaleDateString('en-GB', {
+        weekday: days <= 7 ? 'short' : undefined,
+        day: days > 7 ? 'numeric' : undefined,
+        month: days > 7 ? 'short' : undefined,
+      });
+      if (callMap[label] !== undefined) callMap[label]++;
+    }
+
+    return {
+      labels,
+      conversations: labels.map(d => convMap[d]),
+      calls: labels.map(d => callMap[d]),
+    };
   }
 }

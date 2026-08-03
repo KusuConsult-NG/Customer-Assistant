@@ -2,12 +2,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { API_URL } from '@/lib/api';
 import {
-  Settings, Building2, Bot, Phone, MessageSquare, Users,
+  Settings, Building2, Bot, Phone, MessageSquare, Users, User,
   Save, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Plus,
   Globe, Zap, Shield, X, Loader2, ChevronDown
 } from 'lucide-react';
 
-type Tab = 'general' | 'whatsapp' | 'voice' | 'team';
+type Tab = 'profile' | 'general' | 'whatsapp' | 'voice' | 'team';
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
 const selectCls = `${inputCls} appearance-none cursor-pointer`;
@@ -37,7 +37,7 @@ function Section({ title, description, children }: { title: string; description?
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('general');
+  const [tab, setTab] = useState<Tab>('profile');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [org, setOrg] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +62,7 @@ export default function SettingsPage() {
   useEffect(() => { fetchOrg(); }, [fetchOrg]);
 
   const tabs = [
+    { id: 'profile' as Tab, label: 'Profile & Security', icon: <User className="w-4 h-4" /> },
     { id: 'general' as Tab, label: 'General', icon: <Building2 className="w-4 h-4" /> },
     { id: 'whatsapp' as Tab, label: 'WhatsApp', icon: <MessageSquare className="w-4 h-4" /> },
     { id: 'voice' as Tab, label: 'Voice / Telephony', icon: <Phone className="w-4 h-4" /> },
@@ -99,12 +100,100 @@ export default function SettingsPage() {
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>
       ) : (
         <>
+          {tab === 'profile' && <ProfileTab authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'general' && <GeneralTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'whatsapp' && <WhatsAppTab org={org} authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'team' && <TeamTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
         </>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────── Profile Tab ───────────────────────
+function ProfileTab({ authHeaders, showToast }: any) {
+  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string } | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('ace_user');
+      if (stored) setUser(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  const savePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      showToast('Passwords do not match', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/change-password`, {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to change password');
+      }
+      showToast('Password updated successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <Section title="User Profile" description="Your personal information">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Full Name</label>
+            <input type="text" value={user?.fullName || ''} disabled className={`${inputCls} opacity-50 cursor-not-allowed`} />
+          </div>
+          <div>
+            <label className={labelCls}>Email Address</label>
+            <input type="email" value={user?.email || ''} disabled className={`${inputCls} opacity-50 cursor-not-allowed`} />
+          </div>
+          <div>
+            <label className={labelCls}>Role</label>
+            <input type="text" value={user?.role || ''} disabled className={`${inputCls} opacity-50 cursor-not-allowed`} />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Change Password" description="Update your security credentials">
+        <form onSubmit={savePassword} className="space-y-4">
+          <div>
+            <label className={labelCls}>Current Password</label>
+            <input type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} className={inputCls} placeholder="••••••••" />
+          </div>
+          <div>
+            <label className={labelCls}>New Password</label>
+            <input type="password" required minLength={8} value={newPassword} onChange={e => setNewPassword(e.target.value)} className={inputCls} placeholder="Min 8 characters" />
+          </div>
+          <div>
+            <label className={labelCls}>Confirm New Password</label>
+            <input type="password" required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={inputCls} placeholder="Confirm your new password" />
+          </div>
+          <div className="flex justify-end pt-2">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              {saving ? 'Updating...' : 'Update Password'}
+            </button>
+          </div>
+        </form>
+      </Section>
     </div>
   );
 }

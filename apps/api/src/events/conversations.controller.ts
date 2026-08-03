@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser } from '@ace/shared-types';
 import { prisma } from '@ace/database';
@@ -84,5 +84,26 @@ export class ConversationsController {
     });
 
     return message;
+  }
+
+  /**
+   * PATCH /api/conversations/:id/handoff
+   * Toggles human handoff (sets status)
+   */
+  @Patch(':id/handoff')
+  async toggleHandoff(
+    @Req() req: { user: AuthUser },
+    @Param('id') id: string,
+    @Body() body: { handoff: boolean }
+  ) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id, organizationId: req.user.organizationId },
+    });
+    if (!conv) throw new Error('Conversation not found');
+    
+    return prisma.conversation.update({
+      where: { id },
+      data: { isHumanHandoffActive: body.handoff, updatedAt: new Date() },
+    });
   }
 }

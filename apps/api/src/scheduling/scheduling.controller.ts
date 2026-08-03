@@ -78,8 +78,8 @@ export class SchedulingController {
 
   /** Legacy: direct status override (admin use). */
   @Patch('bookings/:id/status')
-  updateBookingStatus(@Param('id') id: string, @Body() body: { status: BookingStatus }) {
-    return this.schedulingService.updateBookingStatus(id, body.status);
+  updateBookingStatus(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { status: BookingStatus }) {
+    return this.schedulingService.updateBookingStatus(id, body.status, req.user.organizationId);
   }
 
   // ─── Reservations ─────────────────────────────────────────────────────────────

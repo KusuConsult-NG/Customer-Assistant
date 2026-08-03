@@ -18,7 +18,7 @@ export class OrganizationsController {
   @Patch('settings')
   async updateSettings(
     @Req() req: { user: AuthUser },
-    @Body() body: { name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string }
+    @Body() body: { name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string; logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[] }
   ) {
     return this.orgsService.updateSettings(req.user.organizationId, body);
   }

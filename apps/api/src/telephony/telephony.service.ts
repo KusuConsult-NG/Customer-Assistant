@@ -96,14 +96,8 @@ export class TelephonyService {
     });
 
     if (!config) {
-      log.warn('telephony_config_not_found_using_first_org', {
-        correlationId,
-        toNumber,
-        action: 'falling_back_to_first_telephony_config',
-      });
-      config = await prisma.telephonyConfig.findFirst({
-        include: { organization: true },
-      });
+      log.warn('No telephony config found for number', { phoneNumber: toNumber });
+      return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This number is not currently configured. Please try again later.</Say></Response>`;
     }
 
     const organizationId = config?.organizationId ?? (await this.getFallbackOrgId(correlationId));
@@ -318,13 +312,19 @@ export class TelephonyService {
     return updated;
   }
 
-  async getCallLogs(organizationId: string) {
-    return prisma.callLog.findMany({
-      where: { organizationId },
-      orderBy: { startedAt: 'desc' },
-      take: 100,
-      include: { contact: true },
-    });
+  async getCallLogs(organizationId: string, page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      prisma.callLog.findMany({
+        where: { organizationId },
+        orderBy: { startedAt: 'desc' },
+        take: limit,
+        skip,
+        include: { contact: true },
+      }),
+      prisma.callLog.count({ where: { organizationId } }),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   private async getFallbackOrgId(correlationId: string): Promise<string> {

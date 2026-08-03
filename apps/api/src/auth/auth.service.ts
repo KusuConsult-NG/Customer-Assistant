@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { prisma } from '@ace/database';
 import { UserRole, IndustryType } from '@ace/shared-types';
@@ -79,6 +79,8 @@ export class AuthService {
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid email or password credentials');
     }
+    
+    if (!user.isActive) throw new UnauthorizedException('Your account has been deactivated. Contact your organization admin.');
 
     const tokens = this.generateTokens(user.id, user.organizationId, user.email, user.fullName, user.role as any);
 
@@ -164,6 +166,7 @@ export class AuthService {
         include: { organization: true },
       });
       if (!user) throw new UnauthorizedException('User no longer exists');
+      if (!user.isActive) throw new UnauthorizedException('Your account has been deactivated. Contact your organization admin.');
 
       const tokens = this.generateTokens(user.id, user.organizationId, user.email, user.fullName, user.role as any);
       return {
@@ -280,5 +283,15 @@ export class AuthService {
     });
 
     return { message: 'Password reset successfully. You can now log in with your new password.' };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+    const hash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } });
+    return { message: 'Password changed successfully.' };
   }
 }

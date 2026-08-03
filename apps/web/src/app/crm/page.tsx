@@ -7,7 +7,7 @@ import {
   Tag, Briefcase, TicketCheck, TrendingUp, Filter,
   MoreHorizontal, Edit2, Trash2, CheckCircle2, Clock,
   AlertCircle, XCircle, ArrowUpRight, LayoutGrid, List,
-  Download, ArrowRight, FileText, ExternalLink, ShieldCheck
+  Download, ArrowRight, FileText, ExternalLink, ShieldCheck, Target, DollarSign
 } from 'lucide-react';
 
 type Tab = 'contacts' | 'leads' | 'deals' | 'tickets';
@@ -231,7 +231,6 @@ export default function CrmPage() {
           </div>
         ) : tab === 'contacts' ? (
           <ContactsTable
-            data={filtered(contacts)}
             onAdd={() => setModalType('contact')}
             onSelectContact={(c) => setSelectedContact(c)}
             onDelete={(id) => handleDelete('contacts', id)}
@@ -288,56 +287,129 @@ export default function CrmPage() {
 }
 
 // ─────────────────────────── Contacts Table ────────────────────────────
-function ContactsTable({ data, onAdd, onSelectContact, onDelete }: { data: any[]; onAdd: () => void; onSelectContact: (c: any) => void; onDelete: (id: string) => void }) {
-  if (data.length === 0) return <EmptyState icon={<Users className="w-12 h-12" />} text="No contacts found" action="Add Contact" onAction={onAdd} />;
+function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void; onSelectContact: (c: any) => void; onDelete: (id: string) => void }) {
+  const [data, setData] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const fetchContacts = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('ace_token');
+        const url = searchQuery
+          ? `${API_URL}/api/crm/contacts/search?q=${encodeURIComponent(searchQuery)}&page=${page}`
+          : `${API_URL}/api/crm/contacts?page=${page}`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        if (active) {
+          if (Array.isArray(json)) {
+            setData(json);
+            setTotal(json.length);
+            setTotalPages(1);
+          } else if (json.data) {
+            setData(json.data);
+            setTotal(json.total || json.data.length);
+            setTotalPages(json.totalPages || 1);
+          } else {
+            setData([]);
+          }
+        }
+      } catch(e) {}
+      if (active) setLoading(false);
+    };
+    const timer = setTimeout(fetchContacts, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [searchQuery, page]);
+
   return (
-    <table className="w-full text-sm text-left">
-      <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400">
-        <tr>
-          <th className="px-5 py-3.5 font-medium">Name</th>
-          <th className="px-5 py-3.5 font-medium">Phone Number</th>
-          <th className="px-5 py-3.5 font-medium">Email</th>
-          <th className="px-5 py-3.5 font-medium">Tags</th>
-          <th className="px-5 py-3.5 font-medium">Created</th>
-          <th className="px-5 py-3.5 font-medium text-right">Actions</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-white/[0.04]">
-        {data.map((c) => (
-          <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => onSelectContact(c)}>
-            <td className="px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-blue-500/15 text-blue-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
-                  {(c.fullName || 'U')[0].toUpperCase()}
-                </div>
-                <span className="font-semibold text-gray-200 group-hover:text-blue-400 transition-colors">{c.fullName}</span>
+    <div className="p-4">
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search contacts by name, phone, or email..."
+          className="px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500/50 w-64"
+          onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+          value={searchQuery}
+        />
+      </div>
+      
+      {loading ? (
+        <div className="py-20 flex justify-center"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>
+      ) : data.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+            <Users className="w-8 h-8 text-gray-600" />
+          </div>
+          <p className="text-gray-400 font-medium mb-1">No items yet</p>
+          <p className="text-sm text-gray-600 max-w-sm">No contacts yet. Your first customers will appear here when they message you on WhatsApp or call your number.</p>
+        </div>
+      ) : (
+        <>
+          <table className="w-full text-sm text-left">
+            <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400">
+              <tr>
+                <th className="px-5 py-3.5 font-medium">Name</th>
+                <th className="px-5 py-3.5 font-medium">Phone Number</th>
+                <th className="px-5 py-3.5 font-medium">Email</th>
+                <th className="px-5 py-3.5 font-medium">Tags</th>
+                <th className="px-5 py-3.5 font-medium">Created</th>
+                <th className="px-5 py-3.5 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              {data.map((c) => (
+                <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => onSelectContact(c)}>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-blue-500/15 text-blue-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                        {(c.fullName || 'U')[0].toUpperCase()}
+                      </div>
+                      <span className="font-semibold text-gray-200 group-hover:text-blue-400 transition-colors">{c.fullName}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-gray-400 font-mono text-xs">{c.phoneNumber || '—'}</td>
+                  <td className="px-5 py-4 text-gray-400 text-xs">{c.email || '—'}</td>
+                  <td className="px-5 py-4">
+                    <div className="flex gap-1 flex-wrap">
+                      {(c.tags || ['customer']).map((t: string) => (
+                        <Badge key={t} text={t} color="bg-blue-500/10 text-blue-400 border-blue-500/20" />
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-gray-500 text-xs">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
+                  <td className="px-5 py-4 text-right space-x-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onSelectContact(c); }}
+                      className="px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-all"
+                    >
+                      View Profile
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-white/[0.06]">
+              <span className="text-sm text-gray-500">{total} total contacts</span>
+              <div className="flex gap-2">
+                <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} className="px-3 py-1 rounded bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white text-sm">Previous</button>
+                <span className="text-sm text-gray-400 flex items-center">Page {page} of {totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages} className="px-3 py-1 rounded bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white text-sm">Next</button>
               </div>
-            </td>
-            <td className="px-5 py-4 text-gray-400 font-mono text-xs">{c.phoneNumber || '—'}</td>
-            <td className="px-5 py-4 text-gray-400 text-xs">{c.email || '—'}</td>
-            <td className="px-5 py-4">
-              <div className="flex gap-1 flex-wrap">
-                {(c.tags || ['customer']).map((t: string) => (
-                  <Badge key={t} text={t} color="bg-blue-500/10 text-blue-400 border-blue-500/20" />
-                ))}
-              </div>
-            </td>
-            <td className="px-5 py-4 text-gray-500 text-xs">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
-            <td className="px-5 py-4 text-right space-x-2">
-              <button
-                onClick={(e) => { e.stopPropagation(); onSelectContact(c); }}
-                className="px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-all"
-              >
-                View Profile
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -353,7 +425,15 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
     onRefresh();
   };
 
-  if (data.length === 0) return <EmptyState icon={<TrendingUp className="w-12 h-12" />} text="No leads found" action="Add Lead" onAction={onAdd} />;
+  if (data.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+        <Target className="w-8 h-8 text-gray-600" />
+      </div>
+      <p className="text-gray-400 font-medium mb-1">No items yet</p>
+      <p className="text-sm text-gray-600 max-w-sm">No leads yet. Leads are automatically created when AI qualifies a customer.</p>
+    </div>
+  );
   return (
     <table className="w-full text-sm text-left">
       <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400">
@@ -408,7 +488,15 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
 
 // ─────────────────────────── Deals Table ────────────────────────────
 function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: () => void; onDelete: (id: string) => void; onQuote: (title: string, amount: number) => void }) {
-  if (data.length === 0) return <EmptyState icon={<Briefcase className="w-12 h-12" />} text="No deals in pipeline" action="Add Deal" onAction={onAdd} />;
+  if (data.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+        <DollarSign className="w-8 h-8 text-gray-600" />
+      </div>
+      <p className="text-gray-400 font-medium mb-1">No items yet</p>
+      <p className="text-sm text-gray-600 max-w-sm">No deals in the pipeline yet.</p>
+    </div>
+  );
 
   const totalValue = data.reduce((sum, d) => sum + (d.amount || 0), 0);
   const wonValue = data.filter(d => d.stage === 'CLOSED_WON').reduce((sum, d) => sum + (d.amount || 0), 0);
@@ -537,7 +625,15 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
     URGENT: 'bg-red-500/10 text-red-400 border-red-500/20',
   };
 
-  if (data.length === 0) return <EmptyState icon={<TicketCheck className="w-12 h-12" />} text="No tickets found" action="Add Ticket" onAction={onAdd} />;
+  if (data.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+        <TicketCheck className="w-8 h-8 text-gray-600" />
+      </div>
+      <p className="text-gray-400 font-medium mb-1">No items yet</p>
+      <p className="text-sm text-gray-600 max-w-sm">No support tickets. Great job!</p>
+    </div>
+  );
   return (
     <table className="w-full text-sm text-left">
       <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400">

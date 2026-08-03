@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api, API_URL } from '@/lib/api';
 import {
   PhoneCall, Sparkles, Phone, CheckCircle, AlertCircle, Radio, ShieldCheck,
-  Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft
+  Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft, PhoneOff
 } from 'lucide-react';
 
 interface CallLog {
@@ -233,8 +233,12 @@ export default function TelephonyPage() {
             {[1, 2, 3].map(i => <div key={i} className="h-14 bg-white/[0.03] rounded-xl animate-pulse" />)}
           </div>
         ) : callLogs.length === 0 ? (
-          <div className="py-16 text-center text-gray-500 text-sm">
-            No call logs recorded yet. Trigger a demo call above.
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+              <PhoneOff className="w-8 h-8 text-gray-600" />
+            </div>
+            <p className="text-gray-400 font-medium mb-1">No items yet</p>
+            <p className="text-sm text-gray-600 max-w-sm">No calls recorded yet. Configure your telephony provider in Settings to start receiving calls.</p>
           </div>
         ) : (
           <table className="w-full text-sm text-left">

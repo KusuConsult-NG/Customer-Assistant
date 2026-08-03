@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { api } from '@/lib/api';
 import { Sparkles, Building2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -110,9 +111,18 @@ export default function LoginPage() {
           </form>
           
           <div className="mt-8 pt-6 border-t border-white/10 text-center">
-             <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+             <div className="flex items-center justify-center gap-2 text-sm text-gray-400 mb-4">
                 <Building2 className="w-4 h-4" />
                 <span>Demo Account: admin@acedemo.com / Admin@2030!</span>
+             </div>
+             <div className="text-center space-y-2 mt-4">
+               <Link href="/forgot-password" className="text-sm text-gray-400 hover:text-blue-400 transition-colors">
+                 Forgot your password?
+               </Link>
+               <div className="text-sm text-gray-500">
+                 Don't have an account?{' '}
+                 <Link href="/register" className="text-blue-400 hover:text-blue-300 font-medium">Create one free</Link>
+               </div>
              </div>
           </div>
         </div>

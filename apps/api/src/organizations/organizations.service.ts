@@ -28,11 +28,21 @@ export class OrganizationsService {
       welcomeMessage?: string;
       phone?: string;
       logoUrl?: string;
+      webhookUrl?: string;
+      enabledWebhookEvents?: string[];
     }
   ) {
     return prisma.organization.update({
       where: { id: organizationId },
-      data,
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
+        ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
+        ...(data.phone !== undefined && { phone: data.phone }),
+        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
+        ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
+        ...(data.enabledWebhookEvents !== undefined && { enabledWebhookEvents: data.enabledWebhookEvents }),
+      },
     });
   }
 

@@ -208,7 +208,9 @@ export class SchedulingService {
 
   // ─── Bookings: Legacy status update ──────────────────────────────────────────
 
-  async updateBookingStatus(bookingId: string, status: BookingStatus) {
+  async updateBookingStatus(bookingId: string, status: BookingStatus, organizationId: string) {
+    const booking = await prisma.booking.findFirst({ where: { id: bookingId, organizationId } });
+    if (!booking) throw new NotFoundException('Booking not found');
     return prisma.booking.update({
       where: { id: bookingId },
       data: { status, updatedAt: new Date() },

@@ -1,4 +1,6 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { AuthUser } from '@ace/shared-types';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { IndustryType } from '@ace/shared-types';
@@ -54,5 +56,17 @@ export class AuthController {
   @Post('reset-password')
   async resetPassword(@Body() body: { email: string; token: string; newPassword: string }) {
     return this.authService.resetPassword(body.email, body.token, body.newPassword);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  async logout(@Req() req: { user: AuthUser }) {
+    return { message: 'Logged out successfully.' };
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(@Req() req: { user: any }, @Body() body: { currentPassword: string; newPassword: string }) {
+    return this.authService.changePassword(req.user.userId, body.currentPassword, body.newPassword);
   }
 }

@@ -464,10 +464,12 @@ export default function KnowledgePage() {
                   {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white/[0.03] rounded-xl border border-white/[0.06] animate-pulse" />)}
                 </div>
               ) : docs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 border border-dashed border-white/[0.08] rounded-2xl text-gray-600">
-                  <BookOpen className="w-12 h-12 mb-3 opacity-20" />
-                  <p className="text-gray-400 font-medium mb-1">No knowledge sources indexed yet</p>
-                  <p className="text-sm">Upload a PDF/TXT document or enter a website URL above.</p>
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+                    <FileText className="w-8 h-8 text-gray-600" />
+                  </div>
+                  <p className="text-gray-400 font-medium mb-1">No items yet</p>
+                  <p className="text-sm text-gray-600 max-w-sm">No documents uploaded. Upload PDFs, Word docs, or crawl your website to train your AI agent.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -544,7 +546,13 @@ export default function KnowledgePage() {
                   </div>
                 ))}
                 {faqs.length === 0 && (
-                  <div className="text-center py-10 text-gray-500">No FAQ rules defined.</div>
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
+                      <MessageSquare className="w-8 h-8 text-gray-600" />
+                    </div>
+                    <p className="text-gray-400 font-medium mb-1">No items yet</p>
+                    <p className="text-sm text-gray-600 max-w-sm">No FAQ rules defined. Add specific Q&A pairs for your AI to follow.</p>
+                  </div>
                 )}
               </div>
             </div>
