@@ -161,7 +161,7 @@ export class TelephonyService {
         toNumber,
         direction: CallDirection.INBOUND,
         status:    CallStatus.IN_PROGRESS,
-        provider:  providerType,
+        provider:  providerType as any,
       },
     });
 
@@ -256,7 +256,7 @@ export class TelephonyService {
         toNumber,
         direction:   CallDirection.OUTBOUND,
         status:      CallStatus.QUEUED,
-        provider:    providerType,
+        provider:    providerType as any,
       },
     });
 

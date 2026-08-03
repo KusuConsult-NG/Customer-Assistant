@@ -8,20 +8,21 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
+    "build": "npx turbo run build",
+    "dev": "npx turbo run dev",
+    "lint": "npx turbo run lint",
+    "test": "npx turbo run test",
     "db:generate": "npm run --prefix packages/database generate",
     "db:push": "npm run --prefix packages/database push",
     "db:studio": "npm run --prefix packages/database studio"
   },
-  "devDependencies": {
+  "dependencies": {
     "turbo": "^2.4.0",
     "typescript": "^5.7.3"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
-  }
+  },
+  "packageManager": "npm@10.8.2"
 }
