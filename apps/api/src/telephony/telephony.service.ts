@@ -77,9 +77,10 @@ export class TelephonyService {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
 
-    const fromNumber = body.From || body.from || query.from || 'UNKNOWN';
-    const toNumber   = body.To   || body.to   || query.to   || 'UNKNOWN';
-    const callSid    = body.CallSid || body.call_id || body.sessionId || `CALL_${Date.now()}`;
+    const payload = body?.data?.payload || body;
+    const fromNumber = payload.From || payload.from || query.from || 'UNKNOWN';
+    const toNumber   = payload.To   || payload.to   || query.to   || 'UNKNOWN';
+    const callSid    = payload.CallSid || payload.call_control_id || payload.call_id || payload.sessionId || `CALL_${Date.now()}`;
 
     log.info('telephony_inbound_call_received', {
       correlationId,
@@ -94,6 +95,12 @@ export class TelephonyService {
       where: { phoneNumber: toNumber },
       include: { organization: true },
     });
+
+    if (!config && toNumber === 'UNKNOWN') {
+      config = await prisma.telephonyConfig.findFirst({
+        include: { organization: true },
+      });
+    }
 
     if (!config) {
       log.warn('No telephony config found for number', { phoneNumber: toNumber });
@@ -116,7 +123,6 @@ export class TelephonyService {
             event: 'signature_rejected',
             callSid,
           });
-          // Return a 403-equivalent TwiML rejection
           return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>This call could not be authenticated. Goodbye.</Say>
@@ -125,13 +131,18 @@ export class TelephonyService {
         }
         log.info('telephony_twilio_signature_verified', { correlationId, callSid });
       } else {
-        // If no auth token configured yet, log a security warning but allow through
-        // This allows initial setup before credentials are configured
         log.warn('telephony_twilio_signature_skipped', {
           correlationId,
           reason: authToken ? 'missing_twilio_signature_header' : 'TWILIO_AUTH_TOKEN_not_configured',
           callSid,
         });
+      }
+    }
+
+    if (providerType === TelephonyProviderType.TELNYX) {
+      const telnyxSig = headers['telnyx-signature-ed25519'] || headers['x-telnyx-signature'];
+      if (telnyxSig) {
+        log.info('telephony_telnyx_signature_received', { correlationId, callSid });
       }
     }
 
