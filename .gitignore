@@ -8,6 +8,7 @@ dist/
 build/
 .next/
 out/
+.turbo/
 tsconfig.tsbuildinfo
 
 # Environment variables — NEVER commit these
