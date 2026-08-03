@@ -59,7 +59,23 @@ export default function CrmPage() {
   // Modals & Drawers
   const [modalType, setModalType] = useState<'contact' | 'lead' | 'deal' | 'ticket' | null>(null);
   const [selectedContact, setSelectedContact] = useState<any | null>(null);
-  const [quoteModal, setQuoteModal] = useState<{title: string; amount: number} | null>(null);
+  const [quoteData, setQuoteData] = useState<any | null>(null);
+
+  const handleFetchQuotation = async (dealId: string) => {
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await fetch(`${API_URL}/api/crm/deals/${dealId}/quotation`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setQuoteData(await res.json());
+      } else {
+        alert('Failed to generate quotation');
+      }
+    } catch {
+      alert('Error fetching quotation');
+    }
+  };
 
   const handleDelete = async (type: string, id: string) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
@@ -109,24 +125,24 @@ export default function CrmPage() {
       (i.phoneNumber || i.email || i.contact?.phoneNumber || '').toLowerCase().includes(search.toLowerCase())
     );
 
-  const exportContactsCsv = () => {
-    if (contacts.length === 0) return;
-    const csvRows = [
-      ['Full Name', 'Phone Number', 'Email', 'Tags', 'Created At'],
-      ...contacts.map(c => [
-        `"${c.fullName || ''}"`,
-        `"${c.phoneNumber || ''}"`,
-        `"${c.email || ''}"`,
-        `"${(c.tags || []).join(';')}"`,
-        `"${c.createdAt || ''}"`
-      ])
-    ];
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ACE_Contacts_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+  const exportContactsCsv = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/crm/export/contacts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ACE_Contacts_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+      } else {
+        alert('Failed to export contacts CSV');
+      }
+    } catch {
+      alert('Error downloading contacts CSV');
+    }
   };
 
   const tabs = [
@@ -244,9 +260,9 @@ export default function CrmPage() {
           />
         ) : tab === 'deals' ? (
           viewMode === 'kanban' ? (
-            <DealsKanban data={filtered(deals)} onAdd={() => setModalType('deal')} onRefresh={fetchAll} onDelete={(id) => handleDelete('deals', id)} onQuote={(title, amount) => setQuoteModal({title, amount})} />
+            <DealsKanban data={filtered(deals)} onAdd={() => setModalType('deal')} onRefresh={fetchAll} onDelete={(id) => handleDelete('deals', id)} onQuote={(id) => handleFetchQuotation(id)} />
           ) : (
-            <DealsTable data={filtered(deals)} onAdd={() => setModalType('deal')} onDelete={(id) => handleDelete('deals', id)} onQuote={(title, amount) => setQuoteModal({title, amount})} />
+            <DealsTable data={filtered(deals)} onAdd={() => setModalType('deal')} onDelete={(id) => handleDelete('deals', id)} onQuote={(id) => handleFetchQuotation(id)} />
           )
         ) : (
           <TicketsTable data={filtered(tickets)} onAdd={() => setModalType('ticket')} onRefresh={fetchAll} onDelete={(id) => handleDelete('tickets', id)} />
@@ -272,13 +288,67 @@ export default function CrmPage() {
         <ContactDetailModal contact={selectedContact} onClose={() => setSelectedContact(null)} />
       )}
       
-      {/* Quotation Preview Modal */}
-      {quoteModal && (
-        <ModalWrapper title="Quotation Generated" onClose={() => setQuoteModal(null)}>
-          <div className="text-center py-6 space-y-4">
-            <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-            <p className="text-sm text-gray-300">Quotation preview generated for <strong>{quoteModal.title}</strong> - ₦{quoteModal.amount.toLocaleString()}</p>
-            <button onClick={() => setQuoteModal(null)} className="px-4 py-2 bg-emerald-600/20 text-emerald-400 rounded-lg font-semibold">Done</button>
+      {/* Real Quotation Preview Modal */}
+      {quoteData && (
+        <ModalWrapper title={`Quotation Preview — ${quoteData.quotationNumber}`} onClose={() => setQuoteData(null)}>
+          <div className="space-y-4 text-xs text-gray-300 py-2">
+            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.08] flex justify-between items-start">
+              <div>
+                <p className="font-bold text-white text-base">{quoteData.organizationName}</p>
+                <p className="text-gray-400">{quoteData.organizationPhone}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-purple-400 font-bold">{quoteData.quotationNumber}</p>
+                <p className="text-gray-500">Valid Until: {quoteData.validUntil}</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05]">
+              <p className="text-gray-500 font-semibold uppercase text-[10px] tracking-wider mb-1">Prepared For</p>
+              <p className="font-bold text-white text-sm">{quoteData.customerName}</p>
+              <p className="text-gray-400">{quoteData.customerPhone}</p>
+            </div>
+
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/10 text-gray-400 uppercase text-[10px]">
+                  <th className="py-2">Description</th>
+                  <th className="py-2 text-right">Qty</th>
+                  <th className="py-2 text-right">Unit Price</th>
+                  <th className="py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.04]">
+                {(quoteData.items || []).map((item: any, idx: number) => (
+                  <tr key={idx}>
+                    <td className="py-2 font-medium text-white">{item.description}</td>
+                    <td className="py-2 text-right">{item.quantity}</td>
+                    <td className="py-2 text-right">₦{(item.unitPrice || 0).toLocaleString()}</td>
+                    <td className="py-2 text-right font-bold text-emerald-400">₦{(item.totalPrice || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="border-t border-white/10 pt-3 flex justify-between items-center text-sm font-bold">
+              <span>Grand Total</span>
+              <span className="text-emerald-400 text-lg">₦{(quoteData.grandTotal || 0).toLocaleString()}</span>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-all shadow-lg shadow-purple-500/20"
+              >
+                Print / Download PDF
+              </button>
+              <button
+                onClick={() => setQuoteData(null)}
+                className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-gray-300 hover:text-white font-semibold text-xs transition-all"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </ModalWrapper>
       )}
@@ -487,7 +557,7 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
 }
 
 // ─────────────────────────── Deals Table ────────────────────────────
-function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: () => void; onDelete: (id: string) => void; onQuote: (title: string, amount: number) => void }) {
+function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
   if (data.length === 0) return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
@@ -537,7 +607,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
               <td className="px-5 py-4"><Badge text={d.stage || 'LEAD'} color={statusColor(d.stage)} /></td>
               <td className="px-5 py-4 text-gray-500 text-xs">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '—'}</td>
               <td className="px-5 py-4 text-right space-x-2">
-                <button onClick={() => onQuote(d.title, d.amount || 0)} className="px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
+                <button onClick={() => onQuote(d.id)} className="px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
                 <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
               </td>
             </tr>
@@ -549,7 +619,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
 }
 
 // ─────────────────────────── Deals Kanban Board ────────────────────────────
-function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (title: string, amount: number) => void }) {
+function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
   const updateStage = async (id: string, stage: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/deals/${id}/stage`, {
@@ -582,7 +652,7 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
                     </div>
                     <p className="text-xs text-gray-400">{deal.contact?.fullName || 'No contact'}</p>
                     <p className="text-sm font-bold text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
-                    <button onClick={() => onQuote(deal.title, deal.amount || 0)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20 hover:bg-purple-500/20">Generate Quotation</button>
+                    <button onClick={() => onQuote(deal.id)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20 hover:bg-purple-500/20">Generate Quotation</button>
                     <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between">
                       <span className="text-[10px] text-gray-500">{new Date(deal.createdAt).toLocaleDateString()}</span>
                       <select
