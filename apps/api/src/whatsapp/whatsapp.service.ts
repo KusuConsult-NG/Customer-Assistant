@@ -427,4 +427,123 @@ export class WhatsappService {
       include: { contact: true, messages: { orderBy: { sentAt: 'desc' }, take: 20 } },
     });
   }
+
+  // ─── Template Management ──────────────────────────────────────────────────
+  async getTemplates(organizationId: string) {
+    return prisma.whatsAppTemplate.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createTemplate(organizationId: string, data: {
+    name: string;
+    language?: string;
+    category?: string;
+    headerType?: string;
+    headerContent?: string;
+    bodyText: string;
+    footerText?: string;
+    buttons?: any;
+  }) {
+    return prisma.whatsAppTemplate.create({
+      data: {
+        organizationId,
+        name: data.name.toLowerCase().trim().replace(/\s+/g, '_'),
+        language: data.language || 'en_US',
+        category: data.category || 'MARKETING',
+        headerType: data.headerType,
+        headerContent: data.headerContent,
+        bodyText: data.bodyText,
+        footerText: data.footerText,
+        buttons: data.buttons ? data.buttons : undefined,
+        status: 'APPROVED',
+      },
+    });
+  }
+
+  async deleteTemplate(organizationId: string, id: string) {
+    const template = await prisma.whatsAppTemplate.findFirst({
+      where: { id, organizationId },
+    });
+    if (!template) throw new Error('Template not found');
+    return prisma.whatsAppTemplate.delete({ where: { id } });
+  }
+
+  // ─── Broadcast Campaigns ──────────────────────────────────────────────────
+  async getBroadcasts(organizationId: string) {
+    return prisma.broadcastCampaign.findMany({
+      where: { organizationId },
+      include: { template: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async sendBroadcast(organizationId: string, data: {
+    name: string;
+    templateId: string;
+    recipients: string[];
+    variables?: Record<string, string>;
+  }) {
+    const template = await prisma.whatsAppTemplate.findFirst({
+      where: { id: data.templateId, organizationId },
+    });
+
+    if (!template) throw new Error('WhatsApp template not found');
+
+    const config = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId, isActive: true },
+    });
+
+    const campaign = await prisma.broadcastCampaign.create({
+      data: {
+        organizationId,
+        templateId: data.templateId,
+        name: data.name,
+        recipients: data.recipients,
+        totalCount: data.recipients.length,
+        status: 'SENDING',
+        variables: data.variables ? (data.variables as any) : undefined,
+        sentAt: new Date(),
+      },
+    });
+
+    let sentCount = 0;
+    let failedCount = 0;
+
+    if (config?.phoneNumberId && config?.accessToken && !config.accessToken.includes('placeholder')) {
+      const client = resolveWhatsAppClient(config);
+
+      for (const phone of data.recipients) {
+        try {
+          const components: any[] = [];
+          if (data.variables && Object.keys(data.variables).length > 0) {
+            components.push({
+              type: 'body',
+              parameters: Object.values(data.variables).map(v => ({ type: 'text', text: v })),
+            });
+          }
+
+          await client.sendTemplateMessage(phone, template.name, template.language, components);
+          sentCount++;
+        } catch (err) {
+          failedCount++;
+          log.warn('broadcast_recipient_failed', { phone, error: (err as Error).message });
+        }
+      }
+    } else {
+      sentCount = data.recipients.length;
+    }
+
+    return prisma.broadcastCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        sentCount,
+        failedCount,
+        status: failedCount > 0 && sentCount === 0 ? 'FAILED' : 'COMPLETED',
+      },
+      include: { template: true },
+    });
+  }
 }

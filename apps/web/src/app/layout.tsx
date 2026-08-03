@@ -166,6 +166,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" pathname={pathname} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Channels</p>
+                  <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} />
                   <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Scheduling" pathname={pathname} />
                   <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Web Chat & Voice Widget" pathname={pathname} />

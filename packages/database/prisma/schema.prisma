@@ -168,6 +168,8 @@ model Organization {
   reservations         Reservation[]
   calendarIntegrations CalendarIntegration[]
   faqEntries           FaqEntry[]
+  whatsAppTemplates    WhatsAppTemplate[]
+  broadcastCampaigns   BroadcastCampaign[]
 
   // White-label webhook settings
   webhookUrl              String?
@@ -532,4 +534,47 @@ model WebhookLog {
   createdAt      DateTime @default(now())
 
   @@map("webhook_logs")
+}
+
+model WhatsAppTemplate {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  language       String       @default("en_US")
+  category       String       @default("MARKETING")
+  headerType     String?
+  headerContent  String?
+  bodyText       String       @db.Text
+  footerText     String?
+  buttons        Json?
+  status         String       @default("APPROVED")
+  metaTemplateId String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  campaigns BroadcastCampaign[]
+
+  @@unique([organizationId, name, language])
+  @@map("whatsapp_templates")
+}
+
+model BroadcastCampaign {
+  id             String           @id @default(uuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  templateId     String
+  template       WhatsAppTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name           String
+  recipients     String[]
+  totalCount     Int              @default(0)
+  sentCount      Int              @default(0)
+  failedCount    Int              @default(0)
+  status         String           @default("COMPLETED")
+  variables      Json?
+  sentAt         DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@map("broadcast_campaigns")
 }

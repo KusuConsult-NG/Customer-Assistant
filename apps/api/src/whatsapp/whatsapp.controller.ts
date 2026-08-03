@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Query,
   Req,
@@ -176,5 +177,61 @@ export class WhatsappController {
       throw new BadRequestException('isHumanHandoffActive must be a boolean');
     }
     return this.whatsappService.toggleHumanHandoff(id, body.isHumanHandoffActive, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('templates')
+  async getTemplates(@Req() req: { user: AuthUser }) {
+    return this.whatsappService.getTemplates(req.user.organizationId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('templates')
+  async createTemplate(
+    @Req() req: { user: AuthUser },
+    @Body() body: {
+      name: string;
+      language?: string;
+      category?: string;
+      headerType?: string;
+      headerContent?: string;
+      bodyText: string;
+      footerText?: string;
+      buttons?: any;
+    }
+  ) {
+    if (!body.name || !body.bodyText) {
+      throw new BadRequestException('Template name and body text are required');
+    }
+    return this.whatsappService.createTemplate(req.user.organizationId, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('templates/:id')
+  async deleteTemplate(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    return this.whatsappService.deleteTemplate(req.user.organizationId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('broadcasts')
+  async getBroadcasts(@Req() req: { user: AuthUser }) {
+    return this.whatsappService.getBroadcasts(req.user.organizationId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('broadcasts/send')
+  async sendBroadcast(
+    @Req() req: { user: AuthUser },
+    @Body() body: {
+      name: string;
+      templateId: string;
+      recipients: string[];
+      variables?: Record<string, string>;
+    }
+  ) {
+    if (!body.name || !body.templateId || !body.recipients || body.recipients.length === 0) {
+      throw new BadRequestException('Campaign name, templateId, and at least one recipient phone number are required');
+    }
+    return this.whatsappService.sendBroadcast(req.user.organizationId, body);
   }
 }
