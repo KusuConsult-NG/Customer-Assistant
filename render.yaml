@@ -76,7 +76,7 @@ services:
       DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
       npx prisma generate --schema=packages/database/prisma/schema.prisma &&
       npx turbo run build --filter=@ace/web...
-    startCommand: npm run start --workspace=apps/web
+    startCommand: cd apps/web && npx next start -H 0.0.0.0 -p $PORT
     healthCheckPath: /
     envVars:
       - key: NODE_ENV
