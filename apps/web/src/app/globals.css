@@ -7,10 +7,8 @@
     --bg-main: #f8fafc;
     --text-main: #0f172a;
     --text-muted: #64748b;
-    --card-bg: rgba(255, 255, 255, 0.85);
-    --card-border: rgba(226, 232, 240, 0.8);
-    --sidebar-bg: #ffffff;
-    --header-bg: rgba(255, 255, 255, 0.85);
+    --card-bg: #ffffff;
+    --card-border: #e2e8f0;
   }
 
   .dark {
@@ -19,15 +17,79 @@
     --text-muted: #94a3b8;
     --card-bg: rgba(15, 23, 42, 0.65);
     --card-border: rgba(51, 65, 85, 0.5);
-    --sidebar-bg: #0f172a;
-    --header-bg: rgba(11, 15, 25, 0.85);
   }
 }
 
 html, body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ── Light Mode Automatic Contrast Mapping ── */
+html:not(.dark) {
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html:not(.dark) .text-white {
+  color: #0f172a;
+}
+
+html:not(.dark) .text-gray-100,
+html:not(.dark) .text-gray-200,
+html:not(.dark) .text-slate-100,
+html:not(.dark) .text-slate-200 {
+  color: #1e293b;
+}
+
+html:not(.dark) .text-gray-300,
+html:not(.dark) .text-gray-400,
+html:not(.dark) .text-slate-300,
+html:not(.dark) .text-slate-400 {
+  color: #475569;
+}
+
+html:not(.dark) .text-gray-500,
+html:not(.dark) .text-slate-500 {
+  color: #64748b;
+}
+
+html:not(.dark) .bg-\[\#080c18\],
+html:not(.dark) .bg-\[\#0a0f1e\],
+html:not(.dark) .bg-\[\#0d1225\],
+html:not(.dark) .bg-\[\#0f172a\] {
+  background-color: #ffffff;
+}
+
+html:not(.dark) .bg-white\/5,
+html:not(.dark) .bg-white\/\[0\.02\],
+html:not(.dark) .bg-white\/\[0\.03\],
+html:not(.dark) .bg-white\/\[0\.04\],
+html:not(.dark) .bg-white\/\[0\.05\],
+html:not(.dark) .bg-white\/\[0\.08\],
+html:not(.dark) .bg-white\/\[0\.1\] {
+  background-color: #f1f5f9;
+}
+
+html:not(.dark) .border-white\/10,
+html:not(.dark) .border-white\/20,
+html:not(.dark) .border-white\/\[0\.06\],
+html:not(.dark) .border-white\/\[0\.08\],
+html:not(.dark) .border-white\/\[0\.07\] {
+  border-color: #e2e8f0;
+}
+
+/* Preserve bright white text on colored action buttons in Light Mode */
+html:not(.dark) [class*="bg-blue-"] .text-white,
+html:not(.dark) [class*="bg-indigo-"] .text-white,
+html:not(.dark) [class*="bg-violet-"] .text-white,
+html:not(.dark) [class*="bg-purple-"] .text-white,
+html:not(.dark) [class*="bg-emerald-"] .text-white,
+html:not(.dark) [class*="bg-gradient-to-"] .text-white,
+html:not(.dark) button[type="submit"] {
+  color: #ffffff !important;
 }
 
 /* Glassmorphism utilities */
