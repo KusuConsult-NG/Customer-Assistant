@@ -240,7 +240,7 @@ export class TwilioMediaStreamHandler {
         // Start silence watchdog
         this.resetSilenceWatchdog(session, twilioWs);
 
-        // ── 1.5-Second Initial Delay before AI Agent welcomes caller ──
+        // ── 2.0-Second Initial Delay before AI Agent welcomes caller ──
         setTimeout(() => {
           if (session.isEnded || twilioWs.readyState !== WebSocket.OPEN) return;
 
@@ -258,7 +258,7 @@ export class TwilioMediaStreamHandler {
                 session.ttsAbortController = null;
               });
           }
-        }, 1500);
+        }, 2000);
         break;
       }
 
