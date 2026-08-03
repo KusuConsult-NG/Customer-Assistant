@@ -11,7 +11,7 @@ services:
       DATABASE_URL="postgresql://dummy:dummy@localhost/dummy"
       DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
       npx prisma generate --schema=packages/database/prisma/schema.prisma &&
-      npm run build --workspace=apps/api
+      npx turbo run build --filter=@ace/api...
     startCommand: node apps/api/dist/main.js
     healthCheckPath: /api/health
     envVars:
@@ -75,7 +75,7 @@ services:
       DATABASE_URL="postgresql://dummy:dummy@localhost/dummy"
       DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
       npx prisma generate --schema=packages/database/prisma/schema.prisma &&
-      npm run build --workspace=apps/web
+      npx turbo run build --filter=@ace/web...
     startCommand: npm run start --workspace=apps/web
     healthCheckPath: /
     envVars:
