@@ -240,21 +240,25 @@ export class TwilioMediaStreamHandler {
         // Start silence watchdog
         this.resetSilenceWatchdog(session, twilioWs);
 
-        // ── FIX 4: Play welcome via ElevenLabs (consistent voice, not Polly) ──
-        if (session.welcomeMessage && session.streamSid) {
-          const ctrl = new AbortController();
-          session.ttsAbortController = ctrl;
-          session.isTtsSpeaking      = true;
-          this.voiceAiService
-            .streamTTSToTwilio(session.welcomeMessage, session.streamSid, twilioWs, ctrl.signal, session.language)
-            .catch((err) =>
-              this.logger.error('Error playing welcome message', err as Error, { callSid: session.callSid })
-            )
-            .finally(() => {
-              session.isTtsSpeaking      = false;
-              session.ttsAbortController = null;
-            });
-        }
+        // ── 1.5-Second Initial Delay before AI Agent welcomes caller ──
+        setTimeout(() => {
+          if (session.isEnded || twilioWs.readyState !== WebSocket.OPEN) return;
+
+          if (session.welcomeMessage && session.streamSid) {
+            const ctrl = new AbortController();
+            session.ttsAbortController = ctrl;
+            session.isTtsSpeaking      = true;
+            this.voiceAiService
+              .streamTTSToTwilio(session.welcomeMessage, session.streamSid, twilioWs, ctrl.signal, session.language)
+              .catch((err) =>
+                this.logger.error('Error playing welcome message', err as Error, { callSid: session.callSid })
+              )
+              .finally(() => {
+                session.isTtsSpeaking      = false;
+                session.ttsAbortController = null;
+              });
+          }
+        }, 1500);
         break;
       }
 
