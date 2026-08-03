@@ -106,10 +106,21 @@ export default function CrmPage() {
         fetch(`${API_URL}/api/crm/deals`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_URL}/api/crm/tickets`, { headers }).then(r => r.ok ? r.json() : []),
       ]);
-      setContacts(c.status === 'fulfilled' ? (c.value || []) : []);
-      setLeads(l.status === 'fulfilled' ? (l.value || []) : []);
-      setDeals(d.status === 'fulfilled' ? (d.value || []) : []);
-      setTickets(t.status === 'fulfilled' ? (t.value || []) : []);
+      const toArray = (val: any) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (Array.isArray(val.contacts)) return val.contacts;
+        if (Array.isArray(val.leads)) return val.leads;
+        if (Array.isArray(val.deals)) return val.deals;
+        if (Array.isArray(val.tickets)) return val.tickets;
+        if (Array.isArray(val.data)) return val.data;
+        return [];
+      };
+
+      setContacts(c.status === 'fulfilled' ? toArray(c.value) : []);
+      setLeads(l.status === 'fulfilled' ? toArray(l.value) : []);
+      setDeals(d.status === 'fulfilled' ? toArray(d.value) : []);
+      setTickets(t.status === 'fulfilled' ? toArray(t.value) : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -119,11 +130,13 @@ export default function CrmPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const filtered = <T extends Record<string, any>>(items: T[]) =>
-    items.filter(i =>
-      (i.fullName || i.title || i.subject || i.contact?.fullName || '').toLowerCase().includes(search.toLowerCase()) ||
-      (i.phoneNumber || i.email || i.contact?.phoneNumber || '').toLowerCase().includes(search.toLowerCase())
+  const filtered = <T extends Record<string, any>>(items: T[]) => {
+    const list = Array.isArray(items) ? items : [];
+    return list.filter(i =>
+      (i?.fullName || i?.title || i?.subject || i?.contact?.fullName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (i?.phoneNumber || i?.email || i?.contact?.phoneNumber || '').toLowerCase().includes(search.toLowerCase())
     );
+  };
 
   const exportContactsCsv = async () => {
     try {
@@ -558,7 +571,8 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
 
 // ─────────────────────────── Deals Table ────────────────────────────
 function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
-  if (data.length === 0) return (
+  const safeData = Array.isArray(data) ? data : [];
+  if (safeData.length === 0) return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
         <DollarSign className="w-8 h-8 text-gray-600" />
@@ -568,8 +582,8 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
     </div>
   );
 
-  const totalValue = data.reduce((sum, d) => sum + (d.amount || 0), 0);
-  const wonValue = data.filter(d => d.stage === 'CLOSED_WON').reduce((sum, d) => sum + (d.amount || 0), 0);
+  const totalValue = safeData.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const wonValue = safeData.filter(d => d.stage === 'CLOSED_WON').reduce((sum, d) => sum + (d.amount || 0), 0);
 
   return (
     <div>
@@ -583,7 +597,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
           <p className="text-xs text-gray-500">Closed Won Revenue</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-extrabold text-white">{data.length}</p>
+          <p className="text-2xl font-extrabold text-white">{safeData.length}</p>
           <p className="text-xs text-gray-500">Active Deals</p>
         </div>
       </div>
@@ -599,7 +613,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
           </tr>
         </thead>
         <tbody className="divide-y divide-white/[0.04]">
-          {data.map((d) => (
+          {safeData.map((d) => (
             <tr key={d.id} className="hover:bg-white/[0.02] transition-colors">
               <td className="px-5 py-4 font-semibold text-gray-200">{d.title || 'Untitled Deal'}</td>
               <td className="px-5 py-4 text-gray-400 text-xs">{d.contact?.fullName || '—'}</td>
@@ -620,6 +634,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
 
 // ─────────────────────────── Deals Kanban Board ────────────────────────────
 function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
+  const safeData = Array.isArray(data) ? data : [];
   const updateStage = async (id: string, stage: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/deals/${id}/stage`, {
@@ -634,7 +649,7 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
     <div className="p-5 overflow-x-auto">
       <div className="flex gap-4 min-w-[1100px]">
         {DEAL_STAGES.map((stage) => {
-          const stageDeals = data.filter(d => d.stage === stage);
+          const stageDeals = safeData.filter(d => d.stage === stage);
           const stageTotal = stageDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
           return (
             <div key={stage} className="w-72 flex-shrink-0 bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4 flex flex-col gap-3">

@@ -70,11 +70,24 @@ export default function DashboardPage() {
         fetch(`${API_URL}/api/analytics/dashboard?period=${timeRange}`, { headers }).then(r => r.ok ? r.json() : null),
       ]);
 
-      const contacts = contactsRes.status === 'fulfilled' ? (contactsRes.value || []) : [];
-      const leads = leadsRes.status === 'fulfilled' ? (leadsRes.value || []) : [];
-      const docs = docsRes.status === 'fulfilled' ? (docsRes.value || []) : [];
-      const calls = callsRes.status === 'fulfilled' ? (callsRes.value || []) : [];
-      const deals = dealsRes.status === 'fulfilled' ? (dealsRes.value || []) : [];
+      const toArray = (val: any) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (Array.isArray(val.contacts)) return val.contacts;
+        if (Array.isArray(val.leads)) return val.leads;
+        if (Array.isArray(val.deals)) return val.deals;
+        if (Array.isArray(val.tickets)) return val.tickets;
+        if (Array.isArray(val.documents)) return val.documents;
+        if (Array.isArray(val.calls)) return val.calls;
+        if (Array.isArray(val.data)) return val.data;
+        return [];
+      };
+
+      const contacts = contactsRes.status === 'fulfilled' ? toArray(contactsRes.value) : [];
+      const leads = leadsRes.status === 'fulfilled' ? toArray(leadsRes.value) : [];
+      const docs = docsRes.status === 'fulfilled' ? toArray(docsRes.value) : [];
+      const calls = callsRes.status === 'fulfilled' ? toArray(callsRes.value) : [];
+      const deals = dealsRes.status === 'fulfilled' ? toArray(dealsRes.value) : [];
       const dashboard = dashboardRes.status === 'fulfilled' ? (dashboardRes.value || null) : null;
 
       if (dashboard) setDashboardData(dashboard);
