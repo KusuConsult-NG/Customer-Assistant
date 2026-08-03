@@ -161,6 +161,110 @@ export class OrganizationsService {
     });
   }
 
+  async getTeamMembers(organizationId: string) {
+    return prisma.user.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        isActive: true,
+        avatarUrl: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async updateTeamMemberRole(organizationId: string, userId: string, newRole: any) {
+    const user = await prisma.user.findFirst({ where: { id: userId, organizationId } });
+    if (!user) throw new NotFoundException('User not found');
+    return prisma.user.update({
+      where: { id: userId },
+      data: { role: newRole },
+      select: { id: true, email: true, fullName: true, role: true, isActive: true },
+    });
+  }
+
+  async updateTeamMemberStatus(organizationId: string, userId: string, isActive: boolean) {
+    const user = await prisma.user.findFirst({ where: { id: userId, organizationId } });
+    if (!user) throw new NotFoundException('User not found');
+    return prisma.user.update({
+      where: { id: userId },
+      data: { isActive },
+      select: { id: true, email: true, fullName: true, role: true, isActive: true },
+    });
+  }
+
+  getPermissionsMatrix() {
+    return [
+      {
+        module: 'Dashboard Analytics',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'View Only',
+        VIEWER: 'View Only',
+      },
+      {
+        module: 'CRM & Contacts',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'View & Edit',
+        VIEWER: 'View Only',
+      },
+      {
+        module: 'Agent Console & Live Handoff',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'Full Access',
+        VIEWER: 'View Only',
+      },
+      {
+        module: 'Telephony & Outbound Calls',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'Make Calls Only',
+        VIEWER: 'No Access',
+      },
+      {
+        module: 'Knowledge Base',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'View & Search',
+        VIEWER: 'View Only',
+      },
+      {
+        module: 'Scheduling & Refund Approvals',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'View & Reschedule',
+        VIEWER: 'View Only',
+      },
+      {
+        module: 'Billing & Subscriptions',
+        OWNER: 'Full Access',
+        ADMIN: 'View Only',
+        AGENT: 'No Access',
+        VIEWER: 'No Access',
+      },
+      {
+        module: 'Organization & Team Settings',
+        OWNER: 'Full Access',
+        ADMIN: 'Manage Team',
+        AGENT: 'No Access',
+        VIEWER: 'No Access',
+      },
+      {
+        module: 'API Keys & Webhooks',
+        OWNER: 'Full Access',
+        ADMIN: 'Full Access',
+        AGENT: 'No Access',
+        VIEWER: 'No Access',
+      },
+    ];
+  }
+
   async regenerateApiKey(organizationId: string) {
     const crypto = await import('crypto');
     const rawKey = `ace_live_pk_${crypto.randomBytes(16).toString('hex')}`;

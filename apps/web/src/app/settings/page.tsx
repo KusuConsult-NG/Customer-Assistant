@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '@/lib/api';
+import { api, API_URL } from '@/lib/api';
 import {
   Settings, Building2, Bot, Phone, MessageSquare, Users, User,
   Save, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Plus,
@@ -423,30 +423,75 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
   );
 }
 
-// ─────────────────────── Team Tab ───────────────────────
+// ─────────────────────── Team & RBAC Tab ───────────────────────
 function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState('AGENT');
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<any[]>(org?.users || []);
+  const [matrix, setMatrix] = useState<any[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
-  const members = org?.users || [];
+  const fetchTeamAndMatrix = useCallback(async () => {
+    setLoadingMembers(true);
+    try {
+      const [mRes, pRes] = await Promise.all([
+        api.organizations.getTeamMembers(),
+        api.organizations.getPermissionsMatrix(),
+      ]);
+      if (mRes) setMembers(mRes);
+      if (pRes) setMatrix(pRes);
+    } catch {}
+    finally { setLoadingMembers(false); }
+  }, []);
+
+  useEffect(() => {
+    fetchTeamAndMatrix();
+  }, [fetchTeamAndMatrix]);
 
   const addMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/members`, {
-        method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ email, fullName, role }),
-      });
-      if (!res.ok) throw new Error((await res.json()).message || 'Failed');
-      showToast('Team member invited!');
+      await api.organizations.addTeamMember({ email, fullName, role });
+      showToast('Team member invited successfully!');
       setShowForm(false); setEmail(''); setFullName('');
-      onSaved();
+      fetchTeamAndMatrix();
     } catch (err: any) { showToast(err.message || 'Failed to invite', 'error'); }
     finally { setSaving(false); }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      await api.organizations.updateMemberRole(userId, newRole);
+      showToast(`User role updated to ${newRole}`);
+      fetchTeamAndMatrix();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update role', 'error');
+    }
+  };
+
+  const handleStatusToggle = async (userId: string, currentStatus: boolean) => {
+    try {
+      await api.organizations.updateMemberStatus(userId, !currentStatus);
+      showToast(`User ${!currentStatus ? 'reactivated' : 'suspended'}`);
+      fetchTeamAndMatrix();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update status', 'error');
+    }
+  };
+
+  const handleRemoveMember = async (userId: string, memberName: string) => {
+    if (!window.confirm(`Are you sure you want to remove ${memberName} from this organization?`)) return;
+    try {
+      await api.organizations.removeTeamMember(userId);
+      showToast('Team member removed');
+      fetchTeamAndMatrix();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove member', 'error');
+    }
   };
 
   const roleColors: Record<string, string> = {
@@ -457,30 +502,73 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
   };
 
   return (
-    <div className="space-y-5">
-      <Section title="Team Members" description="People who have access to this platform">
-        {members.length === 0 ? (
-          <div className="py-8 text-center text-gray-500 text-sm">No team members yet. Add your first agent below.</div>
+    <div className="space-y-6">
+      <Section title="Team Members & Role Access Control (RBAC)" description="Manage member access levels, roles, and granular platform permissions">
+        {loadingMembers ? (
+          <div className="py-8 text-center text-gray-500 text-sm flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Loading team members...
+          </div>
+        ) : members.length === 0 ? (
+          <div className="py-8 text-center text-gray-500 text-sm">No team members yet. Invite your first agent below.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {members.map((m: any) => (
-              <div key={m.id} className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-all">
+              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] transition-all gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-blue-500/15 text-blue-400 font-bold text-sm flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
                     {(m.fullName || m.email || 'U')[0].toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-200">{m.fullName || 'Unknown'}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-200">{m.fullName || 'Team Member'}</p>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {m.isActive !== false ? 'ACTIVE' : 'SUSPENDED'}
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-500">{m.email}</p>
                   </div>
                 </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${roleColors[m.role] || roleColors.AGENT}`}>{m.role}</span>
+
+                <div className="flex items-center gap-3">
+                  {/* Role Selector */}
+                  <select
+                    value={m.role}
+                    onChange={e => handleRoleChange(m.id, e.target.value)}
+                    className="px-3 py-1.5 rounded-lg bg-black/40 border border-white/[0.1] text-xs font-semibold text-gray-200 focus:outline-none cursor-pointer"
+                  >
+                    <option value="OWNER">OWNER</option>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="AGENT">AGENT</option>
+                    <option value="VIEWER">VIEWER</option>
+                  </select>
+
+                  {/* Status Toggle */}
+                  <button
+                    onClick={() => handleStatusToggle(m.id, m.isActive !== false)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border font-semibold transition-all ${
+                      m.isActive !== false
+                        ? 'border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10'
+                        : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                    }`}
+                  >
+                    {m.isActive !== false ? 'Suspend' : 'Reactivate'}
+                  </button>
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => handleRemoveMember(m.id, m.fullName || m.email)}
+                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 font-semibold transition-all"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </Section>
 
+      {/* Invite Member Form */}
       {showForm ? (
         <Section title="Invite Team Member">
           <form onSubmit={addMember} className="space-y-4">
@@ -514,9 +602,38 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
           onClick={() => setShowForm(true)}
           className="w-full py-3 rounded-xl border border-dashed border-white/[0.10] text-gray-500 hover:text-gray-300 hover:border-white/20 text-sm font-medium flex items-center justify-center gap-2 transition-all"
         >
-          <Plus className="w-4 h-4" /> Invite Team Member
+          <Plus className="w-4 h-4" /> Invite New Team Member
         </button>
       )}
+
+      {/* Role & Access Permission Matrix Grid Table */}
+      <Section title="Role Access Permission Matrix" description="System access levels assigned per user role">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-white/[0.04] text-gray-400 uppercase tracking-wider font-semibold border-b border-white/[0.06]">
+              <tr>
+                <th className="px-4 py-3">Platform Module</th>
+                <th className="px-4 py-3 text-purple-400">OWNER</th>
+                <th className="px-4 py-3 text-blue-400">ADMIN</th>
+                <th className="px-4 py-3 text-emerald-400">AGENT</th>
+                <th className="px-4 py-3 text-gray-400">VIEWER</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04] text-gray-300">
+              {matrix.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-white/[0.02] transition-colors">
+                  <td className="px-4 py-3 font-medium text-white">{row.module}</td>
+                  <td className="px-4 py-3 font-semibold text-purple-300">{row.OWNER}</td>
+                  <td className="px-4 py-3 font-semibold text-blue-300">{row.ADMIN}</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-300">{row.AGENT}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-400">{row.VIEWER}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
     </div>
   );
 }
+

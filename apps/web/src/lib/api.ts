@@ -197,6 +197,37 @@ export const api = {
       });
       return handleResponse(res);
     },
+    getTeamMembers: async () => {
+      const res = await fetch(`${API_URL}/api/organizations/members`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    updateMemberRole: async (userId: string, role: string) => {
+      const res = await fetch(`${API_URL}/api/organizations/members/${userId}/role`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify({ role }),
+      });
+      return handleResponse(res);
+    },
+    updateMemberStatus: async (userId: string, isActive: boolean) => {
+      const res = await fetch(`${API_URL}/api/organizations/members/${userId}/status`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify({ isActive }),
+      });
+      return handleResponse(res);
+    },
+    removeTeamMember: async (userId: string) => {
+      const res = await fetch(`${API_URL}/api/organizations/members/${userId}`, {
+        method: "DELETE",
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+    getPermissionsMatrix: async () => {
+      const res = await fetch(`${API_URL}/api/organizations/roles/permissions`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
   },
 
   widget: {

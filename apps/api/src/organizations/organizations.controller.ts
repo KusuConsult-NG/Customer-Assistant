@@ -32,6 +32,36 @@ export class OrganizationsController {
     return this.orgsService.addTeamMember(req.user.organizationId, body);
   }
 
+  @Get('members')
+  async getTeamMembers(@Req() req: { user: AuthUser }) {
+    return this.orgsService.getTeamMembers(req.user.organizationId);
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Patch('members/:id/role')
+  async updateTeamMemberRole(
+    @Req() req: { user: AuthUser },
+    @Param('id') userId: string,
+    @Body() body: { role: any }
+  ) {
+    return this.orgsService.updateTeamMemberRole(req.user.organizationId, userId, body.role);
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Patch('members/:id/status')
+  async updateTeamMemberStatus(
+    @Req() req: { user: AuthUser },
+    @Param('id') userId: string,
+    @Body() body: { isActive: boolean }
+  ) {
+    return this.orgsService.updateTeamMemberStatus(req.user.organizationId, userId, body.isActive);
+  }
+
+  @Get('roles/permissions')
+  async getPermissionsMatrix() {
+    return this.orgsService.getPermissionsMatrix();
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Delete('members/:id')
   async removeTeamMember(
