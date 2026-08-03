@@ -82,7 +82,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     router.replace('/login');
   };
 
-  const isLoginPage = pathname === '/login';
+  const isAuthPage = pathname === '/login' || 
+    pathname?.startsWith('/register') || 
+    pathname?.startsWith('/forgot-password') || 
+    pathname?.startsWith('/verify-email') || 
+    pathname?.startsWith('/setup-account') ||
+    pathname?.startsWith('/widget');
 
   const initials = user?.fullName
     ? user.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
@@ -107,7 +112,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="w-6 h-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
             </div>
           </div>
-        ) : isLoginPage ? (
+        ) : isAuthPage ? (
           <div className="w-full min-h-screen flex flex-col">
             {children}
           </div>
