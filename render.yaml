@@ -17,29 +17,31 @@ services:
       - key: WEB_BASE_URL
         sync: false
       - key: CORS_ORIGIN
-        sync: false
+        value: "*"
       - key: DATABASE_URL
-        sync: false
+        value: "postgresql://postgres.xnicrtzlqgnnivdzmbvw:_)(*!%40%23%24%25%5EJo2030%25%26%24%5E@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+      - key: DIRECT_URL
+        value: "postgresql://postgres.xnicrtzlqgnnivdzmbvw:_)(*!%40%23%24%25%5EJo2030%25%26%24%5E@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
       - key: JWT_SECRET
-        sync: false
+        value: "super_secret_ace_platform_jwt_signing_key_2026_min_32_chars"
       - key: JWT_REFRESH_SECRET
-        sync: false
+        value: "super_secret_ace_platform_refresh_key_2026"
       - key: OPENAI_API_KEY
-        sync: false
+        value: "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"
       - key: WHATSAPP_ACCESS_TOKEN
-        sync: false
+        value: "EAAWS63E8ei8BSHYYpgr0SOm6Ff7YEPfLAfkoo2ST7w3ieZCtqRm1iwZA9zDVZA8KFJWmlWBnVHZCKO9QEIJZBhMqEBugVDuXQMiUyy8V8SZA1aHateBIvsY3wq9A9TKFMkgVVLE0iLSAHuODWTOwdkZBWzH6HxghnIm89zyASaslhgHFWaRZAsLppj2Sta1a3VCYoQZDZD"
       - key: WHATSAPP_BUSINESS_ID
-        sync: false
+        value: "1490006933166588"
       - key: META_APP_ID
         value: "1568914798311983"
       - key: META_BUSINESS_ID
-        sync: false
+        value: "1584597283199331"
       - key: WHATSAPP_VERIFY_TOKEN
         value: ACE_SECURE_VERIFY_TOKEN_2026
       - key: WHATSAPP_APP_SECRET
-        sync: false
+        value: "60fae93f36f40cdd89ca1c23c5551b10"
       - key: RESEND_API_KEY
-        sync: false
+        value: "re_Lkg1cz7K_3okUvQqmTx2fT57QK9tcyxWU"
       - key: EMAIL_FROM
         value: ACE Platform <noreply@kusuconsult.com>
 

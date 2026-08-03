@@ -35,15 +35,13 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'WHATSAPP_APP_SECRET', required: true, description: 'Meta App Secret for X-Hub-Signature-256 verification', rejectPlaceholder: true },
   { key: 'WHATSAPP_VERIFY_TOKEN', required: true, description: 'Webhook verify token set on Meta Developer Console', rejectPlaceholder: true },
 
-  // ─── Paystack ─────────────────────────────────────────────────────────────────
-  { key: 'PAYSTACK_SECRET_KEY', required: true, description: 'Paystack secret key (sk_live_... or sk_test_...)', rejectPlaceholder: true },
-  { key: 'PAYSTACK_WEBHOOK_SECRET', required: true, description: 'Paystack webhook signature secret', rejectPlaceholder: true },
+  // ─── Paystack (Optional until payments enabled) ────────────────────────────────
+  { key: 'PAYSTACK_SECRET_KEY', required: false, description: 'Paystack secret key (sk_live_... or sk_test_...)' },
+  { key: 'PAYSTACK_WEBHOOK_SECRET', required: false, description: 'Paystack webhook signature secret' },
 
-  // ─── Vector Search ────────────────────────────────────────────────────────────
-  { key: 'QDRANT_URL', required: true, description: 'Qdrant Vector Engine URL', rejectPlaceholder: false },
-
-  // ─── Redis ────────────────────────────────────────────────────────────────────
-  { key: 'REDIS_URL', required: true, description: 'Redis URL for BullMQ job queues and Socket.IO adapter', rejectPlaceholder: false },
+  // ─── Vector Search & Caching (Optional — falls back gracefully) ────────────────
+  { key: 'QDRANT_URL', required: false, description: 'Qdrant Vector Engine URL' },
+  { key: 'REDIS_URL', required: false, description: 'Redis URL for BullMQ job queues and Socket.IO adapter' },
 
   // ─── Optional but warn if missing ─────────────────────────────────────────────
   { key: 'DEEPGRAM_API_KEY', required: false, description: 'Deepgram STT API key (required for voice calls)' },
