@@ -5,8 +5,10 @@ import { VoiceStreamGateway } from './voice-stream.gateway';
 import { VoiceAiService } from './voice-ai.service';
 import { TwilioMediaStreamHandler } from './twilio-media-stream.handler';
 import { CallBroadcastService } from './call-broadcast.service';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 
 @Module({
+  imports: [WebhooksModule],
   providers: [
     // Core telephony logic
     TelephonyService,

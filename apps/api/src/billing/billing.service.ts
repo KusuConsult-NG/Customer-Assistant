@@ -74,19 +74,25 @@ export class BillingService {
       }),
     ]);
 
-    // In production this should come from a Subscription table.
-    // For now, return org-level plan data with real usage metrics.
+    const planKey = (org.subscriptionPlan as SubscriptionPlan) ?? SubscriptionPlan.STARTER;
+    const planPrice = PLAN_PRICES_NGN[planKey] ?? PLAN_PRICES_NGN[SubscriptionPlan.STARTER];
+    const PLAN_LIMITS: Record<string, { callMinutes: number; whatsappMessages: number }> = {
+      STARTER: { callMinutes: 500, whatsappMessages: 2000 },
+      PROFESSIONAL: { callMinutes: 2500, whatsappMessages: 10000 },
+      BUSINESS: { callMinutes: 10000, whatsappMessages: 50000 },
+      ENTERPRISE: { callMinutes: 99999, whatsappMessages: 999999 },
+    };
+    const limits = PLAN_LIMITS[planKey] ?? PLAN_LIMITS.STARTER;
+
     return {
-      organizationId,
-      organizationName: org.name,
-      plan: SubscriptionPlan.PROFESSIONAL, // TODO: read from Subscription record once schema is extended
-      status: 'ACTIVE',
-      monthlyPriceNgn: PLAN_PRICES_NGN[SubscriptionPlan.PROFESSIONAL],
-      callMinutesIncluded: 2500,
+      plan: planKey,
+      status: org.subscriptionStatus ?? 'TRIAL',
+      monthlyPriceNgn: planPrice,
+      callMinutesIncluded: limits.callMinutes,
+      whatsappMessagesIncluded: limits.whatsappMessages,
+      renewalDate: org.subscriptionRenewsAt?.toISOString() ?? null,
       callMinutesUsed,
-      whatsappMessagesIncluded: 10_000,
       whatsappMessagesUsed,
-      renewalDate: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString(),
     };
   }
 

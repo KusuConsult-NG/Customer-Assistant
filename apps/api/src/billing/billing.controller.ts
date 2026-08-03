@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Req, Headers, UseGuards } from '@nestjs/common';
 import { BillingService, SubscriptionPlan } from './billing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
 @Controller('api/billing')
@@ -14,6 +15,7 @@ export class BillingController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Roles('OWNER', 'ADMIN')
   @Post('checkout')
   async checkout(
     @Req() req: { user: AuthUser },

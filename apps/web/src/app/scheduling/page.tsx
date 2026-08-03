@@ -300,86 +300,79 @@ export default function SchedulingPage() {
               <p className="text-xs text-gray-400 mt-0.5">Showing operating slots (08:00 - 18:00 WAT). Click any booked slot to audit or open slot to book.</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-xs text-blue-300 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
-                <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" /> Live CalDAV Sync Active
+              <span className="flex items-center gap-1.5 text-xs text-gray-400 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                Google Calendar sync coming soon
               </span>
             </div>
           </div>
 
-          {/* Days Header */}
-          <div className="grid grid-cols-8 gap-2 border-b border-white/10 pb-3 text-center">
-            <div className="text-xs font-bold text-gray-500 uppercase py-2">Time (WAT)</div>
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
-              <div key={day} className="py-2 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-                <span className="text-xs font-bold text-blue-400 block">{day}</span>
-                <span className="text-[10px] text-gray-500">Available</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Time Slots Grid (08:00 AM to 18:00 PM) */}
-          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-            {['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'].map((timeLabel, slotIdx) => (
-              <div key={timeLabel} className="grid grid-cols-8 gap-2 items-stretch">
-                <div className="flex items-center justify-center text-xs font-mono font-medium text-gray-500 bg-white/[0.01] rounded-xl border border-white/[0.03] py-3">
-                  {timeLabel}
-                </div>
-                {[0, 1, 2, 3, 4, 5, 6].map((dayIdx) => {
-                  const bookingMatch = bookings[dayIdx % bookings.length];
-                  const resMatch = reservations[dayIdx % reservations.length];
-                  const hasBooking = (slotIdx + dayIdx) % 3 === 0 && bookingMatch;
-                  const hasReservation = (slotIdx + dayIdx) % 4 === 1 && resMatch;
-
-                  if (hasBooking) {
-                    return (
-                      <div
-                        key={dayIdx}
-                        onClick={() => setSelectedBooking(bookingMatch)}
-                        className="p-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-left cursor-pointer transition-all hover:scale-[1.02] shadow-lg shadow-blue-500/10 flex flex-col justify-between"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Booking</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                        </div>
-                        <p className="text-xs font-bold text-white truncate mt-1">{bookingMatch.contactName}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{bookingMatch.service}</p>
-                      </div>
-                    );
-                  }
-
-                  if (hasReservation) {
-                    return (
-                      <div
-                        key={dayIdx}
-                        onClick={() => setSelectedReservation(resMatch)}
-                        className="p-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-left cursor-pointer transition-all hover:scale-[1.02] shadow-lg shadow-purple-500/10 flex flex-col justify-between"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">Reservation</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                        </div>
-                        <p className="text-xs font-bold text-white truncate mt-1">{resMatch.contactName}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{resMatch.partySize} Guests • {resMatch.tableOrRoom}</p>
-                      </div>
-                    );
-                  }
-
+          {/* Calendar Grid (Rows=Days, Cols=Time slots) */}
+          <div className="overflow-x-auto pb-4">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 bg-white/5 border border-white/10 text-xs font-bold text-gray-400 w-32">Day</th>
+                  {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(t => (
+                    <th key={t} className="px-2 py-3 bg-white/5 border border-white/10 text-xs font-bold text-gray-400 text-center min-w-[120px]">
+                      {t < 12 ? `${t}:00 AM` : t === 12 ? `12:00 PM` : `${t - 12}:00 PM`}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((dayName, dayIdx) => {
                   return (
-                    <div
-                      key={dayIdx}
-                      onClick={() => {
-                        setBookingTime(`2026-08-0${dayIdx + 3}T${slotIdx + 8 < 10 ? '0' : ''}${slotIdx + 8}:00`);
-                        setShowAddBookingModal(true);
-                      }}
-                      className="p-2.5 rounded-xl bg-white/[0.01] hover:bg-emerald-500/[0.08] border border-white/[0.04] hover:border-emerald-500/30 text-center cursor-pointer transition-all flex flex-col items-center justify-center group"
-                    >
-                      <Plus className="w-3.5 h-3.5 text-gray-600 group-hover:text-emerald-400 transition-colors" />
-                      <span className="text-[10px] text-gray-600 group-hover:text-emerald-300 font-medium mt-1">Book Slot</span>
-                    </div>
+                    <tr key={dayName}>
+                      <td className="px-4 py-4 border border-white/10 bg-white/[0.02] text-sm font-bold text-blue-400 align-top">{dayName}</td>
+                      {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
+                        const cellBookings = bookings.filter(b => {
+                          if (!b.startTime) return false;
+                          const d = new Date(b.startTime);
+                          const bDay = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=Mon, 6=Sun
+                          return bDay === dayIdx && d.getHours() === hour;
+                        });
+                        const cellReservations = reservations.filter(r => {
+                          if (!r.reservationTime) return false;
+                          const d = new Date(r.reservationTime);
+                          const rDay = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=Mon, 6=Sun
+                          return rDay === dayIdx && d.getHours() === hour;
+                        });
+
+                        return (
+                          <td key={hour} className="border border-white/10 p-1.5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors align-top min-h-[80px]">
+                            {cellBookings.map(b => (
+                              <div key={b.id} onClick={() => setSelectedBooking(b)} className="mb-2 p-2 rounded-lg bg-blue-600/20 border border-blue-500/30 cursor-pointer hover:bg-blue-600/30">
+                                <div className="text-[10px] font-bold text-blue-300 truncate">{b.contactName}</div>
+                                <div className="text-[9px] text-gray-400 truncate">{b.service}</div>
+                                <div className="mt-1 scale-90 origin-left">{getStatusBadge(b.status)}</div>
+                              </div>
+                            ))}
+                            {cellReservations.map(r => (
+                              <div key={r.id} onClick={() => setSelectedReservation(r)} className="mb-2 p-2 rounded-lg bg-purple-600/20 border border-purple-500/30 cursor-pointer hover:bg-purple-600/30">
+                                <div className="text-[10px] font-bold text-purple-300 truncate">{r.contactName}</div>
+                                <div className="text-[9px] text-gray-400 truncate">{r.partySize} Guests</div>
+                                <div className="mt-1 scale-90 origin-left">{getStatusBadge(r.status)}</div>
+                              </div>
+                            ))}
+                            {cellBookings.length === 0 && cellReservations.length === 0 && (
+                               <div
+                                  onClick={() => {
+                                    setBookingTime(`2026-08-0${dayIdx + 3}T${hour < 10 ? '0' : ''}${hour}:00`);
+                                    setShowAddBookingModal(true);
+                                  }}
+                                  className="h-full min-h-[60px] rounded-lg border border-transparent hover:border-emerald-500/30 flex items-center justify-center cursor-pointer group transition-all"
+                               >
+                                  <Plus className="w-4 h-4 text-gray-600 group-hover:text-emerald-400" />
+                               </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
                   );
                 })}
-              </div>
-            ))}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : activeTab === 'bookings' ? (

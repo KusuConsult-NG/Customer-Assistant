@@ -12,6 +12,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { BillingModule } from './billing/billing.module';
 import { EventsModule } from './events/events.module';
 import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
+import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
     // Apply the default throttle tier globally to every route.
     // Individual routes override with @Throttle({ auth: {} }) or @SkipThrottle()
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}

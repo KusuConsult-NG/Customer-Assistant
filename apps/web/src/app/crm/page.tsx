@@ -59,6 +59,24 @@ export default function CrmPage() {
   // Modals & Drawers
   const [modalType, setModalType] = useState<'contact' | 'lead' | 'deal' | 'ticket' | null>(null);
   const [selectedContact, setSelectedContact] = useState<any | null>(null);
+  const [quoteModal, setQuoteModal] = useState<{title: string; amount: number} | null>(null);
+
+  const handleDelete = async (type: string, id: string) => {
+    if (!confirm('Are you sure you want to delete this record?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/crm/${type}/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('ace_token')}` }
+      });
+      if (res.ok) {
+        fetchAll();
+      } else {
+        alert('Failed to delete');
+      }
+    } catch (err) {
+      alert('Error deleting');
+    }
+  };
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('ace_token') : '';
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -216,21 +234,23 @@ export default function CrmPage() {
             data={filtered(contacts)}
             onAdd={() => setModalType('contact')}
             onSelectContact={(c) => setSelectedContact(c)}
+            onDelete={(id) => handleDelete('contacts', id)}
           />
         ) : tab === 'leads' ? (
           <LeadsTable
             data={filtered(leads)}
             onAdd={() => setModalType('lead')}
             onRefresh={fetchAll}
+            onDelete={(id) => handleDelete('leads', id)}
           />
         ) : tab === 'deals' ? (
           viewMode === 'kanban' ? (
-            <DealsKanban data={filtered(deals)} onAdd={() => setModalType('deal')} onRefresh={fetchAll} />
+            <DealsKanban data={filtered(deals)} onAdd={() => setModalType('deal')} onRefresh={fetchAll} onDelete={(id) => handleDelete('deals', id)} onQuote={(title, amount) => setQuoteModal({title, amount})} />
           ) : (
-            <DealsTable data={filtered(deals)} onAdd={() => setModalType('deal')} />
+            <DealsTable data={filtered(deals)} onAdd={() => setModalType('deal')} onDelete={(id) => handleDelete('deals', id)} onQuote={(title, amount) => setQuoteModal({title, amount})} />
           )
         ) : (
-          <TicketsTable data={filtered(tickets)} onAdd={() => setModalType('ticket')} onRefresh={fetchAll} />
+          <TicketsTable data={filtered(tickets)} onAdd={() => setModalType('ticket')} onRefresh={fetchAll} onDelete={(id) => handleDelete('tickets', id)} />
         )}
       </div>
 
@@ -252,12 +272,23 @@ export default function CrmPage() {
       {selectedContact && (
         <ContactDetailModal contact={selectedContact} onClose={() => setSelectedContact(null)} />
       )}
+      
+      {/* Quotation Preview Modal */}
+      {quoteModal && (
+        <ModalWrapper title="Quotation Generated" onClose={() => setQuoteModal(null)}>
+          <div className="text-center py-6 space-y-4">
+            <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+            <p className="text-sm text-gray-300">Quotation preview generated for <strong>{quoteModal.title}</strong> - ₦{quoteModal.amount.toLocaleString()}</p>
+            <button onClick={() => setQuoteModal(null)} className="px-4 py-2 bg-emerald-600/20 text-emerald-400 rounded-lg font-semibold">Done</button>
+          </div>
+        </ModalWrapper>
+      )}
     </div>
   );
 }
 
 // ─────────────────────────── Contacts Table ────────────────────────────
-function ContactsTable({ data, onAdd, onSelectContact }: { data: any[]; onAdd: () => void; onSelectContact: (c: any) => void }) {
+function ContactsTable({ data, onAdd, onSelectContact, onDelete }: { data: any[]; onAdd: () => void; onSelectContact: (c: any) => void; onDelete: (id: string) => void }) {
   if (data.length === 0) return <EmptyState icon={<Users className="w-12 h-12" />} text="No contacts found" action="Add Contact" onAction={onAdd} />;
   return (
     <table className="w-full text-sm text-left">
@@ -292,12 +323,15 @@ function ContactsTable({ data, onAdd, onSelectContact }: { data: any[]; onAdd: (
               </div>
             </td>
             <td className="px-5 py-4 text-gray-500 text-xs">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
-            <td className="px-5 py-4 text-right">
+            <td className="px-5 py-4 text-right space-x-2">
               <button
                 onClick={(e) => { e.stopPropagation(); onSelectContact(c); }}
                 className="px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-all"
               >
                 View Profile
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
+                <Trash2 className="w-4 h-4" />
               </button>
             </td>
           </tr>
@@ -308,7 +342,7 @@ function ContactsTable({ data, onAdd, onSelectContact }: { data: any[]; onAdd: (
 }
 
 // ─────────────────────────── Leads Table ────────────────────────────
-function LeadsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => void; onRefresh: () => void }) {
+function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
   const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/leads/${id}/status`, {
@@ -329,6 +363,7 @@ function LeadsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => void
           <th className="px-5 py-3.5 font-medium">Notes / Context</th>
           <th className="px-5 py-3.5 font-medium">Status</th>
           <th className="px-5 py-3.5 font-medium">Created</th>
+          <th className="px-5 py-3.5 font-medium text-right">Actions</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-white/[0.04]">
@@ -359,6 +394,11 @@ function LeadsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => void
               </select>
             </td>
             <td className="px-5 py-4 text-gray-500 text-xs">{l.createdAt ? new Date(l.createdAt).toLocaleDateString() : '—'}</td>
+            <td className="px-5 py-4 text-right">
+              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </td>
           </tr>
         ))}
       </tbody>
@@ -367,7 +407,7 @@ function LeadsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => void
 }
 
 // ─────────────────────────── Deals Table ────────────────────────────
-function DealsTable({ data, onAdd }: { data: any[]; onAdd: () => void }) {
+function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: () => void; onDelete: (id: string) => void; onQuote: (title: string, amount: number) => void }) {
   if (data.length === 0) return <EmptyState icon={<Briefcase className="w-12 h-12" />} text="No deals in pipeline" action="Add Deal" onAction={onAdd} />;
 
   const totalValue = data.reduce((sum, d) => sum + (d.amount || 0), 0);
@@ -397,6 +437,7 @@ function DealsTable({ data, onAdd }: { data: any[]; onAdd: () => void }) {
             <th className="px-5 py-3.5 font-medium">Amount</th>
             <th className="px-5 py-3.5 font-medium">Stage</th>
             <th className="px-5 py-3.5 font-medium">Created</th>
+            <th className="px-5 py-3.5 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-white/[0.04]">
@@ -407,6 +448,10 @@ function DealsTable({ data, onAdd }: { data: any[]; onAdd: () => void }) {
               <td className="px-5 py-4 font-bold text-emerald-400">₦{(d.amount || 0).toLocaleString()}</td>
               <td className="px-5 py-4"><Badge text={d.stage || 'LEAD'} color={statusColor(d.stage)} /></td>
               <td className="px-5 py-4 text-gray-500 text-xs">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '—'}</td>
+              <td className="px-5 py-4 text-right space-x-2">
+                <button onClick={() => onQuote(d.title, d.amount || 0)} className="px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
+                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -416,7 +461,7 @@ function DealsTable({ data, onAdd }: { data: any[]; onAdd: () => void }) {
 }
 
 // ─────────────────────────── Deals Kanban Board ────────────────────────────
-function DealsKanban({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => void; onRefresh: () => void }) {
+function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (title: string, amount: number) => void }) {
   const updateStage = async (id: string, stage: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/deals/${id}/stage`, {
@@ -443,9 +488,13 @@ function DealsKanban({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => voi
               <div className="space-y-2.5 flex-1 min-h-[300px]">
                 {stageDeals.map((deal) => (
                   <div key={deal.id} className="p-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-2 hover:border-blue-500/30 transition-all">
-                    <p className="font-semibold text-sm text-white">{deal.title}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-sm text-white">{deal.title}</p>
+                      <button onClick={() => onDelete(deal.id)} className="text-gray-500 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
                     <p className="text-xs text-gray-400">{deal.contact?.fullName || 'No contact'}</p>
                     <p className="text-sm font-bold text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
+                    <button onClick={() => onQuote(deal.title, deal.amount || 0)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20 hover:bg-purple-500/20">Generate Quotation</button>
                     <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between">
                       <span className="text-[10px] text-gray-500">{new Date(deal.createdAt).toLocaleDateString()}</span>
                       <select
@@ -470,7 +519,7 @@ function DealsKanban({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => voi
 }
 
 // ─────────────────────────── Tickets Table ────────────────────────────
-function TicketsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => void; onRefresh: () => void }) {
+function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
   const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/tickets/${id}/status`, {
@@ -498,6 +547,7 @@ function TicketsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => vo
           <th className="px-5 py-3.5 font-medium">Priority</th>
           <th className="px-5 py-3.5 font-medium">Status</th>
           <th className="px-5 py-3.5 font-medium">Created</th>
+          <th className="px-5 py-3.5 font-medium text-right">Actions</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-white/[0.04]">
@@ -519,6 +569,9 @@ function TicketsTable({ data, onAdd, onRefresh }: { data: any[]; onAdd: () => vo
               </select>
             </td>
             <td className="px-5 py-4 text-gray-500 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>
+            <td className="px-5 py-4 text-right">
+              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+            </td>
           </tr>
         ))}
       </tbody>

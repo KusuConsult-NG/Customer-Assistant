@@ -18,6 +18,8 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionGuard } from '../common/guards/subscription.guard';
+import { SkipSubscriptionCheck } from '../common/decorators/skip-subscription-check.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
 
@@ -48,6 +50,7 @@ function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | undefine
 }
 
 @Controller('api/whatsapp')
+@UseGuards(SubscriptionGuard)
 export class WhatsappController {
   constructor(private whatsappService: WhatsappService) {}
 
@@ -57,6 +60,7 @@ export class WhatsappController {
    * @SkipThrottle — Meta calls this exactly once. Throttling it would cause verification to fail.
    */
   @SkipThrottle()
+  @SkipSubscriptionCheck()
   @Get('webhook')
   verifyWebhook(
     @Query('hub.mode') mode: string,
@@ -94,6 +98,7 @@ export class WhatsappController {
    *  Security is handled by HMAC-SHA256 signature verification, not rate limiting.
    */
   @SkipThrottle()
+  @SkipSubscriptionCheck()
   @Post('webhook')
   @HttpCode(200)
   async handleWebhook(

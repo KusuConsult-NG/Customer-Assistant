@@ -47,13 +47,27 @@ export class AuthService {
     });
 
     const user = organization.users[0];
-    const tokens = this.generateTokens(user.id, organization.id, user.email, user.fullName, user.role as any);
 
-    return {
-      organization: { id: organization.id, name: organization.name, slug: organization.slug },
-      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role },
-      ...tokens,
-    };
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifyToken: tokenHash }
+    });
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      const resend = new Resend(resendKey);
+      await resend.emails.send({
+        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@aceplatform.io>',
+        to: user.email,
+        subject: 'Verify your email for ACE Platform',
+        html: `<p>Please verify your email address by clicking <a href="${process.env.WEB_BASE_URL || 'http://localhost:3000'}/verify-email?token=${rawToken}">this link</a>.</p>`
+      }).catch(err => console.error('Failed to send verification email', err));
+    }
+
+    return { message: 'Registration successful. Check your email to verify your account.' };
   }
 
   async login(email: string, password: string) {
@@ -68,7 +82,7 @@ export class AuthService {
 
     const tokens = this.generateTokens(user.id, user.organizationId, user.email, user.fullName, user.role as any);
 
-    return {
+    const response: any = {
       user: {
         id: user.id,
         email: user.email,
@@ -79,6 +93,12 @@ export class AuthService {
       },
       ...tokens,
     };
+
+    if (!user.emailVerifiedAt && (Date.now() - user.createdAt.getTime()) > 5 * 60 * 1000) {
+      response.warning = 'Please verify your email address.';
+    }
+
+    return response;
   }
 
   private generateTokens(userId: string, organizationId: string, email: string, fullName: string, role: UserRole) {
@@ -90,6 +110,48 @@ export class AuthService {
     });
 
     return { accessToken, refreshToken };
+  }
+
+  async verifyEmail(token: string) {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const user = await prisma.user.findFirst({ where: { emailVerifyToken: tokenHash } });
+    
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date(), emailVerifyToken: null }
+    });
+    
+    return { message: 'Email verified successfully.' };
+  }
+
+  async resendVerification(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || user.emailVerifiedAt) return { message: 'If an account exists, a verification email has been sent.' };
+    
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifyToken: tokenHash }
+    });
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      const resend = new Resend(resendKey);
+      await resend.emails.send({
+        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@aceplatform.io>',
+        to: user.email,
+        subject: 'Verify your email for ACE Platform',
+        html: `<p>Please verify your email address by clicking <a href="${process.env.WEB_BASE_URL || 'http://localhost:3000'}/verify-email?token=${rawToken}">this link</a>.</p>`
+      }).catch(err => console.error('Failed to send verification email', err));
+    }
+    
+    return { message: 'If an account exists, a verification email has been sent.' };
   }
 
   async refreshToken(refreshTokenStr: string) {

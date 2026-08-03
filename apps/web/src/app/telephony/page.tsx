@@ -152,10 +152,10 @@ export default function TelephonyPage() {
             </div>
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Web Voice Call (Zero Phone Number Required)
+                Voice Call Simulator (Demo Mode)
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">100% Free Web VoIP</span>
               </h2>
-              <p className="text-xs text-gray-300">Talk directly to your AI agent through your browser microphone & speakers. No Twilio, no SIM card, zero charges.</p>
+              <p className="text-xs text-gray-300">Test your AI agent voice responses in demo mode. For real customer calls, connect a phone carrier in settings.</p>
             </div>
           </div>
           <button
@@ -174,7 +174,7 @@ export default function TelephonyPage() {
             }}
             className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
           >
-            <Phone className="w-4 h-4" /> Start Web Voice Call
+            <Phone className="w-4 h-4" /> Start Demo Simulation
           </button>
         </div>
       </div>
@@ -280,13 +280,21 @@ export default function TelephonyPage() {
                     {log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}
                   </td>
                   <td className="px-5 py-4 text-right space-x-2">
-                    <button
-                      onClick={() => togglePlayAudio(log.id)}
-                      className="px-3 py-1 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 text-xs font-semibold inline-flex items-center gap-1"
-                    >
-                      {playingId === log.id ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                      {playingId === log.id ? 'Pause' : 'Play Audio'}
-                    </button>
+                    {log.recordingUrl ? (
+                      <button
+                        onClick={() => window.open(log.recordingUrl, '_blank')}
+                        className="px-3 py-1 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 text-xs font-semibold inline-flex items-center gap-1"
+                      >
+                        <Play className="w-3 h-3" /> Play Audio
+                      </button>
+                    ) : (
+                      <span className="group relative inline-block">
+                        <button disabled className="px-3 py-1 rounded-lg bg-gray-500/10 text-gray-500 border border-gray-500/20 text-xs font-semibold inline-flex items-center gap-1 cursor-not-allowed">
+                          <Play className="w-3 h-3" /> Play Audio
+                        </button>
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 text-[10px] text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity">No recording available</span>
+                      </span>
+                    )}
                     <button
                       onClick={() => setSelectedCall(log)}
                       className="px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 text-xs font-semibold inline-flex items-center gap-1"
@@ -375,9 +383,11 @@ export default function TelephonyPage() {
               </button>
             </div>
             <div className="p-4 rounded-xl bg-black/40 border border-white/[0.06] space-y-3 text-xs text-gray-300 font-mono leading-relaxed max-h-80 overflow-y-auto">
-              <p className="text-blue-400 font-bold">[AI Agent]: Hello! Thank you for calling {provider}. How can I help you today?</p>
-              <p className="text-emerald-400">[Customer]: Hi, I want to inquire about your product pricing and scheduling options.</p>
-              <p className="text-blue-400 font-bold">[AI Agent]: Absolutely! Our packages start at ₦25,000 monthly. I can send you details via WhatsApp right now.</p>
+              {selectedCall.transcript ? (
+                <pre className="whitespace-pre-wrap">{selectedCall.transcript}</pre>
+              ) : (
+                <p className="text-gray-500 text-center py-4">No transcript available for this call.</p>
+              )}
             </div>
           </div>
         </div>

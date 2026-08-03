@@ -5,6 +5,7 @@ import {
 import { Response, Request } from 'express';
 import { TelephonyService } from './telephony.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionGuard } from '../common/guards/subscription.guard';
 import { TelephonyProviderType, AuthUser, CallStatus } from '@ace/shared-types';
 
 @Controller('api/telephony')
@@ -94,7 +95,7 @@ export class TelephonyController {
 
   // ─── Outbound & Admin (JWT protected) ────────────────────────────────────────
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post('outbound')
   async placeOutboundCall(
     @Req() req: { user: AuthUser },

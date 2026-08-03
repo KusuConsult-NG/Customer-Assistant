@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { LeadStatus, DealStage, TicketStatus, TicketPriority } from '@ace/shared-types';
 
 @Injectable()
 export class CrmService {
+  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+
   async getContacts(organizationId: string) {
     return prisma.contact.findMany({
       where: { organizationId },
@@ -13,7 +16,7 @@ export class CrmService {
   }
 
   async createContact(organizationId: string, data: { fullName: string; phoneNumber: string; email?: string; tags?: string[] }) {
-    return prisma.contact.create({
+    const contact = await prisma.contact.create({
       data: {
         organizationId,
         fullName: data.fullName,
@@ -22,6 +25,13 @@ export class CrmService {
         tags: data.tags || [],
       },
     });
+
+    this.webhookDispatcher.dispatch(organizationId, 'contact.created', {
+      contactId: contact.id,
+      fullName: contact.fullName,
+    }).catch(() => {});
+
+    return contact;
   }
 
   async getLeads(organizationId: string) {
@@ -33,7 +43,7 @@ export class CrmService {
   }
 
   async createLead(organizationId: string, contactId: string, notes?: string) {
-    return prisma.lead.create({
+    const lead = await prisma.lead.create({
       data: {
         organizationId,
         contactId,
@@ -42,6 +52,13 @@ export class CrmService {
       },
       include: { contact: true },
     });
+
+    this.webhookDispatcher.dispatch(organizationId, 'lead.captured', {
+      leadId: lead.id,
+      contactId: lead.contactId,
+    }).catch(() => {});
+
+    return lead;
   }
 
   async updateLeadStatus(leadId: string, status: LeadStatus) {
@@ -84,7 +101,7 @@ export class CrmService {
     const count = await prisma.ticket.count({ where: { organizationId } });
     const ticketNumber = `TCK-${Date.now().toString().slice(-4)}-${count + 1}`;
 
-    return prisma.ticket.create({
+    const ticket = await prisma.ticket.create({
       data: {
         organizationId,
         contactId: data.contactId,
@@ -96,6 +113,14 @@ export class CrmService {
       },
       include: { contact: true },
     });
+
+    this.webhookDispatcher.dispatch(organizationId, 'ticket.created', {
+      ticketId: ticket.id,
+      subject: ticket.subject,
+      priority: ticket.priority,
+    }).catch(() => {});
+
+    return ticket;
   }
 
   async updateTicketStatus(ticketId: string, status: TicketStatus) {

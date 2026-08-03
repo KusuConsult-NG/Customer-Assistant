@@ -1,6 +1,7 @@
-import { Controller, Get, Patch, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Delete, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
 @Controller('api/organizations')
@@ -13,6 +14,7 @@ export class OrganizationsController {
     return this.orgsService.getOrganization(req.user.organizationId);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Patch('settings')
   async updateSettings(
     @Req() req: { user: AuthUser },
@@ -21,12 +23,22 @@ export class OrganizationsController {
     return this.orgsService.updateSettings(req.user.organizationId, body);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Post('members')
   async addTeamMember(
     @Req() req: { user: AuthUser },
     @Body() body: { email: string; fullName: string; role: any }
   ) {
     return this.orgsService.addTeamMember(req.user.organizationId, body);
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Delete('members/:id')
+  async removeTeamMember(
+    @Req() req: { user: AuthUser },
+    @Param('id') userId: string
+  ) {
+    return this.orgsService.removeTeamMember(req.user.organizationId, userId);
   }
 
   @Post('whatsapp-config')

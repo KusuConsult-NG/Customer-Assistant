@@ -7,10 +7,20 @@ import {
   Users, MessageSquare, Phone, BarChart3
 } from 'lucide-react';
 
-const PLANS = [
+type Plan = {
+  name: string;
+  price: number;
+  color: string;
+  accentColor: string;
+  badge: string;
+  features: string[];
+  isCustom?: boolean;
+};
+
+const PLANS: Plan[] = [
   {
     name: 'Starter',
-    price: 25000,
+    price: 50000,
     color: 'border-white/[0.08]',
     accentColor: 'text-gray-300',
     badge: '',
@@ -22,10 +32,11 @@ const PLANS = [
       'Basic CRM & Knowledge Base',
       'Email support',
     ],
+    isCustom: false,
   },
   {
-    name: 'Growth',
-    price: 60000,
+    name: 'Professional',
+    price: 150000,
     color: 'border-blue-500/40',
     accentColor: 'text-blue-400',
     badge: 'Most Popular',
@@ -39,10 +50,11 @@ const PLANS = [
       'Analytics dashboard',
       'Priority support',
     ],
+    isCustom: false,
   },
   {
-    name: 'Enterprise',
-    price: 170000,
+    name: 'Business',
+    price: 350000,
     color: 'border-purple-500/30',
     accentColor: 'text-purple-400',
     badge: 'Best Value',
@@ -54,17 +66,15 @@ const PLANS = [
       'White-label branding',
       'Custom AI persona & RAG',
       'API & Webhooks access',
-      'Dedicated account manager',
-      'SLA guarantee',
     ],
+    isCustom: false,
   },
   {
-    name: 'Custom',
-    price: 0,
-    isCustom: true,
+    name: 'Enterprise',
+    price: 1000000,
     color: 'border-amber-500/30',
     accentColor: 'text-amber-400',
-    badge: 'Bespoke Volume',
+    badge: 'Enterprise',
     features: [
       'Unlimited WhatsApp numbers',
       'Unlimited AI tokens & messages',
@@ -75,6 +85,7 @@ const PLANS = [
       '24/7 Phone & WhatsApp support',
       'Custom integration engineering',
     ],
+    isCustom: false,
   },
 ];
 
@@ -146,6 +157,13 @@ export default function BillingPage() {
         <p className="text-sm text-gray-400 mt-1">Manage your subscription and usage.</p>
       </div>
 
+      {subscription && ['PAST_DUE', 'CANCELLED'].includes(subscription.status) && (
+        <div className="bg-red-500/20 border border-red-500 text-red-400 p-4 rounded-xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="font-semibold text-sm">Your subscription is inactive. Renew now to restore access to all features.</span>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>
       ) : (
@@ -192,11 +210,10 @@ export default function BillingPage() {
           {subscription && (
             <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6">
               <h3 className="font-semibold text-white mb-5">This Month's Usage</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {[
-                  { label: 'AI Messages', icon: <MessageSquare className="w-4 h-4 text-blue-400" />, used: subscription.usage?.messagesUsed || 0, limit: subscription.usage?.messagesLimit || 500 },
-                  { label: 'Voice Minutes', icon: <Phone className="w-4 h-4 text-purple-400" />, used: subscription.usage?.minutesUsed || 0, limit: subscription.usage?.minutesLimit || 100 },
-                  { label: 'Team Members', icon: <Users className="w-4 h-4 text-emerald-400" />, used: subscription.usage?.membersUsed || 1, limit: subscription.usage?.membersLimit || 2 },
+                  { label: 'AI Messages (WhatsApp)', icon: <MessageSquare className="w-4 h-4 text-blue-400" />, used: subscription.whatsappMessagesUsed || 0, limit: subscription.whatsappMessagesIncluded || 1500 },
+                  { label: 'Voice Minutes', icon: <Phone className="w-4 h-4 text-purple-400" />, used: subscription.callMinutesUsed || 0, limit: subscription.callMinutesIncluded || 300 },
                 ].map(u => {
                   const pct = usagePercent(u.used, u.limit);
                   return (
@@ -266,21 +283,14 @@ export default function BillingPage() {
                       <div className="w-full py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] text-center text-xs font-semibold text-gray-400">
                         Current Plan
                       </div>
-                    ) : plan.isCustom ? (
-                      <a
-                        href="mailto:enterprise@acedemo.com?subject=ACE%20Custom%20Enterprise%20Plan%20Inquiry"
-                        className="w-full py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-500/20"
-                      >
-                        <ArrowUpRight className="w-4 h-4" /> Contact Sales
-                      </a>
                     ) : (
                       <button
                         onClick={() => handleUpgrade(plan.name)}
                         disabled={upgrading === plan.name}
                         className={`w-full py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
-                          plan.name === 'Growth'
+                          plan.name === 'Professional'
                             ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                            : plan.name === 'Enterprise'
+                            : plan.name === 'Business' || plan.name === 'Enterprise'
                             ? 'bg-purple-600/80 hover:bg-purple-600 text-white shadow-lg shadow-purple-500/20'
                             : 'bg-white/[0.06] hover:bg-white/[0.1] text-gray-300 border border-white/[0.08]'
                         } disabled:opacity-50`}

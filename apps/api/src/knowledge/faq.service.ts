@@ -1,0 +1,49 @@
+import { Injectable } from '@nestjs/common';
+import { prisma } from '@ace/database';
+
+@Injectable()
+export class FaqService {
+  async getFaqs(organizationId: string) {
+    return prisma.faqEntry.findMany({
+      where: { organizationId },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  async createFaq(organizationId: string, data: { question: string; answer: string; category?: string }) {
+    const count = await prisma.faqEntry.count({ where: { organizationId } });
+    return prisma.faqEntry.create({
+      data: {
+        organizationId,
+        question: data.question,
+        answer: data.answer,
+        category: data.category,
+        sortOrder: count,
+      },
+    });
+  }
+
+  async updateFaq(organizationId: string, id: string, data: { question?: string; answer?: string; category?: string }) {
+    return prisma.faqEntry.update({
+      where: { id, organizationId },
+      data,
+    });
+  }
+
+  async deleteFaq(organizationId: string, id: string) {
+    return prisma.faqEntry.delete({
+      where: { id, organizationId },
+    });
+  }
+
+  async reorderFaqs(organizationId: string, ids: string[]) {
+    const transactions = ids.map((id, index) =>
+      prisma.faqEntry.update({
+        where: { id, organizationId },
+        data: { sortOrder: index },
+      })
+    );
+    await prisma.$transaction(transactions);
+    return { success: true };
+  }
+}

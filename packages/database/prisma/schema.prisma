@@ -167,6 +167,11 @@ model Organization {
   bookings             Booking[]
   reservations         Reservation[]
   calendarIntegrations CalendarIntegration[]
+  faqEntries           FaqEntry[]
+
+  // White-label webhook settings
+  webhookUrl              String?
+  enabledWebhookEvents    String[]  @default([])
 
   @@map("organizations")
 }
@@ -182,12 +187,13 @@ model User {
   avatarUrl               String?
   isActive                Boolean      @default(true)
   // ─── Password Reset ──────────────────────────────────────────────────────
-  // SHA-256 hash of the reset token (never store raw tokens in DB).
-  // Expires after 30 minutes. Cleared after successful reset.
   passwordResetToken      String?
   passwordResetExpiresAt  DateTime?
-  createdAt               DateTime     @default(now())
-  updatedAt               DateTime     @updatedAt
+  // ─── Email Verification ──────────────────────────────────────────────────
+  emailVerifiedAt         DateTime?
+  emailVerifyToken        String?   @unique
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   assignedConversations Conversation[] @relation("AssignedAgent")
   assignedTickets       Ticket[]       @relation("AssignedTicketAgent")
@@ -496,4 +502,34 @@ model CalendarIntegration {
   createdAt      DateTime     @default(now())
 
   @@map("calendar_integrations")
+}
+
+model FaqEntry {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  question       String
+  answer         String       @db.Text
+  category       String?      @default("General")
+  isActive       Boolean      @default(true)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("faq_entries")
+}
+
+model WebhookLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  eventType      String
+  payload        Json
+  targetUrl      String
+  statusCode     Int?
+  success        Boolean  @default(false)
+  error          String?
+  deliveredAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  @@map("webhook_logs")
 }

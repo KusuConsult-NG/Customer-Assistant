@@ -49,3 +49,10 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #374151;
 }
+
+@media (max-width: 768px) {
+  .sidebar-hidden {
+    display: none;
+  }
+}
+

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
@@ -64,6 +65,7 @@ function verifyAfricasTalkingSignature(
 
 @Injectable()
 export class TelephonyService {
+  constructor(private webhookDispatcher: WebhookDispatcherService) {}
 
   async handleInboundCall(
     providerType: TelephonyProviderType,
@@ -165,6 +167,11 @@ export class TelephonyService {
       },
     });
 
+    this.webhookDispatcher.dispatch(organizationId, 'call.started', {
+      callSid,
+      direction: CallDirection.INBOUND,
+    }).catch(() => {});
+
     log.info('telephony_call_log_created', {
       correlationId,
       callLogId: callLog.id,
@@ -260,7 +267,12 @@ export class TelephonyService {
       },
     });
 
-    log.info('telephony_outbound_call_queued', {
+    this.webhookDispatcher.dispatch(organizationId, 'call.started', {
+      callSid: record.callId,
+      direction: CallDirection.OUTBOUND,
+    }).catch(() => {});
+
+    log.info('telephony_outbound_call_initiated', {
       correlationId,
       callLogId: callLog.id,
       callSid:   record.callId,
@@ -287,6 +299,13 @@ export class TelephonyService {
           : {}),
       },
     });
+
+    if (status === CallStatus.COMPLETED) {
+      this.webhookDispatcher.dispatch(callLog.organizationId, 'call.completed', {
+        callSid,
+        durationSeconds: duration,
+      }).catch(() => {});
+    }
 
     log.info('telephony_call_status_updated', {
       correlationId,

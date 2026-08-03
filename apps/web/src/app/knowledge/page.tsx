@@ -51,10 +51,10 @@ export default function KnowledgePage() {
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc | null>(null);
 
   // FAQ Manager state
-  const [faqs, setFaqs] = useState<FaqPair[]>([
-    { id: '1', question: 'What are your working hours?', answer: 'We are open Monday through Friday from 8:00 AM to 6:00 PM WAT.', category: 'General' },
-    { id: '2', question: 'How do I request a refund?', answer: 'You can request a refund by navigating to the Scheduling section or contacting our support team with your booking reference.', category: 'Billing' },
-  ]);
+  const [faqs, setFaqs] = useState<FaqPair[]>([]);
+  const [editingFaq, setEditingFaq] = useState<string | null>(null);
+  const [editQuestion, setEditQuestion] = useState('');
+  const [editAnswer, setEditAnswer] = useState('');
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [faqQuestion, setFaqQuestion] = useState('');
   const [faqAnswer, setFaqAnswer] = useState('');
@@ -84,11 +84,24 @@ export default function KnowledgePage() {
     }
   }, []);
 
+  const fetchFaqs = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/knowledge/faqs`, { headers: authHeaders });
+      if (res.ok) {
+        const data = await res.json();
+        setFaqs(data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDocs();
-    const interval = setInterval(fetchDocs, 8000);
+    fetchFaqs();
+    const interval = setInterval(() => { fetchDocs(); fetchFaqs(); }, 8000);
     return () => clearInterval(interval);
-  }, [fetchDocs]);
+  }, [fetchDocs, fetchFaqs]);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('ace_token') : '';
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -207,31 +220,60 @@ export default function KnowledgePage() {
   const handleAddFaq = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!faqQuestion.trim() || !faqAnswer.trim()) return;
-    const newFaq: FaqPair = {
-      id: Date.now().toString(),
-      question: faqQuestion,
-      answer: faqAnswer,
-      category: faqCategory,
-    };
-    setFaqs(prev => [...prev, newFaq]);
 
-    // Also index into knowledge base as text doc
     try {
-      const text = `Q: ${faqQuestion}\nA: ${faqAnswer}`;
-      const base64 = btoa(unescape(encodeURIComponent(text)));
-      await api.knowledge.uploadDocument({
-        title: `FAQ: ${faqQuestion}`,
-        fileName: `FAQ_${Date.now()}.txt`,
-        fileSize: text.length,
-        mimeType: 'text/plain',
-        fileBufferBase64: base64,
+      const res = await fetch(`${API_URL}/api/knowledge/faqs`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ question: faqQuestion, answer: faqAnswer, category: faqCategory })
       });
-      fetchDocs();
-    } catch {}
+      if (res.ok) {
+        fetchFaqs();
+        setShowFaqModal(false);
+        setFaqQuestion('');
+        setFaqAnswer('');
+      } else {
+        alert('Failed to add FAQ');
+      }
+    } catch (err) {
+      alert('Error adding FAQ');
+    }
+  };
 
-    setShowFaqModal(false);
-    setFaqQuestion('');
-    setFaqAnswer('');
+  const handleEditFaq = async (id: string) => {
+    if (!editQuestion.trim() || !editAnswer.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/api/knowledge/faqs/${id}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ question: editQuestion, answer: editAnswer })
+      });
+      if (res.ok) {
+        fetchFaqs();
+        setEditingFaq(null);
+      } else {
+        alert('Failed to edit FAQ');
+      }
+    } catch (err) {
+      alert('Error editing FAQ');
+    }
+  };
+
+  const handleDeleteFaq = async (id: string) => {
+    if (!confirm('Delete this FAQ rule?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/knowledge/faqs/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders
+      });
+      if (res.ok) {
+        fetchFaqs();
+      } else {
+        alert('Failed to delete FAQ');
+      }
+    } catch (err) {
+      alert('Error deleting FAQ');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -476,14 +518,34 @@ export default function KnowledgePage() {
               </div>
               <div className="space-y-3">
                 {faqs.map((faq) => (
-                  <div key={faq.id} className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] text-gray-400">{faq.category}</span>
-                    </div>
-                    <p className="text-xs text-gray-300 leading-relaxed">A: {faq.answer}</p>
+                  <div key={faq.id} className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
+                    {editingFaq === faq.id ? (
+                      <div className="space-y-3">
+                        <input type="text" value={editQuestion} onChange={e => setEditQuestion(e.target.value)} className="w-full px-3 py-1.5 rounded bg-white/[0.05] border border-white/10 text-white text-sm" />
+                        <textarea value={editAnswer} onChange={e => setEditAnswer(e.target.value)} className="w-full px-3 py-1.5 rounded bg-white/[0.05] border border-white/10 text-white text-sm" rows={2} />
+                        <div className="flex gap-2">
+                          <button onClick={() => handleEditFaq(faq.id)} className="px-3 py-1 bg-emerald-500/20 text-emerald-300 text-xs rounded hover:bg-emerald-500/30">Save</button>
+                          <button onClick={() => setEditingFaq(null)} className="px-3 py-1 bg-gray-500/20 text-gray-300 text-xs rounded hover:bg-gray-500/30">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] text-gray-400">{faq.category}</span>
+                            <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-400 hover:underline">Edit</button>
+                            <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-400 hover:underline">Delete</button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-300 leading-relaxed">A: {faq.answer}</p>
+                      </>
+                    )}
                   </div>
                 ))}
+                {faqs.length === 0 && (
+                  <div className="text-center py-10 text-gray-500">No FAQ rules defined.</div>
+                )}
               </div>
             </div>
           )}

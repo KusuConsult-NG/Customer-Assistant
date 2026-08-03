@@ -15,15 +15,43 @@ import {
   Calendar,
   PhoneCall,
   ChevronRight,
-  Bell
+  Bell,
+  Menu,
+  X
 } from 'lucide-react';
+import { io } from 'socket.io-client';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const didRedirect = useRef(false);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    const token = localStorage.getItem('ace_token');
+    if (token) {
+      const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000', {
+        auth: { token }
+      });
+      const handleEvent = (type: string) => (data: any) => {
+        setNotifications(prev => {
+          const newNotifs = [{ type, text: data?.text || `New ${type.replace('new_', '')}`, timestamp: new Date().toISOString(), read: false }, ...prev];
+          return newNotifs.slice(0, 20);
+        });
+      };
+      socket.on('new_message', handleEvent('new_message'));
+      socket.on('new_ticket', handleEvent('new_ticket'));
+      socket.on('new_call', handleEvent('new_call'));
+      socket.on('new_lead', handleEvent('new_lead'));
+      return () => { socket.disconnect(); };
+    }
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -100,7 +128,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         ) : (
           <div className="flex h-screen overflow-hidden">
             {/* Sidebar */}
-            <aside className="w-64 flex-shrink-0 flex flex-col justify-between border-r border-white/[0.06] bg-[#0d1225] z-20">
+            {sidebarOpen && (
+              <div 
+                className="fixed inset-0 bg-black/50 z-20 md:hidden" 
+                onClick={() => setSidebarOpen(false)} 
+              />
+            )}
+            <aside className={`fixed md:relative z-30 w-64 h-full flex-shrink-0 flex flex-col justify-between border-r border-white/[0.06] bg-[#0d1225] transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+              <button 
+                className="md:hidden absolute top-4 right-4 text-gray-400 hover:text-white z-50"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <X className="w-5 h-5" />
+              </button>
               {/* Top section */}
               <div className="flex flex-col h-full">
                 {/* Logo */}
@@ -170,16 +210,47 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {/* Top bar */}
               <header className="h-14 flex-shrink-0 flex items-center justify-between px-6 border-b border-white/[0.06] bg-[#080c18]">
                 <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <button className="md:hidden mr-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}>
+                    <Menu className="w-5 h-5" />
+                  </button>
                   {/* Breadcrumb */}
                   <span>ACE</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                   <span className="text-white font-medium capitalize">{pathname.slice(1) || 'Dashboard'}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button className="relative w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
-                    <Bell className="w-4 h-4" />
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-500" />
-                  </button>
+                  <div className="relative">
+                    <button 
+                      className="relative w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                      onClick={() => setShowNotifications(!showNotifications)}
+                    >
+                      <Bell className="w-4 h-4" />
+                      {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}
+                    </button>
+                    {showNotifications && (
+                      <div className="absolute right-0 mt-2 w-72 bg-[#0d1225] border border-white/[0.06] rounded-xl shadow-xl z-50">
+                        <div className="p-3 border-b border-white/[0.06] flex justify-between items-center">
+                          <span className="text-sm font-semibold text-white">Notifications</span>
+                          <button onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))} className="text-xs text-blue-400 hover:text-blue-300">Mark all read</button>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto">
+                          {notifications.length === 0 ? (
+                            <div className="p-4 text-sm text-gray-500 text-center">No notifications</div>
+                          ) : (
+                            notifications.map((n, i) => (
+                              <div key={i} className={`p-3 border-b border-white/[0.06] flex items-start gap-2 ${!n.read ? 'bg-white/[0.02]' : ''}`}>
+                                <div className="w-2 h-2 mt-1.5 rounded-full bg-blue-500 flex-shrink-0" style={{ opacity: n.read ? 0 : 1 }} />
+                                <div>
+                                  <div className="text-xs text-gray-200">{n.text}</div>
+                                  <div className="text-[10px] text-gray-500 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-xs">
                     {initials}
                   </div>

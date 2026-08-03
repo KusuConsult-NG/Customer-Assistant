@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { Resend } from 'resend';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class OrganizationsService {
@@ -37,17 +39,47 @@ export class OrganizationsService {
     organizationId: string,
     userData: { email: string; fullName: string; role: any }
   ) {
-    const bcrypt = await import('bcryptjs');
-    const defaultPasswordHash = await bcrypt.hash('TempPassword123!', 10);
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const defaultPasswordHash = crypto.randomBytes(32).toString('hex');
 
-    return prisma.user.create({
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+
+    const user = await prisma.user.create({
       data: {
         organizationId,
         email: userData.email,
         fullName: userData.fullName,
         role: userData.role,
         passwordHash: defaultPasswordHash,
+        passwordResetToken: hashedToken,
+        passwordResetExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
+    });
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      try {
+        const resend = new Resend(resendKey);
+        await resend.emails.send({
+          from: 'ACE Platform <noreply@aceplatform.io>',
+          to: user.email,
+          subject: `You've been invited to join ${org?.name || 'ACE Platform'}`,
+          html: `<p>You have been invited to join ${org?.name || 'ACE Platform'} on ACE Platform.</p><p><a href="${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account?token=${rawToken}&email=${encodeURIComponent(user.email)}">Click here to set up your account</a></p>`,
+        });
+      } catch (err) {
+        console.error('Failed to send invite email:', err);
+      }
+    } else {
+      console.warn(`RESEND_API_KEY not set. Invite link: ${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account?token=${rawToken}&email=${encodeURIComponent(user.email)}`);
+    }
+
+    return user;
+  }
+
+  async removeTeamMember(organizationId: string, userId: string) {
+    return prisma.user.delete({
+      where: { id: userId, organizationId },
     });
   }
 

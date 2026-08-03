@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
@@ -38,6 +39,8 @@ function resolveWhatsAppClient(config: {
 export class WhatsappService {
   private orchestrator = new ConversationOrchestrator();
 
+  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+
   /**
    * processIncomingWebhook
    *
@@ -67,11 +70,50 @@ export class WhatsappService {
       const phoneNumberId: string = change.metadata?.phone_number_id;
       const fromNumber: string = message.from;
       const messageId: string = message.id;
-      const textContent: string =
-        message.text?.body ||
-        message.interactive?.button_reply?.title ||
-        message.interactive?.list_reply?.title ||
-        '[non-text message]';
+
+      // ── Resolve message content & media ────────────────────────────────────
+      let textContent: string;
+      let mediaUrl: string | undefined;
+      let mediaType: string | undefined;
+
+      if (message.text?.body) {
+        textContent = message.text.body;
+      } else if (message.interactive?.button_reply?.title) {
+        textContent = message.interactive.button_reply.title;
+      } else if (message.interactive?.list_reply?.title) {
+        textContent = message.interactive.list_reply.title;
+      } else if (message.type === 'image') {
+        const caption = message.image?.caption ? ` — "${message.image.caption}"` : '';
+        textContent = `[Customer sent an image${caption}]`;
+        mediaUrl = message.image?.id ? `https://graph.facebook.com/v20.0/${message.image.id}` : undefined;
+        mediaType = 'image';
+      } else if (message.type === 'audio') {
+        textContent = '[Customer sent a voice message]';
+        mediaUrl = message.audio?.id ? `https://graph.facebook.com/v20.0/${message.audio.id}` : undefined;
+        mediaType = 'audio';
+      } else if (message.type === 'video') {
+        const caption = message.video?.caption ? ` — "${message.video.caption}"` : '';
+        textContent = `[Customer sent a video${caption}]`;
+        mediaUrl = message.video?.id ? `https://graph.facebook.com/v20.0/${message.video.id}` : undefined;
+        mediaType = 'video';
+      } else if (message.type === 'document') {
+        const filename = message.document?.filename ? ` (${message.document.filename})` : '';
+        textContent = `[Customer sent a document${filename}]`;
+        mediaUrl = message.document?.id ? `https://graph.facebook.com/v20.0/${message.document.id}` : undefined;
+        mediaType = 'document';
+      } else if (message.type === 'sticker') {
+        textContent = '[Customer sent a sticker]';
+        mediaType = 'sticker';
+      } else if (message.type === 'location') {
+        const lat = message.location?.latitude;
+        const lng = message.location?.longitude;
+        const name = message.location?.name ? ` (${message.location.name})` : '';
+        textContent = `[Customer shared a location${name}: lat ${lat}, lng ${lng}]`;
+      } else if (message.type === 'contacts') {
+        textContent = '[Customer shared a contact card]';
+      } else {
+        textContent = `[Customer sent a ${message.type ?? 'unknown'} message]`;
+      }
 
       log.info('whatsapp_message_received', {
         correlationId,
@@ -81,6 +123,7 @@ export class WhatsappService {
         messageType: message.type,
         phoneNumberId,
       });
+
 
       // ── 1. Resolve Organization from phone number ID ──────────────────────────
       let config = await prisma.whatsAppConfig.findFirst({
@@ -119,6 +162,8 @@ export class WhatsappService {
           conversationId: conversation.id,
           sender: MessageSender.CUSTOMER,
           content: textContent,
+          mediaUrl: mediaUrl ?? null,
+          mediaType: mediaType ?? null,
           metadata: { messageId, messageType: message.type },
         },
       });
@@ -127,6 +172,12 @@ export class WhatsappService {
         where: { id: conversation.id },
         data: { lastMessageAt: new Date() },
       });
+
+      this.webhookDispatcher.dispatch(organizationId, 'message.received', {
+        contactPhone: fromNumber,
+        message: textContent,
+        conversationId: conversation.id,
+      }).catch(err => log.error('webhook_dispatch_failed', err, { correlationId }));
 
       // ── 5. Human agent takeover check ─────────────────────────────────────────
       if (conversation.isHumanHandoffActive) {

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
 @Controller('api/knowledge')
@@ -46,6 +47,7 @@ export class KnowledgeController {
     return this.knowledgeService.crawlAndIndexWebsite(req.user.organizationId, body.url);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Delete('documents/:id')
   async deleteDocument(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.knowledgeService.deleteDocument(req.user.organizationId, id);

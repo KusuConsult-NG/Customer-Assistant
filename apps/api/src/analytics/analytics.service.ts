@@ -1,41 +1,98 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ace/database';
 
+type Period = '7d' | '30d' | '90d';
+
+function periodToDays(period: Period): number {
+  return period === '90d' ? 90 : period === '30d' ? 30 : 7;
+}
+
 @Injectable()
 export class AnalyticsService {
-  async getDashboardSummary(organizationId: string) {
-    const totalCalls = await prisma.callLog.count({ where: { organizationId } });
-    const totalConversations = await prisma.conversation.count({ where: { organizationId } });
-    const totalContacts = await prisma.contact.count({ where: { organizationId } });
-    const totalLeads = await prisma.lead.count({ where: { organizationId } });
-    const totalBookings = await prisma.booking.count({ where: { organizationId } });
-    const totalReservations = await prisma.reservation.count({ where: { organizationId } });
-    const openTickets = await prisma.ticket.count({ where: { organizationId, status: 'OPEN' } });
+
+  async getDashboardSummary(organizationId: string, period: Period = '7d') {
+    const days = periodToDays(period);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // ── All-time totals ────────────────────────────────────────────────────────
+    const [
+      totalCalls,
+      totalConversations,
+      totalContacts,
+      totalLeads,
+      totalBookings,
+      totalReservations,
+      openTickets,
+      resolvedTickets,
+      totalAiMessages,
+      totalMessages,
+      whatsappConversations,
+      webchatConversations,
+    ] = await Promise.all([
+      prisma.callLog.count({ where: { organizationId } }),
+      prisma.conversation.count({ where: { organizationId } }),
+      prisma.contact.count({ where: { organizationId } }),
+      prisma.lead.count({ where: { organizationId } }),
+      prisma.booking.count({ where: { organizationId } }),
+      prisma.reservation.count({ where: { organizationId } }),
+      prisma.ticket.count({ where: { organizationId, status: 'OPEN' } }),
+      prisma.ticket.count({ where: { organizationId, status: 'RESOLVED' } }),
+      prisma.message.count({ where: { conversation: { organizationId }, sender: 'AI' } }),
+      prisma.message.count({ where: { conversation: { organizationId } } }),
+      prisma.conversation.count({ where: { organizationId, channel: 'WHATSAPP' } }),
+      prisma.conversation.count({ where: { organizationId, channel: 'WEBCHAT' } }),
+    ]);
 
     const deals = await prisma.deal.findMany({ where: { organizationId } });
     const pipelineValue = deals.reduce((sum: number, d: any) => sum + d.amount, 0);
 
-    const callLogs = await prisma.callLog.findMany({
-      where: { organizationId },
-      take: 10,
-      orderBy: { startedAt: 'desc' },
-    });
+    // ── Period totals (filtered by date range) ─────────────────────────────────
+    const [periodCalls, periodConversations, periodLeads, periodBookings] = await Promise.all([
+      prisma.callLog.count({ where: { organizationId, startedAt: { gte: since } } }),
+      prisma.conversation.count({ where: { organizationId, createdAt: { gte: since } } }),
+      prisma.lead.count({ where: { organizationId, createdAt: { gte: since } } }),
+      prisma.booking.count({ where: { organizationId, createdAt: { gte: since } } }),
+    ]);
 
-    const recentConversations = await prisma.conversation.findMany({
+    // ── Total call minutes ────────────────────────────────────────────────────
+    const callDurationAgg = await prisma.callLog.aggregate({
+      _sum: { durationSeconds: true },
       where: { organizationId },
-      take: 5,
-      orderBy: { lastMessageAt: 'desc' },
-      include: { contact: true, messages: { take: 1, orderBy: { sentAt: 'desc' } } },
     });
+    const totalCallMinutes = Math.ceil(((callDurationAgg._sum.durationSeconds as number) ?? 0) / 60);
 
-    const whatsappConversations = await prisma.conversation.count({
-      where: { organizationId, channel: 'WHATSAPP' },
-    });
-    const webchatConversations = await prisma.conversation.count({
-      where: { organizationId, channel: 'WEBCHAT' },
-    });
+    // ── AI Metrics ────────────────────────────────────────────────────────────
+    const totalTickets = openTickets + resolvedTickets;
+    const resolutionRate = totalTickets > 0
+      ? Math.round((resolvedTickets / totalTickets) * 100)
+      : null;
+    const aiReplyRate = totalMessages > 0
+      ? Math.round((totalAiMessages / totalMessages) * 100)
+      : null;
+    const handoverRate = totalConversations > 0
+      ? Math.round(((totalTickets) / totalConversations) * 100)
+      : null;
+
+    // ── Weekly trend data (last N days, grouped by day) ───────────────────────
+    const weeklyData = await this.buildWeeklyTrend(organizationId, days);
+
+    // ── Recent activity ───────────────────────────────────────────────────────
+    const [recentCalls, recentConversations] = await Promise.all([
+      prisma.callLog.findMany({
+        where: { organizationId },
+        take: 10,
+        orderBy: { startedAt: 'desc' },
+      }),
+      prisma.conversation.findMany({
+        where: { organizationId },
+        take: 5,
+        orderBy: { lastMessageAt: 'desc' },
+        include: { contact: true, messages: { take: 1, orderBy: { sentAt: 'desc' } } },
+      }),
+    ]);
 
     return {
+      period,
       metrics: {
         totalCalls,
         totalConversations,
@@ -45,15 +102,63 @@ export class AnalyticsService {
         totalReservations,
         openTickets,
         pipelineValue,
+        totalCallMinutes,
+        // Period-specific
+        periodCalls,
+        periodConversations,
+        periodLeads,
+        periodBookings,
+      },
+      aiMetrics: {
+        resolutionRate,   // null if no tickets yet
+        aiReplyRate,      // % of messages sent by AI
+        handoverRate,     // % of conversations that became tickets
       },
       channelBreakdown: [
         { name: 'WhatsApp', value: whatsappConversations },
         { name: 'Voice Calls', value: totalCalls },
         { name: 'Web Chat', value: webchatConversations },
       ],
-      recentCalls: callLogs,
+      weeklyData,
+      recentCalls,
       recentConversations,
     };
+  }
 
+  /** Builds a per-day trend array for the last N days */
+  private async buildWeeklyTrend(organizationId: string, days: number) {
+    const labels: string[] = [];
+    const conversationCounts: number[] = [];
+    const callCounts: number[] = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const dayStart = new Date();
+      dayStart.setDate(dayStart.getDate() - i);
+      dayStart.setHours(0, 0, 0, 0);
+
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const dayLabel = dayStart.toLocaleDateString('en-GB', {
+        weekday: days <= 7 ? 'short' : undefined,
+        day: days > 7 ? 'numeric' : undefined,
+        month: days > 7 ? 'short' : undefined,
+      });
+
+      const [conversations, calls] = await Promise.all([
+        prisma.conversation.count({
+          where: { organizationId, createdAt: { gte: dayStart, lte: dayEnd } },
+        }),
+        prisma.callLog.count({
+          where: { organizationId, startedAt: { gte: dayStart, lte: dayEnd } },
+        }),
+      ]);
+
+      labels.push(dayLabel);
+      conversationCounts.push(conversations);
+      callCounts.push(calls);
+    }
+
+    return { labels, conversations: conversationCounts, calls: callCounts };
   }
 }

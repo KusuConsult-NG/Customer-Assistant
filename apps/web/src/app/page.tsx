@@ -18,6 +18,10 @@ interface Stats {
   docs: number;
   revenue: number;
   conversionRate: number;
+  conversations: number;
+  bookings: number;
+  reservations: number;
+  openTickets: number;
 }
 
 interface Activity {
@@ -37,6 +41,10 @@ export default function DashboardPage() {
     docs: 0,
     revenue: 0,
     conversionRate: 0,
+    conversations: 0,
+    bookings: 0,
+    reservations: 0,
+    openTickets: 0,
   });
   const [activities, setActivities] = useState<Activity[]>([]);
   const [topLeads, setTopLeads] = useState<any[]>([]);
@@ -44,6 +52,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [orgName, setOrgName] = useState('ACE Platform');
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
+  const [dashboardData, setDashboardData] = useState<any>(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -51,13 +60,14 @@ export default function DashboardPage() {
       const token = localStorage.getItem('ace_token');
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-      const [contactsRes, leadsRes, docsRes, callsRes, dealsRes, orgRes] = await Promise.allSettled([
+      const [contactsRes, leadsRes, docsRes, callsRes, dealsRes, orgRes, dashboardRes] = await Promise.allSettled([
         api.crm.getContacts(),
         api.crm.getLeads(),
         api.knowledge.getDocuments(),
         api.telephony.getCallLogs(),
         api.crm.getDeals(),
         fetch(`${API_URL}/api/organizations/me`, { headers }).then(r => r.ok ? r.json() : null),
+        fetch(`${API_URL}/api/analytics/dashboard?period=${timeRange}`, { headers }).then(r => r.ok ? r.json() : null),
       ]);
 
       const contacts = contactsRes.status === 'fulfilled' ? (contactsRes.value || []) : [];
@@ -65,22 +75,29 @@ export default function DashboardPage() {
       const docs = docsRes.status === 'fulfilled' ? (docsRes.value || []) : [];
       const calls = callsRes.status === 'fulfilled' ? (callsRes.value || []) : [];
       const deals = dealsRes.status === 'fulfilled' ? (dealsRes.value || []) : [];
+      const dashboard = dashboardRes.status === 'fulfilled' ? (dashboardRes.value || null) : null;
 
-      const totalRevenue = deals
+      if (dashboard) setDashboardData(dashboard);
+
+      const totalRevenue = dashboard?.pipelineValue ?? (deals
         .filter((d: any) => d.stage === 'CLOSED_WON')
-        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0));
 
       const convRate = leads.length > 0
         ? Math.round((leads.filter((l: any) => l.status === 'CONVERTED').length / leads.length) * 100)
         : 68;
 
       setStats({
-        contacts: contacts.length,
-        leads: leads.length,
-        calls: calls.length,
+        contacts: dashboard?.totalContacts ?? contacts.length,
+        leads: dashboard?.totalLeads ?? leads.length,
+        calls: dashboard?.totalCalls ?? calls.length,
         docs: docs.length,
         revenue: totalRevenue,
         conversionRate: convRate,
+        conversations: dashboard?.totalConversations ?? 0,
+        bookings: dashboard?.totalBookings ?? 0,
+        reservations: dashboard?.totalReservations ?? 0,
+        openTickets: dashboard?.openTickets ?? 0,
       });
 
       if (orgRes.status === 'fulfilled' && orgRes.value?.name) {
@@ -135,22 +152,33 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [timeRange]);
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // Dummy chart datasets for visual excellence
-  const weeklyData = [
-    { day: 'Mon', whatsapp: 42, voice: 18, web: 25 },
-    { day: 'Tue', whatsapp: 55, voice: 24, web: 32 },
-    { day: 'Wed', whatsapp: 68, voice: 30, web: 40 },
-    { day: 'Thu', whatsapp: 80, voice: 35, web: 48 },
-    { day: 'Fri', whatsapp: 95, voice: 42, web: 60 },
-    { day: 'Sat', whatsapp: 60, voice: 20, web: 35 },
-    { day: 'Sun', whatsapp: 45, voice: 15, web: 22 },
-  ];
+  type WeeklyDataPoint = { day: string; whatsapp: number; voice: number; web: number };
 
-  const maxVal = 100;
+  // Normalize API weeklyData (labels/conversations/calls arrays) to chart format
+  const weeklyData: WeeklyDataPoint[] = (() => {
+    const raw = dashboardData?.weeklyData;
+    if (raw?.labels && Array.isArray(raw.labels)) {
+      return (raw.labels as string[]).map((label: string, i: number) => ({
+        day: label,
+        whatsapp: (raw.conversations as number[])[i] ?? 0,
+        voice: (raw.calls as number[])[i] ?? 0,
+        web: 0,
+      }));
+    }
+    const perDay = Math.round(stats.conversations / 7) || 0;
+    const callsPerDay = Math.round(stats.calls / 7) || 0;
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+      day, whatsapp: perDay, voice: callsPerDay, web: 0,
+    }));
+  })();
+
+  const maxVal = Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)));
+  const aiResolutionRate = stats.conversations > 0 ? Math.round(((stats.conversations - stats.openTickets) / stats.conversations) * 100) : 0;
+
 
   return (
     <div className="space-y-6 max-w-7xl pb-12">
@@ -164,6 +192,11 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-400 mt-1">Here is your live AI customer assistance performance & pipeline overview for {today}.</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex bg-white/[0.04] p-1 rounded-xl">
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === '7d' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === '30d' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === '90d' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>90d</button>
+          </div>
           <button
             onClick={fetchAll}
             className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-white transition-colors"
@@ -243,7 +276,7 @@ export default function DashboardPage() {
 
           {/* Bar chart grid */}
           <div className="h-56 flex items-end justify-between gap-3 pt-6 px-2 border-b border-white/[0.06]">
-            {weeklyData.map((d, idx) => (
+            {weeklyData.map((d: any, idx: number) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="w-full max-w-[36px] flex items-end justify-center gap-1 h-full">
                   <div
@@ -270,14 +303,12 @@ export default function DashboardPage() {
           {/* Key Channel Summary Stats */}
           <div className="grid grid-cols-3 gap-4 pt-2">
             <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-              <p className="text-xs text-gray-400">WhatsApp Volume</p>
-              <p className="text-lg font-bold text-blue-400 mt-1">445 msgs</p>
-              <p className="text-[10px] text-emerald-400 mt-0.5">↑ 18% vs last week</p>
+              <p className="text-xs text-gray-400">Total Conversations</p>
+              <p className="text-lg font-bold text-blue-400 mt-1">{stats.conversations} msgs</p>
             </div>
             <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-              <p className="text-xs text-gray-400">Voice AI Minutes</p>
-              <p className="text-lg font-bold text-purple-400 mt-1">174 mins</p>
-              <p className="text-[10px] text-emerald-400 mt-0.5">↑ 24% vs last week</p>
+              <p className="text-xs text-gray-400">Total Voice Calls</p>
+              <p className="text-lg font-bold text-purple-400 mt-1">{stats.calls} calls</p>
             </div>
             <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
               <p className="text-xs text-gray-400">Avg Resolution Time</p>
@@ -300,26 +331,26 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <ProgressMetric
               label="Autonomous AI Resolution"
-              percentage={92}
-              value="92% of queries solved without human agent"
+              percentage={aiResolutionRate}
+              value={`${aiResolutionRate}% of queries solved without human agent`}
               color="bg-emerald-500"
             />
             <ProgressMetric
               label="Knowledge Retrieval Accuracy"
-              percentage={96}
-              value="96% exact document context match"
+              percentage={'N/A'}
+              value="Awaiting knowledge interaction data"
               color="bg-blue-500"
             />
             <ProgressMetric
               label="Voice Speech-To-Text Confidence"
-              percentage={94}
-              value="Deepgram Nova-2 accuracy score"
+              percentage={'N/A'}
+              value="Awaiting Deepgram STT data"
               color="bg-purple-500"
             />
             <ProgressMetric
               label="Human Handover Rate"
-              percentage={8}
-              value="Only 8% escalated to human team"
+              percentage={100 - aiResolutionRate}
+              value={`${100 - aiResolutionRate}% escalated to human team`}
               color="bg-amber-500"
             />
           </div>
@@ -449,10 +480,10 @@ function ProgressMetric({ label, percentage, value, color }: any) {
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-xs">
         <span className="font-semibold text-gray-200">{label}</span>
-        <span className="font-bold text-white">{percentage}%</span>
+        <span className="font-bold text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
       </div>
       <div className="w-full h-2 rounded-full bg-white/[0.06] overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${percentage}%` }} />
+        <div className={`h-full rounded-full ${color}`} style={{ width: percentage === 'N/A' ? '0%' : `${percentage}%` }} />
       </div>
       <p className="text-[11px] text-gray-500">{value}</p>
     </div>
