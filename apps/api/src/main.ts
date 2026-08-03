@@ -68,7 +68,7 @@ async function bootstrap() {
 
   // ── 6. Start listening ────────────────────────────────────────────────────
   const port = parseInt(process.env.PORT ?? '4000', 10);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   // ── 7. Attach Redis adapter for multi-pod Socket.IO ───────────────────────
   // Must run AFTER app.listen() so the Socket.IO server is fully initialised.
@@ -123,7 +123,7 @@ async function bootstrap() {
     });
   });
 
-  logger.log(`🚀 ACE Platform API running at http://localhost:${port}`);
+  logger.log(`🚀 ACE Platform API running at http://0.0.0.0:${port}`);
   logger.log(`📡 Environment: ${process.env.NODE_ENV ?? 'development'}`);
   logger.log(`🔒 CORS Origin: ${allowedOrigin}`);
   logger.log(`📦 Raw body buffering: ENABLED (required for webhook signature verification)`);
