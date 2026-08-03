@@ -18,7 +18,8 @@ import {
   ChevronRight,
   Bell,
   Menu,
-  X
+  X,
+  Code
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -162,6 +163,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Channels</p>
                   <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Scheduling" pathname={pathname} />
+                  <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Web Chat & Voice Widget" pathname={pathname} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Account</p>
                   <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing" pathname={pathname} />
