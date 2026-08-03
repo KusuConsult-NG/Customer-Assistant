@@ -95,7 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     : 'AD';
 
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark bg-[#080c18] text-white">
       <head>
         <title>ACE Platform — AI-Powered Customer Experience</title>
         <meta name="description" content="Unify your CRM, Knowledge Base, and Omnichannel Communications" />
