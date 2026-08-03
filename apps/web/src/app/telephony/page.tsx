@@ -142,32 +142,31 @@ export default function TelephonyPage() {
     if (playingId === id) setPlayingId(null);
     else setPlayingId(id);
   };
-
   return (
     <div className="space-y-6 max-w-7xl pb-12">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <PhoneCall className="w-6 h-6 text-blue-400" /> Voice AI Telephony & Call Intelligence
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <PhoneCall className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Voice AI Telephony & Call Intelligence
           </h1>
-          <p className="text-sm text-gray-400 mt-1">Manage carriers, trigger live AI calls, inspect recordings and transcripts.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage carriers, trigger live AI calls, inspect recordings and transcripts.</p>
         </div>
       </div>
 
-      {/* Web Voice Call (VoIP) Section — ZERO Telephony Carrier Needed */}
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 space-y-4">
+      {/* Web Voice Call (VoIP) Section */}
+      <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 p-6 space-y-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600/30 flex items-center justify-center text-emerald-400 font-bold">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm">
               <Radio className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 Voice Call Simulator (Demo Mode)
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">100% Free Web VoIP</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-extrabold border border-emerald-300 dark:border-emerald-500/30">100% Free Web VoIP</span>
               </h2>
-              <p className="text-xs text-gray-300">Test your AI agent voice responses in demo mode. For real customer calls, connect a phone carrier in settings.</p>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Test your AI agent voice responses in demo mode. For real customer calls, connect a phone carrier in settings.</p>
             </div>
           </div>
           <button
@@ -184,7 +183,7 @@ export default function TelephonyPage() {
                 setActiveLiveCall(prev => prev ? { ...prev, status: 'CONNECTED' } : null);
               }, 1500);
             }}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all shadow-md shadow-emerald-500/25 flex items-center justify-center gap-2"
           >
             <Phone className="w-4 h-4" /> Start Demo Simulation
           </button>
@@ -192,14 +191,14 @@ export default function TelephonyPage() {
       </div>
 
       {/* Demo Outbound Call Widget Box */}
-      <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-6 space-y-4">
+      <div className="rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-500/10 p-6 space-y-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600/30 flex items-center justify-center text-blue-400 font-bold">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">
             <Phone className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white">Trigger Outbound Phone Call</h2>
-            <p className="text-xs text-gray-300">Enter a phone number to test Twilio / Africa's Talking voice call routing.</p>
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white">Trigger Outbound Phone Call</h2>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Enter a phone number to test Twilio / Africa's Talking voice call routing.</p>
           </div>
         </div>
 
@@ -209,78 +208,78 @@ export default function TelephonyPage() {
             value={demoMobileNumber}
             onChange={(e) => setDemoMobileNumber(e.target.value)}
             placeholder="Enter mobile number e.g. +2348031234567"
-            className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-blue-500"
+            className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-indigo-500 shadow-sm"
             required
           />
           <button
             type="submit"
             disabled={callLoading}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" /> {callLoading ? 'Initiating Call...' : 'Trigger Phone Call'}
           </button>
         </form>
 
         {callStatus && (
-          <div className={`p-4 rounded-xl flex items-center gap-3 text-sm ${callStatus.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'}`}>
+          <div className={`p-4 rounded-xl flex items-center gap-3 text-sm ${callStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400'}`}>
             {callStatus.type === 'success' ? <CheckCircle className="w-5 h-5 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
-            <span className="font-medium">{callStatus.text}</span>
+            <span className="font-bold">{callStatus.text}</span>
           </div>
         )}
       </div>
 
       {/* Call History Table */}
-      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden space-y-3">
-        <div className="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between">
-          <h3 className="font-bold text-white text-base flex items-center gap-2">
-            <Volume2 className="w-5 h-5 text-purple-400" /> Live Call Logs & Audio Transcripts
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden space-y-3 shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <h3 className="font-extrabold text-slate-900 dark:text-white text-base flex items-center gap-2">
+            <Volume2 className="w-5 h-5 text-purple-600 dark:text-purple-400" /> Live Call Logs & Audio Transcripts
           </h3>
-          <button onClick={fetchCallLogs} className="text-gray-500 hover:text-gray-300 transition-colors">
+          <button onClick={fetchCallLogs} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors">
             <RefreshCw className={`w-4 h-4 ${logsLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
         {logsLoading ? (
           <div className="p-6 space-y-3">
-            {[1, 2, 3].map(i => <div key={i} className="h-14 bg-white/[0.03] rounded-xl animate-pulse" />)}
+            {[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 dark:bg-slate-800/40 rounded-xl animate-pulse" />)}
           </div>
         ) : callLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
-              <PhoneOff className="w-8 h-8 text-gray-600" />
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
+              <PhoneOff className="w-8 h-8 text-slate-400" />
             </div>
-            <p className="text-gray-400 font-medium mb-1">No items yet</p>
-            <p className="text-sm text-gray-600 max-w-sm">No calls recorded yet. Configure your telephony provider in Settings to start receiving calls.</p>
+            <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">No items yet</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No calls recorded yet. Configure your telephony provider in Settings to start receiving calls.</p>
           </div>
         ) : (
           <table className="w-full text-sm text-left">
-            <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400">
+            <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               <tr>
-                <th className="px-5 py-3.5 font-medium">Caller / Number</th>
-                <th className="px-5 py-3.5 font-medium">Direction</th>
-                <th className="px-5 py-3.5 font-medium">Duration</th>
-                <th className="px-5 py-3.5 font-medium">Status</th>
-                <th className="px-5 py-3.5 font-medium">Timestamp</th>
-                <th className="px-5 py-3.5 font-medium text-right">Actions</th>
+                <th className="px-5 py-3.5">Caller / Number</th>
+                <th className="px-5 py-3.5">Direction</th>
+                <th className="px-5 py-3.5">Duration</th>
+                <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5">Timestamp</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.04]">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
               {callLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
+                <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="px-5 py-4">
-                    <p className="font-mono text-gray-200 font-bold">{log.fromNumber || log.toNumber || 'Unknown'}</p>
+                    <p className="font-mono text-slate-900 dark:text-slate-100 font-bold">{log.fromNumber || log.toNumber || 'Unknown'}</p>
                   </td>
                   <td className="px-5 py-4">
-                    <span className="flex items-center gap-1.5 text-xs text-gray-300">
+                    <span className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-semibold">
                       {log.direction === 'INBOUND' ? (
-                        <ArrowDownLeft className="w-3.5 h-3.5 text-blue-400" />
+                        <ArrowDownLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                       ) : (
-                        <ArrowUpRight className="w-3.5 h-3.5 text-purple-400" />
+                        <ArrowUpRight className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                       )}
                       {log.direction || 'OUTBOUND'}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-xs font-mono text-gray-400">
+                  <td className="px-5 py-4 text-xs font-mono text-slate-400 dark:text-slate-500">
                     {Math.round((log.durationSeconds || 0) / 60)}m {(log.durationSeconds || 0) % 60}s
                   </td>
                   <td className="px-5 py-4">

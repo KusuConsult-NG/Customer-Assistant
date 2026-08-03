@@ -19,7 +19,7 @@ const TICKET_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 
 function Badge({ text, color }: { text: string; color: string }) {
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${color}`}>
+    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${color}`}>
       {text}
     </span>
   );
@@ -27,23 +27,23 @@ function Badge({ text, color }: { text: string; color: string }) {
 
 function statusColor(status: string) {
   const map: Record<string, string> = {
-    NEW: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
-    CONTACTED: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
-    QUALIFIED: 'bg-purple-500/15 text-purple-400 border-purple-500/20',
-    CONVERTED: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
-    LOST: 'bg-red-500/15 text-red-400 border-red-500/20',
-    OPEN: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
-    IN_PROGRESS: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
-    RESOLVED: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
-    CLOSED: 'bg-gray-500/15 text-gray-400 border-gray-500/20',
-    LEAD: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
-    PROSPECT: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20',
-    PROPOSAL: 'bg-purple-500/15 text-purple-400 border-purple-500/20',
-    NEGOTIATION: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
-    CLOSED_WON: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
-    CLOSED_LOST: 'bg-red-500/15 text-red-400 border-red-500/20',
+    NEW: 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+    CONTACTED: 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+    QUALIFIED: 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
+    CONVERTED: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    LOST: 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
+    OPEN: 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+    IN_PROGRESS: 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+    RESOLVED: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    CLOSED: 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700',
+    LEAD: 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+    PROSPECT: 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20',
+    PROPOSAL: 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
+    NEGOTIATION: 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+    CLOSED_WON: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    CLOSED_LOST: 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
   };
-  return map[status] || 'bg-gray-500/15 text-gray-400 border-gray-500/20';
+  return map[status] || 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700';
 }
 
 export default function CrmPage() {
@@ -170,23 +170,23 @@ export default function CrmPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Users className="w-6 h-6 text-blue-400" /> Customer Relationship Management
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Customer Relationship Management
           </h1>
-          <p className="text-sm text-gray-400 mt-1">Manage contacts, sales pipelines, lead conversions, and customer support tickets.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage contacts, sales pipelines, lead conversions, and customer support tickets.</p>
         </div>
         <div className="flex items-center gap-2">
           {tab === 'contacts' && (
             <button
               onClick={exportContactsCsv}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-gray-300 hover:text-white text-sm font-semibold transition-all"
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white text-sm font-semibold transition-all shadow-sm"
             >
               <Download className="w-4 h-4" /> Export CSV
             </button>
           )}
           <button
             onClick={() => setModalType(tab === 'contacts' ? 'contact' : tab === 'leads' ? 'lead' : tab === 'deals' ? 'deal' : 'ticket')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
           >
             <Plus className="w-4 h-4" />
             Add {tab === 'contacts' ? 'Contact' : tab === 'leads' ? 'Lead' : tab === 'deals' ? 'Deal' : 'Ticket'}
@@ -195,41 +195,41 @@ export default function CrmPage() {
       </div>
 
       {/* Tabs & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.06] pb-4">
-        <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] w-fit">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 w-fit">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => { setTab(t.id); setSearch(''); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
                 tab === t.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
             >
               {t.icon}
               {t.label}
-              <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
-                tab === t.id ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-500'
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-extrabold ${
+                tab === t.id ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}>{t.count}</span>
             </button>
           ))}
         </div>
 
         {tab === 'deals' && (
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50">
             <button
               onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <List className="w-3.5 h-3.5" /> Table
             </button>
             <button
               onClick={() => setViewMode('kanban')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Kanban Board
@@ -240,18 +240,18 @@ export default function CrmPage() {
 
       {/* Search Bar */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
           placeholder={`Search ${tab}...`}
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 text-sm"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-sm shadow-sm font-medium"
         />
       </div>
 
       {/* Content Area */}
-      <div className="rounded-2xl border border-white/[0.06] overflow-hidden bg-white/[0.02]">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900/80 shadow-sm">
         {loading ? (
           <div className="p-6 space-y-3">
             {[1, 2, 3, 4].map(i => (
@@ -415,64 +415,64 @@ function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void
         <input
           type="text"
           placeholder="Search contacts by name, phone, or email..."
-          className="px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500/50 w-64"
+          className="px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500/50 w-64 shadow-sm"
           onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
           value={searchQuery}
         />
       </div>
       
       {loading ? (
-        <div className="py-20 flex justify-center"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>
+        <div className="py-20 flex justify-center"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
       ) : data.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
-            <Users className="w-8 h-8 text-gray-600" />
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
+            <Users className="w-8 h-8 text-slate-400" />
           </div>
-          <p className="text-gray-400 font-medium mb-1">No items yet</p>
-          <p className="text-sm text-gray-600 max-w-sm">No contacts yet. Your first customers will appear here when they message you on WhatsApp or call your number.</p>
+          <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">No items yet</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No contacts yet. Your first customers will appear here when they message you on WhatsApp or call your number.</p>
         </div>
       ) : (
         <>
           <table className="w-full text-sm text-left">
-            <thead className="bg-white/[0.03] border-b border-white/[0.06] text-gray-400">
+            <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               <tr>
-                <th className="px-5 py-3.5 font-medium">Name</th>
-                <th className="px-5 py-3.5 font-medium">Phone Number</th>
-                <th className="px-5 py-3.5 font-medium">Email</th>
-                <th className="px-5 py-3.5 font-medium">Tags</th>
-                <th className="px-5 py-3.5 font-medium">Created</th>
-                <th className="px-5 py-3.5 font-medium text-right">Actions</th>
+                <th className="px-5 py-3.5">Name</th>
+                <th className="px-5 py-3.5">Phone Number</th>
+                <th className="px-5 py-3.5">Email</th>
+                <th className="px-5 py-3.5">Tags</th>
+                <th className="px-5 py-3.5">Created</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.04]">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
               {data.map((c) => (
-                <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => onSelectContact(c)}>
+                <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer" onClick={() => onSelectContact(c)}>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-blue-500/15 text-blue-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 font-extrabold text-xs flex items-center justify-center flex-shrink-0">
                         {(c.fullName || 'U')[0].toUpperCase()}
                       </div>
-                      <span className="font-semibold text-gray-200 group-hover:text-blue-400 transition-colors">{c.fullName}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{c.fullName}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-gray-400 font-mono text-xs">{c.phoneNumber || '—'}</td>
-                  <td className="px-5 py-4 text-gray-400 text-xs">{c.email || '—'}</td>
+                  <td className="px-5 py-4 text-slate-700 dark:text-slate-300 font-mono text-xs font-medium">{c.phoneNumber || '—'}</td>
+                  <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-xs font-medium">{c.email || '—'}</td>
                   <td className="px-5 py-4">
                     <div className="flex gap-1 flex-wrap">
                       {(c.tags || ['customer']).map((t: string) => (
-                        <Badge key={t} text={t} color="bg-blue-500/10 text-blue-400 border-blue-500/20" />
+                        <Badge key={t} text={t} color="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20" />
                       ))}
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-gray-500 text-xs">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
+                  <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
                   <td className="px-5 py-4 text-right space-x-2">
                     <button
                       onClick={(e) => { e.stopPropagation(); onSelectContact(c); }}
-                      className="px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-all"
+                      className="px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-xs font-bold transition-all"
                     >
                       View Profile
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 transition-all">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -481,12 +481,12 @@ function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void
             </tbody>
           </table>
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 border-t border-white/[0.06]">
-              <span className="text-sm text-gray-500">{total} total contacts</span>
+            <div className="flex items-center justify-between p-4 border-t border-slate-200 dark:border-slate-800">
+              <span className="text-sm text-slate-500 dark:text-slate-400">{total} total contacts</span>
               <div className="flex gap-2">
-                <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} className="px-3 py-1 rounded bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white text-sm">Previous</button>
-                <span className="text-sm text-gray-400 flex items-center">Page {page} of {totalPages}</span>
-                <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages} className="px-3 py-1 rounded bg-white/5 hover:bg-white/10 disabled:opacity-50 text-white text-sm">Next</button>
+                <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-800 dark:text-slate-200 text-sm font-semibold">Previous</button>
+                <span className="text-sm text-slate-600 dark:text-slate-400 flex items-center font-medium">Page {page} of {totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages} className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-800 dark:text-slate-200 text-sm font-semibold">Next</button>
               </div>
             </div>
           )}
@@ -774,11 +774,11 @@ function EmptyState({ icon, text, action, onAction }: { icon: React.ReactNode; t
 
 function ModalWrapper({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-[#0d1225] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
-        <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-          <h2 className="text-lg font-bold text-white">{title}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -791,14 +791,14 @@ function ModalWrapper({ title, onClose, children }: { title: string; onClose: ()
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-gray-400 mb-1.5 block">{label}</label>
+      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 block">{label}</label>
       {children}
     </div>
   );
 }
 
-const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all placeholder-gray-600";
-const selectCls = `${inputCls} appearance-none cursor-pointer bg-[#0d1225]`;
+const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder-slate-400 font-medium";
+const selectCls = `${inputCls} appearance-none cursor-pointer bg-white dark:bg-slate-800`;
 
 function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [fullName, setFullName] = useState('');
