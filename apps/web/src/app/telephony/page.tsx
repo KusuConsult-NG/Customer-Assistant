@@ -143,15 +143,51 @@ export default function TelephonyPage() {
         </div>
       </div>
 
-      {/* Demo Call Widget Box */}
+      {/* Web Voice Call (VoIP) Section — ZERO Telephony Carrier Needed */}
+      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600/30 flex items-center justify-center text-emerald-400 font-bold">
+              <Radio className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                Web Voice Call (Zero Phone Number Required)
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">100% Free Web VoIP</span>
+              </h2>
+              <p className="text-xs text-gray-300">Talk directly to your AI agent through your browser microphone & speakers. No Twilio, no SIM card, zero charges.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setActiveLiveCall({
+                callSid: `WEB_CALL_${Date.now()}`,
+                toNumber: 'Kusu Consult Web Voice Support',
+                status: 'RINGING',
+                transcript: [
+                  { speaker: 'AI', text: "Hello! Welcome to Kusu Consult Customer Care. My name is Alex. How can I assist you today?", time: '00:01' }
+                ]
+              });
+              setTimeout(() => {
+                setActiveLiveCall(prev => prev ? { ...prev, status: 'CONNECTED' } : null);
+              }, 1500);
+            }}
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+          >
+            <Phone className="w-4 h-4" /> Start Web Voice Call
+          </button>
+        </div>
+      </div>
+
+      {/* Demo Outbound Call Widget Box */}
       <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-6 space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600/30 flex items-center justify-center text-blue-400 font-bold">
             <Phone className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white">Trigger Outbound Demo Call</h2>
-            <p className="text-xs text-gray-300">Enter your phone number to test real-time Deepgram + GPT-4o + ElevenLabs voice AI pipeline.</p>
+            <h2 className="text-base font-bold text-white">Trigger Outbound Phone Call</h2>
+            <p className="text-xs text-gray-300">Enter a phone number to test Twilio / Africa's Talking voice call routing.</p>
           </div>
         </div>
 
@@ -169,7 +205,7 @@ export default function TelephonyPage() {
             disabled={callLoading}
             className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <Sparkles className="w-4 h-4" /> {callLoading ? 'Initiating Call...' : 'Trigger Call Now'}
+            <Sparkles className="w-4 h-4" /> {callLoading ? 'Initiating Call...' : 'Trigger Phone Call'}
           </button>
         </form>
 
