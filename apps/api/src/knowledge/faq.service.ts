@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 
 @Injectable()
@@ -24,22 +24,29 @@ export class FaqService {
   }
 
   async updateFaq(organizationId: string, id: string, data: { question?: string; answer?: string; category?: string }) {
+    // First verify this FAQ belongs to the org (security check)
+    const existing = await prisma.faqEntry.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('FAQ entry not found');
+    if (existing.organizationId !== organizationId) throw new ForbiddenException('Access denied');
+
     return prisma.faqEntry.update({
-      where: { id, organizationId },
+      where: { id },   // Prisma requires unique field only in where for update
       data,
     });
   }
 
   async deleteFaq(organizationId: string, id: string) {
-    return prisma.faqEntry.delete({
-      where: { id, organizationId },
-    });
+    const existing = await prisma.faqEntry.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('FAQ entry not found');
+    if (existing.organizationId !== organizationId) throw new ForbiddenException('Access denied');
+
+    return prisma.faqEntry.delete({ where: { id } });
   }
 
   async reorderFaqs(organizationId: string, ids: string[]) {
     const transactions = ids.map((id, index) =>
-      prisma.faqEntry.update({
-        where: { id, organizationId },
+      prisma.faqEntry.updateMany({
+        where: { id, organizationId }, // updateMany allows compound where
         data: { sortOrder: index },
       })
     );

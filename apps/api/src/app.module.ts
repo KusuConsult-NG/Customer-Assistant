@@ -11,6 +11,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { BillingModule } from './billing/billing.module';
 import { EventsModule } from './events/events.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -35,6 +36,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AnalyticsModule,
     BillingModule,
     EventsModule,
+    WebhooksModule,
   ],
   providers: [
     VoiceStreamGateway,

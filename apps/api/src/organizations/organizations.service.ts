@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class OrganizationsService {
@@ -41,7 +42,9 @@ export class OrganizationsService {
   ) {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const defaultPasswordHash = crypto.randomBytes(32).toString('hex');
+    // Unusable password — user must set a real password via the invite link.
+    // We still bcrypt-hash a random string so the DB field is in valid format.
+    const unusablePasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
 
@@ -51,7 +54,7 @@ export class OrganizationsService {
         email: userData.email,
         fullName: userData.fullName,
         role: userData.role,
-        passwordHash: defaultPasswordHash,
+        passwordHash: unusablePasswordHash,
         passwordResetToken: hashedToken,
         passwordResetExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },

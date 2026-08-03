@@ -234,8 +234,11 @@ export class BillingService {
         });
 
         if (organizationId && plan) {
-          // Calculate next renewal date (30 days from now)
-          const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          // Calculate next renewal date based on billing period
+          // Monthly plans: 30 days; Annual plans: 365 days
+          const isAnnual = (plan as string).includes('ANNUAL');
+          const renewalDays = isAnnual ? 365 : 30;
+          const renewsAt = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
 
           // Update the Organization with the confirmed subscription plan and status.
           // In a future iteration this should write to a dedicated Subscription table
