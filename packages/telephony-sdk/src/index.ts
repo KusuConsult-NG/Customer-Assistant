@@ -185,10 +185,45 @@ export class PlivoProvider implements TelephonyProvider {
 export class TelnyxProvider implements TelephonyProvider {
   type = TelephonyProviderType.TELNYX;
 
-  constructor(private apiKey?: string) {}
+  constructor(private apiKey?: string, private publicKey?: string) {}
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
+    const key = this.apiKey || process.env.TELNYX_API_KEY;
     const callId = `TL_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    if (key) {
+      try {
+        const res = await fetch('https://api.telnyx.com/v2/calls', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            to: options.toNumber,
+            from: options.fromNumber,
+            connection_id: process.env.TELNYX_CONNECTION_ID || 'default',
+            stream_url: `${process.env.API_URL?.replace(/^http/, 'ws')}/media-stream`,
+          }),
+        });
+        const data: any = await res.json();
+        if (data?.data?.call_control_id) {
+          return {
+            callId: data.data.call_control_id,
+            organizationId: options.organizationId,
+            from: options.fromNumber,
+            to: options.toNumber,
+            direction: CallDirection.OUTBOUND,
+            status: CallStatus.QUEUED,
+            startTime: new Date(),
+            provider: this.type,
+          };
+        }
+      } catch (err) {
+        console.error('Telnyx call initiation error:', err);
+      }
+    }
+
     return {
       callId,
       organizationId: options.organizationId,
@@ -210,11 +245,12 @@ export class TelnyxProvider implements TelephonyProvider {
   }
 
   generateInboundWebhookResponse(promptText: string, streamUrl: string): string {
-    return JSON.stringify({
-      response: 'speak_and_stream',
-      text: promptText,
-      stream_url: streamUrl,
-    });
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${streamUrl}" />
+  </Connect>
+</Response>`;
   }
 
   async verifyCallerId(phoneNumber: string): Promise<boolean> {

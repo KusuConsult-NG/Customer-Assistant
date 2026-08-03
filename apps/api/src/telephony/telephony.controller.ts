@@ -65,6 +65,39 @@ export class TelephonyController {
     res.send(xmlResponse);
   }
 
+  @Post('inbound/telnyx')
+  async telnyxInbound(
+    @Req() req: Request & { rawBody?: Buffer },
+    @Res() res: Response,
+    @Headers() headers: Record<string, string>
+  ) {
+    const xmlResponse = await this.telephonyService.handleInboundCall(
+      TelephonyProviderType.TELNYX,
+      req.body,
+      req.query,
+      headers,
+      req.rawBody
+    );
+    res.setHeader('Content-Type', 'text/xml');
+    res.send(xmlResponse);
+  }
+
+  @Post('status/telnyx')
+  @HttpCode(204)
+  async telnyxStatus(@Body() body: any) {
+    const data = body.data?.payload || body;
+    const callSid = data.call_control_id || data.call_leg_id || data.call_session_id;
+    const eventType = body.data?.event_type || body.event_type;
+    const duration = data.duration_seconds || data.duration;
+    
+    let status = CallStatus.IN_PROGRESS;
+    if (eventType === 'call.hangup' || eventType === 'call.ended') status = CallStatus.COMPLETED;
+
+    if (callSid) {
+      await this.telephonyService.updateCallStatus(callSid, status, duration ? parseInt(duration, 10) : undefined);
+    }
+  }
+
   /**
    * POST /api/telephony/status/twilio
    * Twilio calls this when a call's status changes (ringing → in-progress → completed).
