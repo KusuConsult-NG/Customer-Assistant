@@ -8,10 +8,34 @@ export interface WhatsAppClientConfig {
 }
 
 export class WhatsAppCloudClient {
-  private apiVersion = 'v19.0';
+  private apiVersion = 'v20.0';
   private baseUrl = 'https://graph.facebook.com';
 
   constructor(private config: WhatsAppClientConfig) {}
+
+  async markMessageAsRead(messageId: string): Promise<any> {
+    const url = `${this.baseUrl}/${this.apiVersion}/${this.config.phoneNumberId}/messages`;
+    const payload = {
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: messageId,
+    };
+    return this.postRequest(url, payload);
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string | null> {
+    try {
+      const url = `${this.baseUrl}/${this.apiVersion}/${mediaId}`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${this.config.accessToken}` },
+      });
+      if (!response.ok) return null;
+      const data: any = await response.json();
+      return data?.url || null;
+    } catch {
+      return null;
+    }
+  }
 
   verifyWebhook(mode: string, token: string, challenge: string): string | null {
     if (mode === 'subscribe' && token === this.config.verifyToken) {

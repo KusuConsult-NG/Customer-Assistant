@@ -61,6 +61,17 @@ export class WhatsappService {
       const entry = body?.entry?.[0];
       const change = entry?.changes?.[0]?.value;
       const message = change?.messages?.[0];
+      const statusReceipt = change?.statuses?.[0];
+
+      if (statusReceipt) {
+        log.info('whatsapp_status_receipt_received', {
+          correlationId,
+          status: statusReceipt.status,
+          recipientId: statusReceipt.recipient_id,
+          messageId: statusReceipt.id,
+        });
+        return;
+      }
 
       if (!message) {
         log.debug('whatsapp_no_message_in_payload', { correlationId });
@@ -149,6 +160,14 @@ export class WhatsappService {
       const organizationId = config.organizationId;
 
       log.debug('whatsapp_org_resolved', { correlationId, organizationId });
+
+      // Mark incoming message as read on WhatsApp
+      try {
+        const client = resolveWhatsAppClient(config);
+        await client.markMessageAsRead(messageId);
+      } catch (e) {
+        log.warn('whatsapp_mark_read_failed', { correlationId, messageId });
+      }
 
       // ── 2. Upsert Contact (race-safe) ────────────────────────────────────────
       const contact = await this.upsertContact(organizationId, fromNumber, correlationId);
