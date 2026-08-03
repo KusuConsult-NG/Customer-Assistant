@@ -36,23 +36,32 @@ export default function ConversationsPage() {
     fetchConversations();
   }, []);
 
+  const toArray = (val: any) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (Array.isArray(val.conversations)) return val.conversations;
+    if (Array.isArray(val.messages)) return val.messages;
+    if (Array.isArray(val.data)) return val.data;
+    return [];
+  };
+
   useEffect(() => {
+    const list = Array.isArray(conversations) ? conversations : [];
     if (searchQuery.trim()) {
       setFilteredConversations(
-        conversations.filter(c => 
+        list.filter(c => 
           c.contactName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           c.contactPhone?.includes(searchQuery)
         )
       );
     } else {
-      setFilteredConversations(conversations);
+      setFilteredConversations(list);
     }
   }, [searchQuery, conversations]);
 
   useEffect(() => {
     if (selectedId) {
       fetchMessages(selectedId);
-      // Optional polling or websocket connection would go here
     }
   }, [selectedId]);
 
@@ -68,10 +77,11 @@ export default function ConversationsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setConversations(data.data || data);
+        setConversations(toArray(data));
       }
     } catch (err) {
       console.error('Failed to fetch conversations', err);
+      setConversations([]);
     } finally {
       setLoading(false);
     }
@@ -85,10 +95,11 @@ export default function ConversationsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setMessages(data.data || data);
+        setMessages(toArray(data));
       }
     } catch (err) {
       console.error('Failed to fetch messages', err);
+      setMessages([]);
     }
   };
 

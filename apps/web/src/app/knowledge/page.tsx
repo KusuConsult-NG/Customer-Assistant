@@ -299,8 +299,9 @@ export default function KnowledgePage() {
     FAILED: { label: 'Failed', className: 'bg-red-500/10 text-red-400 border-red-500/20', icon: <AlertCircle className="w-3 h-3" /> },
   };
 
-  const indexedCount = docs.filter(d => d.status === 'INDEXED').length;
-  const totalChunks = docs.reduce((sum, d) => sum + (d.chunkCount || 0), 0);
+  const safeDocs = Array.isArray(docs) ? docs : [];
+  const indexedCount = safeDocs.filter(d => d.status === 'INDEXED').length;
+  const totalChunks = safeDocs.reduce((sum, d) => sum + (d.chunkCount || 0), 0);
 
   return (
     <div className="space-y-6 max-w-7xl pb-12">

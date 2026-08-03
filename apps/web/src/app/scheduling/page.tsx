@@ -91,6 +91,17 @@ export default function SchedulingPage() {
     return null;
   };
 
+  const toArray = (val: any) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (Array.isArray(val.bookings)) return val.bookings;
+    if (Array.isArray(val.reservations)) return val.reservations;
+    if (Array.isArray(val.refundRequests)) return val.refundRequests;
+    if (Array.isArray(val.tickets)) return val.tickets;
+    if (Array.isArray(val.data)) return val.data;
+    return [];
+  };
+
   const fetchBookings = async () => {
     const token = getToken();
     if (!token) return;
@@ -100,7 +111,7 @@ export default function SchedulingPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setBookings(data || []);
+        setBookings(toArray(data));
       }
     } catch (e) {
       setBookings([]);
@@ -116,7 +127,7 @@ export default function SchedulingPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setReservations(data || []);
+        setReservations(toArray(data));
       }
     } catch (e) {
       setReservations([]);
@@ -132,7 +143,7 @@ export default function SchedulingPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setRefundRequests(data || []);
+        setRefundRequests(toArray(data));
       }
     } catch (e) {
       setRefundRequests([]);
@@ -321,17 +332,20 @@ export default function SchedulingPage() {
               </thead>
               <tbody>
                 {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((dayName, dayIdx) => {
+                  const safeBookings = Array.isArray(bookings) ? bookings : [];
+                  const safeReservations = Array.isArray(reservations) ? reservations : [];
+
                   return (
                     <tr key={dayName}>
                       <td className="px-4 py-4 border border-white/10 bg-white/[0.02] text-sm font-bold text-blue-400 align-top">{dayName}</td>
                       {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
-                        const cellBookings = bookings.filter(b => {
+                        const cellBookings = safeBookings.filter(b => {
                           if (!b.startTime) return false;
                           const d = new Date(b.startTime);
                           const bDay = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=Mon, 6=Sun
                           return bDay === dayIdx && d.getHours() === hour;
                         });
-                        const cellReservations = reservations.filter(r => {
+                        const cellReservations = safeReservations.filter(r => {
                           if (!r.reservationTime) return false;
                           const d = new Date(r.reservationTime);
                           const rDay = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=Mon, 6=Sun
