@@ -172,7 +172,7 @@ export class QdrantRAGService {
         orderBy: { chunkIndex: 'asc' },
       });
 
-      return docChunks.map((chunk, idx) => ({
+      return docChunks.map((chunk: any, idx: number) => ({
         chunkId: chunk.id,
         documentId: chunk.documentId,
         content: chunk.content,
