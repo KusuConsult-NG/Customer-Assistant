@@ -50,7 +50,7 @@ export class CrmTimelineService {
     const timeline: CustomerTimelineItem[] = [];
 
     // Map calls
-    callLogs.forEach((call) => {
+    callLogs.forEach((call: any) => {
       timeline.push({
         id: call.id,
         type: 'CALL',
@@ -62,7 +62,7 @@ export class CrmTimelineService {
     });
 
     // Map bookings
-    bookings.forEach((bk) => {
+    bookings.forEach((bk: any) => {
       timeline.push({
         id: bk.id,
         type: 'BOOKING',
@@ -74,7 +74,7 @@ export class CrmTimelineService {
     });
 
     // Map deals
-    contact.deals.forEach((deal) => {
+    contact.deals.forEach((deal: any) => {
       timeline.push({
         id: deal.id,
         type: 'DEAL_UPDATE',
@@ -86,7 +86,7 @@ export class CrmTimelineService {
     });
 
     // Map tickets
-    contact.tickets.forEach((t) => {
+    contact.tickets.forEach((t: any) => {
       timeline.push({
         id: t.id,
         type: 'TICKET_CREATED',
@@ -102,9 +102,9 @@ export class CrmTimelineService {
 
     // Calculate AI Customer Health Score (0 - 100)
     let healthScore = 85;
-    const openUrgentTickets = contact.tickets.filter((t) => t.status === 'OPEN' && (t.priority === 'URGENT' || t.priority === 'HIGH'));
+    const openUrgentTickets = contact.tickets.filter((t: any) => t.status === 'OPEN' && (t.priority === 'URGENT' || t.priority === 'HIGH'));
     if (openUrgentTickets.length > 0) healthScore -= 25;
-    const wonDeals = contact.deals.filter((d) => d.stage === 'CLOSED_WON');
+    const wonDeals = contact.deals.filter((d: any) => d.stage === 'CLOSED_WON');
     if (wonDeals.length > 0) healthScore += 10;
     healthScore = Math.min(100, Math.max(0, healthScore));
 

@@ -529,13 +529,13 @@ export class TwilioMediaStreamHandler {
             transcript:      fullTranscript || null,
             endedAt:         new Date(),
           },
-        }).catch((err) =>
+        }).catch((err: any) =>
           this.logger.error('Failed to update CallLog on teardown', err, { callSid })
         );
 
         this.broadcast.emit(callSid, 'stream_ended', { callSid, duration, summary, reason });
       })
-      .catch((err) => {
+      .catch((err: any) => {
         this.logger.error('Failed to generate post-call summary', err, { callSid });
         this.broadcast.emit(callSid, 'stream_ended', { callSid, duration, summary: '', reason });
       });

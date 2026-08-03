@@ -64,7 +64,7 @@ export class BillingService {
       prisma.callLog.aggregate({
         _sum: { durationSeconds: true },
         where: { organizationId },
-      }).then((r) => Math.ceil((r._sum.durationSeconds ?? 0) / 60)),
+      }).then((r: any) => Math.ceil((r._sum.durationSeconds ?? 0) / 60)),
 
       prisma.message.count({
         where: {

@@ -13,7 +13,7 @@ export class AnalyticsService {
     const openTickets = await prisma.ticket.count({ where: { organizationId, status: 'OPEN' } });
 
     const deals = await prisma.deal.findMany({ where: { organizationId } });
-    const pipelineValue = deals.reduce((sum, d) => sum + d.amount, 0);
+    const pipelineValue = deals.reduce((sum: number, d: any) => sum + d.amount, 0);
 
     const callLogs = await prisma.callLog.findMany({
       where: { organizationId },

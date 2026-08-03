@@ -154,7 +154,7 @@ export class WhatsappService {
           organizationId,
           customerPhoneNumber: fromNumber,
           channel: ChannelType.WHATSAPP,
-          history: historyMessages.map((m) => ({
+          history: historyMessages.map((m: any) => ({
             sender: m.sender as any,
             content: m.content,
             timestamp: m.sentAt,

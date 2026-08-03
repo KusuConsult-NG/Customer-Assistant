@@ -52,8 +52,8 @@ export class ReservationEngineService {
       },
     });
 
-    const reservedTables = new Set(existing.map((r) => r.tableOrRoomNumber));
-    const freeTable = suitableTables.find((t) => !reservedTables.has(t.tableNumber));
+    const reservedTables = new Set(existing.map((r: any) => r.tableOrRoomNumber));
+    const freeTable = suitableTables.find((t: any) => !reservedTables.has(t.tableNumber));
 
     if (freeTable) {
       return { available: true, assignedTable: freeTable.tableNumber };
