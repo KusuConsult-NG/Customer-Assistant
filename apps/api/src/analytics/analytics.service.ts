@@ -14,7 +14,7 @@ export class AnalyticsService {
     const days = periodToDays(period);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    // ── All-time totals ────────────────────────────────────────────────────────
+    // ── All-time totals (Batched to respect DB pool limits) ─────────────────
     const [
       totalCalls,
       totalConversations,
@@ -22,12 +22,6 @@ export class AnalyticsService {
       totalLeads,
       totalBookings,
       totalReservations,
-      openTickets,
-      resolvedTickets,
-      totalAiMessages,
-      totalMessages,
-      whatsappConversations,
-      webchatConversations,
     ] = await Promise.all([
       prisma.callLog.count({ where: { organizationId } }),
       prisma.conversation.count({ where: { organizationId } }),
@@ -35,6 +29,16 @@ export class AnalyticsService {
       prisma.lead.count({ where: { organizationId } }),
       prisma.booking.count({ where: { organizationId } }),
       prisma.reservation.count({ where: { organizationId } }),
+    ]);
+
+    const [
+      openTickets,
+      resolvedTickets,
+      totalAiMessages,
+      totalMessages,
+      whatsappConversations,
+      webchatConversations,
+    ] = await Promise.all([
       prisma.ticket.count({ where: { organizationId, status: 'OPEN' } }),
       prisma.ticket.count({ where: { organizationId, status: 'RESOLVED' } }),
       prisma.message.count({ where: { conversation: { organizationId }, sender: 'AI' } }),

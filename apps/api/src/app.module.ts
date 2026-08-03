@@ -47,7 +47,6 @@ import { RolesGuard } from './common/guards/roles.guard';
     // Apply the default throttle tier globally to every route.
     // Individual routes override with @Throttle({ auth: {} }) or @SkipThrottle()
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}

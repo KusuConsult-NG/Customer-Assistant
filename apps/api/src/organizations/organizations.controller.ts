@@ -4,8 +4,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
+import { RolesGuard } from '../common/guards/roles.guard';
+
 @Controller('api/organizations')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class OrganizationsController {
   constructor(private orgsService: OrganizationsService) {}
 
