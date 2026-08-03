@@ -2,38 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-  --background: #080c18;
-  --foreground: #f3f4f6;
+@layer base {
+  :root {
+    --bg-main: #f8fafc;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --card-bg: rgba(255, 255, 255, 0.85);
+    --card-border: rgba(226, 232, 240, 0.8);
+    --sidebar-bg: #ffffff;
+    --header-bg: rgba(255, 255, 255, 0.85);
+  }
+
+  .dark {
+    --bg-main: #0b0f19;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --card-bg: rgba(15, 23, 42, 0.65);
+    --card-border: rgba(51, 65, 85, 0.5);
+    --sidebar-bg: #0f172a;
+    --header-bg: rgba(11, 15, 25, 0.85);
+  }
 }
 
 html, body {
-  background-color: #080c18 !important;
-  color: #f3f4f6 !important;
-  color-scheme: dark !important;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Glassmorphism utilities */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.7);
+  background: var(--card-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--card-border);
 }
 
 .glass-card {
-  background: rgba(31, 41, 55, 0.4);
+  background: var(--card-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
   transition: all 0.2s ease-in-out;
 }
 
 .glass-card:hover {
-  border-color: rgba(56, 189, 248, 0.3);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 10px 30px -10px rgba(99, 102, 241, 0.15);
 }
 
 /* Custom Scrollbars */
@@ -42,20 +56,14 @@ html, body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0f19;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2937;
+  background: rgba(148, 163, 184, 0.3);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #374151;
-}
-
-@media (max-width: 768px) {
-  .sidebar-hidden {
-    display: none;
-  }
+  background: rgba(148, 163, 184, 0.5);
 }
 
 /* Mobile touch optimization */
@@ -69,10 +77,3 @@ html, body {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-
-@media (max-width: 640px) {
-  .mobile-stack {
-    flex-direction: column !important;
-  }
-}
-

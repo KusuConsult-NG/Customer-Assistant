@@ -20,7 +20,9 @@ import {
   Menu,
   X,
   Code,
-  GitFork
+  GitFork,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -30,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -37,6 +40,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const didRedirect = useRef(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    // Load theme preference
+    const savedTheme = localStorage.getItem('ace_theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      setTheme('light');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem('ace_theme', nextTheme);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('ace_token');
@@ -77,7 +96,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       router.replace('/');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ← intentionally empty: only run on mount
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('ace_token');
@@ -97,7 +116,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     : 'AD';
 
   return (
-    <html lang="en" className="dark bg-[#080c18] text-white">
+    <html lang="en" className={theme}>
       <head>
         <title>ACE Platform — AI-Powered Customer Experience</title>
         <meta name="description" content="Unify your CRM, Knowledge Base, and Omnichannel Communications" />
@@ -105,14 +124,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
-      <body className="bg-[#080c18] text-gray-100 min-h-screen flex flex-col antialiased" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <body className={`min-h-screen flex flex-col antialiased transition-colors duration-200 ${
+        theme === 'dark' ? 'bg-[#0b0f19] text-slate-100' : 'bg-slate-50 text-slate-900'
+      }`} style={{ fontFamily: "'Inter', sans-serif" }}>
         {!mounted ? (
-          <div className="flex min-h-screen items-center justify-center bg-[#080c18]">
+          <div className="flex min-h-screen items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 animate-pulse">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
-              <div className="w-6 h-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+              <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
             </div>
           </div>
         ) : isAuthPage ? (
@@ -120,81 +141,96 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </div>
         ) : (
-          <div className="flex h-screen overflow-hidden">
-            {/* Sidebar */}
+          <div className="flex h-screen overflow-hidden relative">
+            {/* Ambient Background Glows */}
+            <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 dark:bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 dark:bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Sidebar Mobile Overlay */}
             {sidebarOpen && (
               <div 
-                className="fixed inset-0 bg-black/50 z-20 md:hidden" 
+                className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden" 
                 onClick={() => setSidebarOpen(false)} 
               />
             )}
-            <aside className={`fixed md:relative z-30 w-64 h-full flex-shrink-0 flex flex-col justify-between border-r border-white/[0.06] bg-[#0d1225] transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+
+            {/* Sidebar */}
+            <aside className={`fixed md:relative z-50 w-64 h-full flex-shrink-0 flex flex-col justify-between transition-all duration-300 ${
+              theme === 'dark' 
+                ? 'bg-[#0f172a]/95 border-r border-slate-800/80' 
+                : 'bg-white/90 border-r border-slate-200/80 shadow-sm'
+            } backdrop-blur-xl ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
               <button 
-                className="md:hidden absolute top-4 right-4 text-gray-400 hover:text-white z-50"
+                className="md:hidden absolute top-4 right-4 text-slate-400 hover:text-slate-200 z-50 p-1"
                 onClick={() => setSidebarOpen(false)}
               >
                 <X className="w-5 h-5" />
               </button>
+
               {/* Top section */}
               <div className="flex flex-col h-full">
                 {/* Logo */}
-                <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.06]">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                <div className={`flex items-center gap-3.5 px-6 py-5 border-b ${theme === 'dark' ? 'border-slate-800/80' : 'border-slate-200/80'}`}>
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
                     <Sparkles className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h1 className="font-bold text-base leading-tight text-white">ACE Platform</h1>
-                    <p className="text-[10px] text-gray-500">AI Customer Experience</p>
+                    <h1 className={`font-bold text-lg tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ACE Platform</h1>
+                    <p className="text-[11px] font-medium text-indigo-500 dark:text-indigo-400">Enterprise AI Experience</p>
                   </div>
                 </div>
 
                 {/* Org badge */}
-                <div className="mx-4 mt-4 mb-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-between">
+                <div className={`mx-4 mt-4 mb-2 px-3.5 py-2.5 rounded-xl flex items-center justify-between border ${
+                  theme === 'dark' 
+                    ? 'bg-slate-800/40 border-slate-700/50' 
+                    : 'bg-slate-100/80 border-slate-200'
+                }`}>
                   <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                    <Building2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                    <span className="text-xs font-semibold truncate text-gray-200">
+                    <Building2 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                    <span className={`text-xs font-semibold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
                       {user?.organizationName || 'My Organization'}
                     </span>
                   </div>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2">LIVE</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2 border border-emerald-500/20">LIVE</span>
                 </div>
 
                 {/* Nav */}
-                <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-1">Main</p>
-                  <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="CRM" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Conversations" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge Base" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Visual Workflows" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                <nav className="flex-1 px-3.5 py-3 space-y-1 overflow-y-auto">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Platform</p>
+                  <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="CRM & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Live Conversations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge & FAQs" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Visual Workflows" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Channels</p>
-                  <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Scheduling" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Web Chat & Voice Widget" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Omnichannel</p>
+                  <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Bookings & Calendar" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Embeddable Widget" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-600 px-3 py-2 mt-3">Account</p>
-                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="White Label" pathname={pathname} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="Settings" pathname={pathname} onClick={() => setSidebarOpen(false)} />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Settings & Plans</p>
+                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing & Subscriptions" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="White Label Branding" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                 </nav>
 
                 {/* User footer */}
-                <div className="px-4 py-4 border-t border-white/[0.06]">
+                <div className={`px-4 py-4 border-t ${theme === 'dark' ? 'border-slate-800/80 bg-slate-900/40' : 'border-slate-200/80 bg-slate-100/50'}`}>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-xs flex-shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-md flex-shrink-0">
                       {initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-200 truncate">{user?.fullName || 'Administrator'}</p>
-                      <p className="text-[10px] text-gray-500 truncate">{user?.email || 'admin@acedemo.com'}</p>
+                      <p className={`text-xs font-bold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{user?.fullName || 'Administrator'}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{user?.email || 'admin@acedemo.com'}</p>
                     </div>
                     <button
                       onClick={handleLogout}
                       title="Sign out"
-                      className="text-gray-500 hover:text-red-400 transition-colors flex-shrink-0"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors flex-shrink-0"
                     >
                       <LogOut className="w-4 h-4" />
                     </button>
@@ -204,43 +240,85 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </aside>
 
             {/* Main content */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#080c18]">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
               {/* Top bar */}
-              <header className="h-14 flex-shrink-0 flex items-center justify-between px-6 border-b border-white/[0.06] bg-[#080c18]">
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <button className="md:hidden mr-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}>
+              <header className={`h-16 flex-shrink-0 flex items-center justify-between px-6 border-b transition-colors duration-200 ${
+                theme === 'dark' 
+                  ? 'bg-[#0b0f19]/80 border-slate-800/80' 
+                  : 'bg-white/80 border-slate-200/80'
+              } backdrop-blur-xl z-20`}>
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <button 
+                    className="md:hidden mr-2 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50" 
+                    onClick={() => setSidebarOpen(true)}
+                  >
                     <Menu className="w-5 h-5" />
                   </button>
                   {/* Breadcrumb */}
-                  <span>ACE</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                  <span className="text-white font-medium capitalize">{pathname.slice(1) || 'Dashboard'}</span>
+                  <span className="font-semibold text-indigo-500">ACE</span>
+                  <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+                  <span className={`font-semibold capitalize ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                    {pathname === '/' ? 'Executive Dashboard' : pathname.slice(1).replace('-', ' ')}
+                  </span>
                 </div>
+
                 <div className="flex items-center gap-3">
+                  {/* Theme Switcher Button */}
+                  <button
+                    onClick={toggleTheme}
+                    className={`p-2 rounded-xl border transition-all flex items-center gap-2 text-xs font-semibold ${
+                      theme === 'dark'
+                        ? 'bg-slate-800/80 border-slate-700 text-amber-300 hover:bg-slate-700'
+                        : 'bg-slate-100 border-slate-300 text-indigo-600 hover:bg-slate-200'
+                    }`}
+                    title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  >
+                    {theme === 'dark' ? (
+                      <>
+                        <Sun className="w-4 h-4 text-amber-400" />
+                        <span className="hidden sm:inline text-slate-200">Light Mode</span>
+                      </>
+                    ) : (
+                      <>
+                        <Moon className="w-4 h-4 text-indigo-600" />
+                        <span className="hidden sm:inline text-slate-700">Dark Mode</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Notifications Bell */}
                   <div className="relative">
                     <button 
-                      className="relative w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                      className={`relative p-2 rounded-xl border transition-colors ${
+                        theme === 'dark'
+                          ? 'bg-slate-800/50 border-slate-700/60 text-slate-300 hover:text-white hover:bg-slate-800'
+                          : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                      }`}
                       onClick={() => setShowNotifications(!showNotifications)}
                     >
                       <Bell className="w-4 h-4" />
-                      {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />}
+                      {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-indigo-500" />}
                     </button>
                     {showNotifications && (
-                      <div className="absolute right-0 mt-2 w-72 bg-[#0d1225] border border-white/[0.06] rounded-xl shadow-xl z-50">
-                        <div className="p-3 border-b border-white/[0.06] flex justify-between items-center">
-                          <span className="text-sm font-semibold text-white">Notifications</span>
-                          <button onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))} className="text-xs text-blue-400 hover:text-blue-300">Mark all read</button>
+                      <div className={`absolute right-0 mt-2 w-80 border rounded-2xl shadow-2xl z-50 backdrop-blur-2xl ${
+                        theme === 'dark' 
+                          ? 'bg-slate-900/95 border-slate-700 text-slate-100' 
+                          : 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-200'
+                      }`}>
+                        <div className="p-4 border-b border-slate-700/50 flex justify-between items-center">
+                          <span className="text-sm font-bold">Notifications</span>
+                          <button onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))} className="text-xs text-indigo-500 hover:underline font-semibold">Mark all read</button>
                         </div>
-                        <div className="max-h-64 overflow-y-auto">
+                        <div className="max-h-72 overflow-y-auto">
                           {notifications.length === 0 ? (
-                            <div className="p-4 text-sm text-gray-500 text-center">No notifications</div>
+                            <div className="p-6 text-sm text-slate-400 text-center">No new notifications</div>
                           ) : (
                             notifications.map((n, i) => (
-                              <div key={i} className={`p-3 border-b border-white/[0.06] flex items-start gap-2 ${!n.read ? 'bg-white/[0.02]' : ''}`}>
-                                <div className="w-2 h-2 mt-1.5 rounded-full bg-blue-500 flex-shrink-0" style={{ opacity: n.read ? 0 : 1 }} />
+                              <div key={i} className="p-3.5 border-b border-slate-700/30 flex items-start gap-3 hover:bg-indigo-500/5">
+                                <div className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 flex-shrink-0" style={{ opacity: n.read ? 0.3 : 1 }} />
                                 <div>
-                                  <div className="text-xs text-gray-200">{n.text}</div>
-                                  <div className="text-[10px] text-gray-500 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</div>
+                                  <div className="text-xs font-medium">{n.text}</div>
+                                  <div className="text-[10px] text-slate-400 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</div>
                                 </div>
                               </div>
                             ))
@@ -249,13 +327,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       </div>
                     )}
                   </div>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-xs">
+
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-md">
                     {initials}
                   </div>
                 </div>
               </header>
 
-              <main className="flex-1 overflow-y-auto p-6">
+              <main className="flex-1 overflow-y-auto p-6 relative">
                 {children}
               </main>
             </div>
@@ -266,23 +345,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 
-function SidebarLink({ href, icon, label, pathname, onClick }: { href: string; icon: React.ReactNode; label: string; pathname: string; onClick?: () => void }) {
+function SidebarLink({ href, icon, label, pathname, theme, onClick }: { href: string; icon: React.ReactNode; label: string; pathname: string; theme: 'light' | 'dark'; onClick?: () => void }) {
   const isActive = pathname === href || (href !== '/' && pathname.startsWith(href));
   return (
     <Link
       href={href}
       onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
         isActive
-          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-          : 'text-gray-400 hover:text-gray-100 hover:bg-white/[0.04] border border-transparent'
+          ? theme === 'dark'
+            ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 shadow-md shadow-indigo-500/10'
+            : 'bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-sm'
+          : theme === 'dark'
+            ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border border-transparent'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
       }`}
     >
-      <span className={`${isActive ? 'text-blue-400' : 'text-gray-500 group-hover:text-gray-300'} transition-colors`}>
+      <span className={`transition-transform duration-200 group-hover:scale-110 ${
+        isActive 
+          ? 'text-indigo-500 dark:text-indigo-400' 
+          : 'text-slate-400 group-hover:text-indigo-500'
+      }`}>
         {icon}
       </span>
-      <span>{label}</span>
-      {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />}
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
