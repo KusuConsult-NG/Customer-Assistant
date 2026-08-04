@@ -201,4 +201,69 @@ export class AppointmentReminderService implements OnModuleInit {
     if (!phoneNumber || !message) return;
     log.info('sms_reminder_sent', { phoneNumber, message });
   }
+
+  /**
+   * Send an instant HTML Email Booking Confirmation & Formal Receipt to the customer.
+   * Triggered automatically when AI Assistant or API confirms a booking.
+   */
+  async sendBookingConfirmationAndReceiptEmail(bookingId: string) {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { contact: true, organization: true },
+    });
+
+    if (!booking || !booking.contact?.email) return;
+
+    const dateStr = new Date(booking.startTime).toLocaleString('en-NG', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Africa/Lagos',
+    });
+
+    const receiptRef = `REC-BK-${booking.id.slice(-6).toUpperCase()}`;
+
+    try {
+      await this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
+        to: booking.contact.email,
+        subject: `Booking Confirmation & Receipt #${receiptRef} — ${booking.organization.name}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
+            <div style="text-align: center; border-bottom: 2px solid #3b82f6; padding-bottom: 16px; margin-bottom: 20px;">
+              <h2 style="color: #1e3a8a; margin: 0;">${booking.organization.name}</h2>
+              <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">Official Booking Confirmation & Service Receipt</p>
+            </div>
+
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+              <span style="color: #166534; font-weight: bold; font-size: 14px;">✅ BOOKING CONFIRMED & REGISTERED</span>
+              <p style="color: #15803d; font-size: 12px; margin: 4px 0 0;">Receipt Ref: <strong>${receiptRef}</strong></p>
+            </div>
+
+            <p style="color: #334155; font-size: 14px;">Dear <strong>${booking.contact.fullName || 'Valued Customer'}</strong>,</p>
+            <p style="color: #475569; font-size: 14px; line-height: 1.5;">Your appointment has been successfully scheduled and confirmed by our AI Customer Assistant.</p>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 20px 0;">
+              <h4 style="margin: 0 0 12px; color: #1e293b; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px;">Booking & Receipt Summary</h4>
+              <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Service:</strong> ${booking.serviceName}</p>
+              <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Date & Time:</strong> ${dateStr} (WAT)</p>
+              ${booking.staffName ? `<p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Assigned Specialist:</strong> ${booking.staffName}</p>` : ''}
+              <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Customer Phone:</strong> ${booking.contact.phoneNumber}</p>
+              <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Payment Status:</strong> <span style="color: #166534; font-weight: bold;">CONFIRMED / PAID</span></p>
+            </div>
+
+            <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 24px;">
+              If you need to reschedule or modify your appointment, reply directly to this email or chat with our 24/7 AI Assistant on WhatsApp.
+            </p>
+          </div>
+        `,
+      });
+      log.info('booking_confirmation_email_sent', { bookingId: booking.id, email: booking.contact.email, receiptRef });
+    } catch (err: any) {
+      log.error('booking_confirmation_email_failed', err, { bookingId: booking.id });
+    }
+  }
 }

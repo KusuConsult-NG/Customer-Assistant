@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
+import { AppointmentReminderService } from './appointment-reminder.service';
 
 @Injectable()
 export class SchedulingService {
+  constructor(private reminderService: AppointmentReminderService) {}
+
   // ─── Bookings: Read ──────────────────────────────────────────────────────────
 
   async getBookings(organizationId: string) {
@@ -80,7 +83,7 @@ export class SchedulingService {
     const start = new Date(data.startTime);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
 
-    return prisma.booking.create({
+    const booking = await prisma.booking.create({
       data: {
         organizationId,
         contactId: data.contactId,
@@ -93,6 +96,12 @@ export class SchedulingService {
       },
       include: { contact: true },
     });
+
+    if (booking.contact?.email) {
+      this.reminderService.sendBookingConfirmationAndReceiptEmail(booking.id).catch(() => {});
+    }
+
+    return booking;
   }
 
   // ─── Bookings: Cancel ─────────────────────────────────────────────────────────
