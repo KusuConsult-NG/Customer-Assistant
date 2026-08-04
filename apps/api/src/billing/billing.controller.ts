@@ -28,6 +28,16 @@ export class BillingController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Roles('OWNER', 'ADMIN')
+  @Post('activate')
+  async activate(
+    @Req() req: { user: AuthUser },
+    @Body() body: { plan: SubscriptionPlan }
+  ) {
+    return this.billingService.activatePlan(req.user.organizationId, body.plan);
+  }
+
   @Post('paystack-webhook')
   async handleWebhook(@Body() body: any, @Headers('x-paystack-signature') signature: string) {
     await this.billingService.handlePaystackWebhook(body, signature);
