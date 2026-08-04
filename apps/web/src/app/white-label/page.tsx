@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
 import { API_URL } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import {
   Palette, Globe, Key, Webhook, Save, Copy, RefreshCw,
   Eye, EyeOff, CheckCircle2, Loader2, AlertCircle, Lock,
@@ -220,10 +221,15 @@ export default function WhiteLabelPage() {
                       {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => { navigator.clipboard.writeText(apiKey); showToast('API key copied!'); }}
-                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
+                      onClick={async () => {
+                        const ok = await copyToClipboard(apiKey);
+                        if (ok) showToast('API key copied to clipboard!');
+                        else showToast('Failed to copy API key', 'error');
+                      }}
+                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all flex items-center gap-1 font-semibold text-xs"
+                      title="Copy API Key"
                     >
-                      <Copy className="w-4 h-4" />
+                      <Copy className="w-4 h-4" /> Copy
                     </button>
                   </div>
                 </div>

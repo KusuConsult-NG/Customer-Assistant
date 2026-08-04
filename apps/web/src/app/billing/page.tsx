@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import {
   CreditCard, CheckCircle2, AlertCircle, Loader2, Zap,
   TrendingUp, Star, Shield, ArrowUpRight, Receipt, Clock,
@@ -243,11 +244,13 @@ export default function BillingPage() {
     }
   };
 
-  const copyVirtualAccount = () => {
-    navigator.clipboard.writeText('9928374102');
-    setCopiedAccount(true);
-    showToast('Virtual Account Number copied to clipboard!', 'success');
-    setTimeout(() => setCopiedAccount(false), 3000);
+  const copyVirtualAccount = async () => {
+    const ok = await copyToClipboard('9928374102');
+    if (ok) {
+      setCopiedAccount(true);
+      showToast('Virtual Account Number copied to clipboard!', 'success');
+      setTimeout(() => setCopiedAccount(false), 3000);
+    }
   };
 
   const currentPlanKey = (subscription?.plan || 'STARTER').toUpperCase();

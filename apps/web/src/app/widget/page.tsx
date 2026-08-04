@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Code, Save, Copy, Check, Palette, MessageSquare, ToggleLeft, Monitor } from "lucide-react";
 
 export default function WidgetPage() {
@@ -12,20 +13,25 @@ export default function WidgetPage() {
     position: "bottom-right",
     enableChat: true,
     enableVoiceCall: true,
+    companyName: "Kusu Consult",
   });
 
   const [copied, setCopied] = useState(false);
-  const [apiKey, setApiKey] = useState("YOUR_LIVE_API_KEY");
+  const [apiKey, setApiKey] = useState("ace_live_demo_key_123");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const orgData = await api.organizations.getMe();
-        if (orgData.organization?.welcomeMessage) {
-          setConfig(prev => ({ ...prev, welcomeMessage: orgData.organization.welcomeMessage }));
+        const token = localStorage.getItem("ace_token");
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/api/organizations/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const org = await res.json();
+          if (org.apiKey) setApiKey(org.apiKey);
+          if (org.name) setConfig(prev => ({ ...prev, companyName: org.name }));
         }
-        // In a real app we would load API Key here
       } catch (e) {
         console.error(e);
       }
@@ -48,12 +54,14 @@ export default function WidgetPage() {
     }
   };
 
-  const codeSnippet = `<script src="http://localhost:4000/widget.js" data-api-key="${apiKey}"></script>`;
+  const codeSnippet = `<script src="${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/widget.js" data-api-key="${apiKey}"></script>`;
 
-  const copyCode = () => {
-    navigator.clipboard.writeText(codeSnippet);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyCode = async () => {
+    const ok = await copyToClipboard(codeSnippet);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
   };
 
   return (
