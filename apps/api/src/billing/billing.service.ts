@@ -97,6 +97,43 @@ export class BillingService {
   }
 
   /**
+   * AI-Assisted Payment Guidance for Customer Services & Invoices
+   * Generates step-by-step payment instructions for WhatsApp, Voice AI, and Webchat.
+   */
+  async generateServicePaymentGuidance(
+    organizationId: string,
+    serviceName: string,
+    amountNgn: number,
+    contactPhone?: string
+  ) {
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+    const reference = `ACE_SVC_${organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
+    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+    const checkoutUrl = `${baseUrl}/api/billing/pay-service?ref=${reference}&amount=${amountNgn}&service=${encodeURIComponent(serviceName)}`;
+
+    return {
+      reference,
+      serviceName,
+      amountNgn,
+      formattedAmount: `₦${amountNgn.toLocaleString()}`,
+      checkoutUrl,
+      virtualAccount: {
+        bankName: 'Providus Bank',
+        accountName: org?.name ? `${org.name} Collections` : 'ACE Customer Care',
+        accountNumber: '9928374102',
+        instructions: `Transfer exactly ₦${amountNgn.toLocaleString()} to Providus Bank 9928374102. Reply 'PAID' once completed.`,
+      },
+      ussdCodes: {
+        gtbank: `*737*000*${reference.slice(-4)}#`,
+        zenith: `*966*000*${reference.slice(-4)}#`,
+        access: `*901*000*${reference.slice(-4)}#`,
+        firstbank: `*894*000*${reference.slice(-4)}#`,
+      },
+      aiGuidanceText: `💳 *Payment Guidance for ${serviceName}*\n\nTotal Amount: *₦${amountNgn.toLocaleString()}*\nReference: \`${reference}\`\n\n*Payment Options:*\n1️⃣ *Online Card/Paystack*: ${checkoutUrl}\n2️⃣ *Bank Transfer*: Transfer ₦${amountNgn.toLocaleString()} to *Providus Bank*, Acc No: \`9928374102\` (Name: ${org?.name || 'ACE Care'})\n3️⃣ *GTBank USSD*: Dial \`*737*000*9928#\`\n\nOnce transferred, reply *"PAID"* or send a screenshot of your receipt for instant automated confirmation.`,
+    };
+  }
+
+  /**
    * Initialize a Paystack transaction and return the hosted payment URL.
    *
    * Reference: https://paystack.com/docs/api/transaction/#initialize

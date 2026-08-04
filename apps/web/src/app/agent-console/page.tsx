@@ -28,6 +28,7 @@ interface Conversation {
 
 const QUICK_REPLIES = [
   "Hello! 👋 How can I assist you with your request today?",
+  "💳 Payment Guidance: Transfer to Providus Bank Acc: 9928374102 or pay via online Paystack link. Reply PAID when done.",
   "Thank you for contacting us. Could you please confirm your location?",
   "Our operational hours are Mon - Fri: 8:00 AM - 6:00 PM.",
   "I have updated your request in our system. An agent will get in touch shortly.",

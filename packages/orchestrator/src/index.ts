@@ -386,6 +386,23 @@ export class ConversationOrchestrator {
       };
     }
 
+    // ── 11. Tool: AI Service Payment Guidance & Account Details ────────────────
+    const PAYMENT_GUIDANCE_PHRASES = [
+      'how to pay', 'how do i pay', 'account number', 'bank details', 'payment options',
+      'payment link', 'pay for booking', 'ussd code', 'i want to pay', 'payment method',
+      'transfer details', 'pay now', 'make payment', 'send payment details', 'how much to pay'
+    ];
+    if (PAYMENT_GUIDANCE_PHRASES.some((p) => lowerInput.includes(p))) {
+      const guidanceResult = await this.executeProvidePaymentGuidance(context);
+      return {
+        replyText: guidanceResult.replyText,
+        intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
+        confidenceScore: 0.98,
+        shouldHandoff: false,
+        toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
+      };
+    }
+
     // ── 11. RAG Knowledge Search ──────────────────────────────────────────────
     const searchResults = await this.ragService.searchKnowledgeBase(
       context.organizationId,
@@ -917,6 +934,37 @@ export class ConversationOrchestrator {
     });
 
     return { ticketId: ticket.id, ticketNumber: ticket.ticketNumber };
+  }
+
+  private async executeProvidePaymentGuidance(context: ConversationContext) {
+    const org = await prisma.organization.findUnique({ where: { id: context.organizationId } });
+    const orgName = org?.name ?? 'ACE Care';
+    const reference = `ACE_PAY_${context.organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
+    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+    const checkoutUrl = `${baseUrl}/api/billing/pay-service?ref=${reference}`;
+
+    const replyText = `💳 *Payment Guidance & Account Details (${orgName})*\n\n` +
+      `You can complete your payment securely using any of the following payment channels:\n\n` +
+      `1️⃣ *Bank Transfer (Instant Confirmation)*\n` +
+      `• Bank Name: *Providus Bank*\n` +
+      `• Account Name: *${orgName} Collections*\n` +
+      `• Account Number: \`9928374102\`\n` +
+      `• Payment Reference: \`${reference}\`\n\n` +
+      `2️⃣ *Online Debit/Credit Card (Paystack Gateway)*\n` +
+      `• Pay online via Card: ${checkoutUrl}\n\n` +
+      `3️⃣ *Bank USSD Quick Codes*\n` +
+      `• GTBank: \`*737*000*9928#\`\n` +
+      `• Zenith Bank: \`*966*000*9928#\`\n` +
+      `• Access Bank: \`*901*000*9928#\`\n\n` +
+      `📌 *After Payment:* Reply *"PAID"* or send a screenshot of your bank transfer receipt. Our AI assistant will automatically confirm your payment and issue your receipt!`;
+
+    return {
+      reference,
+      accountNumber: '9928374102',
+      bankName: 'Providus Bank',
+      checkoutUrl,
+      replyText,
+    };
   }
 
   /**

@@ -38,6 +38,20 @@ export class BillingController {
     return this.billingService.activatePlan(req.user.organizationId, body.plan);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('service-payment-guidance')
+  async getServicePaymentGuidance(
+    @Req() req: { user: AuthUser },
+    @Body() body: { serviceName: string; amountNgn: number; contactPhone?: string }
+  ) {
+    return this.billingService.generateServicePaymentGuidance(
+      req.user.organizationId,
+      body.serviceName,
+      body.amountNgn,
+      body.contactPhone
+    );
+  }
+
   @Post('paystack-webhook')
   async handleWebhook(@Body() body: any, @Headers('x-paystack-signature') signature: string) {
     await this.billingService.handlePaystackWebhook(body, signature);
