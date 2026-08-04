@@ -322,7 +322,7 @@ export default function KnowledgePage() {
           </button>
           <button
             onClick={() => setShowPasteModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white text-sm font-semibold transition-all"
           >
             <Plus className="w-4 h-4" /> Paste Text
           </button>
@@ -351,7 +351,7 @@ export default function KnowledgePage() {
             <span className="text-slate-700 dark:text-slate-300 font-medium">Extracting & Vectorizing Document Chunks...</span>
             <span className="text-blue-400 font-mono font-bold">{uploadProgress}%</span>
           </div>
-          <div className="w-full h-2 bg-white/[0.05] rounded-full overflow-hidden">
+          <div className="w-full h-2 bg-slate-50 dark:bg-slate-800/60 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-300"
               style={{ width: `${uploadProgress}%` }}
@@ -408,7 +408,7 @@ export default function KnowledgePage() {
             value={websiteUrl}
             onChange={e => setWebsiteUrl(e.target.value)}
             placeholder="https://yourcompany.com or https://apexcare.ng"
-            className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500/60 placeholder-gray-600"
+            className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500/60 placeholder-gray-600"
             required
           />
           <button
@@ -483,7 +483,7 @@ export default function KnowledgePage() {
                         className={`flex items-center gap-3 p-4 rounded-xl border transition-all cursor-pointer group ${
                           selectedDoc?.id === doc.id
                             ? 'bg-blue-500/10 border-blue-500/30'
-                            : 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-slate-200 dark:border-slate-800 hover:bg-white/[0.05]'
+                            : 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:bg-slate-800/60'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${
@@ -524,8 +524,8 @@ export default function KnowledgePage() {
                   <div key={faq.id} className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 space-y-3">
                     {editingFaq === faq.id ? (
                       <div className="space-y-3">
-                        <input type="text" value={editQuestion} onChange={e => setEditQuestion(e.target.value)} className="w-full px-3 py-1.5 rounded bg-white/[0.05] border border-white/10 text-slate-900 dark:text-white text-sm" />
-                        <textarea value={editAnswer} onChange={e => setEditAnswer(e.target.value)} className="w-full px-3 py-1.5 rounded bg-white/[0.05] border border-white/10 text-slate-900 dark:text-white text-sm" rows={2} />
+                        <input type="text" value={editQuestion} onChange={e => setEditQuestion(e.target.value)} className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm" />
+                        <textarea value={editAnswer} onChange={e => setEditAnswer(e.target.value)} className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm" rows={2} />
                         <div className="flex gap-2">
                           <button onClick={() => handleEditFaq(faq.id)} className="px-3 py-1 bg-emerald-500/20 text-emerald-300 text-xs rounded hover:bg-emerald-500/30">Save</button>
                           <button onClick={() => setEditingFaq(null)} className="px-3 py-1 bg-gray-500/20 text-slate-700 dark:text-slate-300 text-xs rounded hover:bg-gray-500/30">Cancel</button>
@@ -574,7 +574,7 @@ export default function KnowledgePage() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Ask anything your AI should know..."
-                  className="w-full pl-10 pr-20 py-2.5 rounded-xl bg-black/30 border border-white/[0.08] text-slate-900 dark:text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                  className="w-full pl-10 pr-20 py-2.5 rounded-xl bg-black/30 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
                 />
                 <button
                   type="submit"
@@ -592,7 +592,7 @@ export default function KnowledgePage() {
                 </div>
               ) : searchResults.length > 0 ? (
                 searchResults.map((r, i) => (
-                  <div key={i} className="p-3.5 rounded-xl bg-black/20 border border-white/[0.05] space-y-2">
+                  <div key={i} className="p-3.5 rounded-xl bg-black/20 border border-slate-200 dark:border-slate-800 space-y-2">
                     <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{r.content}</p>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 dark:text-slate-400">
@@ -627,8 +627,8 @@ export default function KnowledgePage() {
 
       {/* Paste text modal */}
       {showPasteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white dark:bg-slate-900 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Paste Knowledge Text</h2>
               <button onClick={() => setShowPasteModal(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
@@ -644,7 +644,7 @@ export default function KnowledgePage() {
                   value={pasteTitle}
                   onChange={e => setPasteTitle(e.target.value)}
                   placeholder="e.g. Return Policy, Product Details"
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder-gray-600"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder-gray-600"
                 />
               </div>
               <div>
@@ -655,7 +655,7 @@ export default function KnowledgePage() {
                   value={pasteContent}
                   onChange={e => setPasteContent(e.target.value)}
                   placeholder="Paste text content here..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder-gray-600"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder-gray-600"
                 />
               </div>
               <button
@@ -673,8 +673,8 @@ export default function KnowledgePage() {
 
       {/* Add FAQ Modal */}
       {showFaqModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white dark:bg-slate-900 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Add FAQ Rule</h2>
               <button onClick={() => setShowFaqModal(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
@@ -690,7 +690,7 @@ export default function KnowledgePage() {
                   value={faqQuestion}
                   onChange={e => setFaqQuestion(e.target.value)}
                   placeholder="e.g. Do you offer nationwide delivery?"
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder-gray-600"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 placeholder-gray-600"
                 />
               </div>
               <div>
@@ -701,7 +701,7 @@ export default function KnowledgePage() {
                   value={faqAnswer}
                   onChange={e => setFaqAnswer(e.target.value)}
                   placeholder="e.g. Yes, we deliver across all 36 states in Nigeria via Red Star Express..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder-gray-600"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none placeholder-gray-600"
                 />
               </div>
               <button

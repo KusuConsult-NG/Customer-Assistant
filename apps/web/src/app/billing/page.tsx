@@ -21,7 +21,7 @@ const PLANS: Plan[] = [
   {
     name: 'Starter',
     price: 50000,
-    color: 'border-white/[0.08]',
+    color: 'border-slate-200 dark:border-slate-700',
     accentColor: 'text-slate-700 dark:text-slate-300',
     badge: '',
     features: [
@@ -246,7 +246,7 @@ export default function BillingPage() {
                   <div
                     key={plan.name}
                     className={`relative rounded-2xl border p-6 flex flex-col justify-between transition-all ${plan.color} ${
-                      isCurrent ? 'bg-blue-500/[0.08]' : 'bg-white/[0.02] hover:bg-white/[0.04]'
+                      isCurrent ? 'bg-blue-500/[0.08]' : 'bg-white dark:bg-slate-900/80 hover:bg-slate-50 dark:bg-slate-800/60'
                     }`}
                   >
                     {plan.badge && (
@@ -280,7 +280,7 @@ export default function BillingPage() {
                       ))}
                     </ul>
                     {isCurrent ? (
-                      <div className="w-full py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] text-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+                      <div className="w-full py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-center text-xs font-semibold text-slate-600 dark:text-slate-400">
                         Current Plan
                       </div>
                     ) : (
@@ -292,7 +292,7 @@ export default function BillingPage() {
                             ? 'bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20'
                             : plan.name === 'Business' || plan.name === 'Enterprise'
                             ? 'bg-purple-600/80 hover:bg-purple-600 text-slate-900 dark:text-white shadow-lg shadow-purple-500/20'
-                            : 'bg-white/[0.06] hover:bg-white/[0.1] text-slate-700 dark:text-slate-300 border border-white/[0.08]'
+                            : 'bg-white/[0.06] hover:bg-white/[0.1] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                         } disabled:opacity-50`}
                       >
                         {upgrading === plan.name ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}

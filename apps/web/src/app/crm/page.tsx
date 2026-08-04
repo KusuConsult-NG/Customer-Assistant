@@ -210,7 +210,7 @@ export default function CrmPage() {
               {t.icon}
               {t.label}
               <span className={`text-xs px-1.5 py-0.5 rounded-full font-extrabold ${
-                tab === t.id ? 'bg-white/20 text-slate-900 dark:text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                tab === t.id ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}>{t.count}</span>
             </button>
           ))}
@@ -305,7 +305,7 @@ export default function CrmPage() {
       {quoteData && (
         <ModalWrapper title={`Quotation Preview — ${quoteData.quotationNumber}`} onClose={() => setQuoteData(null)}>
           <div className="space-y-4 text-xs text-slate-700 dark:text-slate-300 py-2">
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] flex justify-between items-start">
+            <div className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 flex justify-between items-start">
               <div>
                 <p className="font-bold text-slate-900 dark:text-white text-base">{quoteData.organizationName}</p>
                 <p className="text-slate-600 dark:text-slate-400">{quoteData.organizationPhone}</p>
@@ -316,7 +316,7 @@ export default function CrmPage() {
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05]">
+            <div className="p-3 rounded-lg bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
               <p className="text-slate-500 dark:text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Prepared For</p>
               <p className="font-bold text-slate-900 dark:text-white text-sm">{quoteData.customerName}</p>
               <p className="text-slate-600 dark:text-slate-400">{quoteData.customerPhone}</p>
@@ -324,7 +324,7 @@ export default function CrmPage() {
 
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-white/10 text-slate-600 dark:text-slate-400 uppercase text-[10px]">
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 uppercase text-[10px]">
                   <th className="py-2">Description</th>
                   <th className="py-2 text-right">Qty</th>
                   <th className="py-2 text-right">Unit Price</th>
@@ -343,7 +343,7 @@ export default function CrmPage() {
               </tbody>
             </table>
 
-            <div className="border-t border-white/10 pt-3 flex justify-between items-center text-sm font-bold">
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-3 flex justify-between items-center text-sm font-bold">
               <span>Grand Total</span>
               <span className="text-emerald-400 text-lg">₦{(quoteData.grandTotal || 0).toLocaleString()}</span>
             </div>
@@ -357,7 +357,7 @@ export default function CrmPage() {
               </button>
               <button
                 onClick={() => setQuoteData(null)}
-                className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white font-semibold text-xs transition-all"
+                className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white font-semibold text-xs transition-all"
               >
                 Close
               </button>
@@ -531,7 +531,7 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
       </thead>
       <tbody className="divide-y divide-white/[0.04]">
         {data.map((l) => (
-          <tr key={l.id} className="hover:bg-white/[0.02] transition-colors">
+          <tr key={l.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
             <td className="px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-purple-500/15 text-purple-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
@@ -549,7 +549,7 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
               <select
                 value={l.status}
                 onChange={e => updateStatus(l.id, e.target.value)}
-                className={`text-xs font-bold rounded-full px-3 py-1 border cursor-pointer outline-none bg-black/40 ${statusColor(l.status)}`}
+                className={`text-xs font-bold rounded-full px-3 py-1 border cursor-pointer outline-none bg-white dark:bg-slate-900 ${statusColor(l.status)}`}
               >
                 {LEAD_STATUSES.map(s => (
                   <option key={s} value={s} className="bg-slate-50 dark:bg-[#0a0f1e] text-slate-900 dark:text-white">{s}</option>
@@ -587,7 +587,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-4 p-5 border-b border-slate-200 dark:border-slate-800 bg-white/[0.01]">
+      <div className="grid grid-cols-3 gap-4 p-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80">
         <div className="text-center">
           <p className="text-2xl font-extrabold text-slate-900 dark:text-white">₦{totalValue.toLocaleString()}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Pipeline Total Value</p>
@@ -614,7 +614,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
         </thead>
         <tbody className="divide-y divide-white/[0.04]">
           {safeData.map((d) => (
-            <tr key={d.id} className="hover:bg-white/[0.02] transition-colors">
+            <tr key={d.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
               <td className="px-5 py-4 font-semibold text-slate-800 dark:text-slate-200">{d.title || 'Untitled Deal'}</td>
               <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-xs">{d.contact?.fullName || '—'}</td>
               <td className="px-5 py-4 font-bold text-emerald-400">₦{(d.amount || 0).toLocaleString()}</td>
@@ -652,7 +652,7 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
           const stageDeals = safeData.filter(d => d.stage === stage);
           const stageTotal = stageDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
           return (
-            <div key={stage} className="w-72 flex-shrink-0 bg-white/[0.02] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+            <div key={stage} className="w-72 flex-shrink-0 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
                 <span className="font-bold text-xs text-slate-800 dark:text-slate-200 uppercase tracking-wider">{stage.replace('_', ' ')}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-600 dark:text-slate-400 font-bold">{stageDeals.length}</span>
@@ -660,7 +660,7 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
               <p className="text-xs font-bold text-emerald-400">₦{stageTotal.toLocaleString()}</p>
               <div className="space-y-2.5 flex-1 min-h-[300px]">
                 {stageDeals.map((deal) => (
-                  <div key={deal.id} className="p-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-2 hover:border-blue-500/30 transition-all">
+                  <div key={deal.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-blue-500/30 transition-all">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold text-sm text-slate-900 dark:text-white">{deal.title}</p>
                       <button onClick={() => onDelete(deal.id)} className="text-slate-500 dark:text-slate-400 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -668,12 +668,12 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
                     <p className="text-xs text-slate-600 dark:text-slate-400">{deal.contact?.fullName || 'No contact'}</p>
                     <p className="text-sm font-bold text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
                     <button onClick={() => onQuote(deal.id)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20 hover:bg-purple-500/20">Generate Quotation</button>
-                    <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between">
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 dark:text-slate-400">{new Date(deal.createdAt).toLocaleDateString()}</span>
                       <select
                         value={deal.stage}
                         onChange={e => updateStage(deal.id, e.target.value)}
-                        className="bg-black/60 text-[10px] text-slate-700 dark:text-slate-300 rounded px-1.5 py-0.5 border border-white/10 outline-none"
+                        className="bg-white dark:bg-slate-900 text-[10px] text-slate-700 dark:text-slate-300 rounded px-1.5 py-0.5 border border-slate-200 dark:border-slate-800 outline-none"
                       >
                         {DEAL_STAGES.map(s => (
                           <option key={s} value={s}>{s.replace('_', ' ')}</option>
@@ -733,7 +733,7 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
       </thead>
       <tbody className="divide-y divide-white/[0.04]">
         {data.map((t) => (
-          <tr key={t.id} className="hover:bg-white/[0.02] transition-colors">
+          <tr key={t.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
             <td className="px-5 py-4">
               <p className="font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[250px]">{t.subject || 'No subject'}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{t.description?.slice(0, 60)}...</p>
@@ -744,7 +744,7 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
               <select
                 value={t.status}
                 onChange={e => updateStatus(t.id, e.target.value)}
-                className={`text-xs font-bold rounded-full px-3 py-1 border cursor-pointer outline-none bg-black/40 ${statusColor(t.status)}`}
+                className={`text-xs font-bold rounded-full px-3 py-1 border cursor-pointer outline-none bg-white dark:bg-slate-900 ${statusColor(t.status)}`}
               >
                 {TICKET_STATUSES.map(s => <option key={s} value={s} className="bg-slate-50 dark:bg-[#0a0f1e] text-slate-900 dark:text-white">{s}</option>)}
               </select>
@@ -1007,8 +1007,8 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
 function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md h-full bg-white dark:bg-slate-900 border-l border-white/10 p-6 overflow-y-auto space-y-6 animate-slide-left">
+    <div className="fixed inset-0 z-50 flex items-center justify-end bg-white dark:bg-slate-900 backdrop-blur-sm">
+      <div className="w-full max-w-md h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 overflow-y-auto space-y-6 animate-slide-left">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Contact Profile</h2>
           <button onClick={onClose} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">

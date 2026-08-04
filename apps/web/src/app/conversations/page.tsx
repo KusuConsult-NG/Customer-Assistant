@@ -257,7 +257,7 @@ export default function ConversationsPage() {
                 </div>
                 <button 
                   onClick={handleReturnToAI}
-                  className="text-xs px-3 py-1 bg-amber-100 dark:bg-white/5 hover:bg-amber-200 dark:hover:bg-white/10 rounded-lg text-amber-900 dark:text-slate-900 dark:text-white border border-amber-300 dark:border-white/10 transition-colors font-bold"
+                  className="text-xs px-3 py-1 bg-amber-100 dark:bg-slate-100 dark:bg-slate-800/60 hover:bg-amber-200 dark:hover:bg-slate-100 dark:bg-slate-800 rounded-lg text-amber-900 dark:text-slate-900 dark:text-white border border-amber-300 dark:border-slate-200 dark:border-slate-800 transition-colors font-bold"
                 >
                   Return to AI
                 </button>
@@ -304,7 +304,7 @@ export default function ConversationsPage() {
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
-                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50"
+                  className="flex-1 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50"
                 />
                 <button
                   type="submit"

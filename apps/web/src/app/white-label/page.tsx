@@ -7,7 +7,7 @@ import {
   Zap, Shield, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
-const inputCls = "w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
+const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
 const labelCls = "text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block uppercase tracking-wider";
 
 const WEBHOOK_EVENTS = [
@@ -175,7 +175,7 @@ export default function WhiteLabelPage() {
                     <label className={labelCls}>Primary Color</label>
                     <div className="flex items-center gap-2">
                       <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)}
-                        className="w-12 h-10 rounded-xl border border-white/10 cursor-pointer bg-transparent" />
+                        className="w-12 h-10 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer bg-transparent" />
                       <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className={inputCls} placeholder="#3b82f6" />
                     </div>
                   </div>
@@ -183,7 +183,7 @@ export default function WhiteLabelPage() {
                     <label className={labelCls}>Secondary Color</label>
                     <div className="flex items-center gap-2">
                       <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)}
-                        className="w-12 h-10 rounded-xl border border-white/10 cursor-pointer bg-transparent" />
+                        className="w-12 h-10 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer bg-transparent" />
                       <input type="text" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className={inputCls} placeholder="#8b5cf6" />
                     </div>
                   </div>
@@ -210,18 +210,18 @@ export default function WhiteLabelPage() {
                 <div>
                   <label className={labelCls}>Your API Key</label>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-white/[0.08] font-mono text-sm text-slate-700 dark:text-slate-300 overflow-hidden">
+                    <div className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-slate-200 dark:border-slate-700 font-mono text-sm text-slate-700 dark:text-slate-300 overflow-hidden">
                       {maskedKey}
                     </div>
                     <button
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
+                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
                     >
                       {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={() => { navigator.clipboard.writeText(apiKey); showToast('API key copied!'); }}
-                      className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
+                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
                     >
                       <Copy className="w-4 h-4" />
                     </button>
@@ -250,7 +250,7 @@ export default function WhiteLabelPage() {
                   <label className={labelCls}>Event Subscriptions</label>
                   <div className="space-y-2">
                     {WEBHOOK_EVENTS.map(ev => (
-                      <div key={ev.key} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-all">
+                      <div key={ev.key} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:bg-slate-800/60 transition-all">
                         <div>
                           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{ev.label}</p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">{ev.desc}</p>
@@ -285,7 +285,7 @@ export default function WhiteLabelPage() {
                 </div>
                 <div className="p-5">
                   {/* Mini platform preview */}
-                  <div className="rounded-xl overflow-hidden border border-white/[0.08]" style={{ background: '#0a0f1e' }}>
+                  <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700" style={{ background: '#0a0f1e' }}>
                     {/* Fake topbar */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800"
                       style={{ background: `linear-gradient(135deg, ${primaryColor}20, ${secondaryColor}10)` }}>
@@ -323,14 +323,14 @@ export default function WhiteLabelPage() {
                     <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                       <span>Primary Color</span>
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: primaryColor }} />
+                        <div className="w-4 h-4 rounded-full border border-slate-200 dark:border-slate-700" style={{ background: primaryColor }} />
                         <code className="text-slate-600 dark:text-slate-400">{primaryColor}</code>
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                       <span>Secondary Color</span>
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: secondaryColor }} />
+                        <div className="w-4 h-4 rounded-full border border-slate-200 dark:border-slate-700" style={{ background: secondaryColor }} />
                         <code className="text-slate-600 dark:text-slate-400">{secondaryColor}</code>
                       </div>
                     </div>
@@ -355,7 +355,7 @@ export default function WhiteLabelPage() {
                   href={`${API_URL}/api`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white hover:bg-white/[0.08] transition-all"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white hover:bg-slate-100 dark:bg-slate-800 transition-all"
                 >
                   <Key className="w-3.5 h-3.5" /> View API Reference
                 </a>

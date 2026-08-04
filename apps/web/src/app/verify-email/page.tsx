@@ -43,7 +43,7 @@ function VerifyEmailContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0a0f1e] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-white/10 p-8 rounded-2xl shadow-2xl text-center space-y-6">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-2xl shadow-2xl text-center space-y-6">
         {status === 'loading' && (
           <div className="space-y-4">
             <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto" />
@@ -70,7 +70,7 @@ function VerifyEmailContent() {
             <p className="text-sm text-red-400 bg-red-500/10 p-3 rounded-xl border border-red-500/20">{message}</p>
             <button
               onClick={() => router.push('/login')}
-              className="w-full py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white hover:bg-white/10 font-semibold transition-all"
+              className="w-full py-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white hover:bg-slate-100 dark:bg-slate-800 font-semibold transition-all"
             >
               Back to Login
             </button>

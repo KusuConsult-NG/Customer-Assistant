@@ -326,7 +326,7 @@ export default function TelephonyPage() {
 
       {/* Provider Selection */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 rounded-2xl p-6 border border-white/10 space-y-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+        <div className="lg:col-span-2 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
           <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Active Telephony Carrier Provider</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -362,7 +362,7 @@ export default function TelephonyPage() {
         </div>
 
         {/* Carrier Config */}
-        <div className="rounded-2xl p-6 border border-white/10 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
+        <div className="rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
           <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-blue-400" /> Carrier Forwarding
           </h3>
@@ -372,7 +372,7 @@ export default function TelephonyPage() {
               type="text"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-blue-400 focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-blue-400 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
@@ -381,7 +381,7 @@ export default function TelephonyPage() {
               type="text"
               value={forwardingTarget}
               onChange={(e) => setForwardingTarget(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>
@@ -389,15 +389,15 @@ export default function TelephonyPage() {
 
       {/* Transcript Modal */}
       {selectedCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-base">Call Audio Transcript</h3>
               <button onClick={() => setSelectedCall(null)} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 rounded-xl bg-black/40 border border-slate-200 dark:border-slate-800 space-y-3 text-xs text-slate-700 dark:text-slate-300 font-mono leading-relaxed max-h-80 overflow-y-auto">
+            <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 text-xs text-slate-700 dark:text-slate-300 font-mono leading-relaxed max-h-80 overflow-y-auto">
               {selectedCall.transcript ? (
                 <pre className="whitespace-pre-wrap">{selectedCall.transcript}</pre>
               ) : (
@@ -448,7 +448,7 @@ export default function TelephonyPage() {
             {/* Live Streaming Audio Transcript */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Live Streamed Transcript</h4>
-              <div className="p-4 rounded-xl bg-black/40 border border-slate-200 dark:border-slate-800 space-y-3 text-xs max-h-48 overflow-y-auto">
+              <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 text-xs max-h-48 overflow-y-auto">
                 {activeLiveCall.transcript.map((t, idx) => (
                   <div key={idx} className="flex flex-col space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
@@ -457,7 +457,7 @@ export default function TelephonyPage() {
                       </span>
                       <span>{t.time}</span>
                     </div>
-                    <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-2.5 rounded-xl border border-white/[0.04]">{t.text}</p>
+                    <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">{t.text}</p>
                   </div>
                 ))}
               </div>
@@ -501,7 +501,7 @@ export default function TelephonyPage() {
                   name="userSpeech"
                   type="text"
                   placeholder="Speak or type a customer response..."
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-500"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-500"
                 />
                 <button
                   type="submit"
@@ -534,7 +534,7 @@ function ProviderCard({ id, name, desc, active, onClick }: { id: string; name: s
     <div
       onClick={onClick}
       className={`p-4 rounded-xl border cursor-pointer transition-all ${
-        active ? 'bg-blue-500/10 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-white/5 border-white/10 hover:bg-white/10'
+        active ? 'bg-blue-500/10 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:bg-slate-800'
       }`}
     >
       <div className="flex items-center justify-between mb-1">

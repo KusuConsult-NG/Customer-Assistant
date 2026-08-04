@@ -233,7 +233,7 @@ export default function BroadcastsPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowTemplateModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white text-sm font-semibold transition-all"
           >
             <Plus className="w-4 h-4" /> Create Template
           </button>
@@ -283,14 +283,14 @@ export default function BroadcastsPage() {
 
       {/* Tab 1: Broadcast Campaigns History */}
       {activeTab === 'campaigns' && (
-        <div className="rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 overflow-hidden">
           {loading ? (
             <div className="p-8 space-y-3">
               {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl animate-pulse" />)}
             </div>
           ) : broadcasts.length === 0 ? (
             <div className="p-12 text-center flex flex-col items-center justify-center">
-              <div className="w-12 h-12 rounded-full bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-slate-600 dark:text-slate-400 mb-3">
+              <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 mb-3">
                 <Send className="w-6 h-6 text-blue-400" />
               </div>
               <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">No Broadcast Campaigns Sent Yet</p>
@@ -318,7 +318,7 @@ export default function BroadcastsPage() {
               </thead>
               <tbody className="divide-y divide-white/[0.04]">
                 {broadcasts.map((b) => (
-                  <tr key={b.id} className="hover:bg-white/[0.02] transition-colors">
+                  <tr key={b.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
                     <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{b.name}</td>
                     <td className="px-5 py-4 font-mono text-xs text-purple-400">
                       {b.template?.name || 'Standard Template'}
@@ -356,7 +356,7 @@ export default function BroadcastsPage() {
       {activeTab === 'templates' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.length === 0 ? (
-            <div className="col-span-full p-12 text-center rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800">
+            <div className="col-span-full p-12 text-center rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
               <FileText className="w-10 h-10 text-purple-400 mx-auto mb-2" />
               <p className="text-slate-700 dark:text-slate-300 font-medium">No Templates Created</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-4">
@@ -371,7 +371,7 @@ export default function BroadcastsPage() {
             </div>
           ) : (
             templates.map((tpl) => (
-              <div key={tpl.id} className="p-5 rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800 space-y-4 hover:border-purple-500/30 transition-all flex flex-col justify-between">
+              <div key={tpl.id} className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 hover:border-purple-500/30 transition-all flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-900 dark:text-white text-base">{tpl.name}</span>
@@ -380,7 +380,7 @@ export default function BroadcastsPage() {
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/[0.04] text-xs text-slate-700 dark:text-slate-300 font-sans space-y-2">
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 font-sans space-y-2">
                     <p className="whitespace-pre-wrap">{tpl.bodyText}</p>
                     {tpl.footerText && (
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 pt-1.5">{tpl.footerText}</p>
@@ -410,8 +410,8 @@ export default function BroadcastsPage() {
 
       {/* Modal 1: Create Template */}
       {showTemplateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <FileText className="w-5 h-5 text-purple-400" /> Create WhatsApp Template
@@ -430,7 +430,7 @@ export default function BroadcastsPage() {
                   value={tplName}
                   onChange={(e) => setTplName(e.target.value)}
                   placeholder="e.g. promo_discount_offer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-purple-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-purple-500 outline-none"
                 />
               </div>
 
@@ -440,7 +440,7 @@ export default function BroadcastsPage() {
                   <select
                     value={tplCategory}
                     onChange={(e) => setTplCategory(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                   >
                     <option value="MARKETING">MARKETING</option>
                     <option value="UTILITY">UTILITY</option>
@@ -452,7 +452,7 @@ export default function BroadcastsPage() {
                   <select
                     value={tplLanguage}
                     onChange={(e) => setTplLanguage(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                   >
                     <option value="en_US">English (en_US)</option>
                     <option value="es">Spanish (es)</option>
@@ -468,7 +468,7 @@ export default function BroadcastsPage() {
                   rows={4}
                   value={tplBody}
                   onChange={(e) => setTplBody(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-purple-500 outline-none font-mono"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-purple-500 outline-none font-mono"
                 />
               </div>
 
@@ -479,7 +479,7 @@ export default function BroadcastsPage() {
                   value={tplFooter}
                   onChange={(e) => setTplFooter(e.target.value)}
                   placeholder="e.g. Reply STOP to unsubscribe"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -487,7 +487,7 @@ export default function BroadcastsPage() {
                 <button
                   type="button"
                   onClick={() => setShowTemplateModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
@@ -506,8 +506,8 @@ export default function BroadcastsPage() {
 
       {/* Modal 2: Send Broadcast Campaign */}
       {showBroadcastModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Send className="w-5 h-5 text-blue-400" /> Send Multi-Recipient WhatsApp Broadcast
@@ -526,7 +526,7 @@ export default function BroadcastsPage() {
                   value={campaignName}
                   onChange={(e) => setCampaignName(e.target.value)}
                   placeholder="e.g. August Customer Special Offer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
@@ -536,7 +536,7 @@ export default function BroadcastsPage() {
                   required
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 >
                   <option value="">-- Choose WhatsApp Template --</option>
                   {templates.map((t) => (
@@ -554,7 +554,7 @@ export default function BroadcastsPage() {
                   value={varValue1}
                   onChange={(e) => setVarValue1(e.target.value)}
                   placeholder="e.g. Valued Customer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -564,7 +564,7 @@ export default function BroadcastsPage() {
                     type="checkbox"
                     checked={useAllContacts}
                     onChange={(e) => setUseAllContacts(e.target.checked)}
-                    className="rounded bg-white/10 border-white/20 text-blue-600 focus:ring-0"
+                    className="rounded bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-blue-600 focus:ring-0"
                   />
                   <span>Send to all {contacts.length} CRM registered contacts</span>
                 </label>
@@ -579,7 +579,7 @@ export default function BroadcastsPage() {
                       value={recipientsText}
                       onChange={(e) => setRecipientsText(e.target.value)}
                       placeholder="+2348030000000, +2348120000000"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white font-mono outline-none"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono outline-none"
                     />
                   </div>
                 )}
@@ -589,7 +589,7 @@ export default function BroadcastsPage() {
                 <button
                   type="button"
                   onClick={() => setShowBroadcastModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>

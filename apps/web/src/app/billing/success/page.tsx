@@ -18,7 +18,7 @@ function BillingSuccessContent() {
 
   return (
     <div className="flex h-screen w-full flex-col items-center justify-center bg-[#080c18] p-6 text-center">
-      <div className="w-full max-w-md bg-white/5 border border-white/10 p-8 rounded-3xl shadow-2xl backdrop-blur-md flex flex-col items-center">
+      <div className="w-full max-w-md bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 p-8 rounded-3xl shadow-2xl backdrop-blur-md flex flex-col items-center">
         <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
           <div className="w-14 h-14 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/40">
             <Check className="w-8 h-8 text-slate-900 dark:text-white stroke-[3]" />
@@ -37,7 +37,7 @@ function BillingSuccessContent() {
         <div className="flex flex-col gap-3 w-full">
           <Link 
             href="/billing"
-            className="w-full py-3.5 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl text-slate-900 dark:text-white font-medium flex items-center justify-center gap-2 transition-colors"
+            className="w-full py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-white/15 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-medium flex items-center justify-center gap-2 transition-colors"
           >
             Go to Billing <ArrowRight className="w-4 h-4" />
           </Link>

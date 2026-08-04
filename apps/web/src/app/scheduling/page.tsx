@@ -258,7 +258,7 @@ export default function SchedulingPage() {
 
       {/* Tabs Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
-        <div className="flex space-x-1 p-1 bg-white/5 border border-white/10 rounded-xl w-fit">
+        <div className="flex space-x-1 p-1 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl w-fit">
           <button
             onClick={() => setActiveTab('bookings')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -299,10 +299,10 @@ export default function SchedulingPage() {
 
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-white/5 animate-pulse rounded-xl" />)}
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-slate-100 dark:bg-slate-800/60 animate-pulse rounded-xl" />)}
         </div>
       ) : viewMode === 'calendar' ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-5 animate-fade-in">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-6 space-y-5 animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
@@ -311,7 +311,7 @@ export default function SchedulingPage() {
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Showing operating slots (08:00 - 18:00 WAT). Click any booked slot to audit or open slot to book.</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+              <span className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-800">
                 Google Calendar sync coming soon
               </span>
             </div>
@@ -322,9 +322,9 @@ export default function SchedulingPage() {
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr>
-                  <th className="px-4 py-3 bg-white/5 border border-white/10 text-xs font-bold text-slate-600 dark:text-slate-400 w-32">Day</th>
+                  <th className="px-4 py-3 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 w-32">Day</th>
                   {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(t => (
-                    <th key={t} className="px-2 py-3 bg-white/5 border border-white/10 text-xs font-bold text-slate-600 dark:text-slate-400 text-center min-w-[120px]">
+                    <th key={t} className="px-2 py-3 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 text-center min-w-[120px]">
                       {t < 12 ? `${t}:00 AM` : t === 12 ? `12:00 PM` : `${t - 12}:00 PM`}
                     </th>
                   ))}
@@ -337,7 +337,7 @@ export default function SchedulingPage() {
 
                   return (
                     <tr key={dayName}>
-                      <td className="px-4 py-4 border border-white/10 bg-white/[0.02] text-sm font-bold text-blue-400 align-top">{dayName}</td>
+                      <td className="px-4 py-4 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 text-sm font-bold text-blue-400 align-top">{dayName}</td>
                       {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
                         const cellBookings = safeBookings.filter(b => {
                           if (!b.startTime) return false;
@@ -353,7 +353,7 @@ export default function SchedulingPage() {
                         });
 
                         return (
-                          <td key={hour} className="border border-white/10 p-1.5 bg-white/[0.01] hover:bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-colors align-top min-h-[80px]">
+                          <td key={hour} className="border border-slate-200 dark:border-slate-800 p-1.5 bg-white dark:bg-slate-900/80 hover:bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-colors align-top min-h-[80px]">
                             {cellBookings.map(b => (
                               <div key={b.id} onClick={() => setSelectedBooking(b)} className="mb-2 p-2 rounded-lg bg-blue-600/20 border border-blue-500/30 cursor-pointer hover:bg-blue-600/30">
                                 <div className="text-[10px] font-bold text-blue-300 truncate">{b.contactName}</div>
@@ -390,10 +390,10 @@ export default function SchedulingPage() {
           </div>
         </div>
       ) : activeTab === 'bookings' ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
           {bookings.length > 0 ? (
             <table className="w-full text-left border-collapse text-sm">
-              <thead className="bg-white/5 border-b border-white/10 text-slate-600 dark:text-slate-400">
+              <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="px-6 py-4 font-medium">Contact Name</th>
                   <th className="px-6 py-4 font-medium">Service</th>
@@ -430,10 +430,10 @@ export default function SchedulingPage() {
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
           {reservations.length > 0 ? (
             <table className="w-full text-left border-collapse text-sm">
-              <thead className="bg-white/5 border-b border-white/10 text-slate-600 dark:text-slate-400">
+              <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
                 <tr>
                   <th className="px-6 py-4 font-medium">Contact Name</th>
                   <th className="px-6 py-4 font-medium">Party Size</th>
@@ -473,8 +473,8 @@ export default function SchedulingPage() {
 
       {/* Add Booking Modal */}
       {showAddBookingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-base">New Appointment Booking</h3>
               <button onClick={() => setShowAddBookingModal(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
@@ -484,19 +484,19 @@ export default function SchedulingPage() {
             <form onSubmit={handleCreateBooking} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Customer Full Name</label>
-                <input required type="text" value={bookingName} onChange={e => setBookingName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Tunde Bakare" />
+                <input required type="text" value={bookingName} onChange={e => setBookingName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Tunde Bakare" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Service Type</label>
-                <input required type="text" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="text" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date & Time</label>
-                <input required type="datetime-local" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="datetime-local" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Assigned Staff</label>
-                <input required type="text" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="text" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
                 Confirm & Create Booking
@@ -508,8 +508,8 @@ export default function SchedulingPage() {
 
       {/* Add Reservation Modal */}
       {showAddReservationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-base">New Table / Room Reservation</h3>
               <button onClick={() => setShowAddReservationModal(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
@@ -519,21 +519,21 @@ export default function SchedulingPage() {
             <form onSubmit={handleCreateReservation} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Guest Full Name</label>
-                <input required type="text" value={resName} onChange={e => setResName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Fatima Mohammed" />
+                <input required type="text" value={resName} onChange={e => setResName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Fatima Mohammed" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Party Size</label>
-                  <input required type="number" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <input required type="number" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Table / Room</label>
-                  <input required type="text" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <input required type="text" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date & Time</label>
-                <input required type="datetime-local" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="datetime-local" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
                 Confirm & Reserve Slot
@@ -544,8 +544,8 @@ export default function SchedulingPage() {
       )}
       {/* Booking Audit & Details Inspector Drawer */}
       {selectedBooking && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-white/10 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
                 <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest font-bold">Audit Record Inspector</span>
@@ -553,7 +553,7 @@ export default function SchedulingPage() {
               </div>
               <button
                 onClick={() => setSelectedBooking(null)}
-                className="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-all"
+                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -569,15 +569,15 @@ export default function SchedulingPage() {
             <div className="space-y-4">
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Booking Breakdown</h4>
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Service Name</span>
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedBooking.service}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Assigned Staff</span>
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedBooking.staff}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] col-span-2">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 col-span-2">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Scheduled Date & Time (WAT)</span>
                   <span className="text-sm font-mono text-blue-300 font-semibold">{new Date(selectedBooking.startTime).toLocaleString()}</span>
                 </div>
@@ -611,14 +611,14 @@ export default function SchedulingPage() {
             <div className="space-y-3 flex-1">
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Audit Log Stream</h4>
               <div className="space-y-2 text-xs">
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-start gap-3">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
                   <Clock className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-800 dark:text-slate-200">Booking Confirmed by AI Orchestrator</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{new Date(selectedBooking.startTime).toLocaleString()}</p>
                   </div>
                 </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-start gap-3">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-800 dark:text-slate-200">Customer Confirmation Notification Sent</p>
@@ -655,8 +655,8 @@ export default function SchedulingPage() {
 
       {/* Reservation Audit & Details Inspector Drawer */}
       {selectedReservation && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-white/10 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
                 <span className="text-[10px] font-mono text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
@@ -664,7 +664,7 @@ export default function SchedulingPage() {
               </div>
               <button
                 onClick={() => setSelectedReservation(null)}
-                className="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-all"
+                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -680,15 +680,15 @@ export default function SchedulingPage() {
             <div className="space-y-4">
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Reservation Breakdown</h4>
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Party Size</span>
                   <span className="text-sm font-bold text-purple-300">{selectedReservation.partySize} Guests</span>
                 </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Assigned Table / Room</span>
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedReservation.tableOrRoom}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] col-span-2">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 col-span-2">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Special Requests & Dietary Notes</span>
                   <span className="text-xs text-slate-700 dark:text-slate-300 italic">{selectedReservation.specialRequests || 'No special requests provided'}</span>
                 </div>

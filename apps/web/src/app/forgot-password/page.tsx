@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-[#0a0f1e] p-8">
-      <div className="w-full max-w-md space-y-8 bg-white/5 p-8 rounded-2xl border border-white/10 shadow-xl backdrop-blur-sm">
+      <div className="w-full max-w-md space-y-8 bg-slate-100 dark:bg-slate-800/60 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl backdrop-blur-sm">
         <div className="flex flex-col items-center text-center">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
             <Sparkles className="w-7 h-7 text-slate-900 dark:text-white" />
@@ -65,7 +65,7 @@ export default function ForgotPasswordPage() {
               required
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+              className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
               placeholder="admin@example.com"
             />
           </div>
@@ -79,7 +79,7 @@ export default function ForgotPasswordPage() {
           </button>
         </form>
 
-        <div className="pt-6 border-t border-white/10 text-center">
+        <div className="pt-6 border-t border-slate-200 dark:border-slate-800 text-center">
           <Link href="/login" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors">
             Back to login
           </Link>

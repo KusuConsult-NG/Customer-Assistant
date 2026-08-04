@@ -58,7 +58,7 @@ export default function WidgetPage() {
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-black/95 text-gray-100">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 backdrop-blur-md">
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Code className="w-5 h-5 text-blue-400" />
@@ -78,7 +78,7 @@ export default function WidgetPage() {
 
       <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
         {/* Left config */}
-        <div className="w-full lg:w-1/3 p-6 overflow-y-auto border-r border-white/10 space-y-8">
+        <div className="w-full lg:w-1/3 p-6 overflow-y-auto border-r border-slate-200 dark:border-slate-800 space-y-8">
           
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-widest opacity-80">
@@ -103,7 +103,7 @@ export default function WidgetPage() {
               <select
                 value={config.position}
                 onChange={e => setConfig({...config, position: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
               >
                 <option value="bottom-right">Bottom Right</option>
                 <option value="bottom-left">Bottom Left</option>
@@ -121,7 +121,7 @@ export default function WidgetPage() {
               <textarea
                 value={config.welcomeMessage}
                 onChange={e => setConfig({...config, welcomeMessage: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition h-24 resize-none"
+                className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition h-24 resize-none"
               />
             </div>
           </div>
@@ -131,7 +131,7 @@ export default function WidgetPage() {
               <ToggleLeft className="w-4 h-4" /> Features
             </h3>
             
-            <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border border-white/10 hover:bg-white/5 transition">
+            <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:bg-slate-800/60 transition">
               <span className="text-sm font-medium">Enable Web Chat</span>
               <input
                 type="checkbox"
@@ -141,7 +141,7 @@ export default function WidgetPage() {
               />
             </label>
 
-            <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border border-white/10 hover:bg-white/5 transition">
+            <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:bg-slate-800/60 transition">
               <span className="text-sm font-medium">Enable Voice Calling</span>
               <input
                 type="checkbox"
@@ -152,19 +152,19 @@ export default function WidgetPage() {
             </label>
           </div>
 
-          <div className="space-y-4 pt-4 border-t border-white/10">
+          <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-widest opacity-80">
               <Code className="w-4 h-4" /> Embed Code
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-400">Copy this code and paste it before the closing &lt;/body&gt; tag of your website.</p>
             
             <div className="relative group">
-              <pre className="bg-black/60 p-4 rounded-lg overflow-x-auto text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-white/10">
+              <pre className="bg-white dark:bg-slate-900 p-4 rounded-lg overflow-x-auto text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800">
                 {codeSnippet}
               </pre>
               <button
                 onClick={copyCode}
-                className="absolute top-2 right-2 p-1.5 rounded bg-white/10 hover:bg-white/20 text-slate-900 dark:text-white transition opacity-0 group-hover:opacity-100"
+                className="absolute top-2 right-2 p-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white transition opacity-0 group-hover:opacity-100"
                 title="Copy code"
               >
                 {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -174,12 +174,12 @@ export default function WidgetPage() {
         </div>
 
         {/* Right preview */}
-        <div className="flex-1 bg-white/5 relative p-6 lg:p-12 overflow-hidden flex flex-col">
+        <div className="flex-1 bg-slate-100 dark:bg-slate-800/60 relative p-6 lg:p-12 overflow-hidden flex flex-col">
           <div className="absolute top-6 left-6 text-sm font-semibold text-white/40 flex items-center gap-2 uppercase tracking-widest">
             <Monitor className="w-4 h-4" /> Live Preview
           </div>
           
-          <div className="flex-1 bg-white rounded-xl overflow-hidden shadow-2xl border border-white/20 flex flex-col relative w-full h-full">
+          <div className="flex-1 bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col relative w-full h-full">
             <div className="h-14 bg-gray-100 border-b border-gray-200 flex items-center px-4 gap-4">
               <div className="flex gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-red-400" />

@@ -274,7 +274,7 @@ export default function WorkflowsPage() {
               {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl animate-pulse" />)}
             </div>
           ) : workflows.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-white/[0.02] border border-slate-200 dark:border-slate-800 text-center text-xs text-slate-600 dark:text-slate-400">
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-center text-xs text-slate-600 dark:text-slate-400">
               No workflows saved. Click "New Automation Graph" to build your first flow.
             </div>
           ) : (
@@ -285,7 +285,7 @@ export default function WorkflowsPage() {
                 className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 ${
                   activeWorkflow?.id === wf.id
                     ? 'bg-blue-500/10 border-blue-500/40 text-slate-900 dark:text-white shadow-lg'
-                    : 'bg-white/[0.02] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-white/[0.04]'
+                    : 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-50 dark:bg-slate-800/60'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -305,7 +305,7 @@ export default function WorkflowsPage() {
         {/* Right column: Visual Graph Canvas */}
         <div className="lg:col-span-3">
           {activeWorkflow ? (
-            <div className="rounded-2xl bg-[#0b0f1d] border border-white/[0.08] p-6 space-y-6 flex flex-col justify-between min-h-[520px] relative overflow-hidden">
+            <div className="rounded-2xl bg-[#0b0f1d] border border-slate-200 dark:border-slate-700 p-6 space-y-6 flex flex-col justify-between min-h-[520px] relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px] opacity-5 pointer-events-none" />
 
               {/* Canvas Header Toolbar */}
@@ -327,7 +327,7 @@ export default function WorkflowsPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleToggleActive(activeWorkflow.id, activeWorkflow.isActive)}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white font-medium"
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white font-medium"
                   >
                     {activeWorkflow.isActive ? 'Pause Workflow' : 'Activate Workflow'}
                   </button>
@@ -357,7 +357,7 @@ export default function WorkflowsPage() {
                 {(activeWorkflow.nodes || []).map((node, index) => (
                   <React.Fragment key={node.id}>
                     {/* Node Card */}
-                    <div className="w-full max-w-md p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] shadow-xl hover:border-blue-500/40 transition-all group relative">
+                    <div className="w-full max-w-md p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 shadow-xl hover:border-blue-500/40 transition-all group relative">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className={`w-3 h-3 rounded-full bg-gradient-to-r ${node.color || 'from-blue-500 to-indigo-600'}`} />
@@ -382,14 +382,14 @@ export default function WorkflowsPage() {
                 {/* Add Step Node Button */}
                 <button
                   onClick={() => setShowNodeModal(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.04] border border-dashed border-white/20 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:border-blue-400 transition-all text-xs font-semibold mt-4"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-dashed border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:border-blue-400 transition-all text-xs font-semibold mt-4"
                 >
                   <Plus className="w-4 h-4" /> Add Action / Condition Step
                 </button>
               </div>
             </div>
           ) : (
-            <div className="p-12 rounded-2xl bg-[#0b0f1d] border border-white/[0.08] text-center flex flex-col items-center justify-center min-h-[400px]">
+            <div className="p-12 rounded-2xl bg-[#0b0f1d] border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center min-h-[400px]">
               <GitFork className="w-12 h-12 text-blue-400 mb-3" />
               <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">Select or Create a Visual Automation Graph</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
@@ -408,8 +408,8 @@ export default function WorkflowsPage() {
 
       {/* Modal 1: Create New Workflow */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <GitFork className="w-5 h-5 text-blue-400" /> New Visual Workflow
@@ -428,7 +428,7 @@ export default function WorkflowsPage() {
                   value={wfName}
                   onChange={(e) => setWfName(e.target.value)}
                   placeholder="e.g. VIP Customer Lead Qualification"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
@@ -437,7 +437,7 @@ export default function WorkflowsPage() {
                 <select
                   value={wfTrigger}
                   onChange={(e) => setWfTrigger(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 >
                   <option value="WHATSAPP_INBOUND">Incoming WhatsApp Message</option>
                   <option value="VOICE_CALL_INBOUND">Incoming Phone Call</option>
@@ -453,7 +453,7 @@ export default function WorkflowsPage() {
                   value={wfDescription}
                   onChange={(e) => setWfDescription(e.target.value)}
                   placeholder="Summarize what this automation graph handles..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -461,7 +461,7 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={() => setShowNewModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
@@ -479,8 +479,8 @@ export default function WorkflowsPage() {
 
       {/* Modal 2: Add Node Step */}
       {showNodeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-white/10 p-6 space-y-5 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Plus className="w-5 h-5 text-blue-400" /> Add Step Node
@@ -496,7 +496,7 @@ export default function WorkflowsPage() {
                 <select
                   value={nodeType}
                   onChange={(e) => setNodeType(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 >
                   <option value="ACTION">ACTION (Execute Task)</option>
                   <option value="CONDITION">CONDITION (Filter Branch)</option>
@@ -509,7 +509,7 @@ export default function WorkflowsPage() {
                   type="text"
                   value={nodeLabel}
                   onChange={(e) => setNodeLabel(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -519,7 +519,7 @@ export default function WorkflowsPage() {
                   type="text"
                   value={nodeDetail}
                   onChange={(e) => setNodeDetail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-white/[0.08] text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -527,7 +527,7 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={() => setShowNodeModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-white/[0.04] text-slate-700 dark:text-slate-300 font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Cancel
                 </button>
