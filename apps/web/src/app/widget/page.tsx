@@ -57,11 +57,11 @@ export default function WidgetPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white dark:bg-slate-950 text-gray-100">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 backdrop-blur-md">
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Code className="w-5 h-5 text-blue-400" />
+            <Code className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             Widget Generator
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">Customize and embed the web chat & voice widget.</p>
@@ -69,7 +69,7 @@ export default function WidgetPage() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 transition text-slate-900 dark:text-white font-medium rounded-lg text-sm disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 transition text-white font-medium rounded-lg text-sm disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
           {saving ? "Saving..." : "Save Settings"}
@@ -167,7 +167,7 @@ export default function WidgetPage() {
                 className="absolute top-2 right-2 p-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white transition opacity-0 group-hover:opacity-100"
                 title="Copy code"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
           </div>

@@ -55,7 +55,7 @@ function SetupAccountContent() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-2xl shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-4">
             <Lock className="w-6 h-6" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Setup Your Account</h1>
@@ -64,14 +64,14 @@ function SetupAccountContent() {
 
         {success ? (
           <div className="text-center space-y-4 py-4">
-            <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-            <h2 className="text-xl font-bold text-emerald-400">Account created successfully!</h2>
+            <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400 mx-auto" />
+            <h2 className="text-xl font-bold text-emerald-600 dark:text-emerald-400">Account created successfully!</h2>
             <p className="text-sm text-slate-600 dark:text-slate-400">Redirecting to login...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm text-center border border-red-500/20">
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm text-center border border-red-200 dark:border-red-500/20">
                 {error}
               </div>
             )}
@@ -100,7 +100,7 @@ function SetupAccountContent() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all shadow-lg shadow-blue-500/20 flex justify-center items-center gap-2 disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-lg shadow-blue-500/20 flex justify-center items-center gap-2 disabled:opacity-50"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               {loading ? 'Setting up...' : 'Activate Account'}

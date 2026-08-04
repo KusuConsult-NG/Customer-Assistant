@@ -293,10 +293,10 @@ export default function KnowledgePage() {
   };
 
   const statusConfig: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-    PENDING: { label: 'Pending', className: 'bg-amber-500/10 text-amber-400 border-amber-500/20', icon: <Clock className="w-3 h-3" /> },
-    PROCESSING: { label: 'Processing', className: 'bg-blue-500/10 text-blue-400 border-blue-500/20', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    INDEXED: { label: 'Indexed', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: <CheckCircle2 className="w-3 h-3" /> },
-    FAILED: { label: 'Failed', className: 'bg-red-500/10 text-red-400 border-red-500/20', icon: <AlertCircle className="w-3 h-3" /> },
+    PENDING: { label: 'Pending', className: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20', icon: <Clock className="w-3 h-3" /> },
+    PROCESSING: { label: 'Processing', className: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
+    INDEXED: { label: 'Indexed', className: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20', icon: <CheckCircle2 className="w-3 h-3" /> },
+    FAILED: { label: 'Failed', className: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20', icon: <AlertCircle className="w-3 h-3" /> },
   };
 
   const safeDocs = Array.isArray(docs) ? docs : [];
@@ -309,14 +309,14 @@ export default function KnowledgePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Brain className="w-6 h-6 text-blue-400" /> AI Knowledge Base & RAG Engine
+            <Brain className="w-6 h-6 text-blue-600 dark:text-blue-400" /> AI Knowledge Base & RAG Engine
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Train your AI voice & chat assistant with documents, website links, and explicit Q&A rules.</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowFaqModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 text-sm font-semibold transition-all"
           >
             <Plus className="w-4 h-4" /> Add FAQ Rule
           </button>
@@ -336,7 +336,7 @@ export default function KnowledgePage() {
           <button
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20 disabled:opacity-50"
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Upload File
@@ -349,7 +349,7 @@ export default function KnowledgePage() {
         <div className="rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 p-4">
           <div className="flex items-center justify-between mb-2 text-sm">
             <span className="text-slate-700 dark:text-slate-300 font-medium">Extracting & Vectorizing Document Chunks...</span>
-            <span className="text-blue-400 font-mono font-bold">{uploadProgress}%</span>
+            <span className="text-blue-600 dark:text-blue-400 font-mono font-bold">{uploadProgress}%</span>
           </div>
           <div className="w-full h-2 bg-slate-50 dark:bg-slate-800/60 rounded-full overflow-hidden">
             <div
@@ -363,7 +363,7 @@ export default function KnowledgePage() {
       {/* KPI Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
             <FileText className="w-5 h-5" />
           </div>
           <div>
@@ -372,7 +372,7 @@ export default function KnowledgePage() {
           </div>
         </div>
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
@@ -381,7 +381,7 @@ export default function KnowledgePage() {
           </div>
         </div>
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
             <Database className="w-5 h-5" />
           </div>
           <div>
@@ -392,9 +392,9 @@ export default function KnowledgePage() {
       </div>
 
       {/* Website Crawler Box */}
-      <div className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.04] p-5 space-y-3">
+      <div className="rounded-2xl border border-blue-200 dark:border-blue-500/20 bg-blue-500/[0.04] p-5 space-y-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-400">
+          <div className="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
             <Globe className="w-5 h-5" />
           </div>
           <div>
@@ -414,14 +414,14 @@ export default function KnowledgePage() {
           <button
             type="submit"
             disabled={crawling}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 flex-shrink-0 shadow-lg shadow-blue-500/20"
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 flex-shrink-0 shadow-lg shadow-blue-500/20"
           >
             {crawling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {crawling ? 'Crawling Website...' : 'Crawl & Index URL'}
           </button>
         </form>
         {crawlStatus && (
-          <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${crawlStatus.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+          <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${crawlStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400'}`}>
             {crawlStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
             {crawlStatus.text}
           </div>
@@ -433,7 +433,7 @@ export default function KnowledgePage() {
         <button
           onClick={() => setActiveTab('documents')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'documents' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+            activeTab === 'documents' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
           <FileText className="w-4 h-4" /> Documents & Websites ({docs.length})
@@ -441,7 +441,7 @@ export default function KnowledgePage() {
         <button
           onClick={() => setActiveTab('faqs')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'faqs' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+            activeTab === 'faqs' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
           <MessageSquare className="w-4 h-4" /> Custom FAQ Rules ({faqs.length})
@@ -467,10 +467,10 @@ export default function KnowledgePage() {
               ) : docs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-                    <FileText className="w-8 h-8 text-gray-600" />
+                    <FileText className="w-8 h-8 text-slate-500 dark:text-slate-400" />
                   </div>
                   <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-                  <p className="text-sm text-gray-600 max-w-sm">No documents uploaded. Upload PDFs, Word docs, or crawl your website to train your AI agent.</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No documents uploaded. Upload PDFs, Word docs, or crawl your website to train your AI agent.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -482,20 +482,20 @@ export default function KnowledgePage() {
                         onClick={() => setSelectedDoc(doc)}
                         className={`flex items-center gap-3 p-4 rounded-xl border transition-all cursor-pointer group ${
                           selectedDoc?.id === doc.id
-                            ? 'bg-blue-500/10 border-blue-500/30'
+                            ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30'
                             : 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:bg-slate-800/60'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${
-                          doc.mimeType === 'text/html' || doc.sourceUrl ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400'
+                          doc.mimeType === 'text/html' || doc.sourceUrl ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400'
                         }`}>
                           {doc.mimeType === 'text/html' || doc.sourceUrl ? <Globe className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{doc.title || doc.fileName}</p>
                           <div className="flex items-center gap-3 mt-0.5">
-                            {doc.fileSize && <span className="text-xs text-gray-600">{(doc.fileSize / 1024).toFixed(1)} KB</span>}
-                            {doc.chunkCount && <span className="text-xs text-gray-600">{doc.chunkCount} vector chunks</span>}
+                            {doc.fileSize && <span className="text-xs text-slate-500 dark:text-slate-400">{(doc.fileSize / 1024).toFixed(1)} KB</span>}
+                            {doc.chunkCount && <span className="text-xs text-slate-500 dark:text-slate-400">{doc.chunkCount} vector chunks</span>}
                           </div>
                         </div>
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex-shrink-0 ${cfg.className}`}>
@@ -504,7 +504,7 @@ export default function KnowledgePage() {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
                           disabled={deletingId === doc.id}
-                          className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-1 flex-shrink-0"
+                          className="opacity-0 group-hover:opacity-100 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:text-red-400 transition-all p-1 flex-shrink-0"
                         >
                           {deletingId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                         </button>
@@ -527,18 +527,18 @@ export default function KnowledgePage() {
                         <input type="text" value={editQuestion} onChange={e => setEditQuestion(e.target.value)} className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm" />
                         <textarea value={editAnswer} onChange={e => setEditAnswer(e.target.value)} className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm" rows={2} />
                         <div className="flex gap-2">
-                          <button onClick={() => handleEditFaq(faq.id)} className="px-3 py-1 bg-emerald-500/20 text-emerald-300 text-xs rounded hover:bg-emerald-500/30">Save</button>
-                          <button onClick={() => setEditingFaq(null)} className="px-3 py-1 bg-gray-500/20 text-slate-700 dark:text-slate-300 text-xs rounded hover:bg-gray-500/30">Cancel</button>
+                          <button onClick={() => handleEditFaq(faq.id)} className="px-3 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs rounded hover:bg-emerald-500/30">Save</button>
+                          <button onClick={() => setEditingFaq(null)} className="px-3 py-1 bg-slate-200 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300 text-xs rounded hover:bg-gray-500/30">Cancel</button>
                         </div>
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
+                          <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] text-slate-600 dark:text-slate-400">{faq.category}</span>
-                            <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-400 hover:underline">Edit</button>
-                            <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-400 hover:underline">Delete</button>
+                            <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Edit</button>
+                            <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
                           </div>
                         </div>
                         <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">A: {faq.answer}</p>
@@ -549,10 +549,10 @@ export default function KnowledgePage() {
                 {faqs.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-                      <MessageSquare className="w-8 h-8 text-gray-600" />
+                      <MessageSquare className="w-8 h-8 text-slate-500 dark:text-slate-400" />
                     </div>
                     <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-                    <p className="text-sm text-gray-600 max-w-sm">No FAQ rules defined. Add specific Q&A pairs for your AI to follow.</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No FAQ rules defined. Add specific Q&A pairs for your AI to follow.</p>
                   </div>
                 )}
               </div>
@@ -563,7 +563,7 @@ export default function KnowledgePage() {
         {/* Right Column: Search Playground */}
         <div className="lg:col-span-2 space-y-3">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-400" /> RAG Search Playground
+            <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" /> RAG Search Playground
           </h2>
           <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
             <form onSubmit={handleSearch} className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -579,7 +579,7 @@ export default function KnowledgePage() {
                 <button
                   type="submit"
                   disabled={searching}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all"
                 >
                   {searching ? 'Searching...' : 'Search'}
                 </button>
@@ -588,7 +588,7 @@ export default function KnowledgePage() {
             <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
               {searching ? (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                  <Loader2 className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin" />
                 </div>
               ) : searchResults.length > 0 ? (
                 searchResults.map((r, i) => (
@@ -599,9 +599,9 @@ export default function KnowledgePage() {
                         {r.documentTitle && `Source: ${r.documentTitle}`}
                       </span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        r.similarity > 0.8 ? 'bg-emerald-500/10 text-emerald-400' :
-                        r.similarity > 0.6 ? 'bg-amber-500/10 text-amber-400' :
-                        'bg-gray-500/10 text-slate-500 dark:text-slate-400'
+                        r.similarity > 0.8 ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                        r.similarity > 0.6 ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                        'bg-slate-100 dark:bg-slate-500/10 text-slate-500 dark:text-slate-400'
                       }`}>
                         {(r.similarity * 100).toFixed(0)}% match
                       </span>
@@ -609,12 +609,12 @@ export default function KnowledgePage() {
                   </div>
                 ))
               ) : hasSearched ? (
-                <div className="text-center py-10 text-gray-600">
+                <div className="text-center py-10 text-slate-500 dark:text-slate-400">
                   <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
                   <p className="text-sm">No vector matches found for your query.</p>
                 </div>
               ) : (
-                <div className="text-center py-10 text-gray-600">
+                <div className="text-center py-10 text-slate-500 dark:text-slate-400">
                   <Brain className="w-8 h-8 mx-auto mb-2 opacity-20" />
                   <p className="text-sm">Search vector memory to test AI context.</p>
                   <p className="text-xs mt-1">Try: "What are your prices?" or "Working hours"</p>
@@ -661,7 +661,7 @@ export default function KnowledgePage() {
               <button
                 type="submit"
                 disabled={pasting}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2"
               >
                 {pasting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {pasting ? 'Indexing...' : 'Index Content'}
@@ -706,7 +706,7 @@ export default function KnowledgePage() {
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4" /> Save FAQ Rule
               </button>

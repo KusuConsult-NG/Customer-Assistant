@@ -224,7 +224,7 @@ export default function BroadcastsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Send className="w-6 h-6 text-blue-400" /> WhatsApp Template Broadcasts & Campaigns
+            <Send className="w-6 h-6 text-blue-600 dark:text-blue-400" /> WhatsApp Template Broadcasts & Campaigns
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Send approved Meta WhatsApp template messages in bulk to multi-recipient target customer segments.
@@ -239,7 +239,7 @@ export default function BroadcastsPage() {
           </button>
           <button
             onClick={() => setShowBroadcastModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
           >
             <Send className="w-4 h-4" /> New Broadcast Campaign
           </button>
@@ -249,8 +249,8 @@ export default function BroadcastsPage() {
       {statusNotice && (
         <div className={`p-4 rounded-xl text-sm border flex items-center justify-between ${
           statusNotice.type === 'success'
-            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-            : 'bg-red-500/10 border-red-500/20 text-red-400'
+            ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+            : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400'
         }`}>
           <span>{statusNotice.text}</span>
           <button onClick={() => setStatusNotice(null)}><X className="w-4 h-4" /></button>
@@ -263,7 +263,7 @@ export default function BroadcastsPage() {
           onClick={() => setActiveTab('campaigns')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'campaigns'
-              ? 'border-blue-500 text-blue-400'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
@@ -273,7 +273,7 @@ export default function BroadcastsPage() {
           onClick={() => setActiveTab('templates')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'templates'
-              ? 'border-blue-500 text-blue-400'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
               : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
@@ -291,7 +291,7 @@ export default function BroadcastsPage() {
           ) : broadcasts.length === 0 ? (
             <div className="p-12 text-center flex flex-col items-center justify-center">
               <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-400 mb-3">
-                <Send className="w-6 h-6 text-blue-400" />
+                <Send className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
               <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">No Broadcast Campaigns Sent Yet</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
@@ -299,7 +299,7 @@ export default function BroadcastsPage() {
               </p>
               <button
                 onClick={() => setShowBroadcastModal(true)}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
               >
                 Send First Campaign
               </button>
@@ -320,23 +320,23 @@ export default function BroadcastsPage() {
                 {broadcasts.map((b) => (
                   <tr key={b.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
                     <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{b.name}</td>
-                    <td className="px-5 py-4 font-mono text-xs text-purple-400">
+                    <td className="px-5 py-4 font-mono text-xs text-purple-600 dark:text-purple-400">
                       {b.template?.name || 'Standard Template'}
                     </td>
                     <td className="px-5 py-4 font-medium text-slate-700 dark:text-slate-300">
                       {b.totalCount} contacts
                     </td>
                     <td className="px-5 py-4 text-xs font-mono">
-                      <span className="text-emerald-400 font-bold">{b.sentCount} sent</span>
-                      {b.failedCount > 0 && <span className="text-red-400 ml-2">({b.failedCount} failed)</span>}
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">{b.sentCount} sent</span>
+                      {b.failedCount > 0 && <span className="text-red-600 dark:text-red-400 ml-2">({b.failedCount} failed)</span>}
                     </td>
                     <td className="px-5 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
                         b.status === 'COMPLETED'
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
                           : b.status === 'SENDING'
-                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                          : 'bg-red-500/10 text-red-400 border-red-500/20'
+                          ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
+                          : 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20'
                       }`}>
                         {b.status}
                       </span>
@@ -357,25 +357,25 @@ export default function BroadcastsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.length === 0 ? (
             <div className="col-span-full p-12 text-center rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
-              <FileText className="w-10 h-10 text-purple-400 mx-auto mb-2" />
+              <FileText className="w-10 h-10 text-purple-600 dark:text-purple-400 mx-auto mb-2" />
               <p className="text-slate-700 dark:text-slate-300 font-medium">No Templates Created</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-4">
                 Meta requires pre-approved templates for outgoing broadcast messages outside 24-hour customer windows.
               </p>
               <button
                 onClick={() => setShowTemplateModal(true)}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white font-semibold text-xs"
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs"
               >
                 Create Template
               </button>
             </div>
           ) : (
             templates.map((tpl) => (
-              <div key={tpl.id} className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 hover:border-purple-500/30 transition-all flex flex-col justify-between">
+              <div key={tpl.id} className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-4 hover:border-purple-200 dark:border-purple-500/30 transition-all flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-900 dark:text-white text-base">{tpl.name}</span>
-                    <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-mono uppercase font-bold">
+                    <span className="px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 text-[10px] font-mono uppercase font-bold">
                       {tpl.category}
                     </span>
                   </div>
@@ -391,12 +391,12 @@ export default function BroadcastsPage() {
                 <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3 text-xs">
                   <span className="text-slate-500 dark:text-slate-400 font-mono">{tpl.language}</span>
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 text-[10px] font-bold">
                       APPROVED
                     </span>
                     <button
                       onClick={() => handleDeleteTemplate(tpl.id)}
-                      className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-red-400 transition-colors"
+                      className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-red-600 dark:text-red-400 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -414,7 +414,7 @@ export default function BroadcastsPage() {
           <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <FileText className="w-5 h-5 text-purple-400" /> Create WhatsApp Template
+                <FileText className="w-5 h-5 text-purple-600 dark:text-purple-400" /> Create WhatsApp Template
               </h2>
               <button onClick={() => setShowTemplateModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
@@ -494,7 +494,7 @@ export default function BroadcastsPage() {
                 <button
                   disabled={creatingTemplate}
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-lg shadow-purple-500/20 disabled:opacity-50"
                 >
                   {creatingTemplate ? 'Saving...' : 'Save & Register Template'}
                 </button>
@@ -510,7 +510,7 @@ export default function BroadcastsPage() {
           <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Send className="w-5 h-5 text-blue-400" /> Send Multi-Recipient WhatsApp Broadcast
+                <Send className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Send Multi-Recipient WhatsApp Broadcast
               </h2>
               <button onClick={() => setShowBroadcastModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
@@ -596,7 +596,7 @@ export default function BroadcastsPage() {
                 <button
                   disabled={sendingBroadcast}
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
                 >
                   {sendingBroadcast ? 'Sending...' : <><Send className="w-4 h-4" /> Launch Broadcast</>}
                 </button>

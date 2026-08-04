@@ -236,7 +236,7 @@ export default function WorkflowsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <GitFork className="w-6 h-6 text-blue-400" /> Visual Workflow Automation Engine
+            <GitFork className="w-6 h-6 text-blue-600 dark:text-blue-400" /> Visual Workflow Automation Engine
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Build visual decision graphs to automate AI responses, CRM lead routing, and human handoff triggers.
@@ -245,7 +245,7 @@ export default function WorkflowsPage() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
           >
             <Plus className="w-4 h-4" /> New Automation Graph
           </button>
@@ -255,8 +255,8 @@ export default function WorkflowsPage() {
       {statusNotice && (
         <div className={`p-4 rounded-xl text-sm border flex items-center justify-between ${
           statusNotice.type === 'success'
-            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-            : 'bg-red-500/10 border-red-500/20 text-red-400'
+            ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+            : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400'
         }`}>
           <span>{statusNotice.text}</span>
           <button onClick={() => setStatusNotice(null)}><X className="w-4 h-4" /></button>
@@ -284,7 +284,7 @@ export default function WorkflowsPage() {
                 onClick={() => setActiveWorkflow(wf)}
                 className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 ${
                   activeWorkflow?.id === wf.id
-                    ? 'bg-blue-500/10 border-blue-500/40 text-slate-900 dark:text-white shadow-lg'
+                    ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-500/40 text-white shadow-lg'
                     : 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-50 dark:bg-slate-800/60'
                 }`}
               >
@@ -315,8 +315,8 @@ export default function WorkflowsPage() {
                     <h2 className="text-lg font-bold text-slate-900 dark:text-white">{activeWorkflow.name}</h2>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                       activeWorkflow.isActive
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                        : 'bg-gray-500/10 text-slate-600 dark:text-slate-400 border-gray-500/20'
+                        ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                        : 'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20'
                     }`}>
                       {activeWorkflow.isActive ? 'ACTIVE' : 'PAUSED'}
                     </span>
@@ -333,19 +333,19 @@ export default function WorkflowsPage() {
                   </button>
                   <button
                     onClick={handleTestExecute}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 text-xs font-semibold"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/20 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/30 text-xs font-semibold"
                   >
                     <Play className="w-3.5 h-3.5" /> Test Simulation
                   </button>
                   <button
                     onClick={handleSaveWorkflow}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white text-xs font-semibold shadow-lg shadow-blue-500/20"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-500/20"
                   >
                     <Save className="w-3.5 h-3.5" /> Save Graph
                   </button>
                   <button
                     onClick={() => handleDeleteWorkflow(activeWorkflow.id)}
-                    className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-red-400 transition-colors"
+                    className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-red-600 dark:text-red-400 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -371,9 +371,9 @@ export default function WorkflowsPage() {
 
                     {/* Connector Arrow */}
                     {index < (activeWorkflow.nodes.length - 1) && (
-                      <div className="flex flex-col items-center text-blue-400">
+                      <div className="flex flex-col items-center text-blue-600 dark:text-blue-400">
                         <div className="w-0.5 h-6 bg-gradient-to-b from-blue-500 to-purple-500" />
-                        <ArrowRight className="w-4 h-4 rotate-90 my-1 text-purple-400 animate-bounce" />
+                        <ArrowRight className="w-4 h-4 rotate-90 my-1 text-purple-600 dark:text-purple-400 animate-bounce" />
                       </div>
                     )}
                   </React.Fragment>
@@ -390,14 +390,14 @@ export default function WorkflowsPage() {
             </div>
           ) : (
             <div className="p-12 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center min-h-[400px]">
-              <GitFork className="w-12 h-12 text-blue-400 mb-3" />
+              <GitFork className="w-12 h-12 text-blue-600 dark:text-blue-400 mb-3" />
               <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">Select or Create a Visual Automation Graph</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
                 Automate real-time triggers across WhatsApp, Telephony calls, and CRM lead pipelines.
               </p>
               <button
                 onClick={() => setShowNewModal(true)}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
               >
                 Create Automation Flow
               </button>
@@ -412,7 +412,7 @@ export default function WorkflowsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <GitFork className="w-5 h-5 text-blue-400" /> New Visual Workflow
+                <GitFork className="w-5 h-5 text-blue-600 dark:text-blue-400" /> New Visual Workflow
               </h2>
               <button onClick={() => setShowNewModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
@@ -467,7 +467,7 @@ export default function WorkflowsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
                 >
                   Build Graph
                 </button>
@@ -483,7 +483,7 @@ export default function WorkflowsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-blue-400" /> Add Step Node
+                <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Add Step Node
               </h2>
               <button onClick={() => setShowNodeModal(false)} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
                 <X className="w-5 h-5" />
@@ -534,7 +534,7 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={handleAddNode}
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
                 >
                   Add Node
                 </button>

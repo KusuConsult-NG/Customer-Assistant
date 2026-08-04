@@ -214,7 +214,7 @@ export default function ConversationsPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mr-2 font-medium">{conv.lastMessagePreview || 'New conversation'}</p>
                   {!!conv.unreadCount && conv.unreadCount > 0 && (
-                    <span className="w-4 h-4 rounded-full bg-indigo-600 text-slate-900 dark:text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                       {conv.unreadCount}
                     </span>
                   )}
@@ -274,10 +274,10 @@ export default function ConversationsPage() {
                   <div key={msg.id || i} className={`flex ${isCustomer ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                       isCustomer 
-                        ? 'bg-indigo-600 text-slate-900 dark:text-white rounded-tr-sm shadow-sm font-medium' 
+                        ? 'bg-indigo-600 text-white rounded-tr-sm shadow-sm font-medium' 
                         : isAI 
                           ? 'bg-slate-100 dark:bg-slate-100 dark:bg-slate-800/80 text-slate-900 dark:text-slate-800 dark:text-slate-200 rounded-tl-sm border border-slate-200 dark:border-slate-200 dark:border-slate-800 font-medium' 
-                          : 'bg-emerald-600 text-slate-900 dark:text-white rounded-tl-sm font-medium' // Human agent
+                          : 'bg-emerald-600 text-white rounded-tl-sm font-medium' // Human agent
                     }`}>
                       {!isCustomer && (
                         <div className="flex items-center gap-1.5 mb-1 text-[10px] opacity-70 font-medium">
@@ -309,7 +309,7 @@ export default function ConversationsPage() {
                 <button
                   type="submit"
                   disabled={!newMessage.trim()}
-                  className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-slate-900 dark:text-white rounded-xl flex items-center justify-center transition-colors"
+                  className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl flex items-center justify-center transition-colors"
                 >
                   <Send className="w-5 h-5" />
                 </button>

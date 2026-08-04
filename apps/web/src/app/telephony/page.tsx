@@ -158,7 +158,7 @@ export default function TelephonyPage() {
       <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10 p-6 space-y-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-slate-900 dark:text-white flex items-center justify-center font-bold shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm">
               <Radio className="w-5 h-5" />
             </div>
             <div>
@@ -183,7 +183,7 @@ export default function TelephonyPage() {
                 setActiveLiveCall(prev => prev ? { ...prev, status: 'CONNECTED' } : null);
               }, 1500);
             }}
-            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-900 dark:text-white font-semibold text-sm transition-all shadow-md shadow-emerald-500/25 flex items-center justify-center gap-2"
+            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all shadow-md shadow-emerald-500/25 flex items-center justify-center gap-2"
           >
             <Phone className="w-4 h-4" /> Start Demo Simulation
           </button>
@@ -193,7 +193,7 @@ export default function TelephonyPage() {
       {/* Demo Outbound Call Widget Box */}
       <div className="rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-500/10 p-6 space-y-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-slate-900 dark:text-white flex items-center justify-center font-bold shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">
             <Phone className="w-5 h-5" />
           </div>
           <div>
@@ -214,7 +214,7 @@ export default function TelephonyPage() {
           <button
             type="submit"
             disabled={callLoading}
-            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-slate-900 dark:text-white font-semibold text-sm transition-all shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" /> {callLoading ? 'Initiating Call...' : 'Trigger Phone Call'}
           </button>
@@ -284,9 +284,9 @@ export default function TelephonyPage() {
                   </td>
                   <td className="px-5 py-4">
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                      log.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                      log.status === 'IN_PROGRESS' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 animate-pulse' :
-                      'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      log.status === 'COMPLETED' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
+                      log.status === 'IN_PROGRESS' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20 animate-pulse' :
+                      'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
                     }`}>
                       {log.status}
                     </span>
@@ -298,13 +298,13 @@ export default function TelephonyPage() {
                     {log.recordingUrl ? (
                       <button
                         onClick={() => window.open(log.recordingUrl, '_blank')}
-                        className="px-3 py-1 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 text-xs font-semibold inline-flex items-center gap-1"
+                        className="px-3 py-1 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 hover:bg-purple-100 dark:bg-purple-500/20 text-xs font-semibold inline-flex items-center gap-1"
                       >
                         <Play className="w-3 h-3" /> Play Audio
                       </button>
                     ) : (
                       <span className="group relative inline-block">
-                        <button disabled className="px-3 py-1 rounded-lg bg-gray-500/10 text-slate-500 dark:text-slate-400 border border-gray-500/20 text-xs font-semibold inline-flex items-center gap-1 cursor-not-allowed">
+                        <button disabled className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-500/20 text-xs font-semibold inline-flex items-center gap-1 cursor-not-allowed">
                           <Play className="w-3 h-3" /> Play Audio
                         </button>
                         <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 text-[10px] text-slate-900 dark:text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity">No recording available</span>
@@ -312,7 +312,7 @@ export default function TelephonyPage() {
                     )}
                     <button
                       onClick={() => setSelectedCall(log)}
-                      className="px-3 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 text-xs font-semibold inline-flex items-center gap-1"
+                      className="px-3 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 hover:bg-blue-100 dark:bg-blue-500/20 text-xs font-semibold inline-flex items-center gap-1"
                     >
                       <FileText className="w-3 h-3" /> Transcript
                     </button>
@@ -364,7 +364,7 @@ export default function TelephonyPage() {
         {/* Carrier Config */}
         <div className="rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
           <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-400" /> Carrier Forwarding
+            <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Carrier Forwarding
           </h3>
           <div>
             <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Assigned Business Number</label>
@@ -372,7 +372,7 @@ export default function TelephonyPage() {
               type="text"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-blue-400 focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-blue-600 dark:text-blue-400 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div>
@@ -418,19 +418,19 @@ export default function TelephonyPage() {
               <div className="flex items-center gap-3">
                 <div className={`w-3 h-3 rounded-full ${activeLiveCall.status === 'RINGING' ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
                 <div>
-                  <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest font-bold">Voice AI Live Session</span>
+                  <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-bold">Voice AI Live Session</span>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">{activeLiveCall.toNumber}</h3>
                 </div>
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                activeLiveCall.status === 'RINGING' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                activeLiveCall.status === 'RINGING' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30' : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
               }`}>
                 {activeLiveCall.status}
               </span>
             </div>
 
             {/* Audio Waveform Animation */}
-            <div className="p-6 rounded-2xl bg-blue-500/[0.05] border border-blue-500/20 flex flex-col items-center justify-center space-y-4">
+            <div className="p-6 rounded-2xl bg-blue-500/[0.05] border border-blue-200 dark:border-blue-500/20 flex flex-col items-center justify-center space-y-4">
               <div className="flex items-center gap-1.5 h-12">
                 {[40, 70, 30, 90, 60, 100, 50, 80, 40, 60, 90, 30, 70, 50, 80, 40].map((h, i) => (
                   <div
@@ -440,7 +440,7 @@ export default function TelephonyPage() {
                   />
                 ))}
               </div>
-              <p className="text-xs text-blue-300 font-mono">
+              <p className="text-xs text-blue-700 dark:text-blue-300 font-mono">
                 {activeLiveCall.status === 'RINGING' ? 'Dialing destination number...' : '250ms VAD Barge-In Active • Deepgram STT + ElevenLabs TTS'}
               </p>
             </div>
@@ -452,7 +452,7 @@ export default function TelephonyPage() {
                 {activeLiveCall.transcript.map((t, idx) => (
                   <div key={idx} className="flex flex-col space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                      <span className={t.speaker === 'AI' ? 'text-blue-400 font-bold' : 'text-emerald-400 font-bold'}>
+                      <span className={t.speaker === 'AI' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
                         {t.speaker === 'AI' ? 'AI Voice Agent (Alex)' : 'Customer'}
                       </span>
                       <span>{t.time}</span>
@@ -505,7 +505,7 @@ export default function TelephonyPage() {
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-xs transition-all shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-lg shadow-blue-500/20"
                 >
                   Speak
                 </button>
@@ -516,7 +516,7 @@ export default function TelephonyPage() {
             <div className="pt-2 flex justify-end">
               <button
                 onClick={() => setActiveLiveCall(null)}
-                className="w-full py-3 rounded-xl bg-red-600/80 hover:bg-red-600 text-slate-900 dark:text-white font-semibold text-xs transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl bg-red-600/80 hover:bg-red-600 text-white font-semibold text-xs transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
               >
                 <Phone className="w-4 h-4 rotate-[135deg]" /> Hang Up Call
               </button>
@@ -534,12 +534,12 @@ function ProviderCard({ id, name, desc, active, onClick }: { id: string; name: s
     <div
       onClick={onClick}
       className={`p-4 rounded-xl border cursor-pointer transition-all ${
-        active ? 'bg-blue-500/10 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:bg-slate-800'
+        active ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:bg-slate-800'
       }`}
     >
       <div className="flex items-center justify-between mb-1">
         <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{name}</span>
-        {active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-bold">SELECTED</span>}
+        {active && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold">SELECTED</span>}
       </div>
       <p className="text-[11px] text-slate-600 dark:text-slate-400">{desc}</p>
     </div>

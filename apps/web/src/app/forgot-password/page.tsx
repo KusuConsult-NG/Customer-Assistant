@@ -46,13 +46,13 @@ export default function ForgotPasswordPage() {
         </div>
 
         {status === 'success' && (
-          <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm text-center">
+          <div className="p-4 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-600 dark:text-green-400 text-sm text-center">
             {message}
           </div>
         )}
 
         {status === 'error' && (
-          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">
+          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm text-center">
             {message}
           </div>
         )}
@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={status === 'loading'}
-            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-slate-900 dark:text-white font-medium transition-all disabled:opacity-50"
+            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all disabled:opacity-50"
           >
             {status === 'loading' ? 'Sending...' : 'Send Reset Link'}
           </button>

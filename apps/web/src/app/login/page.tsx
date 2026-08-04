@@ -59,14 +59,14 @@ export default function LoginPage() {
         
         <div className="relative z-10">
           <h2 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
-            AI-Powered Customer Experience <br/><span className="text-blue-400">for Nigerian Businesses</span>
+            AI-Powered Customer Experience <br/><span className="text-blue-600 dark:text-blue-400">for Nigerian Businesses</span>
           </h2>
           <p className="text-slate-600 dark:text-slate-400 text-lg max-w-md">
             Unify your CRM, Knowledge Base, and Omnichannel Communications in one premium dashboard.
           </p>
 
-          <div className="mt-8 p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 max-w-md">
-            <div className="flex items-center gap-2 text-blue-400 text-sm font-semibold mb-1">
+          <div className="mt-8 p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 max-w-md">
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-semibold mb-1">
               <ShieldCheck className="w-4 h-4" /> Demo Credentials Ready
             </div>
             <p className="text-xs text-slate-700 dark:text-slate-300">
@@ -97,14 +97,14 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={handleFillDemoCreds}
-              className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-semibold transition-all border border-blue-500/20 flex items-center gap-1"
+              className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-all border border-blue-200 dark:border-blue-500/20 flex items-center gap-1"
             >
               Auto-fill <ArrowRight className="w-3 h-3" />
             </button>
           </div>
 
           {error && (
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm">
               {error}
             </div>
           )}
@@ -125,7 +125,7 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
-                <Link href="/forgot-password" className="text-xs text-blue-400 hover:underline">
+                <Link href="/forgot-password" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
                   Forgot password?
                 </Link>
               </div>
@@ -167,7 +167,7 @@ export default function LoginPage() {
 
           <div className="text-center text-sm text-slate-600 dark:text-slate-400">
             Don't have an account yet?{' '}
-            <Link href="/register" className="text-blue-400 hover:underline font-semibold">
+            <Link href="/register" className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
               Create Organization Account
             </Link>
           </div>

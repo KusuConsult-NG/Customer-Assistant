@@ -85,19 +85,19 @@ export default function RegisterPage() {
         
         <div className="relative z-10">
           <h2 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
-            Start Your Journey <br/><span className="text-blue-400">with ACE Today</span>
+            Start Your Journey <br/><span className="text-blue-600 dark:text-blue-400">with ACE Today</span>
           </h2>
           <ul className="space-y-4 text-slate-700 dark:text-slate-300 text-lg">
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Unify your CRM, Communications, and AI
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Intelligent WhatsApp integration
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Smart voice routing and transcriptions
             </li>
           </ul>
@@ -116,13 +116,13 @@ export default function RegisterPage() {
           </div>
 
           {status === 'success' && (
-            <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm">
+            <div className="p-4 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-600 dark:text-green-400 text-sm">
               {message}
             </div>
           )}
 
           {status === 'error' && (
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm">
               {message}
             </div>
           )}
@@ -238,7 +238,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={status === 'loading'}
-              className="w-full py-3 mt-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-slate-900 dark:text-white font-medium transition-all disabled:opacity-50 flex justify-center items-center"
+              className="w-full py-3 mt-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all disabled:opacity-50 flex justify-center items-center"
             >
               {status === 'loading' ? (
                 <div className="w-5 h-5 border-2 border-slate-200 dark:border-slate-700 border-t-white rounded-full animate-spin"></div>
@@ -251,7 +251,7 @@ export default function RegisterPage() {
           <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 text-center">
              <div className="text-sm text-slate-500 dark:text-slate-400">
                Already have an account?{' '}
-               <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium">Sign in</Link>
+               <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:text-blue-300 font-medium">Sign in</Link>
              </div>
           </div>
         </div>

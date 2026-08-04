@@ -215,15 +215,15 @@ export default function SchedulingPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/20">CONFIRMED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">CONFIRMED</span>;
       case 'RESCHEDULED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/20">RESCHEDULED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">RESCHEDULED</span>;
       case 'CANCELLED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-500/10 text-red-400 border border-red-500/20">CANCELLED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20">CANCELLED</span>;
       case 'COMPLETED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/20">COMPLETED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">COMPLETED</span>;
       default:
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-gray-500/20 text-slate-600 dark:text-slate-400 border border-gray-500/20">{status}</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-200 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-500/20">{status}</span>;
     }
   };
 
@@ -234,7 +234,7 @@ export default function SchedulingPage() {
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 animate-fade-in-up">
           <div className="bg-gray-800 border border-gray-700 text-slate-900 dark:text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-400" />
+            <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             <p className="text-sm font-medium">{toastMessage}</p>
           </div>
         </div>
@@ -244,13 +244,13 @@ export default function SchedulingPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <CalendarIcon className="w-6 h-6 text-blue-400" /> Scheduling & Reservation Engine
+            <CalendarIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" /> Scheduling & Reservation Engine
           </h1>
           <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Click on any record below to inspect full AI audit history and channel trace.</p>
         </div>
         <button
           onClick={() => activeTab === 'bookings' ? setShowAddBookingModal(true) : setShowAddReservationModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
         >
           <Plus className="w-4 h-4" /> Create {activeTab === 'bookings' ? 'Booking' : 'Reservation'}
         </button>
@@ -262,7 +262,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setActiveTab('bookings')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'bookings' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+              activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
             }`}
           >
             <CalendarIcon className="w-4 h-4" /> Bookings ({bookings.length})
@@ -270,7 +270,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setActiveTab('reservations')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'reservations' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+              activeTab === 'reservations' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
             }`}
           >
             <Utensils className="w-4 h-4" /> Reservations ({reservations.length})
@@ -281,7 +281,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setViewMode('table')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === 'table' ? 'bg-blue-600 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
+              viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
             }`}
           >
             <List className="w-3.5 h-3.5" /> Table
@@ -289,7 +289,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setViewMode('calendar')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === 'calendar' ? 'bg-blue-600 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
+              viewMode === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" /> Calendar Grid
@@ -306,7 +306,7 @@ export default function SchedulingPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-400" /> Interactive Weekly Schedule Matrix
+                <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Interactive Weekly Schedule Matrix
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Showing operating slots (08:00 - 18:00 WAT). Click any booked slot to audit or open slot to book.</p>
             </div>
@@ -337,7 +337,7 @@ export default function SchedulingPage() {
 
                   return (
                     <tr key={dayName}>
-                      <td className="px-4 py-4 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 text-sm font-bold text-blue-400 align-top">{dayName}</td>
+                      <td className="px-4 py-4 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 text-sm font-bold text-blue-600 dark:text-blue-400 align-top">{dayName}</td>
                       {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
                         const cellBookings = safeBookings.filter(b => {
                           if (!b.startTime) return false;
@@ -355,15 +355,15 @@ export default function SchedulingPage() {
                         return (
                           <td key={hour} className="border border-slate-200 dark:border-slate-800 p-1.5 bg-white dark:bg-slate-900/80 hover:bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-colors align-top min-h-[80px]">
                             {cellBookings.map(b => (
-                              <div key={b.id} onClick={() => setSelectedBooking(b)} className="mb-2 p-2 rounded-lg bg-blue-600/20 border border-blue-500/30 cursor-pointer hover:bg-blue-600/30">
-                                <div className="text-[10px] font-bold text-blue-300 truncate">{b.contactName}</div>
+                              <div key={b.id} onClick={() => setSelectedBooking(b)} className="mb-2 p-2 rounded-lg bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 cursor-pointer hover:bg-blue-600/30">
+                                <div className="text-[10px] font-bold text-blue-700 dark:text-blue-300 truncate">{b.contactName}</div>
                                 <div className="text-[9px] text-slate-600 dark:text-slate-400 truncate">{b.service}</div>
                                 <div className="mt-1 scale-90 origin-left">{getStatusBadge(b.status)}</div>
                               </div>
                             ))}
                             {cellReservations.map(r => (
-                              <div key={r.id} onClick={() => setSelectedReservation(r)} className="mb-2 p-2 rounded-lg bg-purple-600/20 border border-purple-500/30 cursor-pointer hover:bg-purple-600/30">
-                                <div className="text-[10px] font-bold text-purple-300 truncate">{r.contactName}</div>
+                              <div key={r.id} onClick={() => setSelectedReservation(r)} className="mb-2 p-2 rounded-lg bg-purple-600/20 border border-purple-200 dark:border-purple-500/30 cursor-pointer hover:bg-purple-600/30">
+                                <div className="text-[10px] font-bold text-purple-700 dark:text-purple-300 truncate">{r.contactName}</div>
                                 <div className="text-[9px] text-slate-600 dark:text-slate-400 truncate">{r.partySize} Guests</div>
                                 <div className="mt-1 scale-90 origin-left">{getStatusBadge(r.status)}</div>
                               </div>
@@ -374,9 +374,9 @@ export default function SchedulingPage() {
                                     setBookingTime(`2026-08-0${dayIdx + 3}T${hour < 10 ? '0' : ''}${hour}:00`);
                                     setShowAddBookingModal(true);
                                   }}
-                                  className="h-full min-h-[60px] rounded-lg border border-transparent hover:border-emerald-500/30 flex items-center justify-center cursor-pointer group transition-all"
+                                  className="h-full min-h-[60px] rounded-lg border border-transparent hover:border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center cursor-pointer group transition-all"
                                >
-                                  <Plus className="w-4 h-4 text-gray-600 group-hover:text-emerald-400" />
+                                  <Plus className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:text-emerald-400" />
                                </div>
                             )}
                           </td>
@@ -410,15 +410,15 @@ export default function SchedulingPage() {
                     onClick={() => setSelectedBooking(b)}
                     className="hover:bg-blue-500/[0.06] cursor-pointer transition-colors group"
                   >
-                    <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                      <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-400" />
+                    <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:text-blue-400 transition-colors flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:text-blue-400" />
                       {b.contactName}
                     </td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.service}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(b.startTime).toLocaleString()}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.staff}</td>
                     <td className="px-6 py-4">{getStatusBadge(b.status)}</td>
-                    <td className="px-6 py-4 text-right text-xs text-blue-400 group-hover:underline">Inspect Details →</td>
+                    <td className="px-6 py-4 text-right text-xs text-blue-600 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
                   </tr>
                 ))}
               </tbody>
@@ -450,15 +450,15 @@ export default function SchedulingPage() {
                     onClick={() => setSelectedReservation(r)}
                     className="hover:bg-blue-500/[0.06] cursor-pointer transition-colors group"
                   >
-                    <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                      <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-400" />
+                    <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:text-blue-400 transition-colors flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:text-blue-400" />
                       {r.contactName}
                     </td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-bold">{r.partySize} Guests</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(r.reservationTime).toLocaleString()}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{r.tableOrRoom}</td>
                     <td className="px-6 py-4">{getStatusBadge(r.status)}</td>
-                    <td className="px-6 py-4 text-right text-xs text-blue-400 group-hover:underline">Inspect Details →</td>
+                    <td className="px-6 py-4 text-right text-xs text-blue-600 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
                   </tr>
                 ))}
               </tbody>
@@ -498,7 +498,7 @@ export default function SchedulingPage() {
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Assigned Staff</label>
                 <input required type="text" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
                 Confirm & Create Booking
               </button>
             </form>
@@ -535,7 +535,7 @@ export default function SchedulingPage() {
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date & Time</label>
                 <input required type="datetime-local" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
                 Confirm & Reserve Slot
               </button>
             </form>
@@ -548,7 +548,7 @@ export default function SchedulingPage() {
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest font-bold">Audit Record Inspector</span>
+                <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-bold">Audit Record Inspector</span>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedBooking.contactName}</h3>
               </div>
               <button
@@ -579,7 +579,7 @@ export default function SchedulingPage() {
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 col-span-2">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Scheduled Date & Time (WAT)</span>
-                  <span className="text-sm font-mono text-blue-300 font-semibold">{new Date(selectedBooking.startTime).toLocaleString()}</span>
+                  <span className="text-sm font-mono text-blue-700 dark:text-blue-300 font-semibold">{new Date(selectedBooking.startTime).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -587,22 +587,22 @@ export default function SchedulingPage() {
             {/* System Channel Audit Trail */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Channel & AI Orchestration Audit</h4>
-              <div className="p-4 rounded-xl bg-blue-500/[0.05] border border-blue-500/20 space-y-2 text-xs">
+              <div className="p-4 rounded-xl bg-blue-500/[0.05] border border-blue-200 dark:border-blue-500/20 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Channel Source:</span>
-                  <span className="font-semibold text-blue-400">WhatsApp AI Engine</span>
+                  <span className="font-semibold text-blue-600 dark:text-blue-400">WhatsApp AI Engine</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Intent Classifier:</span>
-                  <span className="font-mono text-emerald-400">BOOK_APPOINTMENT (98.4%)</span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400">BOOK_APPOINTMENT (98.4%)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Double-Booking Check:</span>
-                  <span className="text-emerald-400 font-semibold">PASSED (No overlap)</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">PASSED (No overlap)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>CalDAV Sync Status:</span>
-                  <span className="text-blue-300">Synced to Google Calendar</span>
+                  <span className="text-blue-700 dark:text-blue-300">Synced to Google Calendar</span>
                 </div>
               </div>
             </div>
@@ -612,14 +612,14 @@ export default function SchedulingPage() {
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Audit Log Stream</h4>
               <div className="space-y-2 text-xs">
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
-                  <Clock className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-800 dark:text-slate-200">Booking Confirmed by AI Orchestrator</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{new Date(selectedBooking.startTime).toLocaleString()}</p>
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-800 dark:text-slate-200">Customer Confirmation Notification Sent</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Via WhatsApp Template API</p>
@@ -635,7 +635,7 @@ export default function SchedulingPage() {
                   showToast(`Booking for ${selectedBooking.contactName} cancelled.`);
                   setSelectedBooking(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 text-xs font-semibold transition-all"
+                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-xs font-semibold transition-all"
               >
                 Cancel Booking
               </button>
@@ -644,7 +644,7 @@ export default function SchedulingPage() {
                   showToast(`Reschedule link sent to ${selectedBooking.contactName}.`);
                   setSelectedBooking(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/20"
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/20"
               >
                 Reschedule Slot
               </button>
@@ -659,7 +659,7 @@ export default function SchedulingPage() {
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-mono text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
+                <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedReservation.contactName}</h3>
               </div>
               <button
@@ -682,7 +682,7 @@ export default function SchedulingPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Party Size</span>
-                  <span className="text-sm font-bold text-purple-300">{selectedReservation.partySize} Guests</span>
+                  <span className="text-sm font-bold text-purple-700 dark:text-purple-300">{selectedReservation.partySize} Guests</span>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Assigned Table / Room</span>
@@ -698,14 +698,14 @@ export default function SchedulingPage() {
             {/* System Channel Audit Trail */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Capacity & System Audit</h4>
-              <div className="p-4 rounded-xl bg-purple-500/[0.05] border border-purple-500/20 space-y-2 text-xs">
+              <div className="p-4 rounded-xl bg-purple-500/[0.05] border border-purple-200 dark:border-purple-500/20 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Channel Origin:</span>
-                  <span className="font-semibold text-purple-400">Voice AI Telephony Call</span>
+                  <span className="font-semibold text-purple-600 dark:text-purple-400">Voice AI Telephony Call</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Capacity Engine:</span>
-                  <span className="text-emerald-400 font-semibold">Table Allocated (Capacity OK)</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Table Allocated (Capacity OK)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Deposit Status:</span>
@@ -721,7 +721,7 @@ export default function SchedulingPage() {
                   showToast(`Reservation for ${selectedReservation.contactName} cancelled.`);
                   setSelectedReservation(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 text-xs font-semibold transition-all"
+                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-xs font-semibold transition-all"
               >
                 Cancel Reservation
               </button>
@@ -730,7 +730,7 @@ export default function SchedulingPage() {
                   showToast(`Reservation marked completed.`);
                   setSelectedReservation(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white text-xs font-semibold transition-all shadow-lg shadow-purple-500/20"
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all shadow-lg shadow-purple-500/20"
               >
                 Mark Completed
               </button>

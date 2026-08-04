@@ -199,9 +199,9 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl">
-            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>7d</button>
-            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>30d</button>
-            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>90d</button>
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>90d</button>
           </div>
           <button
             onClick={fetchAll}
@@ -212,7 +212,7 @@ export default function DashboardPage() {
           </button>
           <Link
             href="/agent-console"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
           >
             <Bot className="w-4 h-4 text-slate-900 dark:text-white" /> Open Live Console
           </Link>

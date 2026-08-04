@@ -186,7 +186,7 @@ export default function CrmPage() {
           )}
           <button
             onClick={() => setModalType(tab === 'contacts' ? 'contact' : tab === 'leads' ? 'lead' : tab === 'deals' ? 'deal' : 'ticket')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-slate-900 dark:text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
           >
             <Plus className="w-4 h-4" />
             Add {tab === 'contacts' ? 'Contact' : tab === 'leads' ? 'Lead' : tab === 'deals' ? 'Deal' : 'Ticket'}
@@ -203,7 +203,7 @@ export default function CrmPage() {
               onClick={() => { setTab(t.id); setSearch(''); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
                 tab === t.id
-                  ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-md shadow-indigo-500/20'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
             >
@@ -221,7 +221,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'
+                viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'
               }`}
             >
               <List className="w-3.5 h-3.5" /> Table
@@ -229,7 +229,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'kanban' ? 'bg-indigo-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'
+                viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Kanban Board
@@ -311,7 +311,7 @@ export default function CrmPage() {
                 <p className="text-slate-600 dark:text-slate-400">{quoteData.organizationPhone}</p>
               </div>
               <div className="text-right">
-                <p className="font-mono text-purple-400 font-bold">{quoteData.quotationNumber}</p>
+                <p className="font-mono text-purple-600 dark:text-purple-400 font-bold">{quoteData.quotationNumber}</p>
                 <p className="text-slate-500 dark:text-slate-400">Valid Until: {quoteData.validUntil}</p>
               </div>
             </div>
@@ -337,7 +337,7 @@ export default function CrmPage() {
                     <td className="py-2 font-medium text-slate-900 dark:text-white">{item.description}</td>
                     <td className="py-2 text-right">{item.quantity}</td>
                     <td className="py-2 text-right">₦{(item.unitPrice || 0).toLocaleString()}</td>
-                    <td className="py-2 text-right font-bold text-emerald-400">₦{(item.totalPrice || 0).toLocaleString()}</td>
+                    <td className="py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">₦{(item.totalPrice || 0).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -345,13 +345,13 @@ export default function CrmPage() {
 
             <div className="border-t border-slate-200 dark:border-slate-800 pt-3 flex justify-between items-center text-sm font-bold">
               <span>Grand Total</span>
-              <span className="text-emerald-400 text-lg">₦{(quoteData.grandTotal || 0).toLocaleString()}</span>
+              <span className="text-emerald-600 dark:text-emerald-400 text-lg">₦{(quoteData.grandTotal || 0).toLocaleString()}</span>
             </div>
 
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => window.print()}
-                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-slate-900 dark:text-white font-semibold text-xs transition-all shadow-lg shadow-purple-500/20"
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-all shadow-lg shadow-purple-500/20"
               >
                 Print / Download PDF
               </button>
@@ -452,7 +452,7 @@ function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void
                       <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 font-extrabold text-xs flex items-center justify-center flex-shrink-0">
                         {(c.fullName || 'U')[0].toUpperCase()}
                       </div>
-                      <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{c.fullName}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-600 dark:text-indigo-400 transition-colors">{c.fullName}</span>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-slate-700 dark:text-slate-300 font-mono text-xs font-medium">{c.phoneNumber || '—'}</td>
@@ -468,11 +468,11 @@ function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void
                   <td className="px-5 py-4 text-right space-x-2">
                     <button
                       onClick={(e) => { e.stopPropagation(); onSelectContact(c); }}
-                      className="px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-xs font-bold transition-all"
+                      className="px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-100 dark:bg-indigo-500/20 text-xs font-bold transition-all"
                     >
                       View Profile
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 transition-all">
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-100 dark:bg-red-500/20 transition-all">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -511,10 +511,10 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
   if (data.length === 0) return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-        <Target className="w-8 h-8 text-gray-600" />
+        <Target className="w-8 h-8 text-slate-500 dark:text-slate-400" />
       </div>
       <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-      <p className="text-sm text-gray-600 max-w-sm">No leads yet. Leads are automatically created when AI qualifies a customer.</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No leads yet. Leads are automatically created when AI qualifies a customer.</p>
     </div>
   );
   return (
@@ -534,7 +534,7 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
           <tr key={l.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
             <td className="px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-purple-500/15 text-purple-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
                   {(l.contact?.fullName || 'U')[0].toUpperCase()}
                 </div>
                 <div>
@@ -558,7 +558,7 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{l.createdAt ? new Date(l.createdAt).toLocaleDateString() : '—'}</td>
             <td className="px-5 py-4 text-right">
-              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all">
+              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all">
                 <Trash2 className="w-4 h-4" />
               </button>
             </td>
@@ -575,10 +575,10 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
   if (safeData.length === 0) return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-        <DollarSign className="w-8 h-8 text-gray-600" />
+        <DollarSign className="w-8 h-8 text-slate-500 dark:text-slate-400" />
       </div>
       <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-      <p className="text-sm text-gray-600 max-w-sm">No deals in the pipeline yet.</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No deals in the pipeline yet.</p>
     </div>
   );
 
@@ -593,7 +593,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
           <p className="text-xs text-slate-500 dark:text-slate-400">Pipeline Total Value</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-extrabold text-emerald-400">₦{wonValue.toLocaleString()}</p>
+          <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">₦{wonValue.toLocaleString()}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Closed Won Revenue</p>
         </div>
         <div className="text-center">
@@ -617,12 +617,12 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
             <tr key={d.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
               <td className="px-5 py-4 font-semibold text-slate-800 dark:text-slate-200">{d.title || 'Untitled Deal'}</td>
               <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-xs">{d.contact?.fullName || '—'}</td>
-              <td className="px-5 py-4 font-bold text-emerald-400">₦{(d.amount || 0).toLocaleString()}</td>
+              <td className="px-5 py-4 font-bold text-emerald-600 dark:text-emerald-400">₦{(d.amount || 0).toLocaleString()}</td>
               <td className="px-5 py-4"><Badge text={d.stage || 'LEAD'} color={statusColor(d.stage)} /></td>
               <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '—'}</td>
               <td className="px-5 py-4 text-right space-x-2">
-                <button onClick={() => onQuote(d.id)} className="px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
-                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => onQuote(d.id)} className="px-2 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
+                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
               </td>
             </tr>
           ))}
@@ -657,17 +657,17 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
                 <span className="font-bold text-xs text-slate-800 dark:text-slate-200 uppercase tracking-wider">{stage.replace('_', ' ')}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-600 dark:text-slate-400 font-bold">{stageDeals.length}</span>
               </div>
-              <p className="text-xs font-bold text-emerald-400">₦{stageTotal.toLocaleString()}</p>
+              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">₦{stageTotal.toLocaleString()}</p>
               <div className="space-y-2.5 flex-1 min-h-[300px]">
                 {stageDeals.map((deal) => (
-                  <div key={deal.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-blue-500/30 transition-all">
+                  <div key={deal.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-blue-200 dark:border-blue-500/30 transition-all">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold text-sm text-slate-900 dark:text-white">{deal.title}</p>
-                      <button onClick={() => onDelete(deal.id)} className="text-slate-500 dark:text-slate-400 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => onDelete(deal.id)} className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-400">{deal.contact?.fullName || 'No contact'}</p>
-                    <p className="text-sm font-bold text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
-                    <button onClick={() => onQuote(deal.id)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20 hover:bg-purple-500/20">Generate Quotation</button>
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
+                    <button onClick={() => onQuote(deal.id)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold border border-purple-200 dark:border-purple-500/20 hover:bg-purple-100 dark:bg-purple-500/20">Generate Quotation</button>
                     <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 dark:text-slate-400">{new Date(deal.createdAt).toLocaleDateString()}</span>
                       <select
@@ -704,19 +704,19 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
   };
 
   const priorityColor: Record<string, string> = {
-    LOW: 'bg-gray-500/10 text-slate-600 dark:text-slate-400 border-gray-500/20',
-    MEDIUM: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    HIGH: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    URGENT: 'bg-red-500/10 text-red-400 border-red-500/20',
+    LOW: 'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20',
+    MEDIUM: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+    HIGH: 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20',
+    URGENT: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
   };
 
   if (data.length === 0) return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-        <TicketCheck className="w-8 h-8 text-gray-600" />
+        <TicketCheck className="w-8 h-8 text-slate-500 dark:text-slate-400" />
       </div>
       <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-      <p className="text-sm text-gray-600 max-w-sm">No support tickets. Great job!</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No support tickets. Great job!</p>
     </div>
   );
   return (
@@ -751,7 +751,7 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>
             <td className="px-5 py-4 text-right">
-              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
             </td>
           </tr>
         ))}
@@ -762,10 +762,10 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
 
 function EmptyState({ icon, text, action, onAction }: { icon: React.ReactNode; text: string; action: string; onAction: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-gray-600">
+    <div className="flex flex-col items-center justify-center py-20 text-slate-500 dark:text-slate-400">
       <div className="opacity-20 mb-4">{icon}</div>
       <p className="text-slate-600 dark:text-slate-400 font-medium mb-4">{text}</p>
-      <button onClick={onAction} className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-sm font-semibold transition-all border border-blue-500/20">
+      <button onClick={onAction} className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-600 dark:text-blue-400 text-sm font-semibold transition-all border border-blue-200 dark:border-blue-500/20">
         <Plus className="w-4 h-4 inline mr-1" /> {action}
       </button>
     </div>
@@ -823,12 +823,12 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 
   return (
     <ModalWrapper title="Add New Contact" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Emeka Okafor" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
         <Field label="Email (optional)"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="emeka@example.com" /></Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Contact'}
         </button>
       </form>
@@ -872,12 +872,12 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
   return (
     <ModalWrapper title="Add New Lead" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Amaka Osei" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
         <Field label="Notes / Context"><textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className={inputCls} placeholder="How did they find you? What service are they inquiring about?" /></Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Lead'}
         </button>
       </form>
@@ -923,7 +923,7 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
   return (
     <ModalWrapper title="Add New Deal" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Deal Title"><input required type="text" value={title} onChange={e => setTitle(e.target.value)} className={inputCls} placeholder="e.g. Premium Service Contract" /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -936,7 +936,7 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
             {DEAL_STAGES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
         </Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Create Deal'}
         </button>
       </form>
@@ -982,7 +982,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
   return (
     <ModalWrapper title="New Support Ticket" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Customer Name"><input required type="text" value={contactFullName} onChange={e => setContactFullName(e.target.value)} className={inputCls} placeholder="Full name" /></Field>
@@ -997,7 +997,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
             {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Create Ticket'}
         </button>
       </form>

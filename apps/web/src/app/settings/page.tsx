@@ -16,7 +16,7 @@ const labelCls = "text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   return (
     <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium animate-fade-in-up ${
-      type === 'success' ? 'bg-emerald-900/80 border-emerald-500/30 text-emerald-300' : 'bg-red-900/80 border-red-500/30 text-red-300'
+      type === 'success' ? 'bg-emerald-900/80 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-red-900/80 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300'
     }`}>
       {type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
       {msg}
@@ -76,7 +76,7 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-blue-400" /> Settings
+          <Settings className="w-6 h-6 text-blue-600 dark:text-blue-400" /> Settings
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure your AI platform, integrations, and team.</p>
       </div>
@@ -88,7 +88,7 @@ export default function SettingsPage() {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === t.id ? 'bg-blue-600 text-slate-900 dark:text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
+              tab === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
             }`}
           >
             {t.icon} {t.label}
@@ -97,7 +97,7 @@ export default function SettingsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" /></div>
       ) : (
         <>
           {tab === 'profile' && <ProfileTab authHeaders={authHeaders} showToast={showToast} />}
@@ -187,7 +187,7 @@ function ProfileTab({ authHeaders, showToast }: any) {
             <input type="password" required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={inputCls} placeholder="Confirm your new password" />
           </div>
           <div className="flex justify-end pt-2">
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
               {saving ? 'Updating...' : 'Update Password'}
             </button>
@@ -243,7 +243,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             className={inputCls}
             placeholder="You are a helpful, professional customer service agent for [Company Name]. You answer questions about our products and services in a friendly, concise manner. You can book appointments, check availability, and handle common support queries..."
           />
-          <p className="text-xs text-gray-600 mt-1.5">This is the instruction your AI agent follows in every conversation. Be specific about tone, capabilities, and boundaries.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">This is the instruction your AI agent follows in every conversation. Be specific about tone, capabilities, and boundaries.</p>
         </div>
         <div>
           <label className={labelCls}>Welcome Message</label>
@@ -254,12 +254,12 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             className={inputCls}
             placeholder="Hello! 👋 Welcome to [Company]. I'm your AI assistant. How can I help you today?"
           />
-          <p className="text-xs text-gray-600 mt-1.5">First message sent to every new customer conversation.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">First message sent to every new customer conversation.</p>
         </div>
       </Section>
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
@@ -296,12 +296,12 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   return (
     <form onSubmit={save} className="space-y-5">
       <Section title="WhatsApp Cloud API" description="Connect your Meta Business WhatsApp number">
-        <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-500/20">
-          <p className="text-xs font-semibold text-blue-300 mb-1">📌 Webhook URL — paste this in Meta Developer Portal</p>
+        <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
+          <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📌 Webhook URL — paste this in Meta Developer Portal</p>
           <div className="flex items-center gap-2 mt-2">
-            <code className="flex-1 text-xs text-blue-200 font-mono bg-blue-500/10 px-3 py-2 rounded-lg truncate">{webhookUrl}</code>
+            <code className="flex-1 text-xs text-blue-200 font-mono bg-blue-50 dark:bg-blue-500/10 px-3 py-2 rounded-lg truncate">{webhookUrl}</code>
             <button type="button" onClick={() => { navigator.clipboard.writeText(webhookUrl); showToast('Copied!'); }}
-              className="px-3 py-2 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-all">
+              className="px-3 py-2 rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 hover:bg-blue-500/30 transition-all">
               <Copy className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -331,7 +331,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
         </div>
       </Section>
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save WhatsApp Config'}
         </button>
@@ -408,13 +408,13 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
             </div>
           </div>
         )}
-        <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 text-xs text-amber-300">
+        <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
           <strong>Inbound Voice Webhook URL:</strong>
           <code className="ml-2 font-mono">{API_URL}/api/telephony/inbound/{provider === 'TWILIO' ? 'twilio' : provider === 'AFRICA_TALKING' ? 'africa-talking' : 'nigeria-carrier'}</code>
         </div>
       </Section>
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Voice Config'}
         </button>
@@ -495,10 +495,10 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
   };
 
   const roleColors: Record<string, string> = {
-    OWNER: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-    ADMIN: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    AGENT: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    VIEWER: 'bg-gray-500/10 text-slate-600 dark:text-slate-400 border-gray-500/20',
+    OWNER: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
+    ADMIN: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+    AGENT: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    VIEWER: 'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20',
   };
 
   return (
@@ -506,7 +506,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
       <Section title="Team Members & Role Access Control (RBAC)" description="Manage member access levels, roles, and granular platform permissions">
         {loadingMembers ? (
           <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Loading team members...
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" /> Loading team members...
           </div>
         ) : members.length === 0 ? (
           <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">No team members yet. Invite your first agent below.</div>
@@ -521,7 +521,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{m.fullName || 'Team Member'}</p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400'}`}>
                         {m.isActive !== false ? 'ACTIVE' : 'SUSPENDED'}
                       </span>
                     </div>
@@ -547,8 +547,8 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                     onClick={() => handleStatusToggle(m.id, m.isActive !== false)}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border font-semibold transition-all ${
                       m.isActive !== false
-                        ? 'border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10'
-                        : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                        ? 'border-yellow-500/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:bg-yellow-500/10'
+                        : 'border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:bg-emerald-500/10'
                     }`}
                   >
                     {m.isActive !== false ? 'Suspend' : 'Reactivate'}
@@ -557,7 +557,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   {/* Delete Button */}
                   <button
                     onClick={() => handleRemoveMember(m.id, m.fullName || m.email)}
-                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 font-semibold transition-all"
+                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:bg-red-500/10 font-semibold transition-all"
                   >
                     Remove
                   </button>
@@ -587,7 +587,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
               </select>
             </div>
             <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {saving ? 'Inviting...' : 'Send Invite'}
               </button>
@@ -613,9 +613,9 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="px-4 py-3">Platform Module</th>
-                <th className="px-4 py-3 text-purple-400">OWNER</th>
-                <th className="px-4 py-3 text-blue-400">ADMIN</th>
-                <th className="px-4 py-3 text-emerald-400">AGENT</th>
+                <th className="px-4 py-3 text-purple-600 dark:text-purple-400">OWNER</th>
+                <th className="px-4 py-3 text-blue-600 dark:text-blue-400">ADMIN</th>
+                <th className="px-4 py-3 text-emerald-600 dark:text-emerald-400">AGENT</th>
                 <th className="px-4 py-3 text-slate-600 dark:text-slate-400">VIEWER</th>
               </tr>
             </thead>
@@ -623,9 +623,9 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
               {matrix.map((row: any, i: number) => (
                 <tr key={i} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
                   <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{row.module}</td>
-                  <td className="px-4 py-3 font-semibold text-purple-300">{row.OWNER}</td>
-                  <td className="px-4 py-3 font-semibold text-blue-300">{row.ADMIN}</td>
-                  <td className="px-4 py-3 font-semibold text-emerald-300">{row.AGENT}</td>
+                  <td className="px-4 py-3 font-semibold text-purple-700 dark:text-purple-300">{row.OWNER}</td>
+                  <td className="px-4 py-3 font-semibold text-blue-700 dark:text-blue-300">{row.ADMIN}</td>
+                  <td className="px-4 py-3 font-semibold text-emerald-700 dark:text-emerald-300">{row.AGENT}</td>
                   <td className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400">{row.VIEWER}</td>
                 </tr>
               ))}

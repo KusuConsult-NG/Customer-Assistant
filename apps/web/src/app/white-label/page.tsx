@@ -116,7 +116,7 @@ export default function WhiteLabelPage() {
       {/* Toast */}
       {toast && (
         <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium ${
-          toast.type === 'success' ? 'bg-emerald-900/80 border-emerald-500/30 text-emerald-300' : 'bg-red-900/80 border-red-500/30 text-red-300'
+          toast.type === 'success' ? 'bg-emerald-900/80 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-red-900/80 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300'
         }`}>
           {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {toast.msg}
@@ -126,13 +126,13 @@ export default function WhiteLabelPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Palette className="w-6 h-6 text-purple-400" /> White-Label & API
+          <Palette className="w-6 h-6 text-purple-600 dark:text-purple-400" /> White-Label & API
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Customize your brand identity and configure developer integrations.</p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
           {/* Left column: Config */}
@@ -140,7 +140,7 @@ export default function WhiteLabelPage() {
             {/* Branding */}
             <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Palette className="w-4 h-4 text-purple-400" />
+                <Palette className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">Brand Identity</h3>
               </div>
               <form onSubmit={saveBranding} className="p-6 space-y-4">
@@ -151,7 +151,7 @@ export default function WhiteLabelPage() {
                   >
                     {logoPreview
                       ? <img src={logoPreview} alt="logo" className="w-full h-full object-cover" />
-                      : <div className="text-2xl font-black text-gray-600">{(companyName || 'A')[0]}</div>
+                      : <div className="text-2xl font-black text-slate-500 dark:text-slate-400">{(companyName || 'A')[0]}</div>
                     }
                     <input id="logo-upload" type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
                   </div>
@@ -167,7 +167,7 @@ export default function WhiteLabelPage() {
                     <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
                     <input type="text" value={customDomain} onChange={e => setCustomDomain(e.target.value)} className={`${inputCls} pl-10`} placeholder="app.yourcompany.com" />
                   </div>
-                  <p className="text-xs text-gray-600 mt-1.5">Point your domain's CNAME to <code className="text-blue-400">platform.ace-ai.io</code> then enter it here.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Point your domain's CNAME to <code className="text-blue-600 dark:text-blue-400">platform.ace-ai.io</code> then enter it here.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -189,7 +189,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Branding
                 </button>
@@ -199,11 +199,11 @@ export default function WhiteLabelPage() {
             {/* API Key */}
             <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Key className="w-4 h-4 text-amber-400" />
+                <Key className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">API Access</h3>
               </div>
               <div className="p-6 space-y-4">
-                <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
+                <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
                   <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   Keep your API key secret. Never expose it in client-side code.
                 </div>
@@ -227,8 +227,8 @@ export default function WhiteLabelPage() {
                     </button>
                   </div>
                 </div>
-                <p className="text-xs text-gray-600">
-                  Use this key in the <code className="text-blue-400">Authorization: Bearer sk-ace-...</code> header to call the ACE Platform REST API.
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Use this key in the <code className="text-blue-600 dark:text-blue-400">Authorization: Bearer sk-ace-...</code> header to call the ACE Platform REST API.
                 </p>
               </div>
             </div>
@@ -236,14 +236,14 @@ export default function WhiteLabelPage() {
             {/* Webhooks */}
             <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Webhook className="w-4 h-4 text-blue-400" />
+                <Webhook className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">Webhook Subscriptions</h3>
               </div>
               <form onSubmit={saveWebhooks} className="p-6 space-y-5">
                 <div>
                   <label className={labelCls}>Webhook Endpoint URL</label>
                   <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} className={inputCls} placeholder="https://yourserver.com/webhook/ace" />
-                  <p className="text-xs text-gray-600 mt-1.5">We'll POST JSON events to this URL with <code className="text-blue-400">X-ACE-Signature</code> header for HMAC verification.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">We'll POST JSON events to this URL with <code className="text-blue-600 dark:text-blue-400">X-ACE-Signature</code> header for HMAC verification.</p>
                 </div>
 
                 <div>
@@ -257,8 +257,8 @@ export default function WhiteLabelPage() {
                         </div>
                         <button type="button" onClick={() => toggleEvent(ev.key)} className="flex-shrink-0">
                           {enabledEvents.includes(ev.key)
-                            ? <ToggleRight className="w-8 h-8 text-blue-400" />
-                            : <ToggleLeft className="w-8 h-8 text-gray-600" />
+                            ? <ToggleRight className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                            : <ToggleLeft className="w-8 h-8 text-slate-500 dark:text-slate-400" />
                           }
                         </button>
                       </div>
@@ -266,7 +266,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Webhooks
                 </button>
@@ -337,7 +337,7 @@ export default function WhiteLabelPage() {
                     {customDomain && (
                       <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                         <span>Custom Domain</span>
-                        <code className="text-blue-400">{customDomain}</code>
+                        <code className="text-blue-600 dark:text-blue-400">{customDomain}</code>
                       </div>
                     )}
                   </div>
@@ -347,7 +347,7 @@ export default function WhiteLabelPage() {
               {/* API docs link */}
               <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 p-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-4 h-4 text-amber-400" />
+                  <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Developer Docs</h4>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Full REST API reference with request/response examples.</p>
