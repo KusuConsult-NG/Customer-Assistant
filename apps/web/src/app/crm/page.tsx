@@ -1006,48 +1006,127 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 }
 
 function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview');
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-white dark:bg-slate-900 backdrop-blur-sm">
-      <div className="w-full max-w-md h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 overflow-y-auto space-y-6 animate-slide-left">
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Contact Profile</h2>
-          <button onClick={onClose} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/60 backdrop-blur-sm transition-opacity">
+      <div className="w-full max-w-lg h-full bg-white dark:bg-[#0f172a] border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden animate-slide-left">
+        {/* Top Header Bar */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/50">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">Customer Profile 360°</h2>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-blue-500/20 text-blue-400 font-bold text-xl flex items-center justify-center">
-            {(contact.fullName || 'U')[0].toUpperCase()}
+        {/* Hero Card Banner */}
+        <div className="p-6 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent border-b border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-lg shadow-indigo-500/25 flex-shrink-0">
+                {(contact.fullName || 'U')[0].toUpperCase()}
+              </div>
+              <div>
+                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{contact.fullName}</h3>
+                <p className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 mt-0.5">
+                  <Phone className="w-3.5 h-3.5" /> {contact.phoneNumber || 'No phone number'}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
+                  <Mail className="w-3.5 h-3.5" /> {contact.email || 'No email registered'}
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3 className="font-bold text-slate-900 dark:text-white text-lg">{contact.fullName}</h3>
-            <p className="text-xs font-mono text-blue-400">{contact.phoneNumber || 'No phone'}</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">{contact.email || 'No email registered'}</p>
+
+          {/* Quick Action Bar */}
+          <div className="grid grid-cols-3 gap-2 pt-2">
+            <a
+              href={`tel:${contact.phoneNumber}`}
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all"
+            >
+              <Phone className="w-3.5 h-3.5" /> Call
+            </a>
+            <a
+              href={`https://wa.me/${(contact.phoneNumber || '').replace(/[^0-9]/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all"
+            >
+              <Mail className="w-3.5 h-3.5" /> WhatsApp
+            </a>
+            <button
+              onClick={() => alert(`Initiating support ticket for ${contact.fullName}`)}
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition-all"
+            >
+              <TicketCheck className="w-3.5 h-3.5" /> Ticket
+            </button>
           </div>
         </div>
 
-        <div className="space-y-3 pt-2">
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 space-y-2">
-            <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Contact Metadata</p>
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500 dark:text-slate-400">ID</span>
-              <span className="font-mono text-slate-700 dark:text-slate-300">{contact.id?.slice(0, 12)}...</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500 dark:text-slate-400">Registered Date</span>
-              <span className="text-slate-700 dark:text-slate-300">{contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : '—'}</span>
-            </div>
-          </div>
+        {/* Tab Navigation */}
+        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 px-6">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
+              activeTab === 'overview'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('activity')}
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
+              activeTab === 'activity'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Tags & Segments
+          </button>
+        </div>
 
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 space-y-2">
-            <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Associated Tags</p>
-            <div className="flex gap-1.5 flex-wrap">
-              {(contact.tags || ['customer']).map((t: string) => (
-                <Badge key={t} text={t} color="bg-blue-500/10 text-blue-400 border-blue-500/20" />
-              ))}
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {activeTab === 'overview' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+                <h4 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">Account Metadata</h4>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">System Contact ID</span>
+                  <span className="font-mono text-slate-900 dark:text-slate-200 font-bold">{contact.id?.slice(0, 16)}...</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">First Interaction</span>
+                  <span className="text-slate-900 dark:text-slate-200 font-bold">{contact.createdAt ? new Date(contact.createdAt).toLocaleString() : '—'}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Primary Channel</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold text-[10px] border border-emerald-200 dark:border-emerald-500/20">WhatsApp / Voice</span>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {activeTab === 'activity' && (
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+              <h4 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">Assigned Customer Tags</h4>
+              <div className="flex gap-2 flex-wrap">
+                {(contact.tags || ['customer', 'active-lead']).map((t: string) => (
+                  <span key={t} className="px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
