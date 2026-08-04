@@ -408,7 +408,7 @@ export default function KnowledgePage() {
             value={websiteUrl}
             onChange={e => setWebsiteUrl(e.target.value)}
             placeholder="https://yourcompany.com or https://apexcare.ng"
-            className="flex-1 px-4 py-2.5 rounded-xl bg-black/30 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500/60 placeholder-gray-600"
+            className="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500/60 placeholder-gray-600"
             required
           />
           <button
@@ -574,7 +574,7 @@ export default function KnowledgePage() {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Ask anything your AI should know..."
-                  className="w-full pl-10 pr-20 py-2.5 rounded-xl bg-black/30 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                  className="w-full pl-10 pr-20 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
                 />
                 <button
                   type="submit"

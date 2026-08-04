@@ -57,7 +57,7 @@ export default function WidgetPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-black/95 text-gray-100">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white dark:bg-slate-950 text-gray-100">
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 backdrop-blur-md">
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">

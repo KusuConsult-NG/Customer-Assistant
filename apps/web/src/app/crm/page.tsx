@@ -552,7 +552,7 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
                 className={`text-xs font-bold rounded-full px-3 py-1 border cursor-pointer outline-none bg-white dark:bg-slate-900 ${statusColor(l.status)}`}
               >
                 {LEAD_STATUSES.map(s => (
-                  <option key={s} value={s} className="bg-slate-50 dark:bg-[#0a0f1e] text-slate-900 dark:text-white">{s}</option>
+                  <option key={s} value={s} className="bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-900 dark:text-white">{s}</option>
                 ))}
               </select>
             </td>
@@ -746,7 +746,7 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
                 onChange={e => updateStatus(t.id, e.target.value)}
                 className={`text-xs font-bold rounded-full px-3 py-1 border cursor-pointer outline-none bg-white dark:bg-slate-900 ${statusColor(t.status)}`}
               >
-                {TICKET_STATUSES.map(s => <option key={s} value={s} className="bg-slate-50 dark:bg-[#0a0f1e] text-slate-900 dark:text-white">{s}</option>)}
+                {TICKET_STATUSES.map(s => <option key={s} value={s} className="bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-900 dark:text-white">{s}</option>)}
               </select>
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>

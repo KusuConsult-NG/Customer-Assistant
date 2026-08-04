@@ -71,7 +71,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-[#0a0f1e]">
+    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm">
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e] sticky top-0 h-screen">
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 opacity-40"></div>
         <div className="relative z-10 flex items-center gap-3">

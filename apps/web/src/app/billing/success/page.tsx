@@ -17,7 +17,7 @@ function BillingSuccessContent() {
   }, [router]);
 
   return (
-    <div className="flex h-screen w-full flex-col items-center justify-center bg-[#080c18] p-6 text-center">
+    <div className="flex h-screen w-full flex-col items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm p-6 text-center">
       <div className="w-full max-w-md bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 p-8 rounded-3xl shadow-2xl backdrop-blur-md flex flex-col items-center">
         <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
           <div className="w-14 h-14 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/40">
@@ -52,7 +52,7 @@ function BillingSuccessContent() {
 export default function BillingSuccessPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-screen items-center justify-center bg-[#080c18]">
+      <div className="flex h-screen items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="w-8 h-8 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
       </div>
     }>

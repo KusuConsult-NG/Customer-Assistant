@@ -305,7 +305,7 @@ export default function WorkflowsPage() {
         {/* Right column: Visual Graph Canvas */}
         <div className="lg:col-span-3">
           {activeWorkflow ? (
-            <div className="rounded-2xl bg-[#0b0f1d] border border-slate-200 dark:border-slate-700 p-6 space-y-6 flex flex-col justify-between min-h-[520px] relative overflow-hidden">
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 p-6 space-y-6 flex flex-col justify-between min-h-[520px] relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px] opacity-5 pointer-events-none" />
 
               {/* Canvas Header Toolbar */}
@@ -389,7 +389,7 @@ export default function WorkflowsPage() {
               </div>
             </div>
           ) : (
-            <div className="p-12 rounded-2xl bg-[#0b0f1d] border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center min-h-[400px]">
+            <div className="p-12 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-center flex flex-col items-center justify-center min-h-[400px]">
               <GitFork className="w-12 h-12 text-blue-400 mb-3" />
               <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">Select or Create a Visual Automation Graph</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
@@ -437,7 +437,7 @@ export default function WorkflowsPage() {
                 <select
                   value={wfTrigger}
                   onChange={(e) => setWfTrigger(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 >
                   <option value="WHATSAPP_INBOUND">Incoming WhatsApp Message</option>
                   <option value="VOICE_CALL_INBOUND">Incoming Phone Call</option>
@@ -496,7 +496,7 @@ export default function WorkflowsPage() {
                 <select
                   value={nodeType}
                   onChange={(e) => setNodeType(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 >
                   <option value="ACTION">ACTION (Execute Task)</option>
                   <option value="CONDITION">CONDITION (Filter Branch)</option>

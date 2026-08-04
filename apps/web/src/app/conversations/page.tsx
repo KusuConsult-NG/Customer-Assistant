@@ -178,7 +178,7 @@ export default function ConversationsPage() {
   const selectedConversation = conversations.find(c => c.id === selectedId);
 
   return (
-    <div className="flex h-[calc(100vh-80px)] -m-6 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-[#080c18]">
+    <div className="flex h-[calc(100vh-80px)] -m-6 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm">
       {/* Left Panel - Conversation List */}
       <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-white dark:bg-slate-900 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -226,11 +226,11 @@ export default function ConversationsPage() {
       </div>
 
       {/* Right Panel - Chat Area */}
-      <div className={`flex-1 flex flex-col min-w-0 bg-white dark:bg-[#080c18] relative ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm relative ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
         {selectedId ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-[#080c18] z-10 shadow-sm flex-shrink-0">
+            <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm z-10 shadow-sm flex-shrink-0">
               <div className="flex items-center gap-3">
                 <button 
                   className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:text-white"
@@ -276,7 +276,7 @@ export default function ConversationsPage() {
                       isCustomer 
                         ? 'bg-indigo-600 text-slate-900 dark:text-white rounded-tr-sm shadow-sm font-medium' 
                         : isAI 
-                          ? 'bg-slate-100 dark:bg-[#1a233a] text-slate-900 dark:text-slate-800 dark:text-slate-200 rounded-tl-sm border border-slate-200 dark:border-slate-200 dark:border-slate-800 font-medium' 
+                          ? 'bg-slate-100 dark:bg-slate-100 dark:bg-slate-800/80 text-slate-900 dark:text-slate-800 dark:text-slate-200 rounded-tl-sm border border-slate-200 dark:border-slate-200 dark:border-slate-800 font-medium' 
                           : 'bg-emerald-600 text-slate-900 dark:text-white rounded-tl-sm font-medium' // Human agent
                     }`}>
                       {!isCustomer && (

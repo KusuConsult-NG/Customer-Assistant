@@ -410,7 +410,7 @@ export default function TelephonyPage() {
 
       {/* Active Live Call Simulator Modal */}
       {activeLiveCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-blue-500/40 rounded-3xl p-6 shadow-2xl shadow-blue-500/20 space-y-6">
             
             {/* Header */}

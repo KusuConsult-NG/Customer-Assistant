@@ -440,7 +440,7 @@ export default function BroadcastsPage() {
                   <select
                     value={tplCategory}
                     onChange={(e) => setTplCategory(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                   >
                     <option value="MARKETING">MARKETING</option>
                     <option value="UTILITY">UTILITY</option>
@@ -452,7 +452,7 @@ export default function BroadcastsPage() {
                   <select
                     value={tplLanguage}
                     onChange={(e) => setTplLanguage(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                   >
                     <option value="en_US">English (en_US)</option>
                     <option value="es">Spanish (es)</option>
@@ -536,7 +536,7 @@ export default function BroadcastsPage() {
                   required
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#080c18] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none"
                 >
                   <option value="">-- Choose WhatsApp Template --</option>
                   {templates.map((t) => (
