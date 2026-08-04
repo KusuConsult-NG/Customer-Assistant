@@ -627,7 +627,7 @@ export default function KnowledgePage() {
 
       {/* Paste text modal */}
       {showPasteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white dark:bg-slate-900 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Paste Knowledge Text</h2>
@@ -673,7 +673,7 @@ export default function KnowledgePage() {
 
       {/* Add FAQ Modal */}
       {showFaqModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white dark:bg-slate-900 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Add FAQ Rule</h2>

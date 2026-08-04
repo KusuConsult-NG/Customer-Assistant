@@ -321,13 +321,10 @@
         
         <!-- Voice Panel -->
         <div class="ace-voice-panel" id="ace-voice-panel">
-          <h3>Voice Call Active</h3>
-          <p>00:15</p>
-          <div class="ace-voice-waves">
-            <div></div><div></div><div></div><div></div><div></div>
-          </div>
-          <p>AI Speaker Active</p>
-          <button style="margin-top:20px; padding:8px 16px; background:#ef4444; color:#fff; border:none; border-radius:8px; cursor:pointer;" id="ace-voice-end">End Call</button>
+          <h3 style="margin-bottom:8px; font-weight:700;">Voice Support</h3>
+          <p style="font-size:13px; color:#475569; margin-bottom:16px;">Call our AI Voice Assistant or request a direct phone callback.</p>
+          <a id="ace-voice-call-link" href="tel:${config.phone || '+23417008000'}" style="display:inline-block; padding:10px 20px; background:${config.primaryColor}; color:#fff; font-weight:600; text-decoration:none; border-radius:8px; margin-bottom:12px;">📞 Call ${config.phone || '+234 1 700 8000'}</a>
+          <button style="margin-top:12px; padding:8px 16px; background:#e2e8f0; color:#334155; border:none; border-radius:8px; cursor:pointer; font-weight:500;" id="ace-voice-end">Back to Chat</button>
         </div>
 
         <div class="ace-widget-body" id="ace-widget-body">

@@ -34,6 +34,7 @@ export enum ChannelType {
   EMAIL = 'EMAIL',
   INSTAGRAM = 'INSTAGRAM',
   TELEGRAM = 'TELEGRAM',
+  MESSENGER = 'MESSENGER',
 }
 
 export enum CallDirection {

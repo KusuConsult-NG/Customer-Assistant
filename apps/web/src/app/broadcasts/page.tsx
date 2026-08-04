@@ -391,8 +391,12 @@ export default function BroadcastsPage() {
                 <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3 text-xs">
                   <span className="text-slate-500 dark:text-slate-400 font-mono">{tpl.language}</span>
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 text-[10px] font-bold">
-                      APPROVED
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      tpl.status === 'APPROVED' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
+                      tpl.status === 'REJECTED' ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20' :
+                      'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
+                    }`}>
+                      {tpl.status || 'APPROVED'}
                     </span>
                     <button
                       onClick={() => handleDeleteTemplate(tpl.id)}

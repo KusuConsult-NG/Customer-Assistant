@@ -392,6 +392,14 @@ export class WhatsappService {
 
     if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
 
+    // Resolve client first — throws early if credentials missing before writing to DB
+    const config = conversation.organization.whatsAppConfigs[0];
+    const client = resolveWhatsAppClient(config ?? {});
+
+    // Attempt sending via Meta WhatsApp Cloud API
+    await client.sendTextMessage(conversation.contact.phoneNumber, content);
+
+    // Save to DB only after successful delivery
     const msg = await prisma.message.create({
       data: {
         conversationId,
@@ -405,12 +413,6 @@ export class WhatsappService {
       where: { id: conversationId },
       data: { lastMessageAt: new Date(), isHumanHandoffActive: true, assignedUserId: agentUserId },
     });
-
-    const config = conversation.organization.whatsAppConfigs[0];
-
-    // Throws with a clear message if credentials missing — agent sees this in the UI
-    const client = resolveWhatsAppClient(config ?? {});
-    await client.sendTextMessage(conversation.contact.phoneNumber, content);
 
     return msg;
   }

@@ -77,7 +77,13 @@ export default function ConversationsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setConversations(toArray(data));
+        const rawList = toArray(data);
+        const mapped = rawList.map((c: any) => ({
+          ...c,
+          contactName: c.contactName || c.contact?.fullName || 'Customer',
+          contactPhone: c.contactPhone || c.contact?.phoneNumber || '',
+        }));
+        setConversations(mapped);
       }
     } catch (err) {
       console.error('Failed to fetch conversations', err);
@@ -112,7 +118,7 @@ export default function ConversationsPage() {
     
     // Optimistic UI update
     const tempMsg: Message = {
-      id: Date.now().toString(),
+      id: 'temp-' + Date.now().toString(),
       content,
       senderType: 'AGENT',
       createdAt: new Date().toISOString()
@@ -121,19 +127,22 @@ export default function ConversationsPage() {
 
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/conversations/${selectedId}/messages`, {
+      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${selectedId}/messages`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ content, senderType: 'AGENT' })
+        body: JSON.stringify({ content })
       });
       if (!res.ok) {
-        // Handle failure (e.g. remove optimistic message)
+        setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+        setNewMessage(content);
       }
     } catch (err) {
       console.error('Failed to send message', err);
+      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      setNewMessage(content);
     }
   };
 
@@ -266,9 +275,10 @@ export default function ConversationsPage() {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.map((msg, i) => {
-                const isCustomer = msg.senderType === 'USER';
-                const isAI = msg.senderType === 'AI' || msg.senderType === 'SYSTEM';
+              {messages.map((msg: any, i) => {
+                const s = (msg.sender || msg.senderType || '').toUpperCase();
+                const isCustomer = s === 'CUSTOMER' || s === 'USER';
+                const isAI = s === 'AI' || s === 'SYSTEM';
                 
                 return (
                   <div key={msg.id || i} className={`flex ${isCustomer ? 'justify-end' : 'justify-start'}`}>

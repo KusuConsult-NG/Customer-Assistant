@@ -39,7 +39,7 @@ export class InstagramDMAdapter implements OmnichannelAdapter {
 }
 
 export class FacebookMessengerAdapter implements OmnichannelAdapter {
-  channel = ChannelType.WEBCHAT;
+  channel = ChannelType.MESSENGER;
 
   parseWebhookPayload(rawPayload: any): ChannelMessage | null {
     const messaging = rawPayload?.entry?.[0]?.messaging?.[0];
