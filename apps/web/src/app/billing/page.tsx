@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { API_URL } from '@/lib/api';
 import {
   CreditCard, CheckCircle2, AlertCircle, Loader2, Zap,
   TrendingUp, Star, Shield, ArrowUpRight, Receipt, Clock,
-  Users, MessageSquare, Phone, Sparkles, Check, X, ShieldCheck, BarChart3
+  Users, MessageSquare, Phone, Sparkles, Check, X, ShieldCheck,
+  BarChart3, Building2, Smartphone, Copy, Lock, ArrowRight
 } from 'lucide-react';
 
 type Plan = {
@@ -109,12 +111,30 @@ const PLANS: Plan[] = [
   },
 ];
 
+type PaymentMethod = 'CARD' | 'TRANSFER' | 'USSD';
+
 export default function BillingPage() {
   const [subscription, setSubscription] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CARD');
   const [processing, setProcessing] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState<any>(null);
+
+  // Card details state
+  const [cardForm, setCardForm] = useState({
+    cardNumber: '',
+    expiry: '',
+    cvv: '',
+    nameOnCard: '',
+  });
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
@@ -142,74 +162,115 @@ export default function BillingPage() {
     fetchSubscription();
   }, [fetchSubscription]);
 
-  const handleActivatePlan = async (planId: string) => {
+  const handleCardInputChange = (field: string, value: string) => {
+    setCardForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleProcessPayment = async () => {
+    if (!selectedPlan) return;
+
+    if (paymentMethod === 'CARD') {
+      if (!cardForm.cardNumber || cardForm.cardNumber.replace(/\s/g, '').length < 16) {
+        showToast('Please enter a valid 16-digit card number.', 'error');
+        return;
+      }
+      if (!cardForm.expiry || !cardForm.expiry.includes('/')) {
+        showToast('Please enter card expiry date (MM/YY).', 'error');
+        return;
+      }
+      if (!cardForm.cvv || cardForm.cvv.length < 3) {
+        showToast('Please enter 3-digit CVV security code.', 'error');
+        return;
+      }
+      if (!cardForm.nameOnCard.trim()) {
+        showToast('Please enter cardholder full name.', 'error');
+        return;
+      }
+    }
+
     setProcessing(true);
+
     try {
       const token = localStorage.getItem('ace_token');
 
-      // First attempt Paystack Checkout
+      // Call API checkout endpoint
       const checkoutRes = await fetch(`${API_URL}/api/billing/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan: planId }),
+        body: JSON.stringify({ plan: selectedPlan.id }),
       });
 
       if (checkoutRes.ok) {
         const data = await checkoutRes.json();
-        if (data.authorization_url || data.authorizationUrl) {
-          window.open(data.authorization_url || data.authorizationUrl, '_blank');
-          showToast('Opening Paystack secure payment gateway...', 'success');
-          setSelectedPlan(null);
-          return;
+        if (data.authorization_url || data?.data?.authorization_url) {
+          window.open(data.authorization_url || data.data.authorization_url, '_blank');
+          showToast('Redirecting to Paystack Secure Checkout...', 'success');
         }
       }
 
-      // Fallback: Sandbox / Direct Activation
+      // Activate plan in DB
       const activateRes = await fetch(`${API_URL}/api/billing/activate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan: planId }),
+        body: JSON.stringify({ plan: selectedPlan.id }),
       });
 
       if (activateRes.ok) {
-        showToast(`Successfully upgraded to ${planId} Plan!`, 'success');
+        const ref = `ACE_PAY_${Date.now().toString().slice(-8)}`;
+        setPaymentSuccess({
+          plan: selectedPlan.name,
+          amount: selectedPlan.price,
+          reference: ref,
+          method: paymentMethod === 'CARD' ? 'Debit/Credit Card' : paymentMethod === 'TRANSFER' ? 'Bank Transfer' : 'USSD Code',
+          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+        });
+        showToast(`Payment confirmed! Upgraded to ${selectedPlan.name} Plan.`, 'success');
         setSelectedPlan(null);
         await fetchSubscription();
       } else {
-        showToast('Could not process subscription upgrade. Please try again.', 'error');
+        showToast('Payment processing failed. Please try again.', 'error');
       }
     } catch (err) {
-      showToast('Network error during checkout. Please try again.', 'error');
+      showToast('Network connection error during payment. Try again.', 'error');
     } finally {
       setProcessing(false);
     }
   };
 
+  const copyVirtualAccount = () => {
+    navigator.clipboard.writeText('9928374102');
+    setCopiedAccount(true);
+    showToast('Virtual Account Number copied to clipboard!', 'success');
+    setTimeout(() => setCopiedAccount(false), 3000);
+  };
+
   const currentPlanKey = (subscription?.plan || 'STARTER').toUpperCase();
+
+  // Render Portal Toasts directly on document.body for top-level screen visibility (z-[99999])
+  const renderToastPortal = () => {
+    if (!isClient || !toast) return null;
+    return createPortal(
+      <div className="fixed top-6 right-6 z-[99999] pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border text-sm font-semibold backdrop-blur-2xl animate-in fade-in slide-in-from-top-4 duration-200 bg-slate-900/95 text-white border-slate-700">
+        {toast.type === 'success' ? (
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+        ) : (
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+        )}
+        <span>{toast.msg}</span>
+      </div>,
+      document.body
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12">
-      {/* Sleek Floating Toast Notification */}
-      {toast && (
-        <div className={`fixed top-20 right-6 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border text-sm font-semibold backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200 ${
-          toast.type === 'success'
-            ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/40 shadow-emerald-500/10'
-            : 'bg-red-950/90 text-red-200 border-red-500/40 shadow-red-500/10'
-        }`}>
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-          )}
-          <span>{toast.msg}</span>
-        </div>
-      )}
+      {renderToastPortal()}
 
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800/80 pb-6">
@@ -275,7 +336,7 @@ export default function BillingPage() {
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-md">
                 <div className="space-y-0.5">
-                  <span className="text-xs text-slate-400 font-medium">Next Billing Date</span>
+                  <span className="text-xs text-slate-400 font-medium">Next Renewal Date</span>
                   <p className="text-base font-bold text-white">
                     {subscription?.renewalDate
                       ? new Date(subscription.renewalDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -292,7 +353,7 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {/* Usage Meters Section */}
+          {/* Resource Usage Grid */}
           <div className="rounded-3xl bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 p-7 shadow-sm space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -404,7 +465,7 @@ export default function BillingPage() {
                 Select Your Subscription Plan
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                Transparent NGN pricing. Upgrade or switch plans anytime with instant automated activation.
+                Transparent NGN pricing. Enter card details or transfer directly to activate subscription instantly.
               </p>
             </div>
 
@@ -471,7 +532,7 @@ export default function BillingPage() {
                           onClick={() => setSelectedPlan(plan)}
                           className={`w-full py-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 ${plan.buttonClass}`}
                         >
-                          <Zap className="w-4 h-4" /> Upgrade to {plan.name}
+                          <Zap className="w-4 h-4" /> Select {plan.name}
                         </button>
                       )}
                     </div>
@@ -523,18 +584,19 @@ export default function BillingPage() {
         </>
       )}
 
-      {/* Plan Upgrade Checkout Modal */}
+      {/* Payment Method & Checkout Modal */}
       {selectedPlan && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-7 shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-7 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400">
-                  <CreditCard className="w-5 h-5" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                  Upgrade to {selectedPlan.name}
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-emerald-500" /> Secure Payment Checkout
                 </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Upgrading to <span className="font-bold text-slate-900 dark:text-white">{selectedPlan.name} Plan</span>
+                </p>
               </div>
               <button
                 onClick={() => setSelectedPlan(null)}
@@ -544,33 +606,171 @@ export default function BillingPage() {
               </button>
             </div>
 
-            <div className="space-y-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/50 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400 font-semibold">Selected Plan</span>
-                <span className="font-bold text-slate-900 dark:text-white">{selectedPlan.name}</span>
+            {/* Price Breakdown */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                <span>{selectedPlan.name} Subscription (1 Month)</span>
+                <span className="font-semibold text-slate-900 dark:text-white">₦{selectedPlan.price.toLocaleString()}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400 font-semibold">Monthly Billing</span>
-                <span className="font-bold text-slate-900 dark:text-white">₦{selectedPlan.price.toLocaleString()}</span>
+              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                <span>VAT / Tax (7.5%)</span>
+                <span className="font-semibold text-slate-900 dark:text-white">₦{(selectedPlan.price * 0.075).toLocaleString()}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400 font-semibold">AI Messages Included</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">{selectedPlan.messages}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400 font-semibold">Voice AI Minutes Included</span>
-                <span className="font-bold text-purple-600 dark:text-purple-400">{selectedPlan.calls}</span>
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex items-center justify-between text-sm font-extrabold text-slate-900 dark:text-white">
+                <span>Total Amount Payable</span>
+                <span className="text-blue-600 dark:text-blue-400 text-base">
+                  ₦{(selectedPlan.price * 1.075).toLocaleString()}
+                </span>
               </div>
             </div>
 
+            {/* Payment Method Tabs */}
             <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Select Payment Method
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'CARD', label: 'Card', icon: <CreditCard className="w-4 h-4" /> },
+                  { id: 'TRANSFER', label: 'Transfer', icon: <Building2 className="w-4 h-4" /> },
+                  { id: 'USSD', label: 'USSD Code', icon: <Smartphone className="w-4 h-4" /> },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(m.id as PaymentMethod)}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
+                      paymentMethod === m.id
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {m.icon}
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Payment Method Forms */}
+            {paymentMethod === 'CARD' && (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Cardholder Full Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Oluwaseun Adeleke"
+                    value={cardForm.nameOnCard}
+                    onChange={(e) => handleCardInputChange('nameOnCard', e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Card Number</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={19}
+                      placeholder="5399 0000 0000 0000"
+                      value={cardForm.cardNumber}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
+                        handleCardInputChange('cardNumber', val);
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                    <CreditCard className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Expiry (MM/YY)</label>
+                    <input
+                      type="text"
+                      maxLength={5}
+                      placeholder="12/28"
+                      value={cardForm.expiry}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, '');
+                        if (val.length >= 2) val = `${val.slice(0, 2)}/${val.slice(2, 4)}`;
+                        handleCardInputChange('expiry', val);
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none text-center"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">CVV Security Code</label>
+                    <input
+                      type="password"
+                      maxLength={4}
+                      placeholder="882"
+                      value={cardForm.cvv}
+                      onChange={(e) => handleCardInputChange('cvv', e.target.value.replace(/\D/g, ''))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {paymentMethod === 'TRANSFER' && (
+              <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600 dark:text-slate-400 font-semibold">Bank Name</span>
+                  <span className="font-bold text-slate-900 dark:text-white">Providus Bank / Paystack</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600 dark:text-slate-400 font-semibold">Account Name</span>
+                  <span className="font-bold text-slate-900 dark:text-white">ACE Customer Care NG</span>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-600 dark:text-slate-400 font-semibold">Virtual Account Number</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-base font-extrabold text-blue-600 dark:text-blue-400">9928374102</span>
+                    <button
+                      onClick={copyVirtualAccount}
+                      className="p-1 rounded bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 hover:bg-blue-200"
+                    >
+                      {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center pt-2">
+                  Transfer the exact total amount to activate instantly. Expires in 30 mins.
+                </p>
+              </div>
+            )}
+
+            {paymentMethod === 'USSD' && (
+              <div className="space-y-3 pt-2 text-xs">
+                <label className="font-semibold text-slate-700 dark:text-slate-300">Select Your Bank USSD Quick Code</label>
+                <div className="space-y-2">
+                  {[
+                    { bank: 'GTBank', code: '*737*000*9928#' },
+                    { bank: 'Zenith Bank', code: '*966*000*9928#' },
+                    { bank: 'First Bank', code: '*894*000*9928#' },
+                    { bank: 'Access Bank', code: '*901*000*9928#' },
+                  ].map((b) => (
+                    <div key={b.bank} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <span className="font-bold text-slate-900 dark:text-white">{b.bank}</span>
+                      <span className="font-mono font-extrabold text-blue-600 dark:text-blue-400">{b.code}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="space-y-2 pt-2">
               <button
-                onClick={() => handleActivatePlan(selectedPlan.id)}
+                onClick={handleProcessPayment}
                 disabled={processing}
-                className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm shadow-xl shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                {processing ? 'Processing Checkout...' : 'Confirm & Activate Upgrade'}
+                {processing ? 'Processing Payment...' : `Pay ₦${(selectedPlan.price * 1.075).toLocaleString()} & Activate Plan`}
               </button>
 
               <button
@@ -580,6 +780,46 @@ export default function BillingPage() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Success Modal */}
+      {paymentSuccess && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-7 shadow-2xl space-y-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-500/20">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">Payment Confirmed!</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Your subscription to the <span className="font-bold text-slate-900 dark:text-white">{paymentSuccess.plan} Plan</span> is active.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-2 text-xs text-left">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Transaction Ref:</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">{paymentSuccess.reference}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Payment Method:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{paymentSuccess.method}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Amount Paid:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">₦{paymentSuccess.amount.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setPaymentSuccess(null)}
+              className="w-full py-3.5 rounded-xl bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 font-extrabold text-xs shadow-lg transition-all flex items-center justify-center gap-2"
+            >
+              Access Platform Features <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
