@@ -158,13 +158,30 @@ export default function AgentConsolePage() {
     setMessages(prev => [...prev, tempMsg]);
 
     try {
-      await fetch(`${API_URL}/api/conversations/${activeId}/messages`, {
+      // Use the WhatsApp-aware endpoint — this saves to DB AND delivers
+      // the message to the customer's WhatsApp number via the Cloud API.
+      // The generic /api/conversations/:id/messages only saves to DB.
+      const activeConvChannel = conversations.find(c => c.id === activeId)?.channel;
+      const endpoint = activeConvChannel === 'WHATSAPP'
+        ? `${API_URL}/api/whatsapp/conversations/${activeId}/messages`
+        : `${API_URL}/api/conversations/${activeId}/messages`;
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error('Failed to send message:', err);
+        // Remove optimistic message on failure
+        setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+        setReplyText(text);
+      }
     } catch (err) {
       console.error('Failed to send message:', err);
+      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      setReplyText(text);
     } finally {
       setSending(false);
     }
@@ -193,10 +210,11 @@ export default function AgentConsolePage() {
     const newStatus = !isHumanActive;
     setIsHumanActive(newStatus);
     try {
-      await fetch(`${API_URL}/api/conversations/${activeId}/handoff`, {
-        method: 'PATCH',
+      // Use WhatsApp-specific endpoint — updates assignedUserId + handoff flag
+      await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/handoff`, {
+        method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handoff: newStatus }),
+        body: JSON.stringify({ isHumanHandoffActive: newStatus }),
       });
       fetchConversations();
     } catch (err) {
@@ -471,16 +489,32 @@ export default function AgentConsolePage() {
             <div>
               <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Tags</p>
               <div className="flex gap-1 flex-wrap">
-                <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">Customer</span>
-                <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">Active Chat</span>
+                <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">{activeConv.channel}</span>
+                {isHumanActive
+                  ? <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Human Takeover</span>
+                  : <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">AI Handling</span>
+                }
               </div>
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Internal Notes</p>
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
-                Customer reached out regarding service inquiries. AI handled initial greeting.
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last Message</p>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                {messages.length > 0
+                  ? <>
+                      <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">
+                        {messages[messages.length - 1]?.sender === 'CUSTOMER' ? '👤 Customer' :
+                         messages[messages.length - 1]?.sender === 'HUMAN_AGENT' ? '🧑‍💼 Agent' : '🤖 AI'}
+                      </span>
+                      {(messages[messages.length - 1]?.content || '').slice(0, 100)}
+                      {(messages[messages.length - 1]?.content || '').length > 100 ? '…' : ''}
+                    </>
+                  : <span className="text-slate-400 dark:text-slate-500 italic">No messages yet</span>
+                }
               </div>
+              {messages.length > 0 && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">{messages.length} message{messages.length !== 1 ? 's' : ''} in thread</p>
+              )}
             </div>
           </div>
         </div>
