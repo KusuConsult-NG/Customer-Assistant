@@ -400,7 +400,7 @@ export class ConversationOrchestrator {
       kbContextText = relevant.map((r) => r.content).join('\n---\n');
     }
 
-    // ── 12. Persona & response synthesis ─────────────────────────────────────
+    // ── 12. Persona & GPT-4o response synthesis ──────────────────────────────
     let org: any = null;
     try {
       org = await prisma.organization.findUnique({
@@ -415,12 +415,9 @@ export class ConversationOrchestrator {
         organizationId: context.organizationId,
         error: dbErr.message,
       }));
-      // Continue with null org — do not silently return a mock response
     }
 
     if (!org) {
-      // Organization row doesn't exist. This is a data integrity problem.
-      // Log and return a graceful degraded response rather than crashing.
       console.error(JSON.stringify({
         level: 'error',
         service: 'ConversationOrchestrator',
@@ -430,9 +427,7 @@ export class ConversationOrchestrator {
       }));
     }
 
-    let synthesizedReply: string;
     const orgName = org?.name ?? 'our service';
-    const GREETING_WORDS = ['hello', 'hi', 'good day', 'hey', 'good morning', 'good afternoon', 'good evening'];
 
     // Stealth Human Persona Directive Protection
     const AI_DISCLOSURE_PHRASES = ['are you an ai', 'are you a robot', 'are you ai', 'is this a bot', 'are you human', 'am i talking to a machine'];
@@ -445,20 +440,95 @@ export class ConversationOrchestrator {
       };
     }
 
-    if (kbContextText) {
-      synthesizedReply = `${kbContextText}\n\nIs there anything else I can help you with today?`;
-    } else if (GREETING_WORDS.some((g) => lowerInput.startsWith(g))) {
-      synthesizedReply = org?.welcomeMessage ?? `Hello! Welcome to ${orgName}. My name is Alex from customer care. How can I help you today?`;
-    } else {
-      synthesizedReply =
-        `Thank you for reaching out to ${orgName}. I've noted down your request regarding *"${cleanInput.slice(0, 80)}"*.\n\n` +
-        `I am processing this right now. Would you like me to book a callback or send you more details directly?`;
+    // ── GPT-4o synthesis — uses the org's configured persona prompt ───────────
+    const openAiKey = process.env.OPENAI_API_KEY;
+
+    // If it's a greeting AND no knowledge base context, just use the welcome message.
+    const GREETING_WORDS = ['hello', 'hi', 'good day', 'hey', 'good morning', 'good afternoon', 'good evening'];
+    const isGreeting = GREETING_WORDS.some((g) => lowerInput.startsWith(g)) && cleanInput.length < 30;
+    if (isGreeting) {
+      const synthesizedReply = org?.welcomeMessage ??
+        `Hello! Welcome to ${orgName}. How can I help you today?`;
+      return {
+        replyText: synthesizedReply,
+        intentDetected: 'GREETING',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+      };
     }
 
+    if (openAiKey) {
+      try {
+        const systemPrompt = org?.aiPersonaPrompt
+          ? org.aiPersonaPrompt
+          : `You are a professional customer support assistant for ${orgName}. ` +
+            `Be helpful, concise, and friendly. Respond in plain text without markdown unless formatting helps clarity. ` +
+            `If you cannot answer something, offer to connect the customer with a human agent.`;
+
+        const userContent = kbContextText
+          ? `The following information from our knowledge base may be relevant:\n\n${kbContextText}\n\n---\n\nCustomer message: ${cleanInput}`
+          : cleanInput;
+
+        const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${openAiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            max_tokens: 400,
+            temperature: 0.6,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userContent },
+            ],
+          }),
+        });
+
+        if (gptResponse.ok) {
+          const gptData: any = await gptResponse.json();
+          const aiReply = gptData.choices?.[0]?.message?.content?.trim();
+          if (aiReply) {
+            return {
+              replyText: aiReply,
+              intentDetected: kbContextText ? 'KB_ANSWER' : 'GENERAL_INQUIRY',
+              confidenceScore: kbContextText ? 0.92 : 0.78,
+              shouldHandoff: false,
+            };
+          }
+        } else {
+          const errText = await gptResponse.text();
+          console.error(JSON.stringify({
+            level: 'warn',
+            service: 'ConversationOrchestrator',
+            event: 'gpt4o_call_failed',
+            status: gptResponse.status,
+            error: errText.slice(0, 200),
+            organizationId: context.organizationId,
+          }));
+        }
+      } catch (gptErr: any) {
+        console.error(JSON.stringify({
+          level: 'warn',
+          service: 'ConversationOrchestrator',
+          event: 'gpt4o_exception',
+          error: gptErr.message,
+          organizationId: context.organizationId,
+        }));
+      }
+    }
+
+    // Fallback: if GPT call fails or key not set, use KB text or a minimal template
+    const fallbackReply = kbContextText
+      ? `${kbContextText}\n\nIs there anything else I can help you with?`
+      : `Thank you for contacting ${orgName}. A member of our team will follow up with you shortly regarding your inquiry. ` +
+        `You can also say *"speak to an agent"* to be connected immediately.`;
+
     return {
-      replyText: synthesizedReply,
+      replyText: fallbackReply,
       intentDetected: 'GENERAL_INQUIRY',
-      confidenceScore: kbContextText ? 0.87 : 0.70,
+      confidenceScore: kbContextText ? 0.72 : 0.50,
       shouldHandoff: false,
     };
   }
