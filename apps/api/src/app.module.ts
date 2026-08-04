@@ -46,9 +46,10 @@ import { RolesGuard } from './common/guards/roles.guard';
   controllers: [AppController],
   providers: [
     VoiceStreamGateway,
-    // Apply the default throttle tier globally to every route.
-    // Individual routes override with @Throttle({ auth: {} }) or @SkipThrottle()
+    // Apply default throttle tier globally to every route.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Enforce RBAC roles globally for @Roles() decorated routes.
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}

@@ -33,13 +33,13 @@ spec:
             cpu: "1000m"
         readinessProbe:
           httpGet:
-            path: /api/organizations/me
+            path: /api/health
             port: 4000
           initialDelaySeconds: 5
           periodSeconds: 10
         livenessProbe:
           httpGet:
-            path: /api/organizations/me
+            path: /api/health
             port: 4000
           initialDelaySeconds: 15
           periodSeconds: 20
