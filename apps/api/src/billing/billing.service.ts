@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { prisma } from '@ace/database';
 import { AceLogger } from '../config/logger';
@@ -237,7 +237,21 @@ export class BillingService {
    *  - PAYSTACK_SECRET_KEY is not set (should never reach here if env.validation.ts ran)
    *  - Paystack API returns a non-OK response
    */
-  async activatePlan(organizationId: string, plan: SubscriptionPlan) {
+  /**
+   * Grants a paid plan. INTERNAL ONLY.
+   *
+   * There is exactly one legitimate caller: the Paystack `charge.success` webhook,
+   * after it has verified the signature, matched the plan against our own price list
+   * and confirmed the amount paid. Nothing else may call this, because nothing else
+   * has established that anybody paid.
+   *
+   * It is deliberately not exported through a controller. `POST /api/billing/activate`
+   * used to call it directly behind nothing but a login check — so any authenticated
+   * user could hand themselves the ENTERPRISE plan (₦1,000,000/month) with a single
+   * request. That endpoint now verifies a real Paystack transaction first; see
+   * activateFromPaymentReference below.
+   */
+  private async activatePlanVerified(organizationId: string, plan: SubscriptionPlan, reason: string) {
     const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await prisma.organization.update({
       where: { id: organizationId },
@@ -247,7 +261,75 @@ export class BillingService {
         subscriptionRenewsAt: renewsAt,
       },
     });
+    log.info('subscription_activated', { organizationId, plan, reason });
     return { status: 'success', plan, message: `Successfully upgraded to ${plan} plan!` };
+  }
+
+  /**
+   * Activates a plan from a Paystack payment reference.
+   *
+   * Used when a customer paid but the webhook did not arrive — a real situation worth
+   * supporting, and the only reason a manual activation route should exist at all.
+   *
+   * Every claim in the request is re-checked against Paystack directly: that the
+   * transaction exists, that it succeeded, that it belongs to THIS organization, and
+   * that the amount covers the plan being claimed. The caller supplies a reference and
+   * nothing else that is trusted.
+   */
+  async activateFromPaymentReference(organizationId: string, plan: SubscriptionPlan, reference: string) {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) {
+      throw new ServiceUnavailableException(
+        'Online payments are not configured on this deployment, so a payment cannot be verified. ' +
+        'No plan has been activated.'
+      );
+    }
+
+    const expectedKobo = PLAN_PRICES_KOBO[plan];
+    if (!expectedKobo) throw new BadRequestException(`Unknown subscription plan: ${plan}`);
+    if (!reference?.trim()) throw new BadRequestException('A Paystack payment reference is required.');
+
+    let data: any;
+    try {
+      const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference.trim())}`, {
+        headers: { Authorization: `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body: any = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.status) {
+        log.warn('paystack_verify_rejected', { organizationId, reference, status: res.status });
+        throw new BadRequestException(
+          `Paystack could not verify that payment (${body?.message ?? `HTTP ${res.status}`}). No plan has been activated.`
+        );
+      }
+      data = body.data;
+    } catch (e: any) {
+      if (e instanceof BadRequestException || e instanceof ServiceUnavailableException) throw e;
+      log.error('paystack_verify_failed', e as Error, { organizationId, reference });
+      throw new ServiceUnavailableException('Could not reach Paystack to verify that payment. No plan has been activated.');
+    }
+
+    if (data?.status !== 'success') {
+      throw new BadRequestException(`That payment has not succeeded (Paystack reports "${data?.status}"). No plan has been activated.`);
+    }
+
+    // The reference must belong to this tenant. Without this check, one organization
+    // could activate itself using another organization's payment reference.
+    const paidOrg = data?.metadata?.organizationId;
+    if (paidOrg && paidOrg !== organizationId) {
+      log.warn('paystack_reference_belongs_to_another_org', { organizationId, reference, paidOrg });
+      throw new BadRequestException('That payment reference belongs to a different organization.');
+    }
+
+    const paidKobo = Number(data?.amount ?? 0);
+    if (paidKobo < expectedKobo) {
+      throw new BadRequestException(
+        `That payment was ₦${(paidKobo / 100).toLocaleString()}, which does not cover the ` +
+        `${plan} plan at ₦${(expectedKobo / 100).toLocaleString()}. No plan has been activated.`
+      );
+    }
+
+    return this.activatePlanVerified(organizationId, plan, `paystack:${reference}`);
   }
 
   async initializePaystackTransaction(

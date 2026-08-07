@@ -459,6 +459,19 @@ model Message {
   metadata       Json?
   sentAt         DateTime      @default(now())
 
+  /// Provider message id — Meta's `wamid`, and the equivalent for other channels.
+  ///
+  /// UNIQUE, and that is the whole point. Meta's webhook delivery is *at least once*:
+  /// it retries on timeout, on network error, and sometimes for no visible reason. With
+  /// no constraint here a retry wrote a second copy of the customer's message and ran
+  /// the assistant again, so the customer was answered twice and the transcript showed
+  /// them saying everything twice. A check-then-insert cannot close that — two retries
+  /// can be in flight at once — so the database enforces it.
+  ///
+  /// Null for messages we originate ourselves, which have no provider id. Postgres
+  /// permits many NULLs in a unique column, so that is safe.
+  externalId     String?       @unique
+
   @@index([conversationId, sentAt])
   @@map("messages")
 }

@@ -589,3 +589,114 @@ overlapping speech, accent handling, and Twilio's ability to reach the webhook a
 a real number pointed at a public URL. The probe proves the pipeline is wired and
 capable; it cannot prove how it sounds.
 
+---
+
+# Pass 6 — WhatsApp inbound and payments
+
+Both had been marked BLOCKED throughout. As with Voice AI, "blocked" was standing in for
+"never tested", and testing them found real defects — including the most serious one in
+this entire engagement.
+
+## P6-01 · Anyone could give themselves the ENTERPRISE plan for free (CRITICAL — FIXED)
+
+`POST /api/billing/activate` took a plan name and granted it outright:
+
+```ts
+async activatePlan(organizationId, plan) {
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: { subscriptionPlan: plan, subscriptionStatus: 'ACTIVE', ... },
+  });
+}
+```
+
+No payment, no reference, no verification of any kind.
+
+It carried `@Roles('OWNER')`, which reads like a control but is not one: **the first user
+of every organization is its owner**, so every person who signs up already holds that
+role in their own tenant. Demonstrated against a fresh trial account:
+
+```
+BEFORE: {"subscriptionPlan":null,"subscriptionStatus":"TRIAL"}
+POST /api/billing/activate {"plan":"ENTERPRISE"}  ->  201
+AFTER:  {"subscriptionPlan":"ENTERPRISE","subscriptionStatus":"ACTIVE"}
+```
+
+ENTERPRISE is priced at **₦1,000,000/month**. One request, no payment, from any account.
+
+This is a near-miss of the same defect a previous pass had already fixed one route over:
+`initializePaystackTransaction` used to call `activatePlan()` when Paystack was
+unconfigured, and that was corrected — but the directly-exposed `/activate` route was
+left behind. The `charge.success` webhook, by contrast, was properly guarded all along
+(signature verified, plan checked against our own price list, underpayment rejected).
+
+*Fixed:* `activatePlan` is now private and renamed `activatePlanVerified`, callable only
+from the verified webhook path. `/activate` requires a Paystack reference and verifies
+it against Paystack directly — that the transaction succeeded, that it belongs to **this**
+organization, and that the amount covers the plan. With Paystack unconfigured it returns
+503 and activates nothing.
+
+Re-verified: no reference → 400; forged reference → 400 "Paystack could not verify that
+payment"; organization remains on TRIAL in both cases. Locked down by `SEC-080`,
+`SEC-081`, `SEC-082`.
+
+## P6-02 · Every WhatsApp retry double-answered the customer (HIGH — FIXED)
+
+Meta's webhook delivery is **at least once** — it retries on timeout, on network error,
+and sometimes for no visible reason. Nothing in the inbound path was idempotent.
+
+Measured by redelivering an identical envelope with the same `wamid`: the transcript
+gained a second copy of the customer's message, and **the assistant answered them a
+second time**. Anything the assistant does in that turn — open a ticket, take a booking,
+issue payment instructions — happened twice.
+
+*Fixed:* `Message.externalId` is now UNIQUE, and the insert itself is the idempotency
+claim. A check-then-insert would not close this, since two retries can be in flight at
+once; the database constraint is what makes it safe. A `P2002` means another delivery
+already claimed that message, so processing stops **before** the assistant runs. The
+migration back-fills `externalId` from the existing `metadata.messageId`, keeping the
+earliest row where redelivery had already produced copies.
+
+Re-verified: customer turns unchanged at 1, one copy of the text, no second reply.
+
+## What was proven to work
+
+| Check | Result |
+|---|---|
+| `WA-001` Verification handshake returns the challenge | **PASS** |
+| `WA-002` A wrong verify token is refused | **PASS** — 403 |
+| `WA-003` Unsigned and wrongly-signed payloads are not processed | **PASS** — neither wrote anything |
+| `WA-004` An inbound message creates the contact and conversation | **PASS** |
+| `WA-005` A redelivered message is not processed twice | **PASS** (after P6-02) |
+| `WA-006` An unmapped phone number id is not routed to another tenant | **PASS** — dropped |
+| `WA-007` A delivery receipt does not become a message | **PASS** |
+| `WA-008` Image, location and interactive messages are recorded | **PASS** — all three, with media type |
+| `WA-009` The assistant responds | **PASS** |
+
+**The WhatsApp credentials are live.** The access token authenticates against a real
+business number — **+234 708 107 8679**, verified name *"Kusu consult"*. This is the
+best-configured channel in the product.
+
+## Payments — still not functional, and now honest about it
+
+`PAYSTACK_SECRET_KEY` is present but **invalid**: Paystack returns
+`401 {"status":false,"message":"Invalid key"}`. `PAYSTACK_WEBHOOK_SECRET` is still the
+literal placeholder `REPLACE_...`.
+
+So no payment can be taken today. What changed is that the product no longer has a way to
+*pretend* one was: activation now requires a verified transaction, and refuses clearly
+when Paystack is unreachable or unconfigured.
+
+To make payments work:
+
+1. Replace `PAYSTACK_SECRET_KEY` with a valid key from the Paystack dashboard.
+2. Replace `PAYSTACK_WEBHOOK_SECRET` with the real webhook secret.
+3. Point the Paystack webhook at `https://<your-api>/api/billing/paystack-webhook`.
+4. Re-run suite 06 and drive one test-mode checkout end to end.
+
+## Still not certified
+
+A real Meta-delivered webhook (this used correctly-signed simulated envelopes against a
+locally reachable endpoint) and a real Paystack charge. Both need a public HTTPS origin;
+the payment side additionally needs working keys.
+

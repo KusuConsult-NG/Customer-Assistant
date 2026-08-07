@@ -17,7 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
-import { CheckoutDto, ServicePaymentGuidanceDto } from './billing.dto';
+import { ActivatePlanDto, CheckoutDto, ServicePaymentGuidanceDto } from './billing.dto';
 
 @Controller('api/billing')
 export class BillingController {
@@ -45,16 +45,26 @@ export class BillingController {
   }
 
   /**
-   * Activates a plan without payment.
+   * Activates a plan from a Paystack payment reference.
    *
-   * Restricted to OWNER: this is the manual/enterprise-invoice path, and any role that
-   * can reach it can grant itself an unlimited plan for free.
+   * For the case where a customer paid but the webhook never arrived. The reference is
+   * verified against Paystack — that it succeeded, that it belongs to this
+   * organization, and that the amount covers the plan.
+   *
+   * This route previously took only a plan name and activated it outright. @Roles
+   * ('OWNER') was doing nothing useful, because the first user of every organization
+   * IS its owner: any person who signed up could grant themselves the ENTERPRISE plan
+   * (₦1,000,000/month) with one request and no payment.
    */
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER')
   @Post('activate')
-  async activate(@Req() req: { user: AuthUser }, @Body() body: CheckoutDto) {
-    return this.billingService.activatePlan(req.user.organizationId, body.plan);
+  async activate(@Req() req: { user: AuthUser }, @Body() body: ActivatePlanDto) {
+    return this.billingService.activateFromPaymentReference(
+      req.user.organizationId,
+      body.plan,
+      body.reference,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

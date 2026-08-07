@@ -8,6 +8,24 @@ export class CheckoutDto {
   plan!: SubscriptionPlan;
 }
 
+/**
+ * Activating a plan requires proof that somebody paid.
+ *
+ * The reference is verified against Paystack directly — its existence in this request
+ * proves nothing on its own.
+ */
+export class ActivatePlanDto {
+  @IsEnum(SubscriptionPlan, {
+    message: `plan must be one of: ${Object.values(SubscriptionPlan).join(', ')}`,
+  })
+  plan!: SubscriptionPlan;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(200)
+  reference!: string;
+}
+
 export class ServicePaymentGuidanceDto {
   @IsString()
   @MinLength(1)

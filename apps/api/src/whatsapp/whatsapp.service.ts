@@ -183,17 +183,43 @@ export class WhatsappService {
       // ── 3. Upsert Conversation ────────────────────────────────────────────────
       const conversation = await this.upsertConversation(organizationId, contact.id, correlationId);
 
-      // ── 4. Persist inbound message ────────────────────────────────────────────
-      await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          sender: MessageSender.CUSTOMER,
-          content: textContent,
-          mediaUrl: mediaUrl ?? null,
-          mediaType: mediaType ?? null,
-          metadata: { messageId, messageType: message.type },
-        },
-      });
+      // ── 4. Persist inbound message — and make redelivery a no-op ─────────────
+      //
+      // Meta's webhook delivery is AT LEAST ONCE. It retries on timeout, on network
+      // error, and sometimes for no visible reason. Without a guard here a retry wrote
+      // a second copy of the customer's message and then ran the whole assistant
+      // pipeline again — so the customer received two replies to one question, and any
+      // action the assistant took (a ticket, a booking, a payment instruction) happened
+      // twice.
+      //
+      // The insert IS the idempotency claim. A check-then-insert would not close it:
+      // two retries can be in flight simultaneously and both would pass the check. The
+      // unique index on `externalId` is what actually makes this safe, and a P2002 here
+      // means someone else already claimed this message — so stop, without replying.
+      try {
+        await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            sender: MessageSender.CUSTOMER,
+            content: textContent,
+            mediaUrl: mediaUrl ?? null,
+            mediaType: mediaType ?? null,
+            externalId: messageId,
+            metadata: { messageId, messageType: message.type },
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          log.info('whatsapp_duplicate_delivery_ignored', {
+            correlationId,
+            organizationId,
+            messageId,
+            note: 'Meta redelivered a message already processed; not answering twice.',
+          });
+          return;
+        }
+        throw err;
+      }
 
       await prisma.conversation.update({
         where: { id: conversation.id },

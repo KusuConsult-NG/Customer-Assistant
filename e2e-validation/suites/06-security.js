@@ -289,4 +289,54 @@ module.exports = async function () {
     if ((me.text || '').includes(raw)) return { expected: 'not re-readable', actual: 'plaintext key returned again by /organizations/me' };
     return { ok: true, evidence: `stored as sha256, prefix=${stored.keyPrefix}` };
   }, 'HIGH');
+
+  // ── Billing authorisation ─────────────────────────────────────────────────
+  //
+  // POST /api/billing/activate took a plan name and granted it outright, behind
+  // nothing but a login. @Roles('OWNER') was no barrier: the first user of every
+  // organization IS its owner, so anyone who signed up could hand themselves the
+  // ENTERPRISE plan — ₦1,000,000/month — with a single request and no payment.
+
+  await check('SEC-080', 'A paid plan cannot be activated without a payment reference', async () => {
+    const T = await seedSession('secbill');
+    const res = await api('POST', '/api/billing/activate', { token: T.token, body: { plan: 'ENTERPRISE' } });
+    const org = await prisma.organization.findUnique({
+      where: { id: T.orgId }, select: { subscriptionPlan: true, subscriptionStatus: true },
+    });
+    if (org.subscriptionStatus === 'ACTIVE' || org.subscriptionPlan === 'ENTERPRISE') {
+      return { expected: 'no plan granted', actual: `ENTERPRISE granted for free (http ${res.status}) — every signup can do this` };
+    }
+    return res.status === 400
+      ? { ok: true, evidence: `400, org still ${org.subscriptionStatus}` }
+      : { expected: '400', actual: `${res.status} — but no plan was granted` };
+  }, 'CRITICAL');
+
+  await check('SEC-081', 'A forged payment reference does not activate a plan', async () => {
+    const T = await seedSession('secbill2');
+    const res = await api('POST', '/api/billing/activate', {
+      token: T.token,
+      body: { plan: 'ENTERPRISE', reference: 'ACE_TOTALLY_MADE_UP_REFERENCE_0001' },
+    });
+    const org = await prisma.organization.findUnique({
+      where: { id: T.orgId }, select: { subscriptionPlan: true, subscriptionStatus: true },
+    });
+    if (org.subscriptionStatus === 'ACTIVE') {
+      return { expected: 'no plan granted', actual: `activated from an unverified reference (http ${res.status})` };
+    }
+    return [400, 503].includes(res.status)
+      ? { ok: true, evidence: `${res.status} — the reference is checked against Paystack, not trusted` }
+      : { expected: '400/503', actual: `${res.status} (no plan granted)` };
+  }, 'CRITICAL');
+
+  await check('SEC-082', 'A non-owner cannot reach the activation route at all', async () => {
+    const owner = await seedSession('secbill3');
+    const agent = await seedSession('secagent', { role: 'AGENT', orgId: owner.orgId });
+    const res = await api('POST', '/api/billing/activate', {
+      token: agent.token, body: { plan: 'ENTERPRISE', reference: 'X'.repeat(20) },
+    });
+    return res.status === 403
+      ? { ok: true, evidence: '403' }
+      : { expected: '403', actual: `${res.status} — a non-owner reached the billing activation route` };
+  }, 'HIGH');
+
 };
