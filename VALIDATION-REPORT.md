@@ -5,8 +5,10 @@ HTTP and then verifying the consequence directly in PostgreSQL. No result is inf
 from source code. Where something could not be executed it is marked **BLOCKED** with
 the reason — never assumed to pass.
 
-**Harness:** `e2e-validation/` — 8 suites, ~240 checks, machine-readable output in
+**Harness:** `e2e-validation/` — 8 suites, **236 checks**, machine-readable output in
 `e2e-validation/results.json`. Re-run with `node e2e-validation/harness.js`.
+
+**Final run: 233 pass · 0 fail · 3 warn · 1 blocked.**
 
 ---
 
@@ -40,10 +42,13 @@ testing was safe and all data below was created by the tests.
 | 02 Multi-Tenant Isolation & RBAC | 35 | 35 | 0 | 0 | 0 |
 | 03 CRM (volume, search, export, concurrency) | 31 | 31 | 0 | 0 | 0 |
 | 04 Scheduling & Reservations | 24 | 24 | 0 | 0 | 0 |
-| 05 Widget & AI Orchestrator | 27 | 26 | 0 | 0 | 1 |
+| 05 Widget & AI Orchestrator | 27 | 25 | 0 | 1 | 1 |
 | 06 Security | 34 | 34 | 0 | 0 | 0 |
-| 07 Integrity, Analytics, Performance, Resilience | 23 | 23 | 0 | 0 | 0 |
-| 08 Knowledge Base & Workflows | 21 | 20 | 0 | 1 | 0 |
+| 07 Integrity, Analytics, Performance, Resilience | 23 | 21 | 0 | 2 | 0 |
+| 08 Knowledge Base & Workflows | 21 | 21 | 0 | 0 | 0 |
+| **Total** | **236** | **233** | **0** | **3** | **1** |
+
+The three warnings and one blocked item are listed in §5 and §6. **No check fails.**
 
 Unit/integration suites also green: **45** API tests, **32** package tests.
 Monorepo builds clean; both apps typecheck clean.
@@ -178,6 +183,32 @@ audit trail for "was this key active when the incident happened?" *Fixed:* await
 | Data integrity | **PASS** | 10 FK relationships, 0 orphans; 6 uniqueness invariants hold; no cross-tenant conversation/contact mismatches; no overlapping staff bookings table-wide |
 | Analytics correctness | **PASS** | Dashboard figures match direct DB counts; `aiReplyRate` computed (was permanently null); `handoverRate` bounded 0–100 (was tickets/conversations, could exceed 100%) |
 | Resilience | **PASS** | Survives Qdrant outage (Postgres fallback), malformed JSON, malformed UUIDs, mixed concurrent load — accepted responses and persisted rows agree exactly |
+
+---
+
+## 4b. Measured capacity — read this before sizing
+
+Throughput for authenticated, database-backed endpoints is bounded by
+**(connection pool size ÷ query latency)**, and in this environment the second term is
+pathological because the database is ~950ms away.
+
+| Measurement | Result |
+|---|---|
+| Health endpoint (no database) | 500 requests, **3,571 rps**, p50 5ms, p95 37ms, 0 errors |
+| Paginated CRM read, 7,526 rows | p50 ~2.2s, p95 3.1s — dominated by the remote round trip |
+| 100 concurrent authenticated readers | 29 served, **71 shed as 503 + Retry-After**, **0 faults**, 0 data inconsistency |
+| Measured DB round trip | **974ms** (API on a local host, database in `eu-central-1`) |
+
+The framework is not the limit — 3,571 rps without a database call proves that. The
+limit is the database path. Shedding excess load as a retryable 503 is correct
+behaviour and no request corrupted anything, but the honest reading is that this
+deployment **does not carry 100 concurrent DB-backed readers**. Co-locating the API
+with the database (K-02) should move query latency from ~950ms to ~5–20ms and raise the
+ceiling by roughly two orders of magnitude — but that must be **measured, not assumed**,
+which is why the load targets remain a GA blocker.
+
+`AI-009` (widget chat latency, 14.7s) has the same cause compounded by OpenAI 429
+retries, and is not a separate defect.
 
 ---
 
