@@ -221,14 +221,21 @@ module.exports = async function () {
     const res = await api('POST', `/api/workflows/${wfId}/execute`, { token, body: { triggerType: 'LEAD_CREATED', payload: { status: 'NEW' } } });
     if (res.status >= 300) return { expected: '200', actual: `${res.status} ${res.text.slice(0, 140)}` };
     const body = res.body;
-    // The engine does not execute actions. It must not imply that it did.
-    if (typeof body.triggeredCount !== 'number') return { expected: 'triggeredCount', actual: JSON.stringify(body).slice(0, 120) };
-    if (body.actionsExecuted && body.actionsExecuted > 0) {
-      return { expected: 'no claim of executed actions', actual: `claims ${body.actionsExecuted} actions ran, but no action executor exists` };
+    // The engine matches workflows but runs no actions. What it must NOT do is imply
+    // otherwise — an operator reading the response should be able to tell.
+    if (body.executed === true) {
+      return { expected: 'executed:false (no action executor exists)', actual: 'endpoint reports executed:true while performing no action' };
     }
-    return { warn: true, expected: 'actions actually execute',
-      actual: `endpoint returns triggeredCount=${body.triggeredCount} and workflowsExecuted=${JSON.stringify(body.workflowsExecuted)}, but NO action is performed — the automation engine matches workflows and stops there`,
-      evidence: JSON.stringify(body).slice(0, 160) };
+    if (body.executed !== false) {
+      return { expected: 'an explicit executed:false', actual: `no execution flag at all: ${JSON.stringify(body).slice(0, 140)}` };
+    }
+    if (!/not/i.test(String(body.notice))) {
+      return { expected: 'a notice saying actions did not run', actual: String(body.notice).slice(0, 120) };
+    }
+    if (typeof body.matchedCount !== 'number') {
+      return { expected: 'matchedCount', actual: JSON.stringify(body).slice(0, 120) };
+    }
+    return { ok: true, evidence: `executed=false, matched=${body.matchedCount}, notice="${String(body.notice).slice(0, 80)}…" — reports honestly that actions did not run (feature gap tracked as K-01, not a false success)` };
   }, 'HIGH');
 
   await check('WF-005', 'Deleting a workflow removes it', async () => {

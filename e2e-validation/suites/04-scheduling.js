@@ -90,15 +90,21 @@ module.exports = async function () {
   await check('SCH-006', 'Concurrent identical booking requests produce at most one booking', async () => {
     const start = nextBusinessSlot(5, 14);
     const body = { contactId: contact.id, serviceName: 'Race Service', staffName: 'Dr Race', startTime: start.toISOString() };
-    const results = await Promise.all(Array.from({ length: 8 }, () => api('POST', '/api/scheduling/bookings', { token, body })));
+    // Regression guard for a race that was empirically demonstrated: 8 simultaneous
+    // identical requests all passed the application-level conflict check before any
+    // committed, producing 8 CONFIRMED bookings in one slot. A PostgreSQL exclusion
+    // constraint (bookings_no_staff_overlap) now enforces this at commit time.
+    const results = await Promise.all(Array.from({ length: 8 }, () => api('POST', '/api/scheduling/bookings', { token, body, noRetry: true })));
     const created = await prisma.booking.count({ where: { organizationId: orgId, staffName: 'Dr Race', status: { in: ['CONFIRMED', 'RESCHEDULED'] } } });
-    const ok = results.filter(r => r.status < 300).length;
-    const fivexx = results.filter(r => r.status >= 500).length;
+    const accepted = results.filter(r => r.status < 300).length;
+    const conflicts = results.filter(r => r.status === 409).length;
+    const fivexx = results.filter(r => r.status >= 500 && r.status !== 503).length;
+
     if (created > 1) {
-      return { warn: true, expected: '1 booking', actual: `${created} bookings created by 8 simultaneous requests (${ok} accepted) — read-then-write race; needs a DB-level exclusion constraint or serializable transaction` };
+      return { expected: 'exactly 1 booking', actual: `${created} bookings from 8 simultaneous requests (${accepted} accepted) — DOUBLE BOOKING under concurrency` };
     }
-    if (fivexx) return { expected: 'no 5xx', actual: `${fivexx}/8 returned 5xx` };
-    return { ok: true, evidence: `${created} booking from 8 concurrent requests` };
+    if (fivexx) return { expected: 'losers get 409, not 5xx', actual: `${fivexx}/8 returned 5xx — constraint violation leaked as a server error` };
+    return { ok: true, evidence: `${created} booking from 8 concurrent requests; ${accepted} accepted, ${conflicts} rejected with 409` };
   }, 'HIGH');
 
   await check('SCH-010', 'Booking in the past is refused', async () => {

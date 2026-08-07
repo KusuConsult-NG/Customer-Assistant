@@ -88,6 +88,18 @@ withholds internals on anything else.
 browser. A repeat submission or an impatient double-click produced an opaque server
 error. *Fixed:* 409 with an actionable message. `CRM-011`, `CRM-060`.
 
+**V-05a · Double-booking under real concurrency (demonstrated, not theorised).**
+The application checked for a conflict before inserting, but that is a read-then-write
+race: driving 8 simultaneous identical booking requests, **all 8 passed the check before
+any committed** — 8 CONFIRMED bookings in one slot. The full run left 84 overlapping
+pairs in the database, every one from that test. Two customers would each have been told
+their appointment was confirmed. No application-level check can close this.
+*Fixed:* PostgreSQL exclusion constraint `bookings_no_staff_overlap`
+(`EXCLUDE USING gist (organizationId =, staffName =, tsrange(startTime, endTime) &&)`
+scoped to active bookings), enforced at commit time; the losing requests receive 409
+rather than a 500. Migration also cancels pre-existing overlaps with an audit note.
+Re-verified: 8 concurrent → exactly 1 booking. `SCH-006`, `INT-006`.
+
 **V-05 · Ticket numbers collided under concurrency.** `TCK-<4 digits of Date.now()>-<count+1>`
 derived from a COUNT read before the insert: 25 parallel creates produced **14 HTTP 500s**
 from the unique constraint. *Fixed:* time-ordered prefix + 3 bytes of randomness with a
@@ -191,11 +203,10 @@ These are **not passes**. Each needs the stated prerequisite.
 
 | ID | Finding | Severity |
 |---|---|---|
-| **K-01** | **Workflow engine executes nothing.** `POST /workflows/:id/execute` matches active workflows and returns a count. No action is performed — no WhatsApp send, no task creation, no branching, no retries, no queue, no dead-letter handling. The UI presents it as an automation engine. `WF-004` records this as a WARN rather than a pass. | **HIGH** |
+| **K-01** | **Workflow engine executes nothing.** `POST /workflows/:id/execute` matches active workflows and runs none of their actions — no WhatsApp send, no task creation, no branching, retries, queue or dead-letter handling. *Partially addressed:* the endpoint now returns `executed: false` with an explicit notice, and the UI reports "actions were NOT run" instead of a success toast, so nobody is told their automation is live when it is not. The capability itself is still missing. | **HIGH** |
 | **K-02** | **API and database in different regions.** `render.yaml` deployed the API to `oregon` against a `eu-central-1` database — every query a transatlantic round trip (~950ms measured, 4 per list request). Corrected to `frankfurt` in `render.yaml`, but **the region must be set to match your actual Supabase project**. | **HIGH** |
 | **K-03** | Duplicate search input on the CRM page — two boxes, one non-functional. Cosmetic. | LOW |
 | **K-04** | Root layout is a client component, so every page ships an empty shell and paints only after hydration. Acceptable for a dashboard; means no SEO and a blank screen if JS fails. | LOW |
-| **K-05** | Concurrent booking creation is read-then-write. Verified safe at 8 concurrent, but a database exclusion constraint on the time range is the durable fix. | MEDIUM |
 | **K-06** | SMS reminders are not implemented (no provider integrated). Now logs honestly rather than claiming delivery, but 24h/6h SMS reminders do not reach customers. | MEDIUM |
 
 ---
@@ -248,8 +259,7 @@ a gap in evidence, not a known fault, and it is not honest to certify around it.
 10. **Complete the UI sweep** — every page, modal, filter and export, plus responsive
     breakpoints and keyboard navigation.
 11. **Implement SMS or remove the reminder promise** (K-06).
-12. **Add a database-level booking exclusion constraint** (K-05).
-13. **Independent security review.** This pass tested the vulnerability classes I could
+12. **Independent security review.** This pass tested the vulnerability classes I could
     enumerate; that is not the same as an adversarial audit.
 
 ---

@@ -75,16 +75,45 @@ export class WorkflowsService {
     return prisma.workflow.delete({ where: { id } });
   }
 
+  /**
+   * Evaluates which workflows a trigger MATCHES. It does not run their actions.
+   *
+   * There is no action executor in this codebase: nothing sends the WhatsApp
+   * message, creates the task, moves the deal stage or calls the webhook that a
+   * workflow's nodes describe. There is also no queue, no retry policy and no
+   * dead-letter handling.
+   *
+   * The response used to be `{ triggeredCount, workflowsExecuted: [names] }`, which
+   * reads as confirmation that those workflows ran — an operator watching the
+   * dashboard would conclude their automation was working. The shape below says what
+   * actually happened. `executed: false` is deliberate and load-bearing: the
+   * dashboard should surface it rather than rendering a success state.
+   *
+   * Implementing execution means: an action dispatcher per node type, a BullMQ queue
+   * with retry/backoff, a WorkflowRun table for execution history, and a
+   * dead-letter path. Until then this endpoint is a dry run.
+   */
   async executeWorkflowTrigger(organizationId: string, triggerType: string, payload: any) {
     const activeWorkflows = await prisma.workflow.findMany({
       where: { organizationId, triggerType, isActive: true },
     });
 
-    log.info('executing_workflow_trigger', { organizationId, triggerType, count: activeWorkflows.length });
+    log.warn('workflow_trigger_matched_but_not_executed', {
+      organizationId,
+      triggerType,
+      matched: activeWorkflows.length,
+      reason: 'No action executor is implemented — matching only.',
+    });
 
     return {
+      executed: false,
+      notice:
+        'Workflows were matched but their actions were NOT run. This build has no ' +
+        'workflow action executor — no message is sent and no record is changed.',
+      matchedCount: activeWorkflows.length,
+      matchedWorkflows: activeWorkflows.map((w) => ({ id: w.id, name: w.name })),
+      // Retained so existing callers do not break, but it now reports matches.
       triggeredCount: activeWorkflows.length,
-      workflowsExecuted: activeWorkflows.map(w => w.name),
       timestamp: new Date().toISOString(),
     };
   }

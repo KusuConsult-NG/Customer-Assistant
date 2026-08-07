@@ -3,6 +3,19 @@ import { prisma } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 
+/**
+ * True when PostgreSQL rejected a write because of the booking exclusion constraint.
+ * SQLSTATE 23P01 is `exclusion_violation`; Prisma surfaces it without a dedicated
+ * error code, so the constraint name is matched as well.
+ */
+function isOverlapViolation(err: any): boolean {
+  const code = err?.code ?? err?.meta?.code;
+  const message = String(err?.message ?? '');
+  return code === '23P01'
+    || message.includes('bookings_no_staff_overlap')
+    || message.includes('exclusion constraint');
+}
+
 @Injectable()
 export class SchedulingService {
   constructor(private reminderService: AppointmentReminderService) {}
@@ -115,19 +128,34 @@ export class SchedulingService {
       );
     }
 
-    const booking = await prisma.booking.create({
-      data: {
-        organizationId,
-        contactId: data.contactId,
-        serviceName: data.serviceName,
-        staffName: data.staffName,
-        startTime: start,
-        endTime: end,
-        notes: data.notes,
-        status: BookingStatus.CONFIRMED,
-      },
-      include: { contact: true },
-    });
+    // The check above is a read-then-write race — under concurrency every in-flight
+    // request passes it before any commits (measured: 8 simultaneous requests all
+    // created a booking in the same slot). The database exclusion constraint
+    // `bookings_no_staff_overlap` is what actually guarantees exclusivity; this
+    // translates its violation into a 409 instead of a 500.
+    let booking;
+    try {
+      booking = await prisma.booking.create({
+        data: {
+          organizationId,
+          contactId: data.contactId,
+          serviceName: data.serviceName,
+          staffName: data.staffName,
+          startTime: start,
+          endTime: end,
+          notes: data.notes,
+          status: BookingStatus.CONFIRMED,
+        },
+        include: { contact: true },
+      });
+    } catch (err: any) {
+      if (isOverlapViolation(err)) {
+        throw new ConflictException(
+          'That slot was just taken by another booking. Please choose another time.'
+        );
+      }
+      throw err;
+    }
 
     if (booking.contact?.email) {
       this.reminderService.sendBookingConfirmationAndReceiptEmail(booking.id).catch(() => {});
@@ -235,16 +263,25 @@ export class SchedulingService {
       );
     }
 
-    return prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        status: BookingStatus.RESCHEDULED,
-        startTime: start,
-        endTime: end,
-        updatedAt: new Date(),
-      },
-      include: { contact: true },
-    });
+    try {
+      return await prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: BookingStatus.RESCHEDULED,
+          startTime: start,
+          endTime: end,
+          updatedAt: new Date(),
+        },
+        include: { contact: true },
+      });
+    } catch (err: any) {
+      if (isOverlapViolation(err)) {
+        throw new ConflictException(
+          'That slot was just taken by another booking. Please choose another time.'
+        );
+      }
+      throw err;
+    }
   }
 
   // ─── Bookings: Refund Request ─────────────────────────────────────────────────

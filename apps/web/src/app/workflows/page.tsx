@@ -220,9 +220,15 @@ export default function WorkflowsPage() {
 
       if (res.ok) {
         const result = await res.json();
+        // The API matches workflows but does NOT run their actions — there is no
+        // action executor in this build. Reporting "executed cleanly" told operators
+        // their automation was live when no message was sent and no record changed.
         setStatusNotice({
-          type: 'success',
-          text: `Workflow execution simulated cleanly! Triggered ${result.triggeredCount} active workflow(s).`,
+          type: result.executed ? 'success' : 'error',
+          text: result.executed
+            ? `Executed ${result.matchedCount ?? result.triggeredCount} workflow(s).`
+            : `Matched ${result.matchedCount ?? result.triggeredCount ?? 0} workflow(s) — but actions were NOT run. `
+              + `Workflow execution is not implemented in this build.`,
         });
       }
     } catch {
