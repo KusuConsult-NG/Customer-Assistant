@@ -181,6 +181,7 @@ model Organization {
   whatsAppTemplates    WhatsAppTemplate[]
   broadcastCampaigns   BroadcastCampaign[]
   workflows            Workflow[]
+  selfieRequests       SelfieRequest[]
 
   // White-label webhook settings
   webhookUrl           String?
@@ -312,14 +313,15 @@ model Contact {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  leads         Lead[]
-  deals         Deal[]
-  tickets       Ticket[]
-  conversations Conversation[]
-  callLogs      CallLog[]
-  bookings      Booking[]
-  reservations  Reservation[]
-  notes         Note[]
+  leads          Lead[]
+  deals          Deal[]
+  tickets        Ticket[]
+  conversations  Conversation[]
+  callLogs       CallLog[]
+  bookings       Booking[]
+  reservations   Reservation[]
+  notes          Note[]
+  selfieRequests SelfieRequest[]
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
@@ -668,6 +670,152 @@ model Workflow {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  runs WorkflowRun[]
+
   @@index([organizationId, triggerType, isActive])
   @@map("workflows")
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  // Retries exhausted. The run is parked for inspection and manual replay rather
+  // than being silently dropped.
+  DEAD_LETTER
+}
+
+enum WorkflowStepStatus {
+  SUCCEEDED
+  FAILED
+  // Condition evaluated false, or the step is downstream of one that did.
+  SKIPPED
+}
+
+/// One execution of one workflow against one trigger payload.
+///
+/// Execution history is not a nicety here: without it, "did my automation run?" is
+/// unanswerable, and a failed action disappears with no trace. Every trigger creates
+/// a row before any action is attempted.
+model WorkflowRun {
+  id             String            @id @default(uuid())
+  organizationId String
+  workflowId     String
+  workflow       Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  triggerType    String
+  status         WorkflowRunStatus @default(QUEUED)
+  /// The domain event payload the workflow was evaluated against.
+  payload        Json
+  /// Retry counter; compared against the queue's attempt limit.
+  attempt        Int               @default(0)
+  error          String?           @db.Text
+  /// True when Redis was unavailable and the run executed in the request path.
+  ranInline      Boolean           @default(false)
+  queuedAt       DateTime          @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+
+  steps WorkflowRunStep[]
+
+  @@index([organizationId, queuedAt])
+  @@index([workflowId, queuedAt])
+  @@index([status])
+  @@map("workflow_runs")
+}
+
+/// One node's execution within a run. Records what was attempted and what happened,
+/// so a partially-completed workflow can be diagnosed node by node.
+model WorkflowRunStep {
+  id         String             @id @default(uuid())
+  runId      String
+  run        WorkflowRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  nodeId     String
+  /// ACTION type, CONDITION, or DELAY.
+  kind       String
+  action     String?
+  status     WorkflowStepStatus
+  /// Resolved configuration actually used (after template interpolation).
+  input      Json?
+  /// What the action returned — e.g. the created ticket id, the wamid of a sent message.
+  output     Json?
+  error      String?            @db.Text
+  startedAt  DateTime           @default(now())
+  finishedAt DateTime?
+
+  @@index([runId, startedAt])
+  @@map("workflow_run_steps")
+}
+
+// ─── Onboarding selfie capture ────────────────────────────────────────────────
+//
+// A customer being onboarded over WhatsApp or a phone call can be asked for a
+// selfie. Two facts shape this model:
+//
+//  1. A voice call cannot carry an image. The only honest implementation is to send
+//     the customer a one-time upload link over a channel that can — so the request
+//     row, not the channel, is the unit of work, and it records both where it was
+//     requested (`channel`) and where the image actually arrived (`receivedVia`).
+//
+//  2. This is CAPTURE, not identity verification. Nothing here proves the face is
+//     real, live, or the account holder's. `verifiedAt` exists for a future
+//     biometric provider and is never set by this system, so no downstream code can
+//     mistake a stored photo for a verified identity.
+
+enum SelfieRequestStatus {
+  PENDING
+  RECEIVED
+  EXPIRED
+  CANCELLED
+}
+
+enum SelfieChannel {
+  WHATSAPP
+  VOICE
+  WEB
+}
+
+model SelfieRequest {
+  id             String              @id @default(uuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  /// Where the request originated. WHATSAPP prompts in-thread; VOICE always sends a link.
+  channel        SelfieChannel
+  status         SelfieRequestStatus @default(PENDING)
+  /// Shown to the customer, e.g. "account verification". Free text, operator-supplied.
+  purpose        String?
+  /// Conversation / call this belongs to, when there is one.
+  conversationId String?
+  callSid        String?
+
+  /// SHA-256 of the one-time upload token. The raw token exists only in the link
+  /// sent to the customer — storing it would let anyone with read access to this
+  /// table upload on that customer's behalf.
+  tokenHash String   @unique
+  expiresAt DateTime
+  /// Failed/attempted uploads against this token. Capped, so a leaked link cannot be
+  /// brute-forced or used as an upload endpoint.
+  attempts  Int      @default(0)
+
+  /// Supabase Storage path — never a public URL. Access is via short-lived signed URLs.
+  storagePath     String?
+  mimeType        String?
+  sizeBytes       Int?
+  receivedAt      DateTime?
+  receivedVia     SelfieChannel?
+  rejectionReason String?
+
+  /// Reserved for a future biometric provider. This system never sets it.
+  verifiedAt DateTime?
+
+  requestedByUserId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([contactId, status])
+  @@index([status, expiresAt])
+  @@map("selfie_requests")
 }

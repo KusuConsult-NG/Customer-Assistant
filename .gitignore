@@ -45,3 +45,6 @@ coverage/
 
 # E2E validation output (regenerated per run)
 e2e-validation/results.json
+
+# Redis snapshot written by a locally-run redis-server
+dump.rdb

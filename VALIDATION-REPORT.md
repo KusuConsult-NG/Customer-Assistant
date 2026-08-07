@@ -234,7 +234,7 @@ These are **not passes**. Each needs the stated prerequisite.
 
 | ID | Finding | Severity |
 |---|---|---|
-| **K-01** | **Workflow engine executes nothing.** `POST /workflows/:id/execute` matches active workflows and runs none of their actions — no WhatsApp send, no task creation, no branching, retries, queue or dead-letter handling. *Partially addressed:* the endpoint now returns `executed: false` with an explicit notice, and the UI reports "actions were NOT run" instead of a success toast, so nobody is told their automation is live when it is not. The capability itself is still missing. | **HIGH** |
+| ~~**K-01**~~ | ~~Workflow engine executes nothing.~~ **RESOLVED in Pass 3.** The engine now performs real actions, with durable runs, condition branching, delays, BullMQ retries and dead-lettering. Verified by `WF-001`…`WF-014`, including a lead created through the CRM API firing a workflow that writes a ticket with no manual trigger. See §P3.1. | ~~HIGH~~ |
 | **K-02** | **API and database in different regions.** `render.yaml` deployed the API to `oregon` against a `eu-central-1` database — every query a transatlantic round trip (~950ms measured, 4 per list request). Corrected to `frankfurt` in `render.yaml`, but **the region must be set to match your actual Supabase project**. | **HIGH** |
 | **K-03** | Duplicate search input on the CRM page — two boxes, one non-functional. Cosmetic. | LOW |
 | **K-04** | Root layout is a client component, so every page ships an empty shell and paints only after hydration. Acceptable for a dashboard; means no SEO and a blank screen if JS fails. | LOW |
@@ -274,9 +274,8 @@ a gap in evidence, not a known fault, and it is not honest to certify around it.
    failure, and duplicate webhooks.
 4. **Restore OpenAI credit and re-run suite 05** — conversational quality and memory are
    currently unverifiable.
-5. **Fix K-01 or remove the workflow UI.** Shipping a screen labelled "Visual Workflows"
-   that runs nothing is the same class of defect as the fabricated bookings already
-   fixed.
+5. ~~**Fix K-01 or remove the workflow UI.**~~ **Done in Pass 3** — the engine executes,
+   and a workflow that cannot execute is refused activation with the reason stated.
 6. **Set the deployment region to match the database** (K-02).
 
 ### Additional blockers for **GENERAL AVAILABILITY**
@@ -313,3 +312,164 @@ node e2e-validation/harness.js            # all suites
 node e2e-validation/harness.js 02-tenancy # one suite
 # → e2e-validation/results.json
 ```
+
+---
+
+# Pass 3 — Workflow engine build-out and onboarding selfie capture
+
+Two pieces of work after the report above: the K-01 blocker (workflow engine executed
+nothing) and a new capability — asking a customer for a selfie during onboarding over
+WhatsApp or a phone call. Both were driven by the same rule as the rest of this
+document: nothing counts until runtime behaviour demonstrates it.
+
+## P3.1 · K-01 resolved — the workflow engine now executes
+
+**The finding restated.** The stored graph was purely presentational. A node carried
+`label`, `detail` and `color` and nothing else: `"Send AI Automated Response"` is a
+display string, not an instruction — no action identifier, no recipient, no message
+body. There was nothing in the data to execute, so "matched N workflows, ran nothing"
+was the only behaviour the schema permitted.
+
+**What was built.**
+
+| Piece | What it does |
+|---|---|
+| `workflow.types.ts` | Machine-readable node schema (`kind` + `action` + typed `config`), trigger canonicalisation with legacy aliases, `{{ dotted.path }}` interpolation, condition operators, graph validation |
+| `workflow-actions.service.ts` | Seven real actions: `SEND_WHATSAPP`, `CREATE_TICKET`, `UPDATE_LEAD_STATUS`, `UPDATE_DEAL_STAGE`, `TAG_CONTACT`, `SET_HANDOFF`, `HTTP_WEBHOOK` (SSRF-guarded), plus `REQUEST_SELFIE` from P3.2 |
+| `workflow-executor.service.ts` | Breadth-first traversal, condition branch pruning with SKIPPED steps recorded, DELAY parking, step-level history, cycle bound |
+| `workflow-trigger.service.ts` | `@Global()` emitter domain code calls; never throws into the caller |
+| `workflow-runner.service.ts` | BullMQ worker with exponential backoff, dead-letter after 3 attempts, plus an inline sweeper for Redis-down operation |
+| `workflow_runs` / `workflow_run_steps` | Durable run history — status, attempt, payload, per-step input/output/error |
+
+Domain events are wired at the source: `CONTACT_CREATED`, `LEAD_CREATED`,
+`TICKET_CREATED`, `DEAL_STAGE_CHANGED` (CRM), `MESSAGE_RECEIVED` (WhatsApp + web
+widget), `BOOKING_CONFIRMED` (scheduling), `CALL_ENDED` (telephony).
+
+**Defects found while building it, by test rather than by reading:**
+
+**P3-01 · Every step executed twice.** `WF-007` measured 2 tickets from a one-ticket
+graph. The run row showed `attempt: 2` and every step duplicated. The BullMQ worker and
+the inline sweeper could both pick up the same QUEUED run, and `run()` set `RUNNING`
+with an unconditional update, so both proceeded. In production this is two messages to
+the customer and two tickets from one event.
+*Fixed:* the run is claimed with a conditional `updateMany` — whoever moves the row out
+of a claimable state wins, everyone else stops. `RUNNING` is reclaimable only after
+10 minutes, so a process killed mid-run does not strand the row. The synchronous "Run
+now" path creates the row already `RUNNING` so the sweeper never sees it.
+Re-verified: `attempt: 1`, no duplicated steps.
+
+**P3-02 · Conditions gated nothing.** An edge leaving a CONDITION with no explicit
+branch was followed regardless of the result — and the editor emits exactly those
+unbranded edges. A condition that evaluated false still ran the actions it existed to
+prevent. *Fixed:* downstream of a CONDITION an unbranded edge is the TRUE path.
+`WF-007` now demonstrates false → 0 tickets, true → 1 ticket.
+
+**P3-03 · The inline sweeper polled the database every 15s even with a healthy queue.**
+Measured as a steady stream of `P2024` pool timeouts under load — 63 in one run, 52 of
+them from the sweeper — logged at error level, for work the BullMQ worker had already
+done. *Fixed:* it now sweeps at 15s only when the queue is unavailable, and every 5
+minutes otherwise as a safety net; `P2024` logs as backpressure, not as a fault.
+Re-measured over a full suite-08 run: **0 pool timeouts, 0 sweep errors** (was 63/52).
+
+**Guardrails added.** A workflow with unexecutable nodes cannot be activated — `PATCH`
+with `isActive: true` returns 400 naming the problem, and `POST /execute` refuses it
+too. The editor now configures real actions from `GET /api/workflows/capabilities`,
+shows why a graph cannot run, and reports genuine step-by-step results. The Test button
+performs real actions and says so before running.
+
+**Coverage.** `WF-001`…`WF-014`, 15 checks, all passing. Notably:
+`WF-005` asserts a ticket row exists with an interpolated subject; `WF-008` creates a
+lead through the CRM API and waits for the resulting run to reach SUCCEEDED with no
+manual trigger; `WF-014` proves the same for `BOOKING_CONFIRMED` through the real BullMQ
+queue (`ranInline: false`); `WF-009` proves a failing action fails the run; `WF-010`
+proves a legacy presentational graph is refused activation.
+
+## P3.2 · Onboarding selfie capture
+
+A customer being onboarded over WhatsApp or a phone call can be asked for a selfie.
+
+**Design decisions that the tests then enforce:**
+
+- **A phone call cannot carry an image.** A `VOICE` request always delivers a one-time
+  upload link over WhatsApp instead. The AI only says "I've sent you a link" when the
+  send actually succeeded; otherwise it hands to a human.
+- **The upload token is stored only as a SHA-256 hash.** A link genuinely cannot be
+  recovered — not by an operator, not by the AI. The cost is that "resend my link" mints
+  a new request; the benefit is that a database leak does not let an attacker upload as
+  any customer mid-onboarding. `SEL-002` asserts the raw token appears nowhere in the row.
+- **This is capture, not verification.** Nothing checks liveness or matches a face to a
+  document. `verifiedAt` exists for a future biometric provider and is never set here;
+  `SEL-020` fails if anything sets it. The agent UI states this on the photo viewer.
+- **Type is decided by magic bytes**, never the claimed Content-Type. SVG is refused
+  outright — it is a script-capable document, not a photograph.
+- **Objects are never public.** Access is a 5-minute signed URL, and deleting a request
+  erases the object as well as the row (`SEL-043` verifies the object is actually gone).
+
+**Surfaces:** operator API (`/api/onboarding/selfie-requests`), public upload endpoints
+(`/api/public/selfie/:token`), a `REQUEST_SELFIE` workflow action, an orchestrator intent
+so the AI can handle "how do I send my photo?", a mobile-first camera page at
+`/selfie/[token]` (getUserMedia with a `capture="user"` file fallback, client-side
+downscale to 1280px), and a panel in the agent console and the CRM contact record.
+
+**Coverage.** `SEL-000`…`SEL-050`, 23 checks, all passing, none blocked. The upload is
+verified end-to-end against real Supabase Storage: bytes go in, a signed URL brings them
+back with JPEG magic intact, the link then refuses a second use, and deletion removes
+the object from the bucket.
+
+## P3.3 · Pre-existing defects the selfie work uncovered
+
+**P3-04 · Every Supabase Storage upload failed.** Supabase Storage requires an `apikey`
+header alongside `Authorization`; with the bearer alone it answers
+`403 {"message":"Invalid Compact JWS"}` wrapped in an HTTP 400 — which reads like a
+malformed request, not an auth failure. The knowledge-base uploader had this bug from
+the start. **No previous test caught it**: the knowledge suite exercised rejection paths
+and the crawler (which stores a URL, not bytes), so no test had ever completed a real
+upload. *Fixed:* headers corrected, and `knowledge.service.ts` now uses the shared
+`common/object-storage.ts` rather than its own copy. New check `KB-005` uploads a real
+document and fetches it back through the signed URL.
+
+**P3-05 · Uploaded documents could not be retrieved.**
+`KnowledgeService.getDocumentDownloadUrl` existed but no controller route reached it, so
+a stored document was unreachable through the API. *Fixed:* `GET
+/api/knowledge/documents/:id/download`, covered by `KB-005`.
+
+**P3-06 · The storage buckets did not exist.** Neither `knowledge-documents` nor
+`onboarding-selfies` was present in the Supabase project — a consequence of P3-04, since
+nothing had ever successfully written to one. Both are now created private, with
+`onboarding-selfies` restricted to `image/jpeg|png|webp` and an 8MB object limit. **This
+is environment state, not code**: a fresh deployment must create both buckets.
+
+## P3.4 · Still blocked
+
+- **WhatsApp inbound selfie, end to end.** The receive path (validate → store →
+  transition → reply) is shared with the web upload and is fully covered by
+  `SEL-020..022`. What is *not* certified is the Meta-specific hop: `downloadMedia`
+  resolving a media id and fetching the bytes with the bearer token. That needs a public
+  HTTPS webhook and real Cloud API credentials — the same prerequisite as the existing
+  "WhatsApp inbound" blocker.
+- **Voice-initiated selfie, end to end.** Depends on the same WhatsApp send path plus a
+  live call.
+
+## P3.5 · Effect on the release decision
+
+**Unchanged: READY FOR CLOSED BETA.**
+
+K-01 was a public-beta blocker and it is now closed — the workflow engine executes,
+and a graph that cannot execute is refused activation with the reason stated. The
+onboarding selfie capability is new work rather than a blocker being cleared.
+
+The decision does not move, because the reasons it was not public beta are untouched by
+this pass: Voice AI, WhatsApp inbound and payments have still never been executed end to
+end here, and OpenAI still has no credit. Those are gaps in evidence, and clearing an
+unrelated blocker does not fill them.
+
+Two items were **added** to the public-beta list by this pass:
+
+- **Create the two Supabase Storage buckets** in any environment before release
+  (`knowledge-documents`, `onboarding-selfies`, both private). Neither existed here, and
+  uploads fail without them.
+- **Set `WEB_BASE_URL`** in the API environment. Onboarding selfie links are built from
+  it and sent to real customers; unset, every customer receives a `localhost` link.
+
+One item was **removed** from the "known-unfixed" list: the workflow engine.
+

@@ -5,6 +5,7 @@ import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 
 const log = new AceLogger('WidgetService');
 
@@ -18,7 +19,10 @@ const AI_CONTEXT_TURNS = 12;
 export class WidgetService {
   private orchestrator = new ConversationOrchestrator();
 
-  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+  constructor(
+    private webhookDispatcher: WebhookDispatcherService,
+    private workflows: WorkflowTriggerService
+  ) {}
 
   /**
    * Resolves the tenant that owns an embedded widget.
@@ -123,6 +127,15 @@ export class WidgetService {
       conversationId: conversation.id,
       channel: 'WEBCHAT',
     }).catch(() => {});
+
+    this.workflows.emitAsync(organizationId, 'MESSAGE_RECEIVED', {
+      channel: 'WEBCHAT',
+      message: data.message,
+      conversationId: conversation.id,
+      contactId: contact.id,
+      contactPhone: contact.phoneNumber,
+      contact: { id: contact.id, fullName: contact.fullName, phoneNumber: contact.phoneNumber, email: contact.email },
+    });
 
     // Load recent turns so the assistant has conversational memory. The previous
     // version passed `history: []` on every request, so the widget AI could not

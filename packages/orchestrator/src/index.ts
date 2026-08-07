@@ -4,7 +4,8 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { prisma } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl } from '@ace/database';
+import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -671,6 +672,32 @@ export class ConversationOrchestrator {
         shouldHandoff: guidanceResult.shouldHandoff,
         ...(guidanceResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
         toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
+      };
+    }
+
+    // ── 12. Tool: Onboarding selfie ────────────────────────────────────────────
+    //
+    // Two situations, one tool:
+    //   - the customer is ready to send their photo and needs a link;
+    //   - the customer is on a voice call, where no photo can be sent at all, and the
+    //     only honest answer is "I have texted you a link".
+    //
+    // Note what this deliberately does NOT do: claim the photo verifies anyone. It is
+    // captured and passed to a human; nothing here checks liveness or identity.
+    const SELFIE_PHRASES = [
+      'selfie', 'send my photo', 'send you my photo', 'upload my photo', 'upload a photo',
+      'take a picture of myself', 'photo of myself', 'picture of myself', 'where do i send my picture',
+      'how do i send my photo', 'verify my identity', 'identity photo', 'id photo',
+    ];
+    if (SELFIE_PHRASES.some((p) => lowerInput.includes(p))) {
+      const selfieResult = await this.executeRequestSelfie(context);
+      return {
+        replyText: selfieResult.replyText,
+        intentDetected: 'REQUEST_SELFIE',
+        confidenceScore: 0.9,
+        shouldHandoff: selfieResult.shouldHandoff,
+        ...(selfieResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+        toolCallsExecuted: [{ toolName: 'request_onboarding_selfie', result: selfieResult }],
       };
     }
 
@@ -1360,6 +1387,100 @@ export class ConversationOrchestrator {
         `That's indicative, not a formal quote — tell me a bit more about what you need and ` +
         `I'll have a colleague send you an exact figure.`,
     };
+  }
+
+  /**
+   * Issues a one-time selfie upload link for the current contact.
+   *
+   * On WhatsApp the customer can simply reply with a photo, so the link is offered as
+   * an alternative. On a voice call it is the only route — a phone call carries no
+   * image — so the reply says the link has been sent rather than asking the caller to
+   * do something the channel cannot do.
+   */
+  private async executeRequestSelfie(context: ConversationContext) {
+    try {
+      const contact = await this.getOrCreateContact(context);
+      const onVoice = context.channel === ChannelType.VOICE;
+
+      const request = await createSelfieRequest({
+        organizationId: context.organizationId,
+        contactId: contact.id,
+        channel: onVoice ? 'VOICE' : 'WHATSAPP',
+        purpose: 'account onboarding',
+        conversationId: context.conversationId,
+      });
+
+      const url = selfieUploadUrl(request.token);
+
+      if (!onVoice) {
+        return {
+          replyText:
+            `Sure — you can reply here with a photo of yourself, or use this secure link:\n${url}\n\n` +
+            'It works once and expires in a day. We will never ask you for your PIN or password.',
+          selfieRequestId: request.id,
+          delivered: true,
+          shouldHandoff: false,
+        };
+      }
+
+      // Voice. Reading a 43-character token aloud is useless, and it would put the
+      // credential into the call recording. The link has to be delivered out of band —
+      // and the reply may only say it was sent if it actually was.
+      const sent = await this.sendSelfieLinkOverWhatsApp(context.organizationId, contact.phoneNumber, url);
+
+      return sent
+        ? {
+            replyText:
+              "No problem — I've sent a secure upload link to your WhatsApp. Open it and take the photo there; " +
+              'it works once and expires in a day. Nobody will ever ask you for your PIN or password.',
+            selfieRequestId: request.id,
+            delivered: true,
+            shouldHandoff: false,
+          }
+        : {
+            replyText:
+              "I've started that for you, but I couldn't get the upload link to your phone automatically. " +
+              "I'm passing you to a colleague who will send it to you directly.",
+            selfieRequestId: request.id,
+            delivered: false,
+            shouldHandoff: true,
+          };
+    } catch (err: any) {
+      // A failure here means the customer is stuck mid-onboarding. Hand to a human
+      // rather than telling them a link is on the way when it is not.
+      return {
+        replyText:
+          "I wasn't able to set up the photo upload just now. I'm passing you to a colleague who can help you finish this.",
+        error: err?.message ?? 'unknown error',
+        shouldHandoff: true,
+      };
+    }
+  }
+
+  /**
+   * Sends the upload link over WhatsApp. Returns whether it genuinely went out —
+   * the caller's wording depends on the answer, so a silent failure here would turn
+   * into a false statement to a customer.
+   */
+  private async sendSelfieLinkOverWhatsApp(organizationId: string, phoneNumber: string, url: string): Promise<boolean> {
+    try {
+      const config = await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } });
+      if (!config?.phoneNumberId || !config?.accessToken) return false;
+
+      const client = new WhatsAppCloudClient({
+        phoneNumberId: config.phoneNumberId,
+        accessToken: config.accessToken,
+        verifyToken: config.webhookVerifyToken ?? '',
+      });
+      await client.sendTextMessage(
+        phoneNumber,
+        `Here is your secure photo upload link:\n${url}\n\n` +
+          'It works once and expires in a day. We will never ask you for your PIN or password.'
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {

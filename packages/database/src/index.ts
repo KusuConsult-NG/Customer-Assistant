@@ -66,3 +66,5 @@ export function getPrismaClient(): PrismaClient {
 }
 
 export const prisma = getPrismaClient();
+
+export * from './selfie-request';

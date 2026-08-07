@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { API_URL } from '@/lib/api';
+import SelfieRequestPanel from '@/components/SelfieRequestPanel';
 import {
   MessageSquareText, Phone, User, Send, Bot,
   ToggleLeft, ToggleRight, Search, RefreshCw,
@@ -506,6 +507,19 @@ export default function AgentConsolePage() {
                 }
               </div>
             </div>
+
+            {/* Onboarding selfie. Needs a real contact id — a conversation whose contact
+                was never resolved has nothing to attach a photo to. */}
+            {activeConv.contact?.id && (
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                <SelfieRequestPanel
+                  contactId={activeConv.contact.id}
+                  contactName={activeConv.contact.fullName || activeConv.contactName}
+                  conversationId={activeConv.id}
+                  channel={activeConv.channel === 'VOICE' ? 'VOICE' : 'WHATSAPP'}
+                />
+              </div>
+            )}
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
               <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last Message</p>

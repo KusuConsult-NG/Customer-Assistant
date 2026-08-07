@@ -15,6 +15,8 @@ import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { WorkflowTriggerModule } from './workflows/workflow-trigger.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -31,6 +33,10 @@ import { WorkflowsModule } from './workflows/workflows.module';
     ThrottlerModule.forRoot([
       { name: 'default', ttl: 60_000, limit: 120 },
     ]),
+    // Global: lets any module fire workflow triggers without a circular import.
+    WorkflowTriggerModule,
+    // Global: WhatsApp inbound and the workflow engine both attach selfies.
+    OnboardingModule,
     AuthModule,
     OrganizationsModule,
     CrmModule,

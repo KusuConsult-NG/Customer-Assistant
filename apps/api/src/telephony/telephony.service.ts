@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
@@ -84,7 +85,10 @@ function verifyAfricasTalkingSignature(
 
 @Injectable()
 export class TelephonyService {
-  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+  constructor(
+    private webhookDispatcher: WebhookDispatcherService,
+    private workflows: WorkflowTriggerService
+  ) {}
 
   async handleInboundCall(
     providerType: TelephonyProviderType,
@@ -367,6 +371,15 @@ export class TelephonyService {
         callSid,
         durationSeconds: duration,
       }).catch(() => {});
+
+      this.workflows.emitAsync(callLog.organizationId, 'CALL_ENDED', {
+        callSid,
+        durationSeconds: duration ?? 0,
+        direction: callLog.direction,
+        fromNumber: callLog.fromNumber,
+        contactId: callLog.contactId ?? undefined,
+        contact: { phoneNumber: callLog.fromNumber },
+      });
     }
 
     log.info('telephony_call_status_updated', {

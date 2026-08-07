@@ -3,11 +3,15 @@ import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { LeadStatus, DealStage, TicketStatus, TicketPriority } from '@ace/shared-types';
 
 @Injectable()
 export class CrmService {
-  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+  constructor(
+    private webhookDispatcher: WebhookDispatcherService,
+    private workflows: WorkflowTriggerService
+  ) {}
 
   async getContacts(organizationId: string, rawPage?: unknown, rawLimit?: unknown) {
     const paging = resolvePaging(rawPage, rawLimit);
@@ -61,6 +65,11 @@ export class CrmService {
       fullName: contact.fullName,
     }).catch(() => {});
 
+    this.workflows.emitAsync(organizationId, 'CONTACT_CREATED', {
+      contactId: contact.id,
+      contact: { id: contact.id, fullName: contact.fullName, phoneNumber: contact.phoneNumber, email: contact.email },
+    });
+
     return contact;
   }
 
@@ -94,6 +103,15 @@ export class CrmService {
       leadId: lead.id,
       contactId: lead.contactId,
     }).catch(() => {});
+
+    this.workflows.emitAsync(organizationId, 'LEAD_CREATED', {
+      leadId: lead.id,
+      status: lead.status,
+      contactId: lead.contactId,
+      contact: lead.contact
+        ? { id: lead.contact.id, fullName: lead.contact.fullName, phoneNumber: lead.contact.phoneNumber, email: lead.contact.email }
+        : undefined,
+    });
 
     return lead;
   }
@@ -182,6 +200,17 @@ export class CrmService {
       priority: ticket.priority,
     }).catch(() => {});
 
+    this.workflows.emitAsync(organizationId, 'TICKET_CREATED', {
+      ticketId: ticket.id,
+      subject: ticket.subject,
+      priority: ticket.priority,
+      status: ticket.status,
+      contactId: ticket.contactId,
+      contact: ticket.contact
+        ? { id: ticket.contact.id, fullName: ticket.contact.fullName, phoneNumber: ticket.contact.phoneNumber, email: ticket.contact.email }
+        : undefined,
+    });
+
     return ticket;
   }
 
@@ -221,11 +250,25 @@ export class CrmService {
   async updateDealStage(dealId: string, stage: DealStage, organizationId: string) {
     const deal = await prisma.deal.findFirst({ where: { id: dealId, organizationId } });
     if (!deal) throw new NotFoundException('Deal not found');
-    return prisma.deal.update({
+
+    const updated = await prisma.deal.update({
       where: { id: dealId },
       data: { stage },
       include: { contact: true },
     });
+
+    this.workflows.emitAsync(organizationId, 'DEAL_STAGE_CHANGED', {
+      dealId: updated.id,
+      stage: updated.stage,
+      previousStage: deal.stage,
+      amount: updated.amount,
+      contactId: updated.contactId,
+      contact: updated.contact
+        ? { id: updated.contact.id, fullName: updated.contact.fullName, phoneNumber: updated.contact.phoneNumber, email: updated.contact.email }
+        : undefined,
+    });
+
+    return updated;
   }
 
   async updateContact(contactId: string, data: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[] }, organizationId: string) {

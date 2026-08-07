@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { api, API_URL } from '@/lib/api';
+import SelfieRequestPanel from '@/components/SelfieRequestPanel';
 import {
   Search, Plus, Users, X, ChevronDown, Phone, Mail,
   Tag, Briefcase, TicketCheck, TrendingUp, Filter,
@@ -1006,7 +1007,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 }
 
 function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'onboarding'>('overview');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/60 backdrop-blur-sm transition-opacity">
@@ -1091,6 +1092,16 @@ function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () =>
           >
             Tags & Segments
           </button>
+          <button
+            onClick={() => setActiveTab('onboarding')}
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
+              activeTab === 'onboarding'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Onboarding
+          </button>
         </div>
 
         {/* Tab Content */}
@@ -1113,6 +1124,10 @@ function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () =>
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === 'onboarding' && (
+            <SelfieRequestPanel contactId={contact.id} contactName={contact.fullName} />
           )}
 
           {activeTab === 'activity' && (

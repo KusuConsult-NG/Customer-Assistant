@@ -9,6 +9,7 @@ import { assertPublicHttpUrl } from '../common/url-safety';
 import { QdrantRAGService } from '@ace/orchestrator';
 import { Queue } from 'bullmq';
 import { AceLogger } from '../config/logger';
+import { KNOWLEDGE_BUCKET, deleteObject, signedUrl, uploadObject } from '../common/object-storage';
 
 const log = new AceLogger('KnowledgeService');
 
@@ -108,101 +109,9 @@ function getDocumentQueue(): Queue {
   return documentQueue;
 }
 
-/**
- * Upload a file buffer to Supabase Storage and return the storage path.
- *
- * Supabase Storage path format: {organizationId}/{timestamp}_{fileName}
- * This namespaces files per tenant, preventing cross-tenant path collisions.
- *
- * Returns the storage path (not a public URL — use signed URLs for access).
- */
-async function uploadToSupabaseStorage(
-  organizationId: string,
-  fileName: string,
-  fileBuffer: Buffer,
-  mimeType: string
-): Promise<string> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error(
-      'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set. ' +
-      'Cannot upload to Supabase Storage.'
-    );
-  }
-
-  const storagePath = `${organizationId}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const uploadUrl = `${supabaseUrl}/storage/v1/object/${SUPABASE_BUCKET}/${storagePath}`;
-
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${supabaseServiceKey}`,
-      'Content-Type': mimeType,
-      'x-upsert': 'false', // Fail if file already exists (timestamps make collisions impossible)
-    },
-    body: new Uint8Array(fileBuffer), // Buffer → Uint8Array: required by fetch BodyInit type
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(
-      `Supabase Storage upload failed (HTTP ${response.status}): ${errText}. ` +
-      `Ensure the "${SUPABASE_BUCKET}" bucket exists in your Supabase project ` +
-      `(Dashboard → Storage → New Bucket → name: "${SUPABASE_BUCKET}" → Private).`
-    );
-  }
-
-  return storagePath;
-}
-
-/**
- * Generate a short-lived signed URL for downloading a stored document.
- * Signed URLs expire after 1 hour — do not cache them.
- */
-async function getSignedDownloadUrl(storagePath: string): Promise<string> {
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  const signUrl = `${supabaseUrl}/storage/v1/object/sign/${SUPABASE_BUCKET}/${storagePath}`;
-  const response = await fetch(signUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${supabaseServiceKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ expiresIn: 3600 }), // 1 hour
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to generate signed URL for ${storagePath}`);
-  }
-
-  const data: any = await response.json();
-  return `${supabaseUrl}/storage/v1${data.signedURL}`;
-}
-
-/**
- * Delete a file from Supabase Storage.
- */
-async function deleteFromSupabaseStorage(storagePath: string): Promise<void> {
-  const supabaseUrl = process.env.SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  const response = await fetch(
-    `${supabaseUrl}/storage/v1/object/${SUPABASE_BUCKET}/${storagePath}`,
-    {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${supabaseServiceKey}` },
-    }
-  );
-
-  if (!response.ok && response.status !== 404) {
-    const errText = await response.text();
-    log.warn('supabase_storage_delete_failed', { storagePath, status: response.status, error: errText });
-  }
-}
+// Storage lives in ../common/object-storage. It previously had a private copy here
+// that omitted the `apikey` header Supabase Storage requires, so every document upload
+// failed with an opaque HTTP 400 — see the note in that module.
 
 // ─── Service ───────────────────────────────────────────────────────────────────
 
@@ -264,7 +173,7 @@ export class KnowledgeService {
     }
 
     // ── Upload to Supabase Storage ────────────────────────────────────────
-    const storagePath = await uploadToSupabaseStorage(
+    const storagePath = await uploadObject(KNOWLEDGE_BUCKET, 
       organizationId,
       data.fileName,
       data.fileBuffer,
@@ -433,7 +342,7 @@ export class KnowledgeService {
 
     if (!doc) throw new NotFoundException('Document not found');
 
-    return getSignedDownloadUrl(doc.storageUrl);
+    return signedUrl(KNOWLEDGE_BUCKET, doc.storageUrl, 3600);
   }
 
   /**
@@ -460,7 +369,7 @@ export class KnowledgeService {
     // Delete from Supabase Storage (skipped for crawled pages, whose storageUrl is
     // the source URL rather than a storage path).
     if (!/^https?:\/\//i.test(doc.storageUrl)) {
-      await deleteFromSupabaseStorage(doc.storageUrl);
+      await deleteObject(KNOWLEDGE_BUCKET, doc.storageUrl);
     }
 
     // Remove the vectors too.

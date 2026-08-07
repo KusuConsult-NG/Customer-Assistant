@@ -37,6 +37,35 @@ export class WhatsAppCloudClient {
     }
   }
 
+  /**
+   * Downloads the bytes of an inbound media message.
+   *
+   * Meta's media flow is two hops: GET /{media-id} returns a short-lived, host-varying
+   * URL, and that URL itself requires the same bearer token. Fetching it without the
+   * Authorization header returns a 401 body, not the image — which, stored blindly,
+   * looks like a corrupt file rather than an auth error.
+   *
+   * `maxBytes` is enforced while streaming so a hostile or mistaken Content-Length
+   * cannot make the process buffer an arbitrary amount of data.
+   */
+  async downloadMedia(mediaId: string, maxBytes = 8 * 1024 * 1024): Promise<{ bytes: Buffer; mimeType?: string } | null> {
+    const mediaUrl = await this.getMediaUrl(mediaId);
+    if (!mediaUrl) return null;
+
+    const response = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${this.config.accessToken}` },
+    });
+    if (!response.ok) return null;
+
+    const declared = Number(response.headers.get('content-length') ?? '0');
+    if (declared > maxBytes) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxBytes) return null;
+
+    return { bytes: buffer, mimeType: response.headers.get('content-type') ?? undefined };
+  }
+
   verifyWebhook(mode: string, token: string, challenge: string): string | null {
     if (mode === 'subscribe' && token === this.config.verifyToken) {
       return challenge;

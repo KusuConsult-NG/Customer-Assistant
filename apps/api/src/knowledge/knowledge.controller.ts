@@ -37,6 +37,18 @@ export class KnowledgeController {
     });
   }
 
+  /**
+   * Short-lived signed download URL for an uploaded document.
+   *
+   * KnowledgeService.getDocumentDownloadUrl already existed but nothing routed to it,
+   * so an uploaded file could be stored and never retrieved again through the API.
+   */
+  @Get('documents/:id/download')
+  async downloadDocument(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    const url = await this.knowledgeService.getDocumentDownloadUrl(req.user.organizationId, id);
+    return { url, expiresInSeconds: 3600 };
+  }
+
   @Get('search')
   async searchPlayground(@Req() req: { user: AuthUser }, @Query('q') query: string) {
     return this.knowledgeService.searchPlayground(req.user.organizationId, query || '');

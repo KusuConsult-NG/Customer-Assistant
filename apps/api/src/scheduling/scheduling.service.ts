@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import { prisma } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 
 /**
  * True when PostgreSQL rejected a write because of the booking exclusion constraint.
@@ -18,7 +19,10 @@ function isOverlapViolation(err: any): boolean {
 
 @Injectable()
 export class SchedulingService {
-  constructor(private reminderService: AppointmentReminderService) {}
+  constructor(
+    private reminderService: AppointmentReminderService,
+    private workflows: WorkflowTriggerService
+  ) {}
 
   // ─── Bookings: Read ──────────────────────────────────────────────────────────
 
@@ -160,6 +164,17 @@ export class SchedulingService {
     if (booking.contact?.email) {
       this.reminderService.sendBookingConfirmationAndReceiptEmail(booking.id).catch(() => {});
     }
+
+    this.workflows.emitAsync(organizationId, 'BOOKING_CONFIRMED', {
+      bookingId: booking.id,
+      serviceName: booking.serviceName,
+      staffName: booking.staffName,
+      startTime: booking.startTime.toISOString(),
+      contactId: booking.contactId,
+      contact: booking.contact
+        ? { id: booking.contact.id, fullName: booking.contact.fullName, phoneNumber: booking.contact.phoneNumber, email: booking.contact.email }
+        : undefined,
+    });
 
     return booking;
   }

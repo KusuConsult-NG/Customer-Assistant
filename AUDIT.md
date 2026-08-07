@@ -157,3 +157,65 @@ npm run typecheck # both apps
 - **Voice**: Plivo and Africa's Talking cannot do real-time AI (different streaming
   protocols); only Twilio is implemented. This is now explicit in the SDK rather than
   implied by fake success.
+
+---
+
+## Pass 3 additions (workflow engine, onboarding selfie)
+
+### Workflow engine — built, not patched
+
+The audit's original entry for the workflow module described an empty `switch` with
+`// Trigger WhatsApp SDK message send` comments. The real defect was one layer down: the
+stored graph had no executable content, so the switch had nothing to dispatch on. Nodes
+now carry `kind` + `action` + typed `config`; legacy presentational nodes are parsed and
+marked `UNCONFIGURED` with the reason, never guessed at.
+
+New: `workflow.types.ts`, `workflow-actions.service.ts`, `workflow-executor.service.ts`,
+`workflow-trigger.service.ts`, `workflow-runner.service.ts`, plus `workflow_runs` and
+`workflow_run_steps`. Domain events fire from CRM, WhatsApp, the web widget, scheduling
+and telephony via a `@Global()` trigger service — deliberately split from
+`WorkflowsModule` so domain modules can emit without a circular module graph.
+
+Three defects were found by running it, not by reading it: every step executed twice
+(worker/sweeper race on an unconditional status update), conditions gated nothing
+(unbranded edges were always followed), and the inline sweeper generated continuous
+`P2024` pool timeouts while the queue was healthy. All three are described with their
+measurements in `VALIDATION-REPORT.md` §P3.1.
+
+### Onboarding selfie capture — new capability
+
+`apps/api/src/onboarding/`, `apps/api/src/common/object-storage.ts`,
+`apps/api/src/common/image-validation.ts`, `packages/database/src/selfie-request.ts`,
+`apps/web/src/app/selfie/[token]/page.tsx`,
+`apps/web/src/components/SelfieRequestPanel.tsx`.
+
+The design choices worth knowing before changing anything here:
+
+- The upload token is stored **only as a SHA-256 hash**, so a link cannot be recovered by
+  anyone. "Resend the link" therefore has to mint a new request.
+- A voice call cannot carry an image, so a `VOICE` request always sends a link over
+  WhatsApp — and the AI only claims it was sent when the send returned success.
+- Image type comes from **magic bytes**, never the declared Content-Type. SVG is refused:
+  it is a script-capable document.
+- `verifiedAt` is never set. This captures a photo; it does not verify an identity. Do
+  not repurpose that column without an actual biometric provider behind it, and do not
+  let any UI label a captured photo "verified".
+
+### Two pre-existing defects this uncovered
+
+- **Every Supabase Storage upload failed.** The uploader omitted the `apikey` header
+  Supabase Storage requires; the resulting `403 Invalid Compact JWS` arrives wrapped in
+  an HTTP 400 and reads like a bad request. The knowledge-base uploader had carried this
+  from the start, and no test had ever completed a real upload — the knowledge suite
+  covered rejection paths and the crawler only. Storage is now one shared module, and
+  `KB-005` uploads a document and fetches it back.
+- **`getDocumentDownloadUrl` had no route.** An uploaded document could be stored and
+  never retrieved. `GET /api/knowledge/documents/:id/download` now exists.
+
+### Deployment note
+
+Two private Supabase Storage buckets must exist: `knowledge-documents` and
+`onboarding-selfies` (the latter restricted to `image/jpeg|png|webp`, 8MB per object).
+They were absent in this project — a consequence of the upload bug above, since nothing
+had ever successfully written to one.
+

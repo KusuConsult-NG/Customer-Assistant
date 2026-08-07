@@ -5,6 +5,8 @@ import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 const log = new AceLogger('WhatsappService');
 
@@ -39,7 +41,11 @@ function resolveWhatsAppClient(config: {
 export class WhatsappService {
   private orchestrator = new ConversationOrchestrator();
 
-  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+  constructor(
+    private webhookDispatcher: WebhookDispatcherService,
+    private workflows: WorkflowTriggerService,
+    private onboarding: OnboardingService
+  ) {}
 
   /**
    * processIncomingWebhook
@@ -200,6 +206,32 @@ export class WhatsappService {
         conversationId: conversation.id,
       }).catch(err => log.error('webhook_dispatch_failed', err, { correlationId }));
 
+      this.workflows.emitAsync(organizationId, 'MESSAGE_RECEIVED', {
+        channel: 'WHATSAPP',
+        message: textContent,
+        messageType: message.type,
+        conversationId: conversation.id,
+        contactId: contact.id,
+        contactPhone: fromNumber,
+        contact: { id: contact.id, fullName: contact.fullName, phoneNumber: contact.phoneNumber, email: contact.email },
+      });
+
+      // ── 4b. Onboarding selfie ────────────────────────────────────────────────
+      //
+      // If this contact was asked for a selfie and has just sent a photo, that photo
+      // IS the answer — it must not fall through to the AI, which would reply to
+      // "[Customer sent an image]" with generic small talk while the onboarding step
+      // stayed open forever.
+      //
+      // The image bytes are downloaded here rather than stored as a Meta media id:
+      // those ids expire, and a link that 404s in a week is not a record of anything.
+      if (message.type === 'image' && message.image?.id) {
+        const handled = await this.handleSelfieImage(
+          organizationId, contact.id, config, message.image.id, fromNumber, conversation.id, correlationId
+        );
+        if (handled) return;
+      }
+
       // ── 5. Human agent takeover check ─────────────────────────────────────────
       if (conversation.isHumanHandoffActive) {
         log.info('whatsapp_human_handoff_active', {
@@ -318,6 +350,56 @@ export class WhatsappService {
    * We catch that and fall back to a findFirst — this is the correct pattern
    * for "find-or-create" without advisory locks.
    */
+  /**
+   * Downloads an inbound WhatsApp image and, if the contact has a pending selfie
+   * request, stores it against that request.
+   *
+   * Returns true when the photo was consumed as a selfie (accepted OR rejected) —
+   * either way the customer gets a specific reply and the AI stays out of it.
+   * Returns false when there was no pending request, so the image is just an image.
+   */
+  private async handleSelfieImage(
+    organizationId: string,
+    contactId: string,
+    config: { phoneNumberId: string | null; accessToken: string | null; webhookVerifyToken: string | null },
+    mediaId: string,
+    fromNumber: string,
+    conversationId: string,
+    correlationId: string
+  ): Promise<boolean> {
+    try {
+      const client = resolveWhatsAppClient(config);
+      const media = await client.downloadMedia(mediaId);
+      if (!media) {
+        log.warn('whatsapp_selfie_download_failed', { correlationId, organizationId, mediaId });
+        return false;
+      }
+
+      const result = await this.onboarding.attachWhatsAppSelfie(organizationId, contactId, media.bytes);
+      if (!result.requestId) return false; // nothing was pending — ordinary attachment
+
+      const reply = result.accepted
+        ? 'Thank you — we have received your photo and your onboarding is complete on our side.'
+        : `${result.reason} Please send another photo when you can.`;
+
+      await client.sendTextMessage(fromNumber, reply);
+      await prisma.message.create({
+        data: { conversationId, sender: MessageSender.SYSTEM, content: reply },
+      }).catch(() => {});
+
+      log.info('whatsapp_selfie_handled', {
+        correlationId, organizationId, contactId,
+        requestId: result.requestId, accepted: result.accepted,
+      });
+      return true;
+    } catch (err: any) {
+      // A selfie problem must never swallow the message. Fall through to the normal
+      // pipeline so the customer still gets a response.
+      log.error('whatsapp_selfie_handling_failed', err as Error, { correlationId, organizationId, contactId });
+      return false;
+    }
+  }
+
   private async upsertContact(organizationId: string, phoneNumber: string, correlationId: string) {
     try {
       const existing = await prisma.contact.findFirst({

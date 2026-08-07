@@ -47,6 +47,9 @@ const PUBLIC_ROUTES = [
   '/reset-password',
   '/verify-email',
   '/setup-account',
+  // Customer-facing selfie upload. Reached from a one-time link by someone who has no
+  // account here — redirecting them to /login would make the link useless.
+  '/selfie',
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
