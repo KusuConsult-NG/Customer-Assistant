@@ -17,27 +17,43 @@ export default function WidgetPage() {
   });
 
   const [copied, setCopied] = useState(false);
-  const [apiKey, setApiKey] = useState("ace_live_demo_key_123");
+  // Null until a key is generated. The previous default was the literal string
+  // "ace_live_demo_key_123", and /api/organizations/me never returns an `apiKey`
+  // field (keys are only ever shown once, at generation), so the snippet on this
+  // page always displayed that fake key — every widget copied from here was broken.
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const token = localStorage.getItem("ace_token");
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/api/organizations/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const org = await res.json();
-          if (org.apiKey) setApiKey(org.apiKey);
-          if (org.name) setConfig(prev => ({ ...prev, companyName: org.name }));
-        }
+        const org: any = await api.organizations.getMe();
+        if (org?.name) setConfig(prev => ({ ...prev, companyName: org.name }));
+        if (org?.welcomeMessage) setConfig(prev => ({ ...prev, welcomeMessage: org.welcomeMessage }));
       } catch (e) {
         console.error(e);
       }
     }
     loadData();
   }, []);
+
+  /**
+   * Generates a live API key. The plaintext key is returned exactly once — the server
+   * stores only its SHA-256 hash — so it is held in component state for copying and
+   * is not retrievable afterwards.
+   */
+  const handleGenerateKey = async () => {
+    setGenerating(true);
+    try {
+      const res: any = await api.organizations.regenerateApiKey();
+      if (res?.apiKey) setApiKey(res.apiKey);
+    } catch (e: any) {
+      alert(e?.message || "Could not generate an API key.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -54,9 +70,18 @@ export default function WidgetPage() {
     }
   };
 
-  const codeSnippet = `<script src="${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/widget.js" data-api-key="${apiKey}"></script>`;
+  // widget.js is served by the WEB app (apps/web/public/widget.js), not the API, so
+  // the src must be this origin. It pointed at NEXT_PUBLIC_API_URL, where no such
+  // file exists, so every embed 404'd on the script itself. data-api-url tells the
+  // widget where to reach the API.
+  const webOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const apiOrigin = process.env.NEXT_PUBLIC_API_URL || "";
+  const codeSnippet = apiKey
+    ? `<script src="${webOrigin}/widget.js" data-api-key="${apiKey}" data-api-url="${apiOrigin}"></script>`
+    : "";
 
   const copyCode = async () => {
+    if (!codeSnippet) return;
     const ok = await copyToClipboard(codeSnippet);
     if (ok) {
       setCopied(true);
@@ -165,19 +190,35 @@ export default function WidgetPage() {
               <Code className="w-4 h-4" /> Embed Code
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-400">Copy this code and paste it before the closing &lt;/body&gt; tag of your website.</p>
-            
-            <div className="relative group">
-              <pre className="bg-white dark:bg-slate-900 p-4 rounded-lg overflow-x-auto text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800">
-                {codeSnippet}
-              </pre>
-              <button
-                onClick={copyCode}
-                className="absolute top-2 right-2 p-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white transition opacity-0 group-hover:opacity-100"
-                title="Copy code"
-              >
-                {copied ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
+
+            {!apiKey ? (
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Generate an API key to get your embed snippet. The key is shown once —
+                  copy it somewhere safe.
+                </p>
+                <button
+                  onClick={handleGenerateKey}
+                  disabled={generating}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition disabled:opacity-50"
+                >
+                  {generating ? 'Generating…' : 'Generate widget API key'}
+                </button>
+              </div>
+            ) : (
+              <div className="relative group">
+                <pre className="bg-white dark:bg-slate-900 p-4 rounded-lg overflow-x-auto text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800">
+                  {codeSnippet}
+                </pre>
+                <button
+                  onClick={copyCode}
+                  className="absolute top-2 right-2 p-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white transition opacity-0 group-hover:opacity-100"
+                  title="Copy code"
+                >
+                  {copied ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

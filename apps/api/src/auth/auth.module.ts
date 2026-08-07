@@ -8,13 +8,22 @@ import { JwtStrategy } from './jwt.strategy';
 @Module({
   imports: [
     PassportModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'super_secret_ace_platform_jwt_key_2026_change_in_prod',
-      signOptions: { expiresIn: '1d' },
+    // No fallback secret: JWT_SECRET is required at startup (config/env.validation.ts),
+    // and a hardcoded default here would only ever be used by a misconfigured build —
+    // where it would sign tokens anyone could forge.
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) throw new Error('JWT_SECRET is not set.');
+        return {
+          secret,
+          signOptions: { expiresIn: process.env.JWT_ACCESS_TTL || '1d' },
+        };
+      },
     }),
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

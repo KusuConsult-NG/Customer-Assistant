@@ -48,10 +48,15 @@ export class WhatsAppCloudClient {
     if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
     try {
       const crypto = require('crypto');
-      const expectedSignature = signatureHeader.split('sha256=')[1];
+      const expectedSignature = signatureHeader.slice('sha256='.length);
       const hmac = crypto.createHmac('sha256', appSecret);
       const computedSignature = hmac.update(rawBodyBuffer).digest('hex');
-      return crypto.timingSafeEqual(Buffer.from(expectedSignature, 'utf-8'), Buffer.from(computedSignature, 'utf-8'));
+      const a = Buffer.from(expectedSignature, 'utf-8');
+      const b = Buffer.from(computedSignature, 'utf-8');
+      // timingSafeEqual throws on length mismatch — compare lengths first so a
+      // truncated signature is rejected rather than falling into the catch block.
+      if (a.length !== b.length) return false;
+      return crypto.timingSafeEqual(a, b);
     } catch (e) {
       return false;
     }
@@ -201,28 +206,39 @@ export class WhatsAppCloudClient {
   }
 
   private async postRequest(url: string, body: any): Promise<any> {
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.config.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
+    // No mock/placeholder branch.
+    //
+    // This method used to catch every failure and, if the access token contained the
+    // word "placeholder", return a synthetic `{ messages: [{ id: 'wamid.mock.…' }] }`.
+    // Callers treat that as proof of delivery: WhatsappService logged "reply_delivered"
+    // and sendBroadcast counted the recipient as sent. A misconfigured tenant therefore
+    // saw a fully green dashboard while not one customer ever received a message.
+    // Delivery failures must surface.
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`WhatsApp API Error (${response.status}): ${errText}`);
-      }
-
-      return await response.json();
-    } catch (err: any) {
-      // Return synthetic success response in mock mode if token is placeholder
-      if (this.config.accessToken.includes('placeholder')) {
-        return { messaging_product: 'whatsapp', contacts: [{ input: body.to }], messages: [{ id: `wamid.mock.${Date.now()}` }] };
-      }
-      throw err;
+    if (!response.ok) {
+      const errText = await response.text().catch(() => response.statusText);
+      throw new WhatsAppApiError(response.status, errText);
     }
+
+    return response.json();
+  }
+}
+
+/** Raised when the Meta WhatsApp Cloud API rejects a request. */
+export class WhatsAppApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string
+  ) {
+    super(`WhatsApp Cloud API error (${status}): ${detail.slice(0, 500)}`);
+    this.name = 'WhatsAppApiError';
   }
 }

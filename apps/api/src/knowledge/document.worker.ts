@@ -40,7 +40,6 @@
  */
 
 import { Worker, Job } from 'bullmq';
-import { createClient } from 'redis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
@@ -172,6 +171,116 @@ async function getPrisma() {
   return prisma;
 }
 
+const SUPABASE_BUCKET = 'knowledge-documents';
+
+/**
+ * Downloads a queued document.
+ *
+ * `storageUrl` is a Supabase Storage object path unless it is an absolute http(s)
+ * URL (crawled pages). Supabase objects are in a PRIVATE bucket, so they are fetched
+ * with the service-role key rather than anonymously.
+ */
+async function downloadDocument(storageUrl: string): Promise<Buffer> {
+  if (/^https?:\/\//i.test(storageUrl)) {
+    const res = await fetch(storageUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`Failed to download document: HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error(
+      'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are required to download queued documents.'
+    );
+  }
+
+  const res = await fetch(
+    `${supabaseUrl}/storage/v1/object/${SUPABASE_BUCKET}/${storageUrl}`,
+    {
+      headers: { Authorization: `Bearer ${serviceKey}` },
+      signal: AbortSignal.timeout(60_000),
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to download "${storageUrl}" from Supabase Storage (HTTP ${res.status}). ` +
+      `Confirm the "${SUPABASE_BUCKET}" bucket exists and the service-role key is valid.`
+    );
+  }
+
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Extracts plain text from a document buffer.
+ *
+ * PDF and DOCX extraction requires a parser that is not currently a dependency
+ * (`pdf-parse` and `mammoth` are the usual choices). Rather than silently indexing
+ * binary garbage — which is what decoding them as UTF-8 produced — those formats
+ * fail with an actionable message and the document is marked FAILED, so the operator
+ * can see that it is not searchable instead of believing that it is.
+ */
+async function extractText(buffer: Buffer, mimeType: string, fileName: string): Promise<string> {
+  switch (mimeType) {
+    case 'text/plain':
+    case 'text/markdown':
+    case 'application/json':
+      return buffer.toString('utf8');
+
+    case 'text/html':
+      return buffer
+        .toString('utf8')
+        .replace(/<script\b[^<]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style\b[^<]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    case 'application/pdf':
+      return extractWithOptionalParser('pdf-parse', buffer, fileName, 'PDF');
+
+    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+      return extractWithOptionalParser('mammoth', buffer, fileName, 'DOCX');
+
+    default:
+      throw new Error(`Unsupported MIME type for text extraction: ${mimeType}`);
+  }
+}
+
+/**
+ * Uses an optional parser package when it is installed, and otherwise explains
+ * exactly what to install. Keeping these optional avoids forcing a heavyweight
+ * dependency on deployments that only ingest plain text.
+ */
+async function extractWithOptionalParser(
+  moduleName: 'pdf-parse' | 'mammoth',
+  buffer: Buffer,
+  fileName: string,
+  label: string
+): Promise<string> {
+  let mod: any;
+  try {
+    mod = await import(moduleName);
+  } catch {
+    throw new Error(
+      `${label} text extraction requires the "${moduleName}" package, which is not installed. ` +
+      `Run: npm install ${moduleName} --workspace @ace/api   (document: ${fileName})`
+    );
+  }
+
+  if (moduleName === 'pdf-parse') {
+    const parse = mod.default ?? mod;
+    const result = await parse(buffer);
+    return result?.text ?? '';
+  }
+
+  const mammoth = mod.default ?? mod;
+  const result = await mammoth.extractRawText({ buffer });
+  return result?.value ?? '';
+}
+
 /**
  * Main document processing job handler.
  */
@@ -196,22 +305,25 @@ async function processDocumentJob(job: Job<DocumentJob>): Promise<void> {
 
   try {
     // ── Step 1: Fetch document content ──────────────────────────────────────
-    // In production: download from S3/GCS using presigned URL or service account
-    // For local dev: storageUrl is a local filesystem path
-    let rawText = '';
-    if (storageUrl.startsWith('http')) {
-      const fileResponse = await fetch(storageUrl);
-      if (!fileResponse.ok) throw new Error(`Failed to download document: HTTP ${fileResponse.status}`);
-      // For PDF: in production, use pdf-parse or AWS Textract
-      // For TXT/MD: read directly
-      rawText = await fileResponse.text();
-    } else {
-      const fs = await import('fs/promises');
-      rawText = await fs.readFile(storageUrl, 'utf8');
-    }
+    //
+    // KnowledgeService stores `storageUrl` as a Supabase Storage PATH
+    // (`<orgId>/<ts>_<name>.pdf`), not a URL. The previous code branched on
+    // `startsWith('http')` and, for everything else, called
+    // `fs.readFile(storageUrl)` — which is a path on the Supabase bucket, not on
+    // this machine. Every queued document failed with ENOENT, so the whole
+    // background ingestion path had never successfully processed a single upload.
+    const fileBuffer = await downloadDocument(storageUrl);
+
+    // Extract text according to the actual file format. Reading a PDF or DOCX — both
+    // binary containers, DOCX being a ZIP — as UTF-8 yields binary noise, which was
+    // then chunked, embedded and stored as if it were the document's prose.
+    const rawText = await extractText(fileBuffer, mimeType, fileName);
 
     if (!rawText.trim()) {
-      throw new Error(`Document ${documentId} produced empty text after extraction. Check file format.`);
+      throw new Error(
+        `Document ${documentId} (${mimeType}) produced no extractable text. ` +
+        `Scanned PDFs need OCR, which is not configured.`
+      );
     }
 
     // ── Step 2: Chunk text ────────────────────────────────────────────────

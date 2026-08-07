@@ -23,7 +23,14 @@ function VerifyEmailContent() {
     }
     const verify = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/auth/verify-email?token=${token}`);
+        // POST with the token in the body. This used to issue a GET, which the API
+        // had no route for at all — every verification link returned 404 and no
+        // account could ever be verified.
+        const res = await fetch(`${API_URL}/api/auth/verify-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
         if (res.ok) {
           setStatus('success');
           setMessage('Email verified!');

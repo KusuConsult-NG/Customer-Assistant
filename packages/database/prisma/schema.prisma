@@ -38,6 +38,9 @@ enum IndustryType {
   OTHER
 }
 
+// Must stay in sync with ChannelType in packages/shared-types/src/index.ts.
+// MESSENGER existed only in the TypeScript enum, so writing a Messenger
+// conversation failed at the database layer.
 enum ChannelType {
   VOICE
   WHATSAPP
@@ -46,6 +49,7 @@ enum ChannelType {
   EMAIL
   INSTAGRAM
   TELEGRAM
+  MESSENGER
 }
 
 enum CallDirection {
@@ -109,12 +113,18 @@ enum TicketPriority {
   URGENT
 }
 
+// Must stay in sync with TelephonyProviderType in packages/shared-types/src/index.ts.
+// MTN_ENTERPRISE_SIP and AIRTEL_BUSINESS_SIP had TypeScript enum members and full
+// provider implementations in @ace/telephony-sdk, but no database values — so
+// selecting either provider threw on the CallLog insert.
 enum TelephonyProviderType {
   TWILIO
   PLIVO
   TELNYX
   AFRICAS_TALKING
   NIGERIA_CARRIER_FORWARD
+  MTN_ENTERPRISE_SIP
+  AIRTEL_BUSINESS_SIP
 }
 
 enum BookingStatus {
@@ -173,35 +183,61 @@ model Organization {
   workflows            Workflow[]
 
   // White-label webhook settings
-  webhookUrl              String?
-  enabledWebhookEvents    String[]  @default([])
+  webhookUrl           String?
+  enabledWebhookEvents String[] @default([])
+
+  // ─── Customer payment collection details ───────────────────────────────────
+  // Used by the AI assistant when a customer asks how to pay. These MUST be
+  // configured per organization: the assistant previously read out a hardcoded
+  // "Providus Bank 9928374102" account and invented USSD codes, which would have
+  // directed real customers to send money to an account nobody controls.
+  // When these are null the assistant says it will have a human follow up instead
+  // of inventing details.
+  payoutBankName      String?
+  payoutAccountName   String?
+  payoutAccountNumber String?
+  payoutUssdCode      String?
 
   @@map("organizations")
 }
 
 model User {
-  id                      String       @id @default(uuid())
-  organizationId          String
-  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email                   String       @unique
-  passwordHash            String
-  fullName                String
-  role                    UserRole     @default(AGENT)
-  avatarUrl               String?
-  isActive                Boolean      @default(true)
+  id                     String       @id @default(uuid())
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email                  String       @unique
+  passwordHash           String
+  fullName               String
+  role                   UserRole     @default(AGENT)
+  avatarUrl              String?
+  isActive               Boolean      @default(true)
   // ─── Password Reset ──────────────────────────────────────────────────────
-  passwordResetToken      String?
-  passwordResetExpiresAt  DateTime?
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
   // ─── Email Verification ──────────────────────────────────────────────────
-  emailVerifiedAt         DateTime?
-  emailVerifyToken        String?   @unique
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  emailVerifiedAt        DateTime?
+  emailVerifyToken       String?      @unique
+  emailVerifyExpiresAt   DateTime?
+  // ─── Session revocation ──────────────────────────────────────────────────
+  // Embedded in every issued JWT and re-checked by JwtStrategy on each request.
+  // Incrementing it immediately invalidates all outstanding access and refresh
+  // tokens for this user (logout, password change, password reset).
+  tokenVersion           Int          @default(0)
+  // ─── Brute-force protection ──────────────────────────────────────────────
+  // Per-ACCOUNT lockout. A per-IP rate limit cannot stop distributed credential
+  // stuffing aimed at one account, and it locks out legitimate users who share a
+  // NAT address. Cleared on successful sign-in and on password reset.
+  failedLoginAttempts    Int          @default(0)
+  lockedUntil            DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   assignedConversations Conversation[] @relation("AssignedAgent")
   assignedTickets       Ticket[]       @relation("AssignedTicketAgent")
   notes                 Note[]
 
+  @@index([organizationId])
+  @@index([passwordResetToken])
   @@map("users")
 }
 
@@ -215,6 +251,7 @@ model ApiKey {
   lastUsedAt     DateTime?
   createdAt      DateTime     @default(now())
 
+  @@index([organizationId])
   @@map("api_keys")
 }
 
@@ -228,29 +265,33 @@ model TelephonyConfig {
   apiKey           String?
   apiSecret        String?
   phoneNumber      String
-  forwardingNumber String?               // Nigerian local number forwarding target (e.g. MTN/Airtel/Glo/9mobile)
+  forwardingNumber String? // Nigerian local number forwarding target (e.g. MTN/Airtel/Glo/9mobile)
   isDefault        Boolean               @default(true)
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
   callLogs CallLog[]
 
+  @@index([organizationId])
+  @@index([phoneNumber])
   @@map("telephony_configs")
 }
 
 model WhatsAppConfig {
-  id                    String       @id @default(uuid())
-  organizationId        String
-  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  phoneNumberId         String
-  whatsappBusinessId    String
-  accessToken           String       @db.Text
-  displayPhoneNumber    String
-  webhookVerifyToken    String
-  isActive              Boolean      @default(true)
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumberId      String
+  whatsappBusinessId String
+  accessToken        String       @db.Text
+  displayPhoneNumber String
+  webhookVerifyToken String
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
+  @@index([organizationId])
+  @@index([phoneNumberId])
   @@map("whatsapp_configs")
 }
 
@@ -281,6 +322,8 @@ model Contact {
   notes         Note[]
 
   @@unique([organizationId, phoneNumber])
+  @@index([organizationId, createdAt])
+  @@index([companyId])
   @@map("contacts")
 }
 
@@ -299,6 +342,7 @@ model Company {
 
   contacts Contact[]
 
+  @@index([organizationId])
   @@map("companies")
 }
 
@@ -315,6 +359,8 @@ model Lead {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@index([organizationId, createdAt])
+  @@index([contactId])
   @@map("leads")
 }
 
@@ -332,6 +378,8 @@ model Deal {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@index([organizationId, createdAt])
+  @@index([contactId])
   @@map("deals")
 }
 
@@ -351,38 +399,50 @@ model Ticket {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  @@index([organizationId, createdAt])
+  @@index([contactId])
+  @@index([assignedUserId])
   @@map("tickets")
 }
 
 model Note {
-  id             String   @id @default(uuid())
-  contactId      String
-  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  authorUserId   String?
-  authorUser     User?    @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
-  content        String   @db.Text
-  createdAt      DateTime @default(now())
+  id           String   @id @default(uuid())
+  contactId    String
+  contact      Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  authorUserId String?
+  authorUser   User?    @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  content      String   @db.Text
+  createdAt    DateTime @default(now())
 
+  @@index([contactId])
   @@map("notes")
 }
 
 model Conversation {
-  id                   String       @id @default(uuid())
+  id                   String         @id @default(uuid())
   organizationId       String
-  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contactId            String
-  contact              Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  channel              ChannelType  @default(WHATSAPP)
-  isHumanHandoffActive Boolean      @default(false)
+  contact              Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel              ChannelType    @default(WHATSAPP)
+  isHumanHandoffActive Boolean        @default(false)
   handoffReason        HandoffReason?
   assignedUserId       String?
-  assignedUser         User?        @relation("AssignedAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  lastMessageAt        DateTime     @default(now())
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  assignedUser         User?          @relation("AssignedAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  lastMessageAt        DateTime       @default(now())
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   messages Message[]
 
+  // WhatsappService.upsertConversation and WidgetService both use a
+  // find-then-create pattern and catch Prisma P2002 to resolve the race.
+  // That only works if the constraint actually exists — without it two
+  // concurrent inbound messages created two conversations for the same
+  // contact and the history silently split in half.
+  @@unique([organizationId, contactId, channel])
+  @@index([organizationId, lastMessageAt])
+  @@index([contactId])
   @@map("conversations")
 }
 
@@ -397,31 +457,34 @@ model Message {
   metadata       Json?
   sentAt         DateTime      @default(now())
 
+  @@index([conversationId, sentAt])
   @@map("messages")
 }
 
 model CallLog {
-  id               String                @id @default(uuid())
-  organizationId   String
-  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                String                @id @default(uuid())
+  organizationId    String
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   telephonyConfigId String?
-  telephonyConfig  TelephonyConfig?      @relation(fields: [telephonyConfigId], references: [id], onDelete: SetNull)
-  contactId        String?
-  contact          Contact?              @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  callSid          String                @unique
-  fromNumber       String
-  toNumber         String
-  direction        CallDirection         @default(INBOUND)
-  status           CallStatus            @default(QUEUED)
-  durationSeconds  Int                   @default(0)
-  recordingUrl     String?
-  transcript       String?               @db.Text
-  summary          String?               @db.Text
-  sentiment        String?
-  provider         TelephonyProviderType @default(TWILIO)
-  startedAt        DateTime              @default(now())
-  endedAt          DateTime?
+  telephonyConfig   TelephonyConfig?      @relation(fields: [telephonyConfigId], references: [id], onDelete: SetNull)
+  contactId         String?
+  contact           Contact?              @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  callSid           String                @unique
+  fromNumber        String
+  toNumber          String
+  direction         CallDirection         @default(INBOUND)
+  status            CallStatus            @default(QUEUED)
+  durationSeconds   Int                   @default(0)
+  recordingUrl      String?
+  transcript        String?               @db.Text
+  summary           String?               @db.Text
+  sentiment         String?
+  provider          TelephonyProviderType @default(TWILIO)
+  startedAt         DateTime              @default(now())
+  endedAt           DateTime?
 
+  @@index([organizationId, startedAt])
+  @@index([contactId])
   @@map("call_logs")
 }
 
@@ -442,6 +505,7 @@ model KnowledgeDocument {
 
   chunks DocumentChunk[]
 
+  @@index([organizationId, createdAt])
   @@map("knowledge_documents")
 }
 
@@ -455,6 +519,8 @@ model DocumentChunk {
   qdrantVectorId String?
   createdAt      DateTime          @default(now())
 
+  @@index([documentId, chunkIndex])
+  @@index([organizationId])
   @@map("document_chunks")
 }
 
@@ -473,6 +539,9 @@ model Booking {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  @@index([organizationId, startTime])
+  @@index([contactId])
+  @@index([status, startTime])
   @@map("bookings")
 }
 
@@ -490,6 +559,8 @@ model Reservation {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
+  @@index([organizationId, reservationTime])
+  @@index([contactId])
   @@map("reservations")
 }
 
@@ -497,13 +568,14 @@ model CalendarIntegration {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  provider       String       // GOOGLE, OUTLOOK, ICAL
+  provider       String // GOOGLE, OUTLOOK, ICAL
   accessToken    String       @db.Text
   refreshToken   String?      @db.Text
   calendarId     String
   expiresAt      DateTime?
   createdAt      DateTime     @default(now())
 
+  @@index([organizationId])
   @@map("calendar_integrations")
 }
 
@@ -519,21 +591,23 @@ model FaqEntry {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@index([organizationId, sortOrder])
   @@map("faq_entries")
 }
 
 model WebhookLog {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   eventType      String
   payload        Json
   targetUrl      String
   statusCode     Int?
-  success        Boolean  @default(false)
+  success        Boolean   @default(false)
   error          String?
   deliveredAt    DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
+  @@index([organizationId, createdAt])
   @@map("webhook_logs")
 }
 
@@ -577,6 +651,7 @@ model BroadcastCampaign {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
+  @@index([organizationId, createdAt])
   @@map("broadcast_campaigns")
 }
 
@@ -593,5 +668,6 @@ model Workflow {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@index([organizationId, triggerType, isActive])
   @@map("workflows")
 }

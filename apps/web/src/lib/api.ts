@@ -1,7 +1,13 @@
 export const getApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  // No hardcoded production host fallback: a deployment that forgets to set
+  // NEXT_PUBLIC_API_URL should fail visibly against localhost rather than silently
+  // sending its customers' data to someone else's demo API.
   if (typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-    return 'https://ace-api.onrender.com';
+    console.error(
+      '[ACE] NEXT_PUBLIC_API_URL is not set. API requests will fail. ' +
+      'Set it to your API origin at build time.'
+    );
   }
   return 'http://localhost:4000';
 };
@@ -16,23 +22,89 @@ const getHeaders = () => {
   };
 };
 
+export const clearSession = () => {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("ace_token");
+  localStorage.removeItem("ace_refresh_token");
+  localStorage.removeItem("ace_user");
+};
+
+/**
+ * Exchanges the stored refresh token for a fresh access token.
+ *
+ * The login response has always included a 7-day refreshToken and the API has always
+ * exposed /api/auth/refresh, but the dashboard stored neither and called neither —
+ * so every session hard-expired after the access token's lifetime and dumped the
+ * user at the login screen mid-task. Concurrent 401s share one in-flight refresh.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+export const refreshSession = async (): Promise<boolean> => {
+  if (typeof window === "undefined") return false;
+  if (refreshInFlight) return refreshInFlight;
+
+  const refreshToken = localStorage.getItem("ace_refresh_token");
+  if (!refreshToken) return false;
+
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      if (!data?.accessToken) return false;
+
+      localStorage.setItem("ace_token", data.accessToken);
+      if (data.refreshToken) localStorage.setItem("ace_refresh_token", data.refreshToken);
+      if (data.user) localStorage.setItem("ace_user", JSON.stringify(data.user));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+};
+
+const parseError = async (res: Response) => {
+  const body = await res.json().catch(() => ({} as any));
+  const message = (body as any).message;
+  // class-validator returns an array of messages on 400.
+  return Array.isArray(message) ? message.join(" ") : message || `Request failed (${res.status})`;
+};
+
 const handleResponse = async (res: Response) => {
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    const msg = (error as any).message || "An error occurred";
-    // On 401, clear stale credentials but let the Router (layout) handle the redirect
-    // — avoids race conditions that cause white/blank screens on page load.
+    const msg = await parseError(res);
     if (res.status === 401 && typeof window !== "undefined") {
-      const currentToken = localStorage.getItem("ace_token");
-      if (currentToken) {
-        localStorage.removeItem("ace_token");
-        localStorage.removeItem("ace_user");
-        window.location.replace("/login");
-      }
+      clearSession();
+      window.location.replace("/login");
     }
     throw new Error(msg);
   }
   return res.json();
+};
+
+/**
+ * Authenticated fetch that transparently refreshes an expired access token once
+ * before giving up and redirecting to /login.
+ */
+export const authFetch = async (path: string, init: RequestInit = {}) => {
+  const send = () => fetch(`${API_URL}${path}`, { ...init, headers: { ...getHeaders(), ...(init.headers || {}) } });
+
+  let res = await send();
+  if (res.status === 401 && typeof window !== "undefined") {
+    if (await refreshSession()) {
+      res = await send();
+    }
+  }
+  return handleResponse(res);
 };
 
 export const api = {
@@ -108,10 +180,12 @@ export const api = {
       return handleResponse(res);
     },
     sendMessage: async (id: string, content: string) => {
+      // `sender` is not part of the API contract and, with the global
+      // ValidationPipe's forbidNonWhitelisted, an unexpected key is a 400.
       const res = await fetch(`${API_URL}/api/conversations/${id}/messages`, {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ content, sender: "human" }),
+        body: JSON.stringify({ content }),
       });
       return handleResponse(res);
     },
@@ -143,10 +217,13 @@ export const api = {
       const res = await fetch(`${API_URL}/api/billing/subscription`, { headers: getHeaders() });
       return handleResponse(res);
     },
-    initializePayment: async () => {
-      const res = await fetch(`${API_URL}/api/billing/initialize-payment`, {
+    // Route is /api/billing/checkout and it requires a plan. `/initialize-payment`
+    // has never existed on the API, and calling it with no body 404'd every time.
+    checkout: async (plan: string) => {
+      const res = await fetch(`${API_URL}/api/billing/checkout`, {
         method: "POST",
         headers: getHeaders(),
+        body: JSON.stringify({ plan }),
       });
       return handleResponse(res);
     },
@@ -168,8 +245,11 @@ export const api = {
   },
 
   analytics: {
-    getOverview: async () => {
-      const res = await fetch(`${API_URL}/api/analytics/overview`, { headers: getHeaders() });
+    // Route is /api/analytics/dashboard. `/overview` has never existed on the API.
+    getDashboard: async (period: '7d' | '30d' | '90d' = '7d') => {
+      const res = await fetch(`${API_URL}/api/analytics/dashboard?period=${period}`, {
+        headers: getHeaders(),
+      });
       return handleResponse(res);
     },
   },
@@ -238,6 +318,14 @@ export const api = {
       });
       return handleResponse(res);
     },
+    /** Returns { apiKey } — the plaintext key, shown once and never retrievable again. */
+    regenerateApiKey: async () => {
+      const res = await fetch(`${API_URL}/api/organizations/api-keys/regenerate`, {
+        method: "POST",
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
     getPermissionsMatrix: async () => {
       const res = await fetch(`${API_URL}/api/organizations/roles/permissions`, { headers: getHeaders() });
       return handleResponse(res);
@@ -246,7 +334,9 @@ export const api = {
 
   widget: {
     getConfig: async (apiKey: string, orgId?: string) => {
-      const qs = apiKey ? `apiKey=${apiKey}` : `orgId=${orgId || ''}`;
+      const qs = apiKey
+        ? `apiKey=${encodeURIComponent(apiKey)}`
+        : `orgId=${encodeURIComponent(orgId || '')}`;
       const res = await fetch(`${API_URL}/api/widget/config?${qs}`);
       return handleResponse(res);
     },
@@ -259,7 +349,9 @@ export const api = {
       return handleResponse(res);
     },
     getHistory: async (apiKey: string, sessionId: string) => {
-      const res = await fetch(`${API_URL}/api/widget/history?apiKey=${apiKey}&sessionId=${sessionId}`);
+      const res = await fetch(
+        `${API_URL}/api/widget/history?apiKey=${encodeURIComponent(apiKey)}&sessionId=${encodeURIComponent(sessionId)}`
+      );
       return handleResponse(res);
     },
   },

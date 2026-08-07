@@ -24,6 +24,7 @@ export class AnalyticsService {
     let resolvedTickets = 0;
     let totalAiMessages = 0;
     let totalMessages = 0;
+    let handledByHumanConversations = 0;
     let whatsappConversations = 0;
     let webchatConversations = 0;
     let pipelineValue = 0;
@@ -66,6 +67,23 @@ export class AnalyticsService {
       }).catch(() => ({ _sum: { durationSeconds: 0 } }));
 
       totalCallMinutes = Math.ceil(((callDurationAgg._sum?.durationSeconds as number) ?? 0) / 60);
+
+      // Message counts, needed for aiReplyRate.
+      //
+      // `totalAiMessages` and `totalMessages` were declared and then never assigned,
+      // so they stayed at 0 and `aiReplyRate` — the headline "AI Reply Rate" tile on
+      // the dashboard — evaluated to null on every request, for every organization.
+      totalMessages = await prisma.message.count({
+        where: { conversation: { organizationId } },
+      }).catch(() => 0);
+
+      totalAiMessages = await prisma.message.count({
+        where: { conversation: { organizationId }, sender: 'AI' },
+      }).catch(() => 0);
+
+      handledByHumanConversations = await prisma.conversation.count({
+        where: { organizationId, isHumanHandoffActive: true },
+      }).catch(() => 0);
       weeklyData = await this.buildWeeklyTrend(organizationId, days).catch(() => ({ labels: [], conversations: [], calls: [] }));
 
       recentCalls = await prisma.callLog.findMany({
@@ -85,9 +103,24 @@ export class AnalyticsService {
     }
 
     const totalTickets = openTickets + resolvedTickets;
+
+    /** Share of tickets that reached RESOLVED. */
     const resolutionRate = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 100) : null;
+
+    /** Share of all messages that the AI wrote. */
     const aiReplyRate = totalMessages > 0 ? Math.round((totalAiMessages / totalMessages) * 100) : null;
-    const handoverRate = totalConversations > 0 ? Math.round((totalTickets / totalConversations) * 100) : null;
+
+    /**
+     * Share of conversations escalated to a human.
+     *
+     * This was `totalTickets / totalConversations` — the ratio of support tickets to
+     * conversations, which is a different quantity entirely and could exceed 100%
+     * (one conversation can spawn several tickets, and tickets are also raised
+     * outside conversations). It now counts conversations actually in handoff.
+     */
+    const handoverRate = totalConversations > 0
+      ? Math.round((handledByHumanConversations / totalConversations) * 100)
+      : null;
 
     return {
       period,

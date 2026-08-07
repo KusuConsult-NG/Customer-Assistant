@@ -1,5 +1,5 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { Injectable, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { prisma } from '@ace/database';
 import { AceLogger } from '../config/logger';
 
@@ -97,40 +97,132 @@ export class BillingService {
   }
 
   /**
-   * AI-Assisted Payment Guidance for Customer Services & Invoices
-   * Generates step-by-step payment instructions for WhatsApp, Voice AI, and Webchat.
+   * AI-Assisted Payment Guidance for Customer Services & Invoices.
+   *
+   * Produces the payment instructions the AI assistant reads out to a customer over
+   * WhatsApp / voice / webchat.
+   *
+   * SAFETY: every detail here comes from the organization's own configuration.
+   * The previous implementation returned a hardcoded "Providus Bank / 9928374102"
+   * account with the tenant's name appended, plus USSD strings assembled from a
+   * random reference (`*737*000*<4 digits>#`). Those are not real payment channels:
+   * following them would have sent a customer's money to an account the tenant does
+   * not own, or to nobody at all. When an organization has not configured payment
+   * details we say so instead of inventing them.
    */
   async generateServicePaymentGuidance(
     organizationId: string,
     serviceName: string,
-    amountNgn: number,
-    contactPhone?: string
+    amountNgn: number
   ) {
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
-    const reference = `ACE_SVC_${organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
-    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-    const checkoutUrl = `${baseUrl}/api/billing/pay-service?ref=${reference}&amount=${amountNgn}&service=${encodeURIComponent(serviceName)}`;
+    if (!org) throw new NotFoundException(`Organization not found: ${organizationId}`);
+
+    const reference = `ACE_SVC_${organizationId.slice(0, 6)}_${randomBytes(4).toString('hex').toUpperCase()}`;
+    const formattedAmount = `₦${amountNgn.toLocaleString('en-NG')}`;
+
+    // Card payment is only offered when Paystack is actually wired up.
+    const checkoutUrl = process.env.PAYSTACK_SECRET_KEY
+      ? (await this.createServiceCheckoutLink(org.id, serviceName, amountNgn, reference))
+      : null;
+
+    const bankTransfer =
+      org.payoutBankName && org.payoutAccountNumber
+        ? {
+            bankName: org.payoutBankName,
+            accountName: org.payoutAccountName ?? org.name,
+            accountNumber: org.payoutAccountNumber,
+            instructions:
+              `Transfer exactly ${formattedAmount} to ${org.payoutBankName}, account ` +
+              `${org.payoutAccountNumber} (${org.payoutAccountName ?? org.name}), ` +
+              `using reference ${reference}.`,
+          }
+        : null;
+
+    const options: string[] = [];
+    if (checkoutUrl) options.push(`1️⃣ *Pay by card (Paystack)*: ${checkoutUrl}`);
+    if (bankTransfer) {
+      options.push(
+        `${options.length + 1}️⃣ *Bank transfer*\n` +
+        `• Bank: *${bankTransfer.bankName}*\n` +
+        `• Account Name: *${bankTransfer.accountName}*\n` +
+        `• Account Number: \`${bankTransfer.accountNumber}\`\n` +
+        `• Reference: \`${reference}\``
+      );
+    }
+    if (org.payoutUssdCode) {
+      options.push(`${options.length + 1}️⃣ *USSD*: dial \`${org.payoutUssdCode}\``);
+    }
+
+    const configured = options.length > 0;
+
+    const aiGuidanceText = configured
+      ? `💳 *Payment for ${serviceName}*\n\n` +
+        `Amount: *${formattedAmount}*\nReference: \`${reference}\`\n\n` +
+        `${options.join('\n\n')}\n\n` +
+        `📌 After paying, reply *"PAID"* with your receipt and our team will confirm it.`
+      : `Thanks — the total for *${serviceName}* is *${formattedAmount}*.\n\n` +
+        `I don't have our payment details on file to share right now, so I'm passing you ` +
+        `to a colleague who can send them to you directly.`;
 
     return {
       reference,
       serviceName,
       amountNgn,
-      formattedAmount: `₦${amountNgn.toLocaleString()}`,
+      formattedAmount,
+      /** False when the organization has configured no payment channel at all. */
+      configured,
       checkoutUrl,
-      virtualAccount: {
-        bankName: 'Providus Bank',
-        accountName: org?.name ? `${org.name} Collections` : 'ACE Customer Care',
-        accountNumber: '9928374102',
-        instructions: `Transfer exactly ₦${amountNgn.toLocaleString()} to Providus Bank 9928374102. Reply 'PAID' once completed.`,
-      },
-      ussdCodes: {
-        gtbank: `*737*000*${reference.slice(-4)}#`,
-        zenith: `*966*000*${reference.slice(-4)}#`,
-        access: `*901*000*${reference.slice(-4)}#`,
-        firstbank: `*894*000*${reference.slice(-4)}#`,
-      },
-      aiGuidanceText: `💳 *Payment Guidance for ${serviceName}*\n\nTotal Amount: *₦${amountNgn.toLocaleString()}*\nReference: \`${reference}\`\n\n*Payment Options:*\n1️⃣ *Online Card/Paystack*: ${checkoutUrl}\n2️⃣ *Bank Transfer*: Transfer ₦${amountNgn.toLocaleString()} to *Providus Bank*, Acc No: \`9928374102\` (Name: ${org?.name || 'ACE Care'})\n3️⃣ *GTBank USSD*: Dial \`*737*000*9928#\`\n\nOnce transferred, reply *"PAID"* or send a screenshot of your receipt for instant automated confirmation.`,
+      bankTransfer,
+      ussdCode: org.payoutUssdCode ?? null,
+      aiGuidanceText,
+      /** Signals to the orchestrator that a human should take over. */
+      shouldHandoff: !configured,
     };
+  }
+
+  /**
+   * Creates a real Paystack checkout link for a one-off service charge.
+   * Returns null (rather than a link to a route that does not exist) on failure.
+   */
+  private async createServiceCheckoutLink(
+    organizationId: string,
+    serviceName: string,
+    amountNgn: number,
+    reference: string
+  ): Promise<string | null> {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) return null;
+
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { users: { where: { role: 'OWNER' }, select: { email: true }, take: 1 } },
+    });
+    const email = org?.users[0]?.email;
+    if (!email) return null;
+
+    try {
+      const response = await fetch('https://api.paystack.co/transaction/initialize', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          amount: Math.round(amountNgn * 100),
+          reference,
+          currency: 'NGN',
+          metadata: { organizationId, serviceName, kind: 'SERVICE_CHARGE' },
+        }),
+      });
+      if (!response.ok) {
+        log.warn('paystack_service_link_failed', { organizationId, httpStatus: response.status });
+        return null;
+      }
+      const data: any = await response.json();
+      return data?.data?.authorization_url ?? null;
+    } catch (err: any) {
+      log.error('paystack_service_link_error', err, { organizationId });
+      return null;
+    }
   }
 
   /**
@@ -165,9 +257,18 @@ export class BillingService {
   ) {
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
     if (!secretKey) {
-      // In sandbox/demo mode without live Paystack key, activate plan directly
-      log.info('paystack_sandbox_direct_activation', { organizationId, plan });
-      return this.activatePlan(organizationId, plan);
+      // Do NOT silently activate the plan. This branch used to call activatePlan(),
+      // which meant that on any deployment without PAYSTACK_SECRET_KEY the "Upgrade"
+      // button granted the ENTERPRISE plan to anyone who clicked it, for free.
+      log.error(
+        'paystack_not_configured',
+        new Error('PAYSTACK_SECRET_KEY missing'),
+        { organizationId, plan }
+      );
+      throw new ServiceUnavailableException(
+        'Online payments are not configured on this deployment. ' +
+        'Set PAYSTACK_SECRET_KEY, or ask an owner to activate the plan manually.'
+      );
     }
 
     const amountInKobo = PLAN_PRICES_KOBO[plan];
@@ -200,30 +301,35 @@ export class BillingService {
             { display_name: 'Plan', variable_name: 'plan', value: plan },
           ],
         },
-        callback_url: `${process.env.API_BASE_URL ?? 'http://localhost:4000'}/api/billing/paystack/callback`,
+        // Paystack redirects the customer's BROWSER here after payment, so it must be
+        // a page in the dashboard. It pointed at `${API_BASE_URL}/api/billing/paystack/callback`
+        // — an API route that has never existed — so every paying customer landed on
+        // a 404 immediately after being charged.
+        callback_url: `${(process.env.WEB_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '')}/billing/success`,
       }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      log.warn('paystack_init_fallback', {
+      const errText = await response.text().catch(() => response.statusText);
+      log.error('paystack_init_failed', new Error(errText), {
         organizationId,
         plan,
         httpStatus: response.status,
-        error: errText,
       });
-      return {
-        status: true,
-        message: 'Paystack checkout session created',
-        data: {
-          authorization_url: null,
-          access_code: `ACE_ACC_${Date.now()}`,
-          reference,
-        },
-      };
+      // Previously this returned `{ status: true, message: 'Paystack checkout session
+      // created', data: { authorization_url: null } }` — the dashboard read `status`
+      // as success and showed a confirmation for a checkout that does not exist.
+      throw new ServiceUnavailableException(
+        `Could not start the payment session with Paystack (HTTP ${response.status}). Please try again.`
+      );
     }
 
     const data: any = await response.json();
+
+    if (!data?.data?.authorization_url) {
+      log.error('paystack_init_no_url', new Error(JSON.stringify(data).slice(0, 300)), { organizationId, plan });
+      throw new ServiceUnavailableException('Paystack did not return a checkout URL. Please try again.');
+    }
 
     log.info('paystack_transaction_initialized', {
       organizationId,
@@ -289,40 +395,60 @@ export class BillingService {
           amountPaidNgn: amountPaidKobo / 100,
         });
 
-        if (organizationId && plan) {
-          // Calculate next renewal date based on billing period
-          // Monthly plans: 30 days; Annual plans: 365 days
-          const isAnnual = (plan as string).includes('ANNUAL');
-          const renewalDays = isAnnual ? 365 : 30;
-          const renewsAt = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
-
-          // Update the Organization with the confirmed subscription plan and status.
-          // In a future iteration this should write to a dedicated Subscription table
-          // to support per-seat billing, proration, and multi-plan history.
-          await prisma.organization.update({
-            where: { id: organizationId },
-            data: {
-              subscriptionPlan:    plan,
-              subscriptionStatus:  'ACTIVE',
-              subscriptionRenewsAt: renewsAt,
-            },
-          });
-
-          log.info('paystack_subscription_activated', {
-            event: 'subscription_activated',
-            organizationId,
-            plan,
-            reference,
-            renewsAt: renewsAt.toISOString(),
-          });
-        } else {
-          log.warn('paystack_charge_success_missing_metadata', {
-            event: 'metadata_missing',
+        if (!organizationId || !plan) {
+          // A one-off service charge (see generateServicePaymentGuidance) carries no
+          // plan, so this is expected traffic, not necessarily an error.
+          log.info('paystack_charge_success_not_a_subscription', {
+            event: 'non_subscription_charge',
             reference,
             hasOrgId: !!organizationId,
             hasPlan:  !!plan,
           });
+          break;
         }
+
+        // Validate the plan against our own price list rather than trusting the
+        // metadata round-trip, and confirm the customer actually paid that plan's
+        // price. Without this a crafted (or replayed-with-edits) payload could
+        // activate ENTERPRISE off a ₦1 charge.
+        const expectedKobo = PLAN_PRICES_KOBO[plan as SubscriptionPlan];
+        if (!expectedKobo) {
+          log.warn('paystack_unknown_plan_in_metadata', { event: 'unknown_plan', reference, plan });
+          break;
+        }
+        if (amountPaidKobo < expectedKobo) {
+          log.warn('paystack_underpayment_ignored', {
+            event: 'underpayment',
+            reference,
+            organizationId,
+            plan,
+            expectedNgn: expectedKobo / 100,
+            paidNgn: amountPaidKobo / 100,
+          });
+          break;
+        }
+
+        const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        // Update the Organization with the confirmed subscription plan and status.
+        // In a future iteration this should write to a dedicated Subscription table
+        // to support per-seat billing, proration, and multi-plan history.
+        await prisma.organization.update({
+          where: { id: organizationId },
+          data: {
+            subscriptionPlan:     plan,
+            subscriptionStatus:   'ACTIVE',
+            subscriptionRenewsAt: renewsAt,
+          },
+        });
+
+        log.info('paystack_subscription_activated', {
+          event: 'subscription_activated',
+          organizationId,
+          plan,
+          reference,
+          renewsAt: renewsAt.toISOString(),
+        });
         break;
       }
 

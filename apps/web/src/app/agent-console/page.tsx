@@ -26,13 +26,22 @@ interface Conversation {
   messages?: Message[];
 }
 
+/**
+ * Canned replies an agent can insert with one click.
+ *
+ * Deliberately free of any payment details. One of these used to read
+ * "Transfer to Providus Bank Acc: 9928374102" — an account no tenant on this platform
+ * owns — one click away from being sent to a paying customer. Payment instructions
+ * must come from the organization's own configured details
+ * (Settings → payout account), which the AI payment-guidance tool reads.
+ */
 const QUICK_REPLIES = [
   "Hello! 👋 How can I assist you with your request today?",
-  "💳 Payment Guidance: Transfer to Providus Bank Acc: 9928374102 or pay via online Paystack link. Reply PAID when done.",
   "Thank you for contacting us. Could you please confirm your location?",
   "Our operational hours are Mon - Fri: 8:00 AM - 6:00 PM.",
   "I have updated your request in our system. An agent will get in touch shortly.",
   "You can book an appointment directly through our scheduling portal.",
+  "Let me check that for you — one moment please.",
 ];
 
 export default function AgentConsolePage() {

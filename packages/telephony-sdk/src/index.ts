@@ -14,6 +14,33 @@ export interface TelephonyProvider {
   endCall(callId: string): Promise<boolean>;
   generateInboundWebhookResponse(promptText: string, streamUrl: string): string;
   verifyCallerId(phoneNumber: string): Promise<boolean>;
+  /**
+   * False when the provider cannot actually place a call from this process — either
+   * because it has no API integration yet, or because its credentials are missing.
+   * Callers must check this instead of assuming every provider can dial out.
+   */
+  canPlaceOutboundCalls(): boolean;
+}
+
+/**
+ * Thrown when a provider cannot place a call.
+ *
+ * Every provider in this file used to swallow failures and return a locally-minted
+ * fake identifier (`CA_TW_1699…`, `PL_…`, `AT_…`). The caller then wrote a CallLog
+ * row and reported success to the dashboard for a call that was never placed, and no
+ * status webhook would ever arrive to correct it. Failing loudly is the only honest
+ * option: a fabricated call ID is worse than an error.
+ */
+export class TelephonyNotAvailableError extends Error {
+  constructor(provider: TelephonyProviderType, reason: string) {
+    super(`${provider} cannot place outbound calls: ${reason}`);
+    this.name = 'TelephonyNotAvailableError';
+  }
+}
+
+/** Public base URL of the ACE API, used for carrier callbacks. */
+function apiBaseUrl(): string {
+  return (process.env.API_BASE_URL || process.env.API_URL || 'http://localhost:4000').replace(/\/+$/, '');
 }
 
 export class TwilioProvider implements TelephonyProvider {
@@ -24,50 +51,62 @@ export class TwilioProvider implements TelephonyProvider {
     private authToken?: string
   ) {}
 
+  private credentials() {
+    return {
+      sid: this.accountSid || process.env.TWILIO_ACCOUNT_SID,
+      token: this.authToken || process.env.TWILIO_AUTH_TOKEN,
+    };
+  }
+
+  canPlaceOutboundCalls(): boolean {
+    const { sid, token } = this.credentials();
+    return Boolean(sid && token);
+  }
+
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const sid = this.accountSid || process.env.TWILIO_ACCOUNT_SID;
-    const token = this.authToken || process.env.TWILIO_AUTH_TOKEN;
+    const { sid, token } = this.credentials();
 
-    if (sid && token) {
-      try {
-        const baseUrl = process.env.API_URL || 'http://localhost:4000';
-        const params = new URLSearchParams({
-          To: options.toNumber,
-          From: options.fromNumber,
-          Url: `${baseUrl}/api/telephony/inbound/twilio?orgId=${options.organizationId}`,
-        });
-
-        const authHeader = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
-        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
-          method: 'POST',
-          headers: {
-            Authorization: authHeader,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: params.toString(),
-        });
-
-        if (res.ok) {
-          const data: any = await res.json();
-          return {
-            callId: data.sid,
-            organizationId: options.organizationId,
-            from: options.fromNumber,
-            to: options.toNumber,
-            direction: CallDirection.OUTBOUND,
-            status: CallStatus.IN_PROGRESS,
-            startTime: new Date(),
-            provider: this.type,
-          };
-        }
-      } catch {
-        // Fallback to local record if network or credentials fail
-      }
+    if (!sid || !token) {
+      throw new TelephonyNotAvailableError(
+        this.type,
+        'TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN are not configured for this organization.'
+      );
     }
 
-    const callSid = `CA_TW_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const params = new URLSearchParams({
+      To: options.toNumber,
+      From: options.fromNumber,
+      Url: `${apiBaseUrl()}/api/telephony/inbound/twilio?orgId=${encodeURIComponent(options.organizationId)}`,
+      StatusCallback: `${apiBaseUrl()}/api/telephony/status/twilio`,
+      StatusCallbackMethod: 'POST',
+    });
+    // Twilio wants repeated StatusCallbackEvent params, not a comma-joined value.
+    for (const event of ['initiated', 'ringing', 'answered', 'completed']) {
+      params.append('StatusCallbackEvent', event);
+    }
+
+    const authHeader = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => res.statusText);
+      throw new TelephonyNotAvailableError(this.type, `Twilio API returned ${res.status}: ${detail.slice(0, 300)}`);
+    }
+
+    const data: any = await res.json();
+    if (!data?.sid) {
+      throw new TelephonyNotAvailableError(this.type, 'Twilio accepted the request but returned no call SID.');
+    }
+
     return {
-      callId: callSid,
+      callId: data.sid,
       organizationId: options.organizationId,
       from: options.fromNumber,
       to: options.toNumber,
@@ -78,16 +117,53 @@ export class TwilioProvider implements TelephonyProvider {
     };
   }
 
-
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
-    return {
-      success: true,
-      message: `Call ${options.callId} transferred to ${options.targetPhoneNumber} via Twilio TwiML redirect`,
-    };
+    const { sid, token } = this.credentials();
+    if (!sid || !token) {
+      return { success: false, message: 'Twilio credentials are not configured — call was not transferred.' };
+    }
+
+    // Redirect the live call to TwiML that dials the target number.
+    const twiml =
+      `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+      (options.announceMessage ? `<Say>${escapeXml(options.announceMessage)}</Say>` : '') +
+      `<Dial>${escapeXml(options.targetPhoneNumber)}</Dial>` +
+      `</Response>`;
+
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${encodeURIComponent(options.callId)}.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ Twiml: twiml }).toString(),
+      }
+    );
+
+    return res.ok
+      ? { success: true, message: `Call ${options.callId} transferred to ${options.targetPhoneNumber}.` }
+      : { success: false, message: `Twilio rejected the transfer (HTTP ${res.status}).` };
   }
 
   async endCall(callId: string): Promise<boolean> {
-    return true;
+    const { sid, token } = this.credentials();
+    if (!sid || !token) return false;
+
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${encodeURIComponent(callId)}.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ Status: 'completed' }).toString(),
+      }
+    ).catch(() => null);
+
+    return Boolean(res?.ok);
   }
 
   /**
@@ -115,13 +191,14 @@ export class TwilioProvider implements TelephonyProvider {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="${streamUrl}" track="both_tracks" />
+        <Stream url="${escapeXml(streamUrl)}" track="both_tracks" />
     </Connect>
 </Response>`;
   }
 
+  /** E.164: leading +, country code, then 6–14 more digits. */
   async verifyCallerId(phoneNumber: string): Promise<boolean> {
-    return phoneNumber.length >= 10;
+    return isE164(phoneNumber);
   }
 }
 
@@ -133,26 +210,25 @@ export class PlivoProvider implements TelephonyProvider {
     private authToken?: string
   ) {}
 
-  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `PL_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+  /** No Plivo REST integration exists in this package yet. */
+  canPlaceOutboundCalls(): boolean {
+    return false;
+  }
+
+  async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
+    throw new TelephonyNotAvailableError(
+      this.type,
+      'Outbound calling via Plivo is not implemented. Use the Twilio or Telnyx provider, ' +
+      'or route your Plivo number through a Twilio SIP domain.'
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
-    return { success: true, message: `Plivo call transferred to ${options.targetPhoneNumber}` };
+    return { success: false, message: 'Plivo call transfer is not implemented in this build.' };
   }
 
-  async endCall(callId: string): Promise<boolean> {
-    return true;
+  async endCall(_callId: string): Promise<boolean> {
+    return false;
   }
 
   /**
@@ -172,13 +248,13 @@ export class PlivoProvider implements TelephonyProvider {
    */
   generateInboundWebhookResponse(promptText: string, _streamUrl: string): string {
     return `<Response>
-    <Speak>${promptText}</Speak>
+    <Speak>${escapeXml(promptText)}</Speak>
     <Hangup />
 </Response>`;
   }
 
   async verifyCallerId(phoneNumber: string): Promise<boolean> {
-    return true;
+    return isE164(phoneNumber);
   }
 }
 
@@ -187,45 +263,56 @@ export class TelnyxProvider implements TelephonyProvider {
 
   constructor(private apiKey?: string, private publicKey?: string) {}
 
-  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const key = this.apiKey || process.env.TELNYX_API_KEY;
-    const callId = `TL_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  private key(): string | undefined {
+    return this.apiKey || process.env.TELNYX_API_KEY;
+  }
 
-    if (key) {
-      try {
-        const res = await fetch('https://api.telnyx.com/v2/calls', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${key}`,
-          },
-          body: JSON.stringify({
-            to: options.toNumber,
-            from: options.fromNumber,
-            connection_id: process.env.TELNYX_CONNECTION_ID || 'default',
-            stream_url: `${process.env.API_URL?.replace(/^http/, 'ws')}/media-stream`,
-          }),
-        });
-        const data: any = await res.json();
-        if (data?.data?.call_control_id) {
-          return {
-            callId: data.data.call_control_id,
-            organizationId: options.organizationId,
-            from: options.fromNumber,
-            to: options.toNumber,
-            direction: CallDirection.OUTBOUND,
-            status: CallStatus.QUEUED,
-            startTime: new Date(),
-            provider: this.type,
-          };
-        }
-      } catch (err) {
-        console.error('Telnyx call initiation error:', err);
-      }
+  canPlaceOutboundCalls(): boolean {
+    return Boolean(this.key() && process.env.TELNYX_CONNECTION_ID);
+  }
+
+  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
+    const key = this.key();
+    if (!key) {
+      throw new TelephonyNotAvailableError(this.type, 'TELNYX_API_KEY is not configured.');
+    }
+
+    // 'default' is not a valid Telnyx connection id — sending it produced a 422 that
+    // the old code swallowed, returning a fabricated TL_… id for a call never placed.
+    const connectionId = process.env.TELNYX_CONNECTION_ID;
+    if (!connectionId) {
+      throw new TelephonyNotAvailableError(
+        this.type,
+        'TELNYX_CONNECTION_ID is not set. Copy the Call Control Application ID from the Telnyx portal.'
+      );
+    }
+
+    const res = await fetch('https://api.telnyx.com/v2/calls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        to: options.toNumber,
+        from: options.fromNumber,
+        connection_id: connectionId,
+        webhook_url: `${apiBaseUrl()}/api/telephony/status/telnyx`,
+      }),
+    });
+
+    const data: any = await res.json().catch(() => null);
+    const callControlId = data?.data?.call_control_id;
+
+    if (!res.ok || !callControlId) {
+      throw new TelephonyNotAvailableError(
+        this.type,
+        `Telnyx API returned ${res.status}: ${JSON.stringify(data?.errors ?? data).slice(0, 300)}`
+      );
     }
 
     return {
-      callId,
+      callId: callControlId,
       organizationId: options.organizationId,
       from: options.fromNumber,
       to: options.toNumber,
@@ -237,18 +324,38 @@ export class TelnyxProvider implements TelephonyProvider {
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
-    return { success: true, message: `Telnyx call transferred to ${options.targetPhoneNumber}` };
+    const key = this.key();
+    if (!key) return { success: false, message: 'Telnyx API key is not configured — call was not transferred.' };
+
+    const res = await fetch(
+      `https://api.telnyx.com/v2/calls/${encodeURIComponent(options.callId)}/actions/transfer`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ to: options.targetPhoneNumber }),
+      }
+    ).catch(() => null);
+
+    return res?.ok
+      ? { success: true, message: `Telnyx call transferred to ${options.targetPhoneNumber}.` }
+      : { success: false, message: `Telnyx rejected the transfer (HTTP ${res?.status ?? 'network error'}).` };
   }
 
   async endCall(callId: string): Promise<boolean> {
-    return true;
+    const key = this.key();
+    if (!key) return false;
+    const res = await fetch(
+      `https://api.telnyx.com/v2/calls/${encodeURIComponent(callId)}/actions/hangup`,
+      { method: 'POST', headers: { Authorization: `Bearer ${key}` } }
+    ).catch(() => null);
+    return Boolean(res?.ok);
   }
 
   generateInboundWebhookResponse(promptText: string, streamUrl: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrl}" />
+    <Stream url="${escapeXml(streamUrl)}" />
   </Connect>
 </Response>`;
   }
@@ -266,26 +373,24 @@ export class AfricasTalkingProvider implements TelephonyProvider {
     private apiKey?: string
   ) {}
 
-  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `AT_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+  canPlaceOutboundCalls(): boolean {
+    return false;
+  }
+
+  async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
+    throw new TelephonyNotAvailableError(
+      this.type,
+      "Outbound calling via Africa's Talking is not implemented. Forward the number to a " +
+      'Twilio SIP domain and place the call through the Twilio provider instead.'
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
-    return { success: true, message: `Africa's Talking call redirected to ${options.targetPhoneNumber}` };
+    return { success: false, message: "Africa's Talking call transfer is not implemented in this build." };
   }
 
-  async endCall(callId: string): Promise<boolean> {
-    return true;
+  async endCall(_callId: string): Promise<boolean> {
+    return false;
   }
 
   /**
@@ -304,7 +409,7 @@ export class AfricasTalkingProvider implements TelephonyProvider {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <GetDigits timeout="30" finishOnKey="#">
-        <Say>${promptText} Press any key to continue or hash to end.</Say>
+        <Say>${escapeXml(promptText)} Press any key to continue or hash to end.</Say>
     </GetDigits>
 </Response>`;
   }
@@ -327,29 +432,34 @@ export class AfricasTalkingProvider implements TelephonyProvider {
 export class NigeriaCarrierForwardProvider implements TelephonyProvider {
   type = TelephonyProviderType.NIGERIA_CARRIER_FORWARD;
 
-  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `NG_TELCO_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+  /**
+   * Nigerian carrier SIP forwarding is an *inbound* routing arrangement: the carrier forwards calls into a
+   * Twilio SIP domain, which then hits our Twilio webhook. There is no REST API on
+   * this side to originate a call, so outbound dialling must go through the Twilio
+   * provider. Returning a synthetic call id here (as this used to) recorded calls
+   * in the dashboard that were never placed.
+   */
+  canPlaceOutboundCalls(): boolean {
+    return false;
+  }
+
+  async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
+    throw new TelephonyNotAvailableError(
+      this.type,
+      'Nigerian carrier SIP forwarding handles inbound calls only. Select the Twilio provider to place outbound calls '
+      + 'from your forwarded number.'
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
     return {
-      success: true,
-      message: `Call transferred via Nigerian Telco SIP bridge to agent line: ${options.targetPhoneNumber}`,
+      success: false,
+      message: 'Call transfer must be performed by the underlying Twilio SIP domain, not this provider.',
     };
   }
 
-  async endCall(callId: string): Promise<boolean> {
-    return true;
+  async endCall(_callId: string): Promise<boolean> {
+    return false;
   }
 
   /**
@@ -360,102 +470,108 @@ export class NigeriaCarrierForwardProvider implements TelephonyProvider {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="${streamUrl}" track="both_tracks" />
+        <Stream url="${escapeXml(streamUrl)}" track="both_tracks" />
     </Connect>
 </Response>`;
   }
 
   async verifyCallerId(phoneNumber: string): Promise<boolean> {
     // Validates Nigerian MSISDN formats (+234 / 080 / 081 / 070 / 090 / 091)
-    const cleanNumber = phoneNumber.replace(/\s+/g, '');
-    const ngRegex = /^(?:\+234|234|0)[789][01]\d{8}$/;
-    return ngRegex.test(cleanNumber);
+    return isNigerianMsisdn(phoneNumber);
   }
 }
 
 export class MTNEnterpriseSIPProvider implements TelephonyProvider {
   type = TelephonyProviderType.MTN_ENTERPRISE_SIP;
 
-  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `MTN_SIP_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+  /**
+   * MTN Business SIP trunking is an *inbound* routing arrangement: the carrier forwards calls into a
+   * Twilio SIP domain, which then hits our Twilio webhook. There is no REST API on
+   * this side to originate a call, so outbound dialling must go through the Twilio
+   * provider. Returning a synthetic call id here (as this used to) recorded calls
+   * in the dashboard that were never placed.
+   */
+  canPlaceOutboundCalls(): boolean {
+    return false;
+  }
+
+  async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
+    throw new TelephonyNotAvailableError(
+      this.type,
+      'MTN Business SIP trunking handles inbound calls only. Select the Twilio provider to place outbound calls '
+      + 'from your forwarded number.'
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
     return {
-      success: true,
-      message: `Call transferred via MTN Business SIP Trunk to ${options.targetPhoneNumber}`,
+      success: false,
+      message: 'Call transfer must be performed by the underlying Twilio SIP domain, not this provider.',
     };
   }
 
-  async endCall(callId: string): Promise<boolean> {
-    return true;
+  async endCall(_callId: string): Promise<boolean> {
+    return false;
   }
 
   generateInboundWebhookResponse(_promptText: string, streamUrl: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="${streamUrl}" track="both_tracks" />
+        <Stream url="${escapeXml(streamUrl)}" track="both_tracks" />
     </Connect>
 </Response>`;
   }
 
   async verifyCallerId(phoneNumber: string): Promise<boolean> {
-    const cleanNumber = phoneNumber.replace(/\s+/g, '');
-    return /^(?:\+234|234|0)[789][01]\d{8}$/.test(cleanNumber);
+    return isNigerianMsisdn(phoneNumber);
   }
 }
 
 export class AirtelBusinessSIPProvider implements TelephonyProvider {
   type = TelephonyProviderType.AIRTEL_BUSINESS_SIP;
 
-  async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `AIRTEL_SIP_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+  /**
+   * Airtel Business SIP trunking is an *inbound* routing arrangement: the carrier forwards calls into a
+   * Twilio SIP domain, which then hits our Twilio webhook. There is no REST API on
+   * this side to originate a call, so outbound dialling must go through the Twilio
+   * provider. Returning a synthetic call id here (as this used to) recorded calls
+   * in the dashboard that were never placed.
+   */
+  canPlaceOutboundCalls(): boolean {
+    return false;
+  }
+
+  async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
+    throw new TelephonyNotAvailableError(
+      this.type,
+      'Airtel Business SIP trunking handles inbound calls only. Select the Twilio provider to place outbound calls '
+      + 'from your forwarded number.'
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
     return {
-      success: true,
-      message: `Call transferred via Airtel Business SIP Trunk to ${options.targetPhoneNumber}`,
+      success: false,
+      message: 'Call transfer must be performed by the underlying Twilio SIP domain, not this provider.',
     };
   }
 
-  async endCall(callId: string): Promise<boolean> {
-    return true;
+  async endCall(_callId: string): Promise<boolean> {
+    return false;
   }
 
   generateInboundWebhookResponse(_promptText: string, streamUrl: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="${streamUrl}" track="both_tracks" />
+        <Stream url="${escapeXml(streamUrl)}" track="both_tracks" />
     </Connect>
 </Response>`;
   }
 
   async verifyCallerId(phoneNumber: string): Promise<boolean> {
-    const cleanNumber = phoneNumber.replace(/\s+/g, '');
-    return /^(?:\+234|234|0)[789][01]\d{8}$/.test(cleanNumber);
+    return isNigerianMsisdn(phoneNumber);
   }
 }
 
@@ -482,3 +598,31 @@ export class TelephonyFactory {
   }
 }
 
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * E.164 validation: a leading '+', a non-zero country code digit, then 7–14 more
+ * digits. The previous check (`phoneNumber.length >= 10`) accepted "abcdefghij".
+ */
+export function isE164(phoneNumber: string): boolean {
+  return /^\+[1-9]\d{7,14}$/.test((phoneNumber ?? '').replace(/[\s()-]/g, ''));
+}
+
+/**
+ * Nigerian MSISDN in either local (0803…) or international (+234803…) form.
+ */
+export function isNigerianMsisdn(phoneNumber: string): boolean {
+  const clean = (phoneNumber ?? '').replace(/[\s()-]/g, '');
+  return /^(?:\+234|234|0)[789][01]\d{8}$/.test(clean);
+}
+
+/** Escapes a value for safe interpolation into TwiML/XML. */
+export function escapeXml(value: string): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}

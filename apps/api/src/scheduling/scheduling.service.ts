@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
@@ -77,11 +77,43 @@ export class SchedulingService {
       serviceName: string;
       staffName?: string;
       startTime: string;
+      durationMinutes?: number;
       notes?: string;
     }
   ) {
     const start = new Date(data.startTime);
-    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    if (isNaN(start.getTime())) {
+      throw new BadRequestException('startTime must be a valid ISO 8601 date string');
+    }
+    if (start.getTime() < Date.now()) {
+      throw new BadRequestException('Booking time cannot be in the past');
+    }
+
+    const end = new Date(start.getTime() + (data.durationMinutes ?? 30) * 60 * 1000);
+
+    // The contact must belong to this organization — otherwise an authenticated user
+    // could attach a booking to another tenant's customer record just by id.
+    const contact = await prisma.contact.findFirst({
+      where: { id: data.contactId, organizationId },
+      select: { id: true },
+    });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    // Check the slot is free before promising it.
+    //
+    // This check did not exist: any number of bookings could be written over the same
+    // half hour with the same staff member, and every one of them received a
+    // "confirmed" email. Two customers turning up for the same slot is a failure the
+    // customer discovers in the waiting room.
+    const conflict = await this.findConflictingBooking(organizationId, start, end, data.staffName);
+    if (conflict) {
+      throw new ConflictException(
+        `That slot is already taken by ${conflict.serviceName} ` +
+        `(${conflict.startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })})` +
+        (data.staffName ? ` for ${data.staffName}` : '') +
+        '. Please choose another time.'
+      );
+    }
 
     const booking = await prisma.booking.create({
       data: {
@@ -104,6 +136,33 @@ export class SchedulingService {
     return booking;
   }
 
+  /**
+   * Returns an overlapping CONFIRMED/RESCHEDULED booking, if any.
+   *
+   * Overlap test is the standard half-open interval comparison
+   * (existing.start < new.end AND existing.end > new.start), which correctly treats
+   * back-to-back bookings as non-conflicting.
+   */
+  private async findConflictingBooking(
+    organizationId: string,
+    start: Date,
+    end: Date,
+    staffName?: string,
+    excludeBookingId?: string
+  ) {
+    return prisma.booking.findFirst({
+      where: {
+        organizationId,
+        ...(staffName ? { staffName } : {}),
+        ...(excludeBookingId ? { NOT: { id: excludeBookingId } } : {}),
+        status: { in: [BookingStatus.CONFIRMED, BookingStatus.RESCHEDULED] },
+        startTime: { lt: end },
+        endTime: { gt: start },
+      },
+      select: { id: true, serviceName: true, startTime: true },
+    });
+  }
+
   // ─── Bookings: Cancel ─────────────────────────────────────────────────────────
 
   async cancelBooking(organizationId: string, bookingId: string, reason?: string) {
@@ -119,11 +178,16 @@ export class SchedulingService {
       throw new BadRequestException('Completed bookings cannot be cancelled — request a refund instead');
     }
 
+    // Append rather than overwrite. Replacing `notes` wholesale destroyed whatever
+    // the operator had written there AND the [REMINDED_72H]/[REMINDED_48H] markers
+    // that AppointmentReminderService uses for idempotency.
+    const cancellationNote = reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer';
+
     return prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: BookingStatus.CANCELLED,
-        notes: reason ? `Cancelled by customer: ${reason}` : (booking.notes ?? 'Cancelled by customer'),
+        notes: [booking.notes, cancellationNote].filter(Boolean).join('\n'),
         updatedAt: new Date(),
       },
       include: { contact: true },
@@ -159,6 +223,17 @@ export class SchedulingService {
     }
 
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+
+    const conflict = await this.findConflictingBooking(
+      organizationId, start, end, booking.staffName ?? undefined, bookingId
+    );
+    if (conflict) {
+      throw new ConflictException(
+        `That slot is already taken by ${conflict.serviceName} ` +
+        `(${conflict.startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })}). ` +
+        'Please choose another time.'
+      );
+    }
 
     return prisma.booking.update({
       where: { id: bookingId },
@@ -206,7 +281,7 @@ export class SchedulingService {
         where: { id: bookingId },
         data: {
           status: BookingStatus.CANCELLED,
-          notes: `Refund requested (${ticketNumber}): ${reason}`,
+          notes: [booking.notes, `Refund requested (${ticketNumber}): ${reason}`].filter(Boolean).join('\n'),
           updatedAt: new Date(),
         },
       });
@@ -248,12 +323,26 @@ export class SchedulingService {
       specialRequests?: string;
     }
   ) {
+    const contact = await prisma.contact.findFirst({
+      where: { id: data.contactId, organizationId },
+      select: { id: true },
+    });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    const reservationTime = new Date(data.reservationTime);
+    if (isNaN(reservationTime.getTime())) {
+      throw new BadRequestException('reservationTime must be a valid ISO 8601 date string');
+    }
+    if (!Number.isInteger(data.partySize) || data.partySize < 1 || data.partySize > 100) {
+      throw new BadRequestException('partySize must be a whole number between 1 and 100');
+    }
+
     return prisma.reservation.create({
       data: {
         organizationId,
         contactId: data.contactId,
         partySize: data.partySize,
-        reservationTime: new Date(data.reservationTime),
+        reservationTime,
         tableOrRoomNumber: data.tableOrRoomNumber,
         specialRequests: data.specialRequests,
         status: BookingStatus.CONFIRMED,
@@ -278,13 +367,13 @@ export class SchedulingService {
       throw new BadRequestException('Completed reservations cannot be cancelled — request a refund instead');
     }
 
+    const cancellationNote = reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer';
+
     return prisma.reservation.update({
       where: { id: reservationId },
       data: {
         status: BookingStatus.CANCELLED,
-        specialRequests: reason
-          ? `Cancelled by customer: ${reason}`
-          : (reservation.specialRequests ?? 'Cancelled by customer'),
+        specialRequests: [reservation.specialRequests, cancellationNote].filter(Boolean).join('\n'),
         updatedAt: new Date(),
       },
       include: { contact: true },
@@ -360,7 +449,7 @@ export class SchedulingService {
         where: { id: reservationId },
         data: {
           status: BookingStatus.CANCELLED,
-          specialRequests: `Refund requested (${ticketNumber}): ${reason}`,
+          specialRequests: [reservation.specialRequests, `Refund requested (${ticketNumber}): ${reason}`].filter(Boolean).join('\n'),
           updatedAt: new Date(),
         },
       });

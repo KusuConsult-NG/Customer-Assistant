@@ -1,10 +1,57 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { assertPublicHttpUrl } from '../common/url-safety';
 import { QdrantRAGService } from '@ace/orchestrator';
 import { Queue } from 'bullmq';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('KnowledgeService');
+
+/** Chunk size in characters (~450 tokens), matching document.worker.ts. */
+const CHUNK_SIZE_CHARS = 1800;
+
+/** Text-bearing MIME types this process can extract without the worker. */
+const INLINE_EXTRACTABLE = ['text/plain', 'text/markdown', 'text/html', 'application/json'];
+
+/**
+ * Splits text into overlapping chunks. The 10% overlap preserves context across
+ * boundaries so a sentence spanning two chunks is still retrievable.
+ */
+function chunkText(text: string, chunkSize = CHUNK_SIZE_CHARS): string[] {
+  const overlap = Math.floor(chunkSize * 0.1);
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    chunks.push(text.slice(i, Math.min(i + chunkSize, text.length)).trim());
+    i += chunkSize - overlap;
+  }
+  return chunks.filter((c) => c.length > 50);
+}
+
+/**
+ * Extracts plain text from a buffer for the MIME types this process can handle.
+ *
+ * PDF and DOCX are binary container formats: decoding them as UTF-8 yields mojibake,
+ * not prose. The inline path therefore refuses them (the background worker owns real
+ * extraction) rather than indexing garbage and reporting success.
+ */
+function extractPlainText(buffer: Buffer, mimeType: string): string {
+  if (!INLINE_EXTRACTABLE.includes(mimeType)) return '';
+  const raw = buffer.toString('utf8');
+  return mimeType === 'text/html'
+    ? raw
+        .replace(/<script\b[^<]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style\b[^<]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    : raw;
+}
 
 /**
  * Supabase Storage bucket name.
@@ -247,6 +294,8 @@ export class KnowledgeService {
 
     // ── Enqueue async processing job (with inline fallback) ──────────────
     let jobId: string | undefined = undefined;
+    let vectorised = false;
+
     try {
       const queue = getDocumentQueue();
       const job = await queue.add('process_document', {
@@ -258,25 +307,35 @@ export class KnowledgeService {
         useSupabaseStorage: true,
       });
       jobId = job.id;
-    } catch {
-      // Fallback: If Redis/BullMQ is unreachable, perform inline indexing for text files
-      const textContent = data.fileBuffer.toString('utf-8');
-      const chunks = textContent.match(/[\s\S]{1,500}/g) || [textContent];
-
-      await prisma.documentChunk.createMany({
-        data: chunks.map((chunkText, idx) => ({
-          documentId: doc.id,
-          organizationId,
-          chunkIndex: idx,
-          content: chunkText,
-        })),
+    } catch (queueErr: any) {
+      // Fallback when Redis/BullMQ is unreachable: index inline.
+      //
+      // The previous fallback wrote raw 500-character chunks to PostgreSQL, marked
+      // the document INDEXED and reported "indexed successfully" — but generated no
+      // embeddings and wrote nothing to Qdrant. Semantic search could not find a
+      // single word of it. That is now done properly (chunk → embed → upsert), and
+      // when embedding is unavailable the document is left in a state that says so.
+      log.warn('document_queue_unavailable_indexing_inline', {
+        organizationId,
+        documentId: doc.id,
+        error: queueErr?.message,
       });
 
-
-      await prisma.knowledgeDocument.update({
-        where: { id: doc.id },
-        data: { status: 'INDEXED', chunkCount: chunks.length },
-      });
+      try {
+        const result = await this.indexDocumentInline(
+          organizationId, doc.id, data.fileBuffer, data.mimeType
+        );
+        vectorised = result.vectorised;
+      } catch (inlineErr: any) {
+        await prisma.knowledgeDocument.update({
+          where: { id: doc.id },
+          data: { status: 'FAILED', errorMessage: String(inlineErr?.message).slice(0, 500) },
+        });
+        throw new ServiceUnavailableException(
+          `Document was uploaded but could not be indexed: ${inlineErr?.message}. ` +
+          `It is marked FAILED — retry once REDIS_URL is reachable.`
+        );
+      }
     }
 
     return {
@@ -284,11 +343,82 @@ export class KnowledgeService {
       title: doc.title,
       fileName: doc.fileName,
       status: jobId ? 'PENDING' : 'INDEXED',
+      /** False when only keyword search will find this document. */
+      semanticSearchEnabled: jobId ? true : vectorised,
       message: jobId
         ? 'Document uploaded successfully. Processing and indexing will complete in 1-2 minutes.'
-        : 'Document uploaded and indexed successfully in single-node mode.',
+        : vectorised
+          ? 'Document uploaded and indexed successfully in single-node mode.'
+          : 'Document uploaded and indexed for keyword search. Semantic search is unavailable ' +
+            'because embeddings could not be generated (check OPENAI_API_KEY and QDRANT_URL).',
       jobId,
     };
+  }
+
+  /**
+   * Chunks, embeds and stores a document without the background worker.
+   * Returns whether vectors were successfully written to Qdrant.
+   */
+  private async indexDocumentInline(
+    organizationId: string,
+    documentId: string,
+    fileBuffer: Buffer,
+    mimeType: string
+  ): Promise<{ chunkCount: number; vectorised: boolean }> {
+    const text = extractPlainText(fileBuffer, mimeType);
+    if (!text.trim()) {
+      throw new Error(
+        `No text could be extracted from this ${mimeType} file. ` +
+        `PDF and DOCX extraction requires the background worker.`
+      );
+    }
+
+    const chunks = chunkText(text);
+
+    await prisma.documentChunk.deleteMany({ where: { documentId } });
+    await prisma.documentChunk.createMany({
+      data: chunks.map((content, chunkIndex) => ({
+        documentId,
+        organizationId,
+        chunkIndex,
+        content,
+      })),
+    });
+
+    const stored = await prisma.documentChunk.findMany({
+      where: { documentId },
+      orderBy: { chunkIndex: 'asc' },
+      select: { id: true, chunkIndex: true, content: true },
+    });
+
+    let vectorised = false;
+    try {
+      await this.ragService.upsertChunks(
+        organizationId,
+        stored.map((c) => ({
+          chunkId: c.id,
+          documentId,
+          chunkIndex: c.chunkIndex,
+          content: c.content,
+        }))
+      );
+      await prisma.documentChunk.updateMany({
+        where: { documentId },
+        data: { qdrantVectorId: null },
+      });
+      vectorised = true;
+    } catch (err: any) {
+      // Keyword search still works off the PostgreSQL chunks; say so rather than
+      // claiming the document is fully searchable.
+      log.warn('inline_vectorisation_failed', { organizationId, documentId, error: err?.message });
+    }
+
+    await prisma.knowledgeDocument.update({
+      where: { id: documentId },
+      data: { status: 'INDEXED', chunkCount: chunks.length, errorMessage: null },
+    });
+
+    return { chunkCount: chunks.length, vectorised };
   }
 
 
@@ -327,8 +457,22 @@ export class KnowledgeService {
 
     const timer = log.startTimer();
 
-    // Delete from Supabase Storage
-    await deleteFromSupabaseStorage(doc.storageUrl);
+    // Delete from Supabase Storage (skipped for crawled pages, whose storageUrl is
+    // the source URL rather than a storage path).
+    if (!/^https?:\/\//i.test(doc.storageUrl)) {
+      await deleteFromSupabaseStorage(doc.storageUrl);
+    }
+
+    // Remove the vectors too.
+    //
+    // These were previously left in Qdrant, with a comment claiming the worker would
+    // clear them "on re-index" — it never does. The orphaned vectors stayed
+    // searchable, so the AI kept quoting deleted documents to customers indefinitely.
+    try {
+      await this.ragService.deleteDocumentVectors(organizationId, documentId);
+    } catch (err: any) {
+      log.warn('qdrant_vector_delete_failed', { organizationId, documentId, error: err?.message });
+    }
 
     // Delete chunks and document record from PostgreSQL
     await prisma.documentChunk.deleteMany({ where: { documentId } });
@@ -355,41 +499,44 @@ export class KnowledgeService {
       cleanUrl = 'https://' + cleanUrl;
     }
 
-    // SSRF Prevention: Validate URL and block internal/private IP space
-    try {
-      const parsedUrl = new URL(cleanUrl);
-      const hostname = parsedUrl.hostname.toLowerCase();
-      
-      const isInternal =
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === '0.0.0.0' ||
-        hostname === '::1' ||
-        hostname === '169.254.169.254' ||
-        hostname.startsWith('10.') ||
-        hostname.startsWith('192.168.') ||
-        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
-        hostname.endsWith('.internal') ||
-        hostname.endsWith('.local');
-
-      if (isInternal) {
-        throw new BadRequestException('Crawling internal or private network IP addresses is strictly prohibited.');
-      }
-    } catch (e: any) {
-      if (e instanceof BadRequestException) throw e;
-      throw new BadRequestException('Invalid website URL provided.');
-    }
+    // SSRF prevention.
+    //
+    // The previous check inspected the hostname STRING only, so it was defeated by
+    // anything that is not a literal private address: a public DNS name that resolves
+    // to 169.254.169.254 or a VPC address, decimal/hex notation (`http://2130706433/`),
+    // or an IPv6-mapped form (`http://[::ffff:169.254.169.254]/`). The hostname is now
+    // RESOLVED and every returned address checked against private ranges before we
+    // fetch, and redirects are refused so a public URL cannot bounce us internally.
+    await assertPublicHttpUrl(cleanUrl);
 
     let html = '';
     try {
       const response = await fetch(cleanUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ACE-Platform-Bot/1.0' },
+        headers: { 'User-Agent': 'ACE-Platform-Bot/1.0 (+knowledge-base crawler)' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
       });
+
+      if (response.status >= 300 && response.status < 400) {
+        throw new BadRequestException(
+          `${cleanUrl} redirects elsewhere. Please supply the final URL directly.`
+        );
+      }
       if (!response.ok) {
         throw new BadRequestException(`Failed to fetch URL ${cleanUrl} (HTTP ${response.status})`);
       }
+
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!/text\/html|text\/plain|application\/xhtml/i.test(contentType)) {
+        throw new BadRequestException(
+          `${cleanUrl} returned "${contentType || 'an unknown content type'}". ` +
+          `Only HTML and plain-text pages can be indexed.`
+        );
+      }
+
       html = await response.text();
     } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(`Could not reach website URL ${cleanUrl}: ${err?.message || 'Network error'}`);
     }
 
@@ -417,32 +564,31 @@ export class KnowledgeService {
         fileSize: Buffer.byteLength(textContent, 'utf-8'),
         mimeType: 'text/html',
         storageUrl: cleanUrl,
-        status: 'INDEXED',
+        status: 'PROCESSING',
       },
     });
 
-    const chunks = textContent.match(/[\s\S]{1,500}/g) || [textContent];
-
-    await prisma.documentChunk.createMany({
-      data: chunks.map((chunkText, idx) => ({
-        documentId: doc.id,
-        organizationId,
-        chunkIndex: idx,
-        content: chunkText,
-      })),
-    });
-
-    await prisma.knowledgeDocument.update({
-      where: { id: doc.id },
-      data: { chunkCount: chunks.length },
-    });
+    // Crawled pages go through the same chunk → embed → upsert path as uploads.
+    // This used to write raw 500-character slices straight to PostgreSQL and set
+    // status INDEXED with no embeddings at all, so semantic search never returned a
+    // single crawled page even though the UI reported it as indexed.
+    const { chunkCount, vectorised } = await this.indexDocumentInline(
+      organizationId,
+      doc.id,
+      Buffer.from(textContent, 'utf-8'),
+      'text/plain'
+    );
 
     return {
       documentId: doc.id,
       title: doc.title,
-      chunksIndexed: chunks.length,
+      chunksIndexed: chunkCount,
       status: 'INDEXED',
-      message: `Successfully crawled and indexed ${chunks.length} sections from ${cleanUrl}`,
+      semanticSearchEnabled: vectorised,
+      message: vectorised
+        ? `Successfully crawled and indexed ${chunkCount} sections from ${cleanUrl}`
+        : `Crawled ${chunkCount} sections from ${cleanUrl}, but embeddings could not be ` +
+          `generated — only keyword search will find this page.`,
     };
   }
 }

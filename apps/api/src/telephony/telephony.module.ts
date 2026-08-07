@@ -6,9 +6,12 @@ import { VoiceAiService } from './voice-ai.service';
 import { TwilioMediaStreamHandler } from './twilio-media-stream.handler';
 import { CallBroadcastService } from './call-broadcast.service';
 import { WebhooksModule } from '../webhooks/webhooks.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [WebhooksModule],
+  // AuthModule exports JwtService, used by VoiceStreamGateway to authenticate
+  // the Socket.IO handshake before an agent may monitor a live call.
+  imports: [WebhooksModule, AuthModule],
   providers: [
     // Core telephony logic
     TelephonyService,

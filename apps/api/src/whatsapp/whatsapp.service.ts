@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
@@ -137,15 +137,16 @@ export class WhatsappService {
 
 
       // ── 1. Resolve Organization from phone number ID ──────────────────────────
-      let config = await prisma.whatsAppConfig.findFirst({
-        where: { phoneNumberId },
+      //
+      // phoneNumberId is the only tenant identifier Meta gives us, so it must match
+      // exactly. There is deliberately no "fall back to any active config" branch:
+      // that routed a customer's inbound message — and the AI reply, the new contact
+      // record and the transcript — into an unrelated organization whenever the
+      // number id was unmapped, and answered them with that org's AI persona and
+      // knowledge base.
+      const config = await prisma.whatsAppConfig.findFirst({
+        where: { phoneNumberId, isActive: true },
       });
-
-      if (!config) {
-        // Fallback: any active config (supports single-tenant deployments with
-        // a single WhatsApp number not yet mapped to a specific incoming number ID)
-        config = await prisma.whatsAppConfig.findFirst({ where: { isActive: true } });
-      }
 
       if (!config) {
         log.warn('whatsapp_no_config_found', {
@@ -153,6 +154,7 @@ export class WhatsappService {
           event: 'config_not_found',
           phoneNumberId,
           fromNumber: fromNumber.slice(-4),
+          hint: 'Add this phoneNumberId under Settings → WhatsApp Integration for the owning organization.',
         });
         return;
       }
@@ -381,16 +383,30 @@ export class WhatsappService {
     });
   }
 
-  async sendAgentMessage(conversationId: string, content: string, agentUserId: string) {
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
+  /**
+   * Sends a human agent's reply out over WhatsApp.
+   *
+   * `organizationId` is required and enforced. The lookup used to be a bare
+   * `findUnique({ where: { id: conversationId } })`, so any authenticated user of any
+   * tenant could post into another tenant's conversation just by knowing (or guessing)
+   * its id — the message would be delivered to that tenant's customer over that
+   * tenant's WhatsApp number, and stored in their transcript.
+   */
+  async sendAgentMessage(
+    conversationId: string,
+    content: string,
+    agentUserId: string,
+    organizationId: string
+  ) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
       include: {
         contact: true,
         organization: { include: { whatsAppConfigs: { where: { isActive: true }, take: 1 } } },
       },
     });
 
-    if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
+    if (!conversation) throw new NotFoundException(`Conversation not found: ${conversationId}`);
 
     // Resolve client first — throws early if credentials missing before writing to DB
     const config = conversation.organization.whatsAppConfigs[0];
@@ -417,7 +433,20 @@ export class WhatsappService {
     return msg;
   }
 
-  async toggleHumanHandoff(conversationId: string, isHumanHandoffActive: boolean, agentUserId?: string) {
+  async toggleHumanHandoff(
+    conversationId: string,
+    isHumanHandoffActive: boolean,
+    organizationId: string,
+    agentUserId?: string
+  ) {
+    // Tenant-scoped: without this check any authenticated user could seize or release
+    // human handoff on another organization's live conversation.
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
+      select: { id: true },
+    });
+    if (!conversation) throw new NotFoundException(`Conversation not found: ${conversationId}`);
+
     return prisma.conversation.update({
       where: { id: conversationId },
       data: {
@@ -459,7 +488,15 @@ export class WhatsappService {
         bodyText: data.bodyText,
         footerText: data.footerText,
         buttons: data.buttons ? data.buttons : undefined,
-        status: 'APPROVED',
+        // PENDING_SUBMISSION, not APPROVED.
+        //
+        // Creating a row here does not register anything with Meta. Only templates
+        // Meta has reviewed and approved can be used in a broadcast, so marking a
+        // freshly-typed local row 'APPROVED' told operators a template was ready to
+        // send when every send using it would be rejected with error 132001
+        // ("template name does not exist"). Submit it in WhatsApp Manager, then set
+        // metaTemplateId and status here.
+        status: 'PENDING_SUBMISSION',
       },
     });
   }
@@ -468,7 +505,7 @@ export class WhatsappService {
     const template = await prisma.whatsAppTemplate.findFirst({
       where: { id, organizationId },
     });
-    if (!template) throw new Error('Template not found');
+    if (!template) throw new NotFoundException('Template not found');
     return prisma.whatsAppTemplate.delete({ where: { id } });
   }
 
@@ -492,7 +529,14 @@ export class WhatsappService {
       where: { id: data.templateId, organizationId },
     });
 
-    if (!template) throw new Error('WhatsApp template not found');
+    if (!template) throw new NotFoundException('WhatsApp template not found');
+
+    if (template.status !== 'APPROVED') {
+      throw new BadRequestException(
+        `Template "${template.name}" has not been approved by Meta yet (status: ${template.status}). ` +
+        'Submit it in WhatsApp Manager and mark it approved before broadcasting.'
+      );
+    }
 
     const config = await prisma.whatsAppConfig.findFirst({
       where: { organizationId, isActive: true },
@@ -513,39 +557,55 @@ export class WhatsappService {
 
     let sentCount = 0;
     let failedCount = 0;
+    const errors: string[] = [];
 
-    if (config?.phoneNumberId && config?.accessToken && !config.accessToken.includes('placeholder')) {
-      const client = resolveWhatsAppClient(config);
-
-      for (const phone of data.recipients) {
-        try {
-          const components: any[] = [];
-          if (data.variables && Object.keys(data.variables).length > 0) {
-            components.push({
-              type: 'body',
-              parameters: Object.values(data.variables).map(v => ({ type: 'text', text: v })),
-            });
-          }
-
-          await client.sendTemplateMessage(phone, template.name, template.language, components);
-          sentCount++;
-        } catch (err) {
-          failedCount++;
-          log.warn('broadcast_recipient_failed', { phone, error: (err as Error).message });
-        }
-      }
-    } else {
-      sentCount = data.recipients.length;
+    // If WhatsApp is not configured, the campaign is FAILED — not "sent".
+    // This branch used to do `sentCount = data.recipients.length`, reporting a
+    // fully-delivered campaign to an audience that received nothing at all.
+    if (!config?.phoneNumberId || !config?.accessToken) {
+      await prisma.broadcastCampaign.update({
+        where: { id: campaign.id },
+        data: { sentCount: 0, failedCount: data.recipients.length, status: 'FAILED' },
+      });
+      throw new BadRequestException(
+        'WhatsApp is not connected for this organization, so no messages were sent. ' +
+        'Configure your Meta credentials under Settings → WhatsApp Integration.'
+      );
     }
 
-    return prisma.broadcastCampaign.update({
+    const client = resolveWhatsAppClient(config);
+
+    for (const phone of data.recipients) {
+      try {
+        const components: any[] = [];
+        if (data.variables && Object.keys(data.variables).length > 0) {
+          components.push({
+            type: 'body',
+            parameters: Object.values(data.variables).map(v => ({ type: 'text', text: v })),
+          });
+        }
+
+        await client.sendTemplateMessage(phone, template.name, template.language, components);
+        sentCount++;
+      } catch (err) {
+        failedCount++;
+        const message = (err as Error).message;
+        if (errors.length < 5) errors.push(message.slice(0, 200));
+        log.warn('broadcast_recipient_failed', { phone: phone.slice(-4), error: message });
+      }
+    }
+
+    const campaignResult = await prisma.broadcastCampaign.update({
       where: { id: campaign.id },
       data: {
         sentCount,
         failedCount,
-        status: failedCount > 0 && sentCount === 0 ? 'FAILED' : 'COMPLETED',
+        status: sentCount === 0 ? 'FAILED' : failedCount > 0 ? 'PARTIAL' : 'COMPLETED',
       },
       include: { template: true },
     });
+
+    // Surface why delivery failed instead of returning a green campaign row.
+    return { ...campaignResult, errors };
   }
 }

@@ -6,6 +6,31 @@ import Link from 'next/link';
 
 import { API_URL } from '@/lib/api';
 
+/**
+ * Must match the IndustryType enum in packages/shared-types (and the Prisma enum).
+ * The previous list offered HOSPITALITY / HEALTHCARE / RETAIL / FINANCE / EDUCATION,
+ * none of which exist server-side, so the API rejected them.
+ */
+const INDUSTRY_OPTIONS = [
+  { value: 'HOSPITAL', label: 'Hospital' },
+  { value: 'CLINIC', label: 'Clinic' },
+  { value: 'HOTEL', label: 'Hotel' },
+  { value: 'RESTAURANT', label: 'Restaurant' },
+  { value: 'SCHOOL', label: 'School' },
+  { value: 'UNIVERSITY', label: 'University' },
+  { value: 'CHURCH', label: 'Church' },
+  { value: 'LAW_FIRM', label: 'Law Firm' },
+  { value: 'REAL_ESTATE', label: 'Real Estate' },
+  { value: 'LOGISTICS', label: 'Logistics' },
+  { value: 'BANK', label: 'Bank' },
+  { value: 'INSURANCE', label: 'Insurance' },
+  { value: 'GOVERNMENT', label: 'Government' },
+  { value: 'SALON_SPA', label: 'Salon & Spa' },
+  { value: 'SME', label: 'Small / Medium Business' },
+  { value: 'ENTERPRISE', label: 'Enterprise' },
+  { value: 'OTHER', label: 'Other' },
+];
+
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -14,7 +39,7 @@ export default function RegisterPage() {
     email: '',
     password: '',
     confirmPassword: '',
-    industry: 'OTHER',
+    industry: 'SME',
     country: 'Nigeria',
   });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -41,6 +66,13 @@ export default function RegisterPage() {
     setStatus('loading');
     setMessage('');
     try {
+      // Field names must match the API's RegisterDto exactly.
+      //
+      // This form used to post adminFullName / adminEmail / adminPassword. The API
+      // reads fullName / email / password, so every one of them arrived as undefined
+      // and registration failed with an opaque 500 from inside bcrypt — sign-up was
+      // completely broken. `industry` likewise sent values (HOSPITALITY, HEALTHCARE,
+      // RETAIL, FINANCE) that are not members of the IndustryType enum.
       const res = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,21 +80,24 @@ export default function RegisterPage() {
           organizationName: formData.orgName,
           industry: formData.industry,
           country: formData.country,
-          adminFullName: formData.fullName,
-          adminEmail: formData.email,
-          adminPassword: formData.password,
+          fullName: formData.fullName,
+          email: formData.email,
+          password: formData.password,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setStatus('success');
-        setMessage('Registration successful! Check your email to verify your account.');
+        setMessage(data.message || 'Registration successful! Check your email to verify your account.');
         setTimeout(() => {
           router.push('/login');
         }, 3000);
       } else {
         setStatus('error');
-        setMessage(data.message || 'Registration failed.');
+        // class-validator returns `message` as a string[] on 400.
+        setMessage(
+          Array.isArray(data.message) ? data.message.join(' ') : (data.message || 'Registration failed.')
+        );
       }
     } catch (err: any) {
       setStatus('error');
@@ -104,7 +139,7 @@ export default function RegisterPage() {
         </div>
         
         <div className="relative z-10 text-sm text-slate-500 dark:text-slate-400">
-          © 2024 ACE Platform. All rights reserved.
+          © 2026 ACE Platform. All rights reserved.
         </div>
       </div>
       
@@ -176,13 +211,15 @@ export default function RegisterPage() {
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none"
                 >
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="HOSPITALITY">Hospitality</option>
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="HEALTHCARE">Healthcare</option>
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="RETAIL">Retail</option>
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="FINANCE">Finance</option>
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="EDUCATION">Education</option>
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="REAL_ESTATE">Real Estate</option>
-                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" value="OTHER">Other</option>
+                  {INDUSTRY_OPTIONS.map(opt => (
+                    <option
+                      key={opt.value}
+                      className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      value={opt.value}
+                    >
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

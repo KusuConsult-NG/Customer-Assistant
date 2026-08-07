@@ -15,19 +15,21 @@ import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
 import { WorkflowsModule } from './workflows/workflows.module';
-import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
-import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
-    // Rate limiting — 3 named tiers used via @Throttle({ <tier>: {} }) decorator
-    // 'auth'    : 5  requests / 60s  — login, register, forgot-password
-    // 'default' : 60 requests / 60s  — all authenticated API routes
-    // 'webhooks': 300 requests / 60s — Meta WhatsApp + Twilio + Paystack webhooks (bursting allowed)
+    // Rate limiting.
+    //
+    // IMPORTANT: ThrottlerGuard applies EVERY configured throttler to EVERY route
+    // (they are ANDed, not selected by decorator). Registering several named tiers
+    // here therefore imposes the *strictest* tier on the whole API — a previous
+    // 3-tier config silently capped every endpoint at 5 requests/minute.
+    //
+    // So there is exactly one tier. Routes that need a different budget override it
+    // per-controller/handler with @Throttle({ default: { limit, ttl } }), and webhooks
+    // opt out entirely with @SkipThrottle().
     ThrottlerModule.forRoot([
-      { name: 'auth',     ttl: 60_000, limit: 5   },
-      { name: 'default',  ttl: 60_000, limit: 60  },
-      { name: 'webhooks', ttl: 60_000, limit: 300 },
+      { name: 'default', ttl: 60_000, limit: 120 },
     ]),
     AuthModule,
     OrganizationsModule,
@@ -45,11 +47,17 @@ import { RolesGuard } from './common/guards/roles.guard';
   ],
   controllers: [AppController],
   providers: [
-    VoiceStreamGateway,
-    // Apply default throttle tier globally to every route.
+    // Apply the default throttle tier globally to every route.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // Enforce RBAC roles globally for @Roles() decorated routes.
-    { provide: APP_GUARD, useClass: RolesGuard },
+    //
+    // RolesGuard is deliberately NOT registered globally. Nest runs guards in the
+    // order global → controller → route, so a global RolesGuard executes BEFORE the
+    // controller's JwtAuthGuard has populated request.user — which made every
+    // @Roles()-decorated endpoint reject with 403 unconditionally. It is now applied
+    // per-controller *after* JwtAuthGuard: @UseGuards(JwtAuthGuard, RolesGuard).
+    //
+    // VoiceStreamGateway is likewise not listed here — TelephonyModule already
+    // provides it, and declaring it twice bound the same Socket.IO namespace twice.
   ],
 })
 export class AppModule {}

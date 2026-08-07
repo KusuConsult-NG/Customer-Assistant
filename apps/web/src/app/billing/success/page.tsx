@@ -25,8 +25,16 @@ function BillingSuccessContent() {
           </div>
         </div>
         
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">Payment Successful!</h1>
-        <p className="text-slate-600 dark:text-slate-400 mb-2 text-lg">Your plan has been upgraded.</p>
+        {/* Reaching this page means Paystack redirected the browser back — not that
+            the charge has settled. Activation happens when Paystack POSTs the signed
+            charge.success webhook, which can arrive a moment later. Claiming "Your
+            plan has been upgraded" here showed an upgrade that may not have happened
+            (and would never happen for a failed or abandoned payment). */}
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">Thanks — payment received</h1>
+        <p className="text-slate-600 dark:text-slate-400 mb-2 text-lg">
+          We&apos;re confirming it with Paystack now. Your plan updates on the billing page
+          within a minute or two.
+        </p>
         
         {reference && (
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-8 font-mono bg-black/20 px-3 py-1.5 rounded-lg border border-white/5">

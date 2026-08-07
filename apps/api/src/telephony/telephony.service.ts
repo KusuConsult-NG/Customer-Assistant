@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
@@ -7,6 +7,25 @@ import { AceLogger, generateCorrelationId } from '../config/logger';
 import { createHmac, timingSafeEqual } from 'crypto';
 
 const log = new AceLogger('TelephonyService');
+
+/**
+ * Public base URL of this API, e.g. https://ace-api.onrender.com
+ *
+ * This is the single source of truth for the callback and media-stream URLs handed
+ * to carriers. It reads API_BASE_URL — the name that is actually provisioned in
+ * .env / .env.example / render.yaml.
+ *
+ * Previously this file read `process.env.API_URL`, which is defined nowhere, so:
+ *   - Twilio signature verification hashed the literal "https://your-api-domain.com",
+ *     never matched, and every authenticated inbound call was answered with
+ *     "This call could not be authenticated. Goodbye.";
+ *   - the <Stream> URL fell back to ws://localhost:4000, which Twilio cannot reach,
+ *     so no production call ever established a media stream.
+ * API_URL is still honoured as a fallback so existing deployments that set it keep working.
+ */
+function apiBaseUrl(): string {
+  return (process.env.API_BASE_URL || process.env.API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+}
 
 /**
  * Verifies Twilio's X-Twilio-Signature header.
@@ -91,29 +110,45 @@ export class TelephonyService {
     });
 
     // ── 1. Resolve organization from the dialled number ───────────────────────
+    //
+    // The dialled number is the only tenant identifier a carrier gives us, so it has
+    // to resolve exactly. `orgId` may also be supplied as a query param on outbound
+    // calls we placed ourselves.
+    const orgIdHint = typeof query?.orgId === 'string' ? query.orgId : undefined;
+
     let config = await prisma.telephonyConfig.findFirst({
-      where: { phoneNumber: toNumber },
+      where: {
+        phoneNumber: toNumber,
+        ...(orgIdHint ? { organizationId: orgIdHint } : {}),
+      },
       include: { organization: true },
     });
 
-    if (!config && toNumber === 'UNKNOWN') {
+    if (!config && orgIdHint) {
       config = await prisma.telephonyConfig.findFirst({
+        where: { organizationId: orgIdHint },
         include: { organization: true },
       });
     }
 
     if (!config) {
-      log.warn('No telephony config found for number', { phoneNumber: toNumber });
-      return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This number is not currently configured. Please try again later.</Say></Response>`;
+      // Never guess. Answering an unrecognised number with "the first telephony
+      // config in the database" served one tenant's AI persona, knowledge base and
+      // booking calendar to another tenant's caller.
+      log.warn('telephony_no_config_for_number', { correlationId, phoneNumber: toNumber, providerType });
+      return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This number is not currently configured. Please try again later.</Say><Hangup/></Response>`;
     }
 
-    const organizationId = config?.organizationId ?? (await this.getFallbackOrgId(correlationId));
+    const organizationId = config.organizationId;
 
     // ── 2. HMAC Signature Verification (per provider) ─────────────────────────
     if (providerType === TelephonyProviderType.TWILIO) {
       const authToken = config?.authToken ?? process.env.TWILIO_AUTH_TOKEN;
       const twilioSig = headers['x-twilio-signature'] as string | undefined;
-      const callbackUrl = `${process.env.API_URL || 'https://your-api-domain.com'}/api/telephony/inbound/twilio`;
+      // Twilio signs the exact URL it requested, query string included.
+      const rawQuery = new URLSearchParams(query ?? {}).toString();
+      const callbackUrl =
+        `${apiBaseUrl()}/api/telephony/inbound/twilio` + (rawQuery ? `?${rawQuery}` : '');
 
       if (authToken && twilioSig) {
         const isValid = verifyTwilioSignature(authToken, twilioSig, callbackUrl, body as Record<string, string>);
@@ -159,10 +194,17 @@ export class TelephonyService {
     }
 
     // ── 3. Record call log ─────────────────────────────────────────────────────
-    const callLog = await prisma.callLog.create({
-      data: {
+    //
+    // callSid is @unique. Carriers retry webhooks on timeout or 5xx, and Twilio also
+    // re-POSTs the voice URL after a <Redirect>, so a plain create() threw P2002 and
+    // returned a 500 — which made the carrier retry again. upsert makes the handler
+    // idempotent.
+    const callLog = await prisma.callLog.upsert({
+      where:  { callSid },
+      update: { status: CallStatus.IN_PROGRESS },
+      create: {
         organizationId,
-        telephonyConfigId: config?.id,
+        telephonyConfigId: config.id,
         callSid,
         fromNumber,
         toNumber,
@@ -194,7 +236,7 @@ export class TelephonyService {
     const welcomeMsg = config?.organization?.welcomeMessage
       ?? 'Hello! Thank you for calling. How may I assist you today?';
 
-    const wsBaseUrl = process.env.API_URL?.replace(/^http/, 'ws') ?? 'ws://localhost:4000';
+    const wsBaseUrl = apiBaseUrl().replace(/^http/, 'ws');
     // Embed org/from/to so TwilioMediaStreamHandler can identify the session
     // without a DB lookup inside the WS upgrade handler.
     const streamParams = new URLSearchParams({
@@ -220,44 +262,59 @@ export class TelephonyService {
   async initiateOutboundCall(
     organizationId: string,
     toNumber: string,
-    providerType: TelephonyProviderType = TelephonyProviderType.NIGERIA_CARRIER_FORWARD
+    providerType?: TelephonyProviderType
   ) {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
 
-    const config = await prisma.telephonyConfig.findFirst({
-      where: { organizationId, isDefault: true },
-    });
+    // Fall back to *any* config for the org, not just isDefault.
+    // OrganizationsService.updateTelephonyConfig never writes isDefault, so an
+    // isDefault-only lookup returned null for every org configured through the
+    // dashboard and outbound calls were placed from the placeholder number
+    // +2348030000000 — which no carrier would accept as a verified caller ID.
+    const config =
+      (await prisma.telephonyConfig.findFirst({ where: { organizationId, isDefault: true } })) ??
+      (await prisma.telephonyConfig.findFirst({ where: { organizationId }, orderBy: { createdAt: 'asc' } }));
 
-    const fromNumber = config?.phoneNumber || process.env.DEFAULT_FROM_NUMBER || '+2348030000000';
+    if (!config?.phoneNumber) {
+      throw new BadRequestException(
+        'No outbound phone number is configured for this organization. ' +
+        'Add one under Settings → Voice & Telephony before placing calls.'
+      );
+    }
+
+    const fromNumber = config.phoneNumber;
+    const resolvedProvider = providerType ?? (config.provider as TelephonyProviderType);
 
     log.info('telephony_outbound_call_initiating', {
       correlationId,
       organizationId,
       toNumber: toNumber.slice(-4).padStart(toNumber.length, '*'),
-      providerType,
+      providerType: resolvedProvider,
     });
 
-    const provider = TelephonyFactory.createProvider(providerType, {
-      accountSid: config?.accountSid,
-      authToken:  config?.authToken,
-      apiKey:     config?.apiKey,
+    const provider = TelephonyFactory.createProvider(resolvedProvider, {
+      accountSid: config.accountSid,
+      authToken:  config.authToken,
+      apiKey:     config.apiKey,
     });
 
     const isVerified = await provider.verifyCallerId(fromNumber);
     if (!isVerified) {
-      log.warn('telephony_caller_id_verification_failed', {
-        correlationId,
-        providerType,
-        fromNumberSuffix: fromNumber.slice(-4),
-      });
+      // The caller ID is what the carrier will reject, so failing here gives the
+      // operator an actionable error instead of a CallLog row for a call that the
+      // carrier silently dropped.
+      throw new BadRequestException(
+        `"${fromNumber}" is not a valid caller ID for the ${resolvedProvider} provider. ` +
+        `Verify the number with your carrier and update Settings → Voice & Telephony.`
+      );
     }
 
     const record = await provider.initiateCall({
       organizationId,
       fromNumber,
       toNumber,
-      provider: providerType,
+      provider: resolvedProvider,
     });
 
     const callLog = await prisma.callLog.create({
@@ -268,7 +325,7 @@ export class TelephonyService {
         toNumber,
         direction:   CallDirection.OUTBOUND,
         status:      CallStatus.QUEUED,
-        provider:    providerType as any,
+        provider:    resolvedProvider as any,
       },
     });
 
@@ -336,16 +393,5 @@ export class TelephonyService {
       prisma.callLog.count({ where: { organizationId } }),
     ]);
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
-  }
-
-  private async getFallbackOrgId(correlationId: string): Promise<string> {
-    const org = await prisma.organization.findFirst();
-    if (org) return org.id;
-
-    log.warn('telephony_no_org_found_creating_default', { correlationId });
-    const newOrg = await prisma.organization.create({
-      data: { name: 'Default Organization', slug: 'default-org' },
-    });
-    return newOrg.id;
   }
 }

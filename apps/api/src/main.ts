@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { WebSocketServer } from 'ws';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { validateEnvironment } from './config/env.validation';
 import { attachRedisAdapter } from './config/socket-redis-adapter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
@@ -21,9 +23,14 @@ async function bootstrap() {
   //   - WhatsApp webhook HMAC-SHA256 signature verification (X-Hub-Signature-256)
   //   - Paystack webhook HMAC-SHA256 signature verification (X-Paystack-Signature)
   // Without this, request.rawBody is undefined and signature checks always fail.
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody:    true,
     bufferLogs: true,
+    // Body parsing is configured explicitly below via useBodyParser(). Letting Nest
+    // install its own parsers first would win (Express marks the request as parsed and
+    // later parsers no-op), pinning every endpoint to the 100 kB Express default —
+    // which is why base64 knowledge-base uploads 413'd despite a documented 50 MB limit.
+    bodyParser: false,
   });
 
   // ── 3. CORS configuration ──────────────────────────────────────────────────
@@ -62,11 +69,26 @@ async function bootstrap() {
     })
   );
 
-  // ── 6. Global request size limits ─────────────────────────────────────────
-  app.use(require('express').json({ limit: '1mb' }));
-  app.use(require('express').urlencoded({ extended: true, limit: '1mb' }));
+  // ── 5b. Global exception filter ───────────────────────────────────────────
+  // Turns database-layer failures into honest HTTP codes: pool exhaustion becomes a
+  // retryable 503 rather than a 500, unique violations become 409, and internal
+  // details are never sent to the client.
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
-  // ── 6. Start listening ────────────────────────────────────────────────────
+  // ── 6. Global request size limits ─────────────────────────────────────────
+  //
+  // KnowledgeService accepts documents up to 50 MB, and the upload endpoint carries
+  // them base64-encoded inside a JSON body — base64 inflates by ~4/3, so the JSON
+  // limit has to clear ~67 MB for a 50 MB file to get through.
+  //
+  // urlencoded stays small: the only form-encoded traffic is Twilio's webhook
+  // callbacks, which are a few kilobytes.
+  const MAX_JSON_BODY = process.env.MAX_JSON_BODY_SIZE ?? '70mb';
+  app.useBodyParser('json',       { limit: MAX_JSON_BODY });
+  app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
+  logger.log(`📥 Max JSON request body: ${MAX_JSON_BODY}`);
+
+  // ── 7. Start listening ────────────────────────────────────────────────────
   const port = parseInt(process.env.PORT ?? '4000', 10);
   await app.listen(port, '0.0.0.0');
 

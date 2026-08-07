@@ -42,3 +42,6 @@ apps/api/uploads/
 # Test coverage
 coverage/
 .nyc_output/
+
+# E2E validation output (regenerated per run)
+e2e-validation/results.json

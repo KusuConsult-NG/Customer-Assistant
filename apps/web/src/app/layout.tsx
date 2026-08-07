@@ -26,7 +26,28 @@ import {
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, clearSession } from '@/lib/api';
+
+/**
+ * Routes reachable without a session.
+ *
+ * Kept as one list because the redirect guard and the chrome-less layout check must
+ * agree. They were two separately-maintained conditions, and /reset-password was
+ * missing from both — so anyone following a password reset link was bounced to
+ * /login before they could set a password.
+ *
+ * /widget is excluded from the dashboard chrome but is not listed here: it is an
+ * authenticated settings page, and treating it as public let it render without a
+ * session and then fail on every API call.
+ */
+const PUBLIC_ROUTES = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/setup-account',
+];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -59,35 +80,75 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     const token = localStorage.getItem('ace_token');
-    if (token) {
-      const socket = io(API_URL, {
-        auth: { token }
-      });
-      const handleEvent = (type: string) => (data: any) => {
-        setNotifications(prev => {
-          const newNotifs = [{ type, text: data?.text || `New ${type.replace('new_', '')}`, timestamp: new Date().toISOString(), read: false }, ...prev];
-          return newNotifs.slice(0, 20);
-        });
-      };
-      socket.on('new_message', handleEvent('new_message'));
-      socket.on('new_ticket', handleEvent('new_ticket'));
-      socket.on('new_call', handleEvent('new_call'));
-      socket.on('new_lead', handleEvent('new_lead'));
-      return () => { socket.disconnect(); };
-    }
+    if (!token) return;
+
+    // Connect to the '/events' NAMESPACE, where AgentConsoleGateway actually lives.
+    // This used to call io(API_URL), landing on the default '/' namespace — which has
+    // no gateway at all — and then listen for 'new_message' / 'new_call', names the
+    // server never emits (it emits 'new_message_received' and 'call_status_updated').
+    // The bell icon could therefore never show a single notification.
+    const socket = io(`${API_URL}/events`, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
+
+    const push = (type: string, text: string) => {
+      setNotifications(prev => [
+        { type, text, timestamp: new Date().toISOString(), read: false },
+        ...prev,
+      ].slice(0, 20));
+    };
+
+    socket.on('new_message_received', (data: any) =>
+      push('message', data?.message?.content ? `New message: ${String(data.message.content).slice(0, 60)}` : 'New message received'));
+    socket.on('call_status_updated', (data: any) =>
+      push('call', `Call ${data?.status ?? 'updated'}`));
+    socket.on('conversation_takeover_updated', () =>
+      push('handoff', 'A conversation was handed to an agent'));
+    socket.on('new_ticket', (data: any) =>
+      push('ticket', data?.subject ? `New ticket: ${data.subject}` : 'New support ticket'));
+    socket.on('new_lead', () => push('lead', 'New lead captured'));
+    socket.on('unauthorized', () => socket.disconnect());
+
+    return () => { socket.disconnect(); };
   }, []);
 
   useEffect(() => {
     setMounted(true);
-    // Load user info
-    try {
-      const stored = localStorage.getItem('ace_user');
-      if (stored) setUser(JSON.parse(stored));
-    } catch {}
+  }, []);
 
-    // Auth check & auto-login for demo environment
+  /**
+   * Re-read the stored identity on every navigation.
+   *
+   * This ran once on mount with an empty dependency array. The layout is not
+   * remounted by client-side navigation, so after signing in — which writes
+   * `ace_user` and then router.push('/') — the effect never ran again and the
+   * sidebar kept showing the "My Organization" / "Administrator" placeholders until
+   * the user happened to do a full page reload. Verified in the browser: the header
+   * greeted "Browser QA Clinic" while the sidebar still said "My Organization".
+   *
+   * Also listens for `storage` so signing out in one tab updates the others.
+   */
+  useEffect(() => {
+    const readUser = () => {
+      try {
+        const stored = localStorage.getItem('ace_user');
+        setUser(stored ? JSON.parse(stored) : null);
+      } catch {
+        setUser(null);
+      }
+    };
+
+    readUser();
+    window.addEventListener('storage', readUser);
+    return () => window.removeEventListener('storage', readUser);
+  }, [pathname]);
+
+  useEffect(() => {
     const token = localStorage.getItem('ace_token');
-    if (!token && pathname !== '/login' && !pathname.startsWith('/register') && !pathname.startsWith('/forgot-password') && !pathname.startsWith('/verify-email') && !pathname.startsWith('/setup-account')) {
+    const isPublic = PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
+
+    if (!token && !isPublic) {
       if (!didRedirect.current) {
         didRedirect.current = true;
         router.replace('/login');
@@ -96,20 +157,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       router.replace('/');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pathname]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('ace_token');
-    localStorage.removeItem('ace_user');
+  const handleLogout = async () => {
+    // Tell the server first so the token is actually revoked. Clearing localStorage
+    // alone left the access AND refresh tokens valid for their full lifetime — a
+    // token copied from a shared machine kept working after "signing out".
+    const token = localStorage.getItem('ace_token');
+    if (token) {
+      try {
+        await fetch(`${API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // Network failure must not trap the user in a signed-in UI.
+      }
+    }
+    clearSession();
     router.replace('/login');
   };
 
-  const isAuthPage = pathname === '/login' || 
-    pathname?.startsWith('/register') || 
-    pathname?.startsWith('/forgot-password') || 
-    pathname?.startsWith('/verify-email') || 
-    pathname?.startsWith('/setup-account') ||
-    pathname?.startsWith('/widget');
+  const isAuthPage = PUBLIC_ROUTES.some(r => pathname === r || pathname?.startsWith(r + '/'));
 
   const initials = user?.fullName
     ? user.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
@@ -225,7 +294,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-xs font-bold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{user?.fullName || 'Administrator'}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{user?.email || 'admin@acedemo.com'}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{user?.email || ''}</p>
                     </div>
                     <button
                       onClick={handleLogout}
@@ -258,7 +327,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <span className="font-semibold text-indigo-500">ACE</span>
                   <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                   <span className={`font-semibold capitalize ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {pathname === '/' ? 'Executive Dashboard' : pathname.slice(1).replace('-', ' ')}
+                    {pathname === '/' ? 'Executive Dashboard' : pathname.slice(1).replace(/-/g, ' ')}
                   </span>
                 </div>
 

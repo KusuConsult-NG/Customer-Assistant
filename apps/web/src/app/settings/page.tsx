@@ -204,6 +204,13 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [name, setName] = useState(org?.name || '');
   const [aiPersonaPrompt, setAiPersonaPrompt] = useState(org?.aiPersonaPrompt || '');
   const [welcomeMessage, setWelcomeMessage] = useState(org?.welcomeMessage || '');
+  // Payment collection details. The AI assistant reads these out verbatim when a
+  // customer asks how to pay; with them blank it says it will fetch a colleague
+  // rather than guessing. (It used to recite a hardcoded account number instead.)
+  const [payoutBankName, setPayoutBankName] = useState(org?.payoutBankName || '');
+  const [payoutAccountName, setPayoutAccountName] = useState(org?.payoutAccountName || '');
+  const [payoutAccountNumber, setPayoutAccountNumber] = useState(org?.payoutAccountNumber || '');
+  const [payoutUssdCode, setPayoutUssdCode] = useState(org?.payoutUssdCode || '');
   const [saving, setSaving] = useState(false);
 
   const save = async (e: React.FormEvent) => {
@@ -212,7 +219,10 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     try {
       const res = await fetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
-        body: JSON.stringify({ name, aiPersonaPrompt, welcomeMessage }),
+        body: JSON.stringify({
+          name, aiPersonaPrompt, welcomeMessage,
+          payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
+        }),
       });
       if (!res.ok) throw new Error('Failed');
       showToast('Settings saved!');
@@ -257,6 +267,33 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
           />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">First message sent to every new customer conversation.</p>
         </div>
+      </Section>
+
+      <Section
+        title="Payment Collection Details"
+        description="What the AI assistant tells customers when they ask how to pay. Leave blank and it will hand the conversation to a human instead of guessing."
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Bank Name</label>
+            <input type="text" value={payoutBankName} onChange={e => setPayoutBankName(e.target.value)} className={inputCls} placeholder="e.g. Zenith Bank" />
+          </div>
+          <div>
+            <label className={labelCls}>Account Name</label>
+            <input type="text" value={payoutAccountName} onChange={e => setPayoutAccountName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services Ltd" />
+          </div>
+          <div>
+            <label className={labelCls}>Account Number</label>
+            <input type="text" inputMode="numeric" value={payoutAccountNumber} onChange={e => setPayoutAccountNumber(e.target.value)} className={inputCls} placeholder="10-digit NUBAN" />
+          </div>
+          <div>
+            <label className={labelCls}>USSD Code (optional)</label>
+            <input type="text" value={payoutUssdCode} onChange={e => setPayoutUssdCode(e.target.value)} className={inputCls} placeholder="e.g. *966*1234#" />
+          </div>
+        </div>
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+          Double-check these. They are read out to customers as payment instructions.
+        </p>
       </Section>
 
       <div className="flex justify-end">

@@ -99,25 +99,36 @@ export default function DashboardPage() {
 
       if (dashboard) setDashboardData(dashboard);
 
-      const totalRevenue = dashboard?.pipelineValue ?? (deals
-        .filter((d: any) => d.stage === 'CLOSED_WON')
-        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0));
+      // The analytics endpoint nests its numbers under `metrics`.
+      //
+      // Every read here used to be `dashboard?.totalContacts` etc. against the
+      // top-level object, which is always undefined — so conversations, bookings,
+      // reservations and openTickets fell back to a hardcoded 0 and the rest silently
+      // reverted to counting whatever the CRM list endpoints happened to return
+      // (capped at one page). The whole dashboard displayed wrong figures.
+      const m = dashboard?.metrics ?? {};
 
+      const totalRevenue = m.pipelineValue ?? deals
+        .filter((d: any) => d.stage === 'CLOSED_WON')
+        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+
+      // No invented default. This used to fall back to a hardcoded 68%, so a brand
+      // new account with no leads at all was shown a 68% conversion rate.
       const convRate = leads.length > 0
         ? Math.round((leads.filter((l: any) => l.status === 'CONVERTED').length / leads.length) * 100)
-        : 68;
+        : 0;
 
       setStats({
-        contacts: dashboard?.totalContacts ?? contacts.length,
-        leads: dashboard?.totalLeads ?? leads.length,
-        calls: dashboard?.totalCalls ?? calls.length,
+        contacts: m.totalContacts ?? contacts.length,
+        leads: m.totalLeads ?? leads.length,
+        calls: m.totalCalls ?? calls.length,
         docs: docs.length,
         revenue: totalRevenue,
         conversionRate: convRate,
-        conversations: dashboard?.totalConversations ?? 0,
-        bookings: dashboard?.totalBookings ?? 0,
-        reservations: dashboard?.totalReservations ?? 0,
-        openTickets: dashboard?.openTickets ?? 0,
+        conversations: m.totalConversations ?? 0,
+        bookings: m.totalBookings ?? 0,
+        reservations: m.totalReservations ?? 0,
+        openTickets: m.openTickets ?? 0,
       });
 
       if (orgRes.status === 'fulfilled' && orgRes.value?.name) {
@@ -131,7 +142,9 @@ export default function DashboardPage() {
           type: 'call',
           title: `Voice call ${c.status === 'COMPLETED' ? 'completed' : 'ended'}`,
           subtitle: `From ${c.fromNumber || 'Customer'} · ${Math.round((c.durationSeconds || 0) / 60)}m ${(c.durationSeconds || 0) % 60}s`,
-          time: c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+          // CallLog has startedAt, not createdAt — reading createdAt made every row
+          // display the literal string "Recently".
+          time: c.startedAt ? new Date(c.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
           status: c.status,
         });
       });
@@ -161,15 +174,28 @@ export default function DashboardPage() {
         web: 0,
       }));
     }
-    const perDay = Math.round(stats.conversations / 7) || 0;
-    const callsPerDay = Math.round(stats.calls / 7) || 0;
-    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
-      day, whatsapp: perDay, voice: callsPerDay, web: 0,
-    }));
+    // Return nothing rather than a fabricated flat line.
+    //
+    // The fallback used to spread the all-time totals evenly across seven days and
+    // render it as a trend chart, so an account with 70 conversations was shown a
+    // perfectly flat "10 per day" history that never happened.
+    return [];
   })();
 
-  const maxVal = Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)));
-  const aiResolutionRate = stats.conversations > 0 ? Math.round(((stats.conversations - stats.openTickets) / stats.conversations) * 100) : 0;
+  // Math.max(...[]) is -Infinity, which turns every bar height into -0.
+  const maxVal = weeklyData.length
+    ? Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)))
+    : 1;
+  // Use the value the API computes (resolved tickets / total tickets) rather than
+  // deriving one from conversations minus open tickets — two unrelated populations,
+  // which could produce a negative percentage when tickets outnumbered conversations.
+  const aiResolutionRate: number | null = dashboardData?.aiMetrics?.resolutionRate ?? null;
+  const aiReplyRate: number | null = dashboardData?.aiMetrics?.aiReplyRate ?? null;
+  // Handover rate is measured independently by the API; it is NOT 100 minus the
+  // resolution rate — those are different populations (conversations vs tickets),
+  // and subtracting one from the other produced a meaningless, sometimes negative,
+  // percentage.
+  const handoverRate: number | null = dashboardData?.aiMetrics?.handoverRate ?? null;
 
   if (loading) {
     return (
@@ -282,6 +308,11 @@ export default function DashboardPage() {
 
           {/* Bar chart grid */}
           <div className="h-56 flex items-end justify-between gap-3 pt-6 px-2 border-b border-slate-200 dark:border-slate-800/60">
+            {weeklyData.length === 0 && (
+              <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 dark:text-slate-400">
+                No activity recorded in this period yet.
+              </div>
+            )}
             {weeklyData.map((d: any, idx: number) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="w-full max-w-[36px] flex items-end justify-center gap-1 h-full">
@@ -336,36 +367,47 @@ export default function DashboardPage() {
 
           <div className="space-y-4">
             <ProgressMetric
-              label="Autonomous AI Resolution"
-              percentage={aiResolutionRate}
-              value={`${aiResolutionRate}% of queries solved without human agent`}
+              label="Ticket Resolution Rate"
+              percentage={aiResolutionRate ?? 'N/A'}
+              value={aiResolutionRate === null
+                ? 'No tickets recorded yet'
+                : `${aiResolutionRate}% of support tickets resolved`}
               color="bg-emerald-500"
+            />
+            <ProgressMetric
+              label="AI Reply Share"
+              percentage={aiReplyRate ?? 'N/A'}
+              value={aiReplyRate === null
+                ? 'No messages recorded yet'
+                : `${aiReplyRate}% of all replies written by AI`}
+              color="bg-indigo-500"
             />
             <ProgressMetric
               label="Knowledge Retrieval Accuracy"
               percentage={'N/A'}
-              value="Awaiting knowledge interaction data"
-              color="bg-indigo-500"
-            />
-            <ProgressMetric
-              label="Voice Speech-To-Text Confidence"
-              percentage={'N/A'}
-              value="Awaiting Deepgram STT data"
+              value="Not measured — retrieval scoring is not instrumented"
               color="bg-purple-500"
             />
             <ProgressMetric
               label="Human Handover Rate"
-              percentage={100 - aiResolutionRate}
-              value={`${100 - aiResolutionRate}% escalated to human team`}
+              percentage={handoverRate ?? 'N/A'}
+              value={handoverRate === null
+                ? 'No conversations recorded yet'
+                : `${handoverRate}% of conversations escalated to a human`}
               color="bg-amber-500"
             />
           </div>
 
           <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+              <div className={`w-3 h-3 rounded-full ${dashboardData ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
               <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-slate-900 dark:text-white">System Status: Optimal</p>
+                {/* Reflects whether analytics actually loaded. This used to read
+                    "System Status: Optimal" unconditionally — including while the API
+                    was unreachable and every tile showed zero. */}
+                <p className="text-xs font-bold text-slate-900 dark:text-slate-900 dark:text-white">
+                  {dashboardData ? 'Analytics: Connected' : 'Analytics: Unavailable'}
+                </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">All gateways (WhatsApp, Voice, CRM) active</p>
               </div>
             </div>

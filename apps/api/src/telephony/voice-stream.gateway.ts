@@ -31,11 +31,14 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
+import { prisma } from '@ace/database';
 import { CallBroadcastService } from './call-broadcast.service';
+import { authenticateSocket, socketCorsOrigin, SocketIdentity } from '../events/socket-auth';
 import { AceLogger } from '../config/logger';
 
 @WebSocketGateway({
-  cors:      { origin: '*' },
+  cors:      { origin: socketCorsOrigin(), credentials: true },
   namespace: 'telephony',
 })
 export class VoiceStreamGateway
@@ -46,7 +49,13 @@ export class VoiceStreamGateway
 
   private logger = new AceLogger('VoiceStreamGateway');
 
-  constructor(private readonly broadcast: CallBroadcastService) {}
+  /** socket.id → verified identity, populated in handleConnection. */
+  private identities = new Map<string, SocketIdentity>();
+
+  constructor(
+    private readonly broadcast: CallBroadcastService,
+    private readonly jwtService: JwtService
+  ) {}
 
   /** Inject the Socket.IO server into CallBroadcastService so TwilioMediaStreamHandler can use it. */
   afterInit(server: Server): void {
@@ -56,11 +65,25 @@ export class VoiceStreamGateway
     });
   }
 
-  handleConnection(client: Socket): void {
-    this.logger.info('agent_console_socket_connected', { socketId: client.id });
+  async handleConnection(client: Socket): Promise<void> {
+    const identity = await authenticateSocket(client, this.jwtService);
+
+    if (!identity) {
+      this.logger.warn('voice_stream_socket_rejected', { socketId: client.id, reason: 'unauthenticated' });
+      client.emit('unauthorized', { message: 'A valid access token is required.' });
+      client.disconnect(true);
+      return;
+    }
+
+    this.identities.set(client.id, identity);
+    this.logger.info('agent_console_socket_connected', {
+      socketId: client.id,
+      organizationId: identity.organizationId,
+    });
   }
 
   handleDisconnect(client: Socket): void {
+    this.identities.delete(client.id);
     this.logger.info('agent_console_socket_disconnected', { socketId: client.id });
   }
 
@@ -69,10 +92,30 @@ export class VoiceStreamGateway
    * All events from TwilioMediaStreamHandler for this callSid are received here.
    */
   @SubscribeMessage('monitor_call')
-  handleMonitorCall(
+  async handleMonitorCall(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { callSid: string },
   ) {
+    const identity = this.identities.get(client.id);
+    if (!identity) return { event: 'unauthorized' };
+
+    // Verify the call belongs to the caller's organization before joining its room.
+    // Previously any connected client could `monitor_call` any callSid and receive
+    // the live transcript of a stranger's phone conversation.
+    const callLog = await prisma.callLog.findFirst({
+      where: { callSid: payload.callSid, organizationId: identity.organizationId },
+      select: { id: true },
+    });
+
+    if (!callLog) {
+      this.logger.warn('agent_monitor_call_denied', {
+        socketId: client.id,
+        callSid: payload.callSid,
+        organizationId: identity.organizationId,
+      });
+      return { event: 'forbidden', callSid: payload.callSid };
+    }
+
     client.join(`call_${payload.callSid}`);
     this.logger.info('agent_monitoring_call', { socketId: client.id, callSid: payload.callSid });
     return { event: 'monitoring_started', callSid: payload.callSid };

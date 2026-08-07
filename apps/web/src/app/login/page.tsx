@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { api } from '@/lib/api';
-import { Sparkles, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -22,6 +22,11 @@ export default function LoginPage() {
       const token = res.accessToken || res.token;
       if (token) {
         localStorage.setItem('ace_token', token);
+        // Persist the refresh token so the session can be renewed instead of hard
+        // expiring: the API has always returned one and the dashboard discarded it.
+        if (res.refreshToken) {
+          localStorage.setItem('ace_refresh_token', res.refreshToken);
+        }
         if (res.user) {
           localStorage.setItem('ace_user', JSON.stringify(res.user));
         }
@@ -34,12 +39,6 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFillDemoCreds = () => {
-    setEmail('admin@acedemo.com');
-    setPassword('Password123!');
-    setError('');
   };
 
   return (
@@ -67,10 +66,11 @@ export default function LoginPage() {
 
           <div className="mt-8 p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 max-w-md">
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-semibold mb-1">
-              <ShieldCheck className="w-4 h-4" /> Demo Credentials Ready
+              <ShieldCheck className="w-4 h-4" /> Secure by design
             </div>
             <p className="text-xs text-slate-700 dark:text-slate-300">
-              Click <span className="font-bold text-slate-900 dark:text-white font-mono">admin@acedemo.com</span> to pre-fill admin login credentials automatically.
+              Every organization's data is isolated. Sessions are revocable and all
+              integration credentials stay under your control.
             </p>
           </div>
         </div>
@@ -88,21 +88,6 @@ export default function LoginPage() {
             <p className="text-slate-600 dark:text-slate-400">Sign in to your ACE account</p>
           </div>
 
-          {/* Quick Demo Pre-fill Card */}
-          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <div className="text-xs">
-              <p className="text-slate-600 dark:text-slate-400">Testing Demo Account?</p>
-              <p className="text-slate-900 dark:text-white font-mono font-medium">admin@acedemo.com</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleFillDemoCreds}
-              className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-all border border-blue-200 dark:border-blue-500/20 flex items-center gap-1"
-            >
-              Auto-fill <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-
           {error && (
             <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm">
               {error}
@@ -118,7 +103,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                placeholder="admin@acedemo.com"
+                placeholder="you@yourcompany.com"
               />
             </div>
 

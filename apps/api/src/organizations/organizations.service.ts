@@ -4,20 +4,60 @@ import { Resend } from 'resend';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 
+/**
+ * Replaces a secret with a non-reversible hint: whether it is set, and its last four
+ * characters so an operator can tell two credentials apart without being handed
+ * either of them. Returns null (not the string "null") when nothing is configured,
+ * so the dashboard can still render an accurate "not connected" state.
+ */
+function maskSecret(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
+}
+
 @Injectable()
 export class OrganizationsService {
+  /**
+   * Returns the caller's organization with integration credentials MASKED.
+   *
+   * This endpoint is open to every member of the organization, including VIEWER and
+   * AGENT. It previously returned `telephonyConfigs` and `whatsAppConfigs` in full —
+   * meaning the Meta access token, the WhatsApp webhook verify token, and the Twilio
+   * account SID / auth token were handed in plaintext to the lowest-privileged role
+   * in the product. Anyone holding those can send WhatsApp messages as the business,
+   * place calls billed to its Twilio account, and re-point the webhook.
+   *
+   * The dashboard only needs to know whether a credential is configured and show a
+   * recognisable suffix, so that is all it gets. Values are never re-readable after
+   * being written, which is the same rule already applied to API keys.
+   */
   async getOrganization(organizationId: string) {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       include: {
         telephonyConfigs: true,
         whatsAppConfigs: true,
-        users: { select: { id: true, email: true, fullName: true, role: true } },
+        users: { select: { id: true, email: true, fullName: true, role: true, isActive: true } },
       },
     });
 
     if (!org) throw new NotFoundException('Organization not found');
-    return org;
+
+    return {
+      ...org,
+      telephonyConfigs: org.telephonyConfigs.map((c) => ({
+        ...c,
+        accountSid: maskSecret(c.accountSid),
+        authToken: maskSecret(c.authToken),
+        apiKey: maskSecret(c.apiKey),
+        apiSecret: maskSecret(c.apiSecret),
+      })),
+      whatsAppConfigs: org.whatsAppConfigs.map((c) => ({
+        ...c,
+        accessToken: maskSecret(c.accessToken),
+        webhookVerifyToken: maskSecret(c.webhookVerifyToken),
+      })),
+    };
   }
 
   async updateSettings(
@@ -30,6 +70,11 @@ export class OrganizationsService {
       logoUrl?: string;
       webhookUrl?: string;
       enabledWebhookEvents?: string[];
+      // Read out to customers by the AI assistant as payment instructions.
+      payoutBankName?: string;
+      payoutAccountName?: string;
+      payoutAccountNumber?: string;
+      payoutUssdCode?: string;
     }
   ) {
     return prisma.organization.update({
@@ -42,6 +87,10 @@ export class OrganizationsService {
         ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
         ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
         ...(data.enabledWebhookEvents !== undefined && { enabledWebhookEvents: data.enabledWebhookEvents }),
+        ...(data.payoutBankName !== undefined && { payoutBankName: data.payoutBankName || null }),
+        ...(data.payoutAccountName !== undefined && { payoutAccountName: data.payoutAccountName || null }),
+        ...(data.payoutAccountNumber !== undefined && { payoutAccountNumber: data.payoutAccountNumber || null }),
+        ...(data.payoutUssdCode !== undefined && { payoutUssdCode: data.payoutUssdCode || null }),
       },
     });
   }
