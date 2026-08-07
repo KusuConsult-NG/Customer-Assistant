@@ -114,22 +114,33 @@ export class VoiceAiService {
    *   English → eleven_turbo_v2  (lowest latency, ~380ms TTFB)
    *   Other  → eleven_turbo_v2_5 (multilingual, ~430ms TTFB)
    */
+  /**
+   * Streams synthesised speech into a live Twilio media stream.
+   *
+   * Returns whether the caller actually heard anything. This used to return void, so
+   * a failure was indistinguishable from success at the call site — and the specific
+   * failure that matters here (an ElevenLabs key that does not authenticate) produced
+   * a call where the caller sat in complete silence with nothing to recover it.
+   */
   async streamTTSToTwilio(
     text:      string,
     streamSid: string,
     twilioWs:  WebSocket,
     signal?:   AbortSignal,
     language = 'en',
-  ): Promise<void> {
+  ): Promise<boolean> {
     const apiKey  = process.env.ELEVENLABS_API_KEY;
     const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
     if (!apiKey) {
-      this.logger.warn('ELEVENLABS_API_KEY not set — no audio sent to caller', {});
-      return;
+      this.logger.error(
+        'tts_unavailable',
+        new Error('ELEVENLABS_API_KEY is not set — the caller will hear silence unless the call is recovered'),
+      );
+      return false;
     }
-    if (twilioWs.readyState !== WebSocket.OPEN) return;
-    if (signal?.aborted) return;
+    if (twilioWs.readyState !== WebSocket.OPEN) return false;
+    if (signal?.aborted) return false;
 
     const modelId = language === 'en' ? ENGLISH_ONLY_MODEL : MULTILINGUAL_MODEL;
 
@@ -154,26 +165,30 @@ export class VoiceAiService {
       if (!response.ok) {
         const errBody = await response.text().catch(() => response.statusText);
         this.logger.error(
-          `ElevenLabs returned ${response.status}`,
-          new Error(errBody),
+          `tts_failed_http_${response.status}`,
+          new Error(
+            `ElevenLabs returned ${response.status}: ${errBody.slice(0, 300)}. ` +
+            `The caller heard nothing — the call must be recovered rather than left silent.`
+          ),
         );
-        return;
+        return false;
       }
 
       if (!response.body) {
-        this.logger.error('ElevenLabs response.body is null', new Error('No body'));
-        return;
+        this.logger.error('tts_failed_no_body', new Error('ElevenLabs returned no response body'));
+        return false;
       }
 
       const CHUNK_BYTES = 640; // 20 ms of 8 kHz μ-law (1 byte/sample × 8000 Hz × 0.02 s)
       const reader      = response.body.getReader();
       let leftover      = Buffer.alloc(0);
+      let spoke         = false;
 
       while (true) {
         // Honour barge-in abort between every chunk
         if (signal?.aborted) {
           await reader.cancel().catch(() => {});
-          return;
+          return spoke;
         }
 
         const { done, value } = await reader.read();
@@ -186,6 +201,7 @@ export class VoiceAiService {
               streamSid,
               media:     { payload: leftover.toString('base64') },
             }));
+            spoke = true;
           }
           break;
         }
@@ -196,13 +212,14 @@ export class VoiceAiService {
         while (offset + CHUNK_BYTES <= combined.length) {
           if (twilioWs.readyState !== WebSocket.OPEN || signal?.aborted) {
             await reader.cancel().catch(() => {});
-            return;
+            return spoke;
           }
           twilioWs.send(JSON.stringify({
             event:     'media',
             streamSid,
             media:     { payload: combined.subarray(offset, offset + CHUNK_BYTES).toString('base64') },
           }));
+          spoke = true;
           offset += CHUNK_BYTES;
         }
 
@@ -217,11 +234,13 @@ export class VoiceAiService {
           mark:  { name: `tts_done_${Date.now()}` },
         }));
       }
+      return spoke;
     } catch (e: any) {
-      // AbortError is expected on barge-in — not a real error
-      if (e?.name !== 'AbortError') {
-        this.logger.error('Error streaming TTS to Twilio', e as Error);
-      }
+      // AbortError is expected on barge-in — the caller interrupted, which means they
+      // DID hear the start of the reply.
+      if (e?.name === 'AbortError') return true;
+      this.logger.error('tts_stream_failed', e as Error);
+      return false;
     }
   }
 
@@ -293,6 +312,80 @@ export class VoiceAiService {
       return content ? JSON.parse(content) : fallback;
     } catch {
       return fallback;
+    }
+  }
+
+  /**
+   * Rescues a live call whose AI cannot speak.
+   *
+   * When TTS fails there is no way to say anything down the media stream — the stream
+   * carries audio, and audio is exactly what we could not produce. The only route left
+   * is Twilio's REST API, which can redirect a call that is already in progress to new
+   * TwiML.
+   *
+   * Order of preference:
+   *   1. Forward to the organization's `forwardingNumber` — a human answers.
+   *   2. Failing that, apologise with Twilio's own built-in voice and hang up.
+   *
+   * Either beats the previous behaviour, which was to leave the caller listening to
+   * silence until they gave up. Note that `forwardingNumber` has been in the schema
+   * and the settings UI from the start and was referenced by no code at all.
+   */
+  async recoverCallWithoutAI(
+    callSid: string,
+    creds: { accountSid?: string | null; authToken?: string | null },
+    forwardingNumber?: string | null,
+    callerNumber?: string
+  ): Promise<'FORWARDED' | 'APOLOGISED' | 'FAILED'> {
+    const accountSid = creds.accountSid || process.env.TWILIO_ACCOUNT_SID;
+    const authToken  = creds.authToken  || process.env.TWILIO_AUTH_TOKEN;
+
+    if (!accountSid || !authToken) {
+      this.logger.error(
+        'call_recovery_impossible',
+        new Error(`No Twilio credentials to redirect ${callSid}; the caller is left in silence.`)
+      );
+      return 'FAILED';
+    }
+
+    const escape = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const twiml = forwardingNumber
+      ? `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+        `<Say voice="Polly.Joanna">One moment please, I am connecting you to a colleague.</Say>` +
+        `<Dial${callerNumber ? ` callerId="${escape(callerNumber)}"` : ''}>${escape(forwardingNumber)}</Dial>` +
+        `</Response>`
+      : `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+        `<Say voice="Polly.Joanna">I am sorry, our automated assistant is unavailable right now. ` +
+        `Please try again shortly, or send us a message on WhatsApp. Goodbye.</Say>` +
+        `<Hangup/></Response>`;
+
+    try {
+      const res = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ Twiml: twiml }).toString(),
+          signal: AbortSignal.timeout(10_000),
+        }
+      );
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => res.statusText);
+        this.logger.error('call_recovery_failed', new Error(`Twilio redirect returned ${res.status}: ${body.slice(0, 200)}`));
+        return 'FAILED';
+      }
+
+      const outcome = forwardingNumber ? 'FORWARDED' : 'APOLOGISED';
+      this.logger.warn('call_recovered_without_ai', { callSid, outcome, forwardingNumber: forwardingNumber ? 'set' : 'none' });
+      return outcome;
+    } catch (e: any) {
+      this.logger.error('call_recovery_failed', e as Error);
+      return 'FAILED';
     }
   }
 }

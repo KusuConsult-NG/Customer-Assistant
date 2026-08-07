@@ -473,3 +473,119 @@ Two items were **added** to the public-beta list by this pass:
 
 One item was **removed** from the "known-unfixed" list: the workflow engine.
 
+---
+
+# Pass 5 — The AI call agent, actually tested
+
+Voice AI was marked BLOCKED in every previous pass. That was too generous a word: it
+meant *no real phone call had been placed*, and it was allowed to stand in for "we do
+not know whether any of this works". Most of the pipeline can be exercised without a
+carrier, and doing so found two defects that would have made every single call fail.
+
+`e2e-validation/voice-call-probe.js` impersonates Twilio against the running API: it
+POSTs a correctly-signed inbound webhook, opens the Media Streams WebSocket on the same
+path with the same query parameters, and sends the real `connected` / `start` / `media` /
+`stop` sequence carrying 8kHz G.711 μ-law in 20ms frames — including genuine recorded
+speech, not a synthetic tone.
+
+## Verdict: the AI call agent does not currently work
+
+A caller today would hear **silence for the entire call**. Two causes, one code and one
+configuration, and either alone is sufficient.
+
+## P5-01 · The `start` frame was dropped on every call (code — FIXED)
+
+`TwilioMediaStreamHandler.handleConnection` attached its `twilioWs.on('message')`
+listener at the **end** of the method, after resolving the organization, reading
+settings, loading telephony credentials and completing the Deepgram handshake.
+
+Twilio sends `connected` and then `start` immediately on connection. `start` carries the
+`streamSid`, and **every outbound audio frame must reference it** — without it the server
+cannot send audio at all. Those frames arrived at an EventEmitter with no listener and
+were silently discarded.
+
+Against a database ~1s away this is not an occasional race. It happens on every call.
+The observable consequence: `twilio_stream_started` never logged, the welcome message
+never played, and the probe measured **zero outbound audio frames**.
+
+*Fixed:* the listener is attached synchronously before the first `await`, frames that
+arrive during setup are queued, and the queue is replayed in order once the session
+exists. Verified: `twilio_replaying_buffered_frames` → `twilio_stream_started` → the
+greeting is attempted.
+
+**This defect alone made the AI mute on every call, regardless of credentials.**
+
+## P5-02 · A mute AI left the caller in silence with no recovery (code — FIXED)
+
+`streamTTSToTwilio` returned `void`, so a failure was indistinguishable from success at
+the call site. When speech synthesis failed the handler simply moved on and the caller
+listened to nothing until they hung up.
+
+*Fixed:* it now returns whether the caller actually heard anything. If the greeting
+produces no audio the server redirects the **live call** through Twilio's REST API —
+first to the organization's `forwardingNumber` so a human answers, otherwise to a spoken
+apology and a clean hang-up.
+
+`forwardingNumber` has been in the schema and the settings UI since the beginning and
+was referenced by **no code anywhere**. It now does something.
+
+## P5-03 · `ELEVENLABS_API_KEY` is not an API key (configuration — needs the owner)
+
+ElevenLabs rejects it with an unusually clear message:
+
+> `API key ID used as API key - only valid API keys can be used. API keys start with 'sk_' and are shown when the key is created.`
+
+What is in `.env` is the key's **identifier**, not the key. Until this is replaced the
+AI cannot produce speech, so every call falls to the P5-02 recovery path.
+
+## P5-04 · The AI can hear and understand but cannot answer (configuration)
+
+`OPENAI_API_KEY` authenticates but has **no credits** — a completion returns
+`insufficient_quota`. Speech-to-text works, the words are understood and stored, and then
+there is nothing to reply with.
+
+## P5-05 · There is no phone number to call (configuration)
+
+The Twilio account authenticates but holds **zero phone numbers**, and it is a **Trial**
+account — trial accounts can only call numbers verified in the Twilio console. Nothing
+can currently dial in.
+
+## What was proven to work
+
+| Check | Result |
+|---|---|
+| `VOICE-001` Inbound webhook answers with valid TwiML | **PASS** — signature verified, organization resolved from the dialled number |
+| `VOICE-002` TwiML opens a media stream | **PASS with a public `API_BASE_URL`** — verified by setting it and observing `wss://…`; fails locally only because it is `http://localhost` |
+| `VOICE-003` Media stream accepts the carrier connection | **PASS** — 7–12ms |
+| `VOICE-005` The call is recorded | **PASS** — call log written with status, direction and tenant |
+| `VOICE-006` The caller's speech is transcribed | **PASS** — real recorded speech in, Deepgram returned *"Would like to book an appointment for tomorrow morning, please."* |
+| `VOICE-007` A mute AI is detected and the call rescued | **PASS** — detected, and recovery invoked |
+| `VOICE-004` The AI speaks back down the call | **FAIL** — blocked on P5-03 |
+
+Deepgram authenticates and transcribes accurately. Twilio authenticates. The webhook,
+signature verification, tenant resolution, media transport, transcription and call
+logging are all working.
+
+## To make the call agent function
+
+1. **Replace `ELEVENLABS_API_KEY`** with a real key (starts with `sk_`), from
+   ElevenLabs → Profile → API Keys. Without it there is no voice.
+2. **Add OpenAI credits.** Without them the AI hears you and has nothing to say.
+3. **Buy a Twilio number** and set its Voice webhook to
+   `https://<your-api>/api/telephony/inbound/twilio`. Upgrade from Trial, or the number
+   can only receive calls from verified numbers.
+4. **Set `API_BASE_URL`** to the public HTTPS origin of the API. Proven above: the
+   `wss://` stream URL is derived from it correctly.
+5. **Set a `forwardingNumber`** per organization, so the recovery path reaches a human
+   rather than an apology.
+
+Re-run `node e2e-validation/voice-call-probe.js` after each step; `VOICE-004` turning
+green is the signal that a caller would hear a voice.
+
+## What still cannot be certified here
+
+A real PSTN call. Audio quality, latency over a carrier, barge-in against genuine
+overlapping speech, accent handling, and Twilio's ability to reach the webhook all need
+a real number pointed at a public URL. The probe proves the pipeline is wired and
+capable; it cannot prove how it sounds.
+

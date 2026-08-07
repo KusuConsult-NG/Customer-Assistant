@@ -86,6 +86,9 @@ interface CallSession {
   language:     string;
   startedAt:    Date;
 
+  /** Needed to redirect a live call if the AI turns out to be unable to speak. */
+  carrier: { accountSid?: string | null; authToken?: string | null; forwardingNumber?: string | null };
+
   // Deepgram
   deepgramWs:       WebSocket | null;
   deepgramReady:    boolean;
@@ -138,6 +141,42 @@ export class TwilioMediaStreamHandler {
     const correlationId = generateCorrelationId();
     this.logger.info('twilio_media_stream_connected', { callSid, correlationId });
 
+    // ── Capture the protocol stream BEFORE the first await ────────────────
+    //
+    // Twilio sends `connected` and then `start` immediately on connection — the
+    // `start` frame carries the streamSid, and without it no audio can ever be sent
+    // back, because every outbound media frame must reference it.
+    //
+    // The message listener used to be attached at the END of this method, after
+    // organization lookups, settings lookups and the Deepgram handshake. Every frame
+    // that arrived during that window was emitted to an EventEmitter with no listener
+    // and silently dropped. Against a database ~1s away that is not a race that might
+    // occasionally bite — the `start` frame is gone on every single call, so the
+    // greeting never plays and the caller hears silence from beginning to end.
+    //
+    // So: attach first, queue what arrives, drain once the session exists.
+    const pending: any[] = [];
+    let session: CallSession | null = null;
+
+    twilioWs.on('message', (raw: WebSocket.Data) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return; // Non-JSON binary control frames — safe to ignore
+      }
+      if (session) this.onTwilioMessage(msg, session, twilioWs);
+      else pending.push(msg);
+    });
+
+    twilioWs.on('error', (err) => {
+      this.logger.error('Twilio WS error', err as Error, { callSid });
+      if (session) this.teardown(session, 'WEBSOCKET_ERROR');
+    });
+    twilioWs.on('close', () => {
+      if (session) this.teardown(session, 'WEBSOCKET_CLOSED');
+    });
+
     // ── FIX 6: Resolve organizationId from DB if missing ──────────────────
     let resolvedOrgId = organizationId;
     let resolvedFrom  = fromNumber;
@@ -161,6 +200,7 @@ export class TwilioMediaStreamHandler {
     // ── FIX 4: Fetch org welcome message and language ─────────────────────
     let welcomeMessage = 'Hello! Thank you for calling. How can I help you today?';
     let language       = 'en';
+    let carrier: CallSession['carrier'] = {};
 
     if (resolvedOrgId) {
       try {
@@ -178,15 +218,24 @@ export class TwilioMediaStreamHandler {
         });
         if (settings?.voiceLanguage) language = settings.voiceLanguage;
       } catch { /* language stays 'en' */ }
+
+      try {
+        const cfg = await prisma.telephonyConfig.findFirst({
+          where:  { organizationId: resolvedOrgId, phoneNumber: toNumber },
+          select: { accountSid: true, authToken: true, forwardingNumber: true },
+        });
+        if (cfg) carrier = cfg;
+      } catch { /* recovery falls back to the process-level Twilio credentials */ }
     }
 
-    const session: CallSession = {
+    const built: CallSession = {
       callSid,
       streamSid:           '',
       organizationId:      resolvedOrgId,
       fromNumber:          resolvedFrom,
       toNumber,
       welcomeMessage,
+      carrier,
       language,
       startedAt:           new Date(),
       deepgramWs:          null,
@@ -202,24 +251,20 @@ export class TwilioMediaStreamHandler {
       isTtsSpeaking:       false,
       ttsAbortController:  null,
     };
-    this.sessions.set(callSid, session);
+    this.sessions.set(callSid, built);
 
     // Start Deepgram — frames that arrive before it opens are buffered
-    session.deepgramWs = await this.voiceAiService.createDeepgramWsForOrg(resolvedOrgId);
-    this.wireDeepgramHandlers(session, twilioWs);
+    built.deepgramWs = await this.voiceAiService.createDeepgramWsForOrg(resolvedOrgId);
+    this.wireDeepgramHandlers(built, twilioWs);
 
-    twilioWs.on('message', (raw: WebSocket.Data) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        this.onTwilioMessage(msg, session, twilioWs);
-      } catch { /* Non-JSON binary control frames — safe to ignore */ }
-    });
-
-    twilioWs.on('close', () => this.teardown(session, 'WEBSOCKET_CLOSED'));
-    twilioWs.on('error', (err) => {
-      this.logger.error('Twilio WS error', err, { callSid });
-      this.teardown(session, 'WEBSOCKET_ERROR');
-    });
+    // The session now exists: adopt it, then replay everything the carrier sent while
+    // we were still setting up, in the order it arrived.
+    session = built;
+    if (pending.length) {
+      this.logger.info('twilio_replaying_buffered_frames', { callSid, frames: pending.length });
+      for (const msg of pending) this.onTwilioMessage(msg, built, twilioWs);
+      pending.length = 0;
+    }
   }
 
   // ─── Twilio protocol message router ─────────────────────────────────────
@@ -250,8 +295,25 @@ export class TwilioMediaStreamHandler {
             session.isTtsSpeaking      = true;
             this.voiceAiService
               .streamTTSToTwilio(session.welcomeMessage, session.streamSid, twilioWs, ctrl.signal, session.language)
+              .then(async (spoke) => {
+                // The greeting is the first thing that happens on every call, so it is
+                // where a broken TTS configuration reveals itself. If the caller heard
+                // nothing, do NOT leave them listening to silence for the rest of the
+                // call — hand them to a human, or apologise and hang up.
+                if (spoke || session.isEnded) return;
+                this.logger.error(
+                  'voice_ai_mute',
+                  new Error('The AI produced no audio for the welcome message; recovering the call.'),
+                  { callSid: session.callSid, organizationId: session.organizationId }
+                );
+                const outcome = await this.voiceAiService.recoverCallWithoutAI(
+                  session.callSid, session.carrier, session.carrier.forwardingNumber, session.toNumber
+                );
+                session.isEnded = true;
+                this.broadcast?.emit?.(session.callSid, 'ai_unavailable', { outcome, organizationId: session.organizationId });
+              })
               .catch((err) =>
-                this.logger.error('Error playing welcome message', err as Error, { callSid: session.callSid })
+                this.logger.error('welcome_message_failed', err as Error, { callSid: session.callSid })
               )
               .finally(() => {
                 session.isTtsSpeaking      = false;
