@@ -359,8 +359,23 @@ module.exports = async function () {
     const t = await freshToken();
     const img = b64(realJpeg(3000));
 
+    // Count objects BEFORE the burst. Earlier checks in this suite legitimately stored
+    // photos for the same contact, so an absolute count would flag them as orphans —
+    // the delta is what this test is actually about.
+    const listObjects = async () => {
+      const r = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/list/onboarding-selfies`, {
+        method: 'POST',
+        headers: { ...storageHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefix: `${orgId}/`, limit: 1000 }),
+      });
+      const j = r.ok ? await r.json() : [];
+      return new Set((Array.isArray(j) ? j : []).map((o) => o.name));
+    };
+
+    const before = await listObjects();
+
     // The link is reachable by anyone who has it, so two uploads can race. Exactly one
-    // must win, and the loser's bytes must not be left orphaned in the bucket.
+    // must win, and the losers' bytes must not be left behind in the bucket.
     const results = await Promise.all([
       publicPost(t.token, img),
       publicPost(t.token, img),
@@ -376,17 +391,22 @@ module.exports = async function () {
       return { expected: 'RECEIVED with one stored path', actual: `${row.status} path=${row.storagePath}` };
     }
 
-    // Only one object should exist for this contact from this burst.
-    const listed = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/list/onboarding-selfies`, {
-      method: 'POST',
-      headers: { ...storageHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prefix: `${orgId}/`, limit: 1000 }),
-    }).then((r) => (r.ok ? r.json() : []));
-    const mine = (Array.isArray(listed) ? listed : []).filter((o) => o.name && o.name.includes(contactId));
-    if (mine.length > 1) {
-      return { expected: '1 stored object', actual: `${mine.length} objects — the losing uploads were left orphaned in the bucket` };
+    // Storage deletes are not instantaneous; give the losers' cleanup a moment.
+    let added = [];
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const after = await listObjects();
+      added = [...after].filter((n) => !before.has(n));
+      if (added.length <= 1) break;
     }
-    return { ok: true, evidence: `1 of 3 accepted, ${mine.length} object(s) in storage` };
+
+    if (added.length !== 1) {
+      return { expected: '1 new object', actual: `${added.length} new objects — the losing uploads were left orphaned in the bucket` };
+    }
+    if (!row.storagePath.endsWith(added[0].split('/').pop())) {
+      return { expected: 'the surviving object to be the one the row points at', actual: `row=${row.storagePath} bucket=${added[0]}` };
+    }
+    return { ok: true, evidence: `1 of 3 accepted, exactly 1 new object, and the row points at it` };
   }, 'HIGH');
 
   // ── Tenancy and erasure ───────────────────────────────────────────────────

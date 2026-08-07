@@ -27,6 +27,7 @@ import {
 import { io } from 'socket.io-client';
 
 import { API_URL, clearSession } from '@/lib/api';
+import { ToastProvider } from '@/components/ui/Toast';
 
 /**
  * Routes reachable without a session.
@@ -199,6 +200,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`min-h-screen flex flex-col antialiased transition-colors duration-200 ${
         theme === 'dark' ? 'bg-[#0b0f19] text-slate-100' : 'bg-slate-50 text-slate-900'
       }`} style={{ fontFamily: "'Inter', sans-serif" }}>
+        <ToastProvider>
         {!mounted ? (
           <div className="flex min-h-screen items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -412,6 +414,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         )}
+        </ToastProvider>
       </body>
     </html>
   );

@@ -27,7 +27,7 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+    <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <h3 className="font-semibold text-slate-900 dark:text-white">{title}</h3>
         {description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</p>}
@@ -83,7 +83,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 w-fit">
+      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -564,7 +564,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
         ) : (
           <div className="space-y-3">
             {members.map((m: any) => (
-              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:bg-slate-800/60 transition-all gap-4">
+              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
                     {(m.fullName || m.email || 'U')[0].toUpperCase()}

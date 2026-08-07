@@ -80,7 +80,7 @@ export default function ForgotPasswordPage() {
         </form>
 
         <div className="pt-6 border-t border-slate-200 dark:border-slate-800 text-center">
-          <Link href="/login" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors">
+          <Link href="/login" className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
             Back to login
           </Link>
         </div>

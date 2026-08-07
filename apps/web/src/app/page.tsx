@@ -4,7 +4,8 @@ import { api, API_URL } from '@/lib/api';
 import {
   Users, MessageSquareText, PhoneCall, BookOpen,
   TrendingUp, Activity, Clock, CheckCircle2, Bot,
-  ArrowRight, Zap, DollarSign, BarChart3, RefreshCw, Sparkles, Layers, Phone
+  ArrowRight, Zap, DollarSign, BarChart3, RefreshCw, Sparkles, Layers, Phone,
+  ArrowUpRight
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -44,8 +45,11 @@ export default function DashboardPage() {
     openTickets: 0,
   });
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [orgName, setOrgName] = useState('ACE Platform');
+  // Starts true: with it false the stat cards rendered real-looking zeros before any
+  // request had returned, so a populated account briefly read as an empty one.
+  const [loading, setLoading] = useState(true);
+  const [orgName, setOrgName] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
   const [dashboardData, setDashboardData] = useState<any>(null);
 
@@ -135,6 +139,12 @@ export default function DashboardPage() {
         setOrgName(orgRes.value.name);
       }
 
+      // The signed-in user's own name, from the session the login flow stored.
+      try {
+        const u = JSON.parse(localStorage.getItem('ace_user') || 'null');
+        if (u?.fullName) setFirstName(String(u.fullName).split(' ')[0]);
+      } catch { /* a malformed session is not worth failing the dashboard over */ }
+
       const recentActivities: Activity[] = [];
       calls.slice(0, 4).forEach((c: any) => {
         recentActivities.push({
@@ -220,18 +230,22 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1 uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" /> Executive Command Center
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white tracking-tight">Welcome back, {orgName} 👋</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Here is your live AI customer assistance performance & pipeline overview for {today}.</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {firstName ? `Welcome back, ${firstName}` : 'Welcome back'} 👋
+          </h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+            {orgName ? `${orgName} — ` : ''}live performance and pipeline for {today}.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl">
-            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>7d</button>
-            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>30d</button>
-            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>90d</button>
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
           </div>
           <button
             onClick={fetchAll}
-            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white transition-colors shadow-sm"
+            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors shadow-sm"
             title="Refresh Data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -287,7 +301,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 Omnichannel Conversation Volume
               </h3>
@@ -348,9 +362,9 @@ export default function DashboardPage() {
               <p className="text-lg font-bold text-purple-600 dark:text-purple-400 mt-1">{stats.calls} calls</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Avg Resolution Time</p>
-              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">1.4 mins</p>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-semibold">Instant AI handover</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Open Tickets</p>
+              <p className="text-lg font-bold text-amber-600 dark:text-amber-400 mt-1">{stats.openTickets}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Awaiting resolution</p>
             </div>
           </div>
         </div>
@@ -358,7 +372,7 @@ export default function DashboardPage() {
         {/* AI Performance Gauge & Metrics */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6 flex flex-col justify-between">
           <div>
-            <h3 className="font-bold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
+            <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-500" />
               AI Agent Efficiency
             </h3>
@@ -405,10 +419,14 @@ export default function DashboardPage() {
                 {/* Reflects whether analytics actually loaded. This used to read
                     "System Status: Optimal" unconditionally — including while the API
                     was unreachable and every tile showed zero. */}
-                <p className="text-xs font-bold text-slate-900 dark:text-slate-900 dark:text-white">
+                <p className="text-xs font-bold text-slate-900 dark:text-white">
                   {dashboardData ? 'Analytics: Connected' : 'Analytics: Unavailable'}
                 </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">All gateways (WhatsApp, Voice, CRM) active</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {dashboardData
+                    ? `Figures below cover the last ${timeRange === '7d' ? '7 days' : timeRange === '30d' ? '30 days' : '90 days'}.`
+                    : 'Could not load analytics — the figures below may be incomplete.'}
+                </p>
               </div>
             </div>
           </div>
@@ -420,7 +438,7 @@ export default function DashboardPage() {
         {/* Live Activity Timeline */}
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-slate-400" /> Recent Live Activity
             </h3>
             <Link href="/agent-console" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold">
@@ -440,9 +458,55 @@ export default function DashboardPage() {
                 </div>
               ))
             ) : activities.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                <Bot className="w-10 h-10 mb-3 opacity-40" />
-                <p className="text-sm font-medium">No activity recorded yet. Your AI assistant is active.</p>
+              // Previously: "No activity recorded yet. Your AI assistant is active."
+              // On an account with no channel connected the assistant is NOT active and
+              // never will be, so that sentence was both a dead end and untrue. This
+              // shows what is actually missing and links straight to it.
+              <div className="px-6 py-10">
+                <div className="flex flex-col items-center text-center mb-5">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-3">
+                    <Bot className="w-6 h-6 text-slate-400" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No activity yet</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
+                    Conversations, calls and bookings appear here as they happen. Finish the steps below and your
+                    assistant starts handling them.
+                  </p>
+                </div>
+
+                <ul className="space-y-2 max-w-md mx-auto">
+                  {[
+                    { done: stats.conversations > 0, label: 'Connect WhatsApp so customers can message you', href: '/settings' },
+                    { done: stats.calls > 0, label: 'Point a phone number at the Voice AI', href: '/telephony' },
+                    { done: stats.docs > 0, label: 'Add knowledge so the AI can answer questions', href: '/knowledge' },
+                    { done: stats.contacts > 0, label: 'Import or add your first contacts', href: '/crm' },
+                  ].map((step) => (
+                    <li key={step.label}>
+                      <a
+                        href={step.href}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+                          step.done
+                            ? 'border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/60 dark:bg-emerald-500/10'
+                            : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                            step.done
+                              ? 'bg-emerald-500 text-white'
+                              : 'border border-slate-300 dark:border-slate-600 text-transparent'
+                          }`}
+                        >
+                          ✓
+                        </span>
+                        <span className={`text-xs flex-1 ${step.done ? 'text-slate-500 dark:text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300 font-medium'}`}>
+                          {step.label}
+                        </span>
+                        {!step.done && <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : (
               activities.map((a) => (
@@ -473,7 +537,7 @@ export default function DashboardPage() {
 
         {/* Quick Launch & System Shortcuts */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
             <Layers className="w-4 h-4 text-purple-500" /> Platform Shortcuts
           </h3>
 
@@ -495,7 +559,7 @@ export default function DashboardPage() {
                   <p className={`text-xs font-bold ${s.color}`}>{s.label}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.desc}</p>
                 </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-slate-900 dark:text-white transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-slate-900 dark:hover:text-white transition-colors" />
               </Link>
             ))}
           </div>
@@ -513,7 +577,7 @@ function KpiCard({ title, value, subtitle, icon, badge, badgeColor }: any) {
         <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/50">{icon}</div>
       </div>
       <div>
-        <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white tracking-tight">{value}</p>
+        <p className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{value}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">{subtitle}</p>
       </div>
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60">
@@ -528,7 +592,7 @@ function ProgressMetric({ label, percentage, value, color }: any) {
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-xs">
         <span className="font-bold text-slate-900 dark:text-slate-200">{label}</span>
-        <span className="font-extrabold text-slate-900 dark:text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
+        <span className="font-extrabold text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
       </div>
       <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: percentage === 'N/A' ? '0%' : `${percentage}%` }} />

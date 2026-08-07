@@ -3,6 +3,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api, API_URL } from '@/lib/api';
 import SelfieRequestPanel from '@/components/SelfieRequestPanel';
+import SharedEmptyState from '@/components/ui/EmptyState';
+import { TableSkeleton } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import {
   Search, Plus, Users, X, ChevronDown, Phone, Mail,
   Tag, Briefcase, TicketCheck, TrendingUp, Filter,
@@ -48,6 +51,7 @@ function statusColor(status: string) {
 }
 
 export default function CrmPage() {
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>('contacts');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [contacts, setContacts] = useState<any[]>([]);
@@ -71,10 +75,10 @@ export default function CrmPage() {
       if (res.ok) {
         setQuoteData(await res.json());
       } else {
-        alert('Failed to generate quotation');
+        toast.error('Could not generate the quotation.');
       }
     } catch {
-      alert('Error fetching quotation');
+      toast.error('Could not reach the server to generate the quotation.');
     }
   };
 
@@ -88,10 +92,10 @@ export default function CrmPage() {
       if (res.ok) {
         fetchAll();
       } else {
-        alert('Failed to delete');
+        toast.error('Could not delete that record.');
       }
     } catch (err) {
-      alert('Error deleting');
+      toast.error('Could not reach the server to delete that record.');
     }
   };
 
@@ -152,10 +156,10 @@ export default function CrmPage() {
         a.download = `ACE_Contacts_${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
       } else {
-        alert('Failed to export contacts CSV');
+        toast.error('Could not export contacts.');
       }
     } catch {
-      alert('Error downloading contacts CSV');
+      toast.error('Could not reach the server to export contacts.');
     }
   };
 
@@ -171,7 +175,7 @@ export default function CrmPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Customer Relationship Management
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage contacts, sales pipelines, lead conversions, and customer support tickets.</p>
@@ -180,7 +184,7 @@ export default function CrmPage() {
           {tab === 'contacts' && (
             <button
               onClick={exportContactsCsv}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white text-sm font-semibold transition-all shadow-sm"
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white text-sm font-semibold transition-all shadow-sm"
             >
               <Download className="w-4 h-4" /> Export CSV
             </button>
@@ -222,7 +226,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'
+                viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <List className="w-3.5 h-3.5" /> Table
@@ -230,7 +234,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'
+                viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Kanban Board
@@ -247,20 +251,17 @@ export default function CrmPage() {
           placeholder={`Search ${tab}...`}
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-sm shadow-sm font-medium"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 text-sm shadow-sm font-medium"
         />
       </div>
 
       {/* Content Area */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900/80 shadow-sm">
-        {loading ? (
-          <div className="p-6 space-y-3">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-14 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl animate-pulse" />
-            ))}
-          </div>
-        ) : tab === 'contacts' ? (
+        {/* Each table now owns its own loading state, so the tab you are on decides
+            what the skeleton looks like instead of a generic block of grey bars. */}
+        {tab === 'contacts' ? (
           <ContactsTable
+            searchQuery={search}
             onAdd={() => setModalType('contact')}
             onSelectContact={(c) => setSelectedContact(c)}
             onDelete={(id) => handleDelete('contacts', id)}
@@ -268,18 +269,19 @@ export default function CrmPage() {
         ) : tab === 'leads' ? (
           <LeadsTable
             data={filtered(leads)}
+            loading={loading}
             onAdd={() => setModalType('lead')}
             onRefresh={fetchAll}
             onDelete={(id) => handleDelete('leads', id)}
           />
         ) : tab === 'deals' ? (
           viewMode === 'kanban' ? (
-            <DealsKanban data={filtered(deals)} onAdd={() => setModalType('deal')} onRefresh={fetchAll} onDelete={(id) => handleDelete('deals', id)} onQuote={(id) => handleFetchQuotation(id)} />
+            <DealsKanban data={filtered(deals)} loading={loading} onAdd={() => setModalType('deal')} onRefresh={fetchAll} onDelete={(id) => handleDelete('deals', id)} onQuote={(id) => handleFetchQuotation(id)} />
           ) : (
-            <DealsTable data={filtered(deals)} onAdd={() => setModalType('deal')} onDelete={(id) => handleDelete('deals', id)} onQuote={(id) => handleFetchQuotation(id)} />
+            <DealsTable data={filtered(deals)} loading={loading} onAdd={() => setModalType('deal')} onDelete={(id) => handleDelete('deals', id)} onQuote={(id) => handleFetchQuotation(id)} />
           )
         ) : (
-          <TicketsTable data={filtered(tickets)} onAdd={() => setModalType('ticket')} onRefresh={fetchAll} onDelete={(id) => handleDelete('tickets', id)} />
+          <TicketsTable data={filtered(tickets)} loading={loading} onAdd={() => setModalType('ticket')} onRefresh={fetchAll} onDelete={(id) => handleDelete('tickets', id)} />
         )}
       </div>
 
@@ -299,14 +301,18 @@ export default function CrmPage() {
 
       {/* Contact Details Drawer */}
       {selectedContact && (
-        <ContactDetailModal contact={selectedContact} onClose={() => setSelectedContact(null)} />
+        <ContactDetailModal
+          contact={selectedContact}
+          onClose={() => setSelectedContact(null)}
+          onOpenTicket={() => { setSelectedContact(null); setModalType('ticket'); }}
+        />
       )}
       
       {/* Real Quotation Preview Modal */}
       {quoteData && (
         <ModalWrapper title={`Quotation Preview — ${quoteData.quotationNumber}`} onClose={() => setQuoteData(null)}>
           <div className="space-y-4 text-xs text-slate-700 dark:text-slate-300 py-2">
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 flex justify-between items-start">
+            <div className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex justify-between items-start">
               <div>
                 <p className="font-bold text-slate-900 dark:text-white text-base">{quoteData.organizationName}</p>
                 <p className="text-slate-600 dark:text-slate-400">{quoteData.organizationPhone}</p>
@@ -358,7 +364,7 @@ export default function CrmPage() {
               </button>
               <button
                 onClick={() => setQuoteData(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white font-semibold text-xs transition-all"
+                className="px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold text-xs transition-all"
               >
                 Close
               </button>
@@ -371,13 +377,15 @@ export default function CrmPage() {
 }
 
 // ─────────────────────────── Contacts Table ────────────────────────────
-function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void; onSelectContact: (c: any) => void; onDelete: (id: string) => void }) {
+function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { searchQuery: string; onAdd: () => void; onSelectContact: (c: any) => void; onDelete: (id: string) => void }) {
   const [data, setData] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
+  // Starts true. With it false, the 300ms debounce plus a ~1s round trip rendered the
+  // "no contacts yet" empty state first — telling a populated account it was empty.
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -402,36 +410,54 @@ function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void
           } else {
             setData([]);
           }
+          setError(null);
         }
-      } catch(e) {}
+      } catch (e: any) {
+        // Previously swallowed: a failed request looked identical to an empty account.
+        if (active) setError(e?.message || 'Could not load contacts.');
+      }
       if (active) setLoading(false);
     };
     const timer = setTimeout(fetchContacts, 300);
     return () => { active = false; clearTimeout(timer); };
   }, [searchQuery, page]);
 
+  // A new query starts from the first page; otherwise searching from page 3 shows
+  // "no results" for a term that matches plenty.
+  useEffect(() => { setPage(1); }, [searchQuery]);
+
+  // The page owns the search box. This table used to render a second one, so the
+  // contacts tab showed two search inputs, only one of which reached the server.
   return (
     <div className="p-4">
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search contacts by name, phone, or email..."
-          className="px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500/50 w-64 shadow-sm"
-          onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-          value={searchQuery}
-        />
-      </div>
-      
       {loading ? (
-        <div className="py-20 flex justify-center"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
+        <TableSkeleton rows={6} columns={6} />
+      ) : error ? (
+        <SharedEmptyState
+          icon={Users}
+          title="Could not load contacts"
+          description={error}
+          actions={[{ label: 'Try again', primary: true, onClick: () => setPage((p) => p) }]}
+        />
       ) : data.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
-            <Users className="w-8 h-8 text-slate-400" />
-          </div>
-          <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">No items yet</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No contacts yet. Your first customers will appear here when they message you on WhatsApp or call your number.</p>
-        </div>
+        searchQuery ? (
+          <SharedEmptyState
+            icon={Search}
+            title={`No contacts match "${searchQuery}"`}
+            description="Try a partial name, a phone number, or an email address."
+          />
+        ) : (
+          <SharedEmptyState
+            icon={Users}
+            title="No contacts yet"
+            description="Contacts are created automatically when someone messages you on WhatsApp or calls your number. You can also add them yourself or import a list."
+            actions={[
+              { label: 'Add a contact', primary: true, icon: Plus, onClick: onAdd },
+              { label: 'Connect WhatsApp', href: '/settings' },
+              { label: 'Set up a number', href: '/telephony' },
+            ]}
+          />
+        )
       ) : (
         <>
           <table className="w-full text-sm text-left">
@@ -498,7 +524,7 @@ function ContactsTable({ onAdd, onSelectContact, onDelete }: { onAdd: () => void
 }
 
 // ─────────────────────────── Leads Table ────────────────────────────
-function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
+function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
   const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/leads/${id}/status`, {
@@ -509,14 +535,18 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
     onRefresh();
   };
 
+  if (loading) return <div className="p-4"><TableSkeleton rows={5} columns={5} /></div>;
   if (data.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-        <Target className="w-8 h-8 text-slate-500 dark:text-slate-400" />
-      </div>
-      <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No leads yet. Leads are automatically created when AI qualifies a customer.</p>
-    </div>
+    <SharedEmptyState
+      icon={Target}
+      title="No leads yet"
+      description="A lead is created when the AI qualifies a customer in conversation, or you can add one yourself."
+      actions={[
+        { label: 'Add a lead', primary: true, icon: Plus, onClick: onAdd },
+        { label: 'Automate this', href: '/workflows' },
+      ]}
+      hint="Tip: a workflow on the “Message received” trigger can create leads automatically."
+    />
   );
   return (
     <table className="w-full text-sm text-left">
@@ -571,16 +601,16 @@ function LeadsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: 
 }
 
 // ─────────────────────────── Deals Table ────────────────────────────
-function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
+function DealsTable({ data, loading, onAdd, onDelete, onQuote }: { data: any[]; loading: boolean; onAdd: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
   const safeData = Array.isArray(data) ? data : [];
+  if (loading) return <div className="p-4"><TableSkeleton rows={5} columns={5} /></div>;
   if (safeData.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-        <DollarSign className="w-8 h-8 text-slate-500 dark:text-slate-400" />
-      </div>
-      <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No deals in the pipeline yet.</p>
-    </div>
+    <SharedEmptyState
+      icon={DollarSign}
+      title="Nothing in the pipeline"
+      description="Add a deal to start tracking value through discovery, proposal and close."
+      actions={[{ label: 'Add a deal', primary: true, icon: Plus, onClick: onAdd }]}
+    />
   );
 
   const totalValue = safeData.reduce((sum, d) => sum + (d.amount || 0), 0);
@@ -634,7 +664,7 @@ function DealsTable({ data, onAdd, onDelete, onQuote }: { data: any[]; onAdd: ()
 }
 
 // ─────────────────────────── Deals Kanban Board ────────────────────────────
-function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
+function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
   const safeData = Array.isArray(data) ? data : [];
   const updateStage = async (id: string, stage: string) => {
     const token = localStorage.getItem('ace_token');
@@ -693,7 +723,7 @@ function DealsKanban({ data, onAdd, onRefresh, onDelete, onQuote }: { data: any[
 }
 
 // ─────────────────────────── Tickets Table ────────────────────────────
-function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
+function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
   const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('ace_token');
     await fetch(`${API_URL}/api/crm/tickets/${id}/status`, {
@@ -711,14 +741,17 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
     URGENT: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
   };
 
+  if (loading) return <div className="p-4"><TableSkeleton rows={5} columns={5} /></div>;
   if (data.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-        <TicketCheck className="w-8 h-8 text-slate-500 dark:text-slate-400" />
-      </div>
-      <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No support tickets. Great job!</p>
-    </div>
+    <SharedEmptyState
+      icon={TicketCheck}
+      title="No open tickets"
+      description="Tickets appear here when a customer reports a problem, or when a workflow opens one for you."
+      actions={[
+        { label: 'Open a ticket', primary: true, icon: Plus, onClick: onAdd },
+        { label: 'Automate this', href: '/workflows' },
+      ]}
+    />
   );
   return (
     <table className="w-full text-sm text-left">
@@ -761,24 +794,12 @@ function TicketsTable({ data, onAdd, onRefresh, onDelete }: { data: any[]; onAdd
   );
 }
 
-function EmptyState({ icon, text, action, onAction }: { icon: React.ReactNode; text: string; action: string; onAction: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-500 dark:text-slate-400">
-      <div className="opacity-20 mb-4">{icon}</div>
-      <p className="text-slate-600 dark:text-slate-400 font-medium mb-4">{text}</p>
-      <button onClick={onAction} className="px-4 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-600 dark:text-blue-400 text-sm font-semibold transition-all border border-blue-200 dark:border-blue-500/20">
-        <Plus className="w-4 h-4 inline mr-1" /> {action}
-      </button>
-    </div>
-  );
-}
-
 function ModalWrapper({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-900 dark:text-white">{title}</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
             <X className="w-5 h-5" />
           </button>
@@ -798,7 +819,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder-slate-400 font-medium";
+const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder-slate-400 font-medium";
 const selectCls = `${inputCls} appearance-none cursor-pointer bg-white dark:bg-slate-800`;
 
 function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
@@ -1006,7 +1027,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   );
 }
 
-function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () => void }) {
+function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; onClose: () => void; onOpenTicket: () => void }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'onboarding'>('overview');
 
   return (
@@ -1062,7 +1083,7 @@ function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () =>
               <Mail className="w-3.5 h-3.5" /> WhatsApp
             </a>
             <button
-              onClick={() => alert(`Initiating support ticket for ${contact.fullName}`)}
+              onClick={onOpenTicket}
               className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 transition-all"
             >
               <TicketCheck className="w-3.5 h-3.5" /> Ticket

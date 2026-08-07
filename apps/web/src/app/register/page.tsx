@@ -106,12 +106,12 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-900">
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e] sticky top-0 h-screen">
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 opacity-40"></div>
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-7 h-7 text-slate-900 dark:text-white" />
+            <Sparkles className="w-7 h-7 text-white" />
           </div>
           <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
             ACE Platform
@@ -119,26 +119,26 @@ export default function RegisterPage() {
         </div>
         
         <div className="relative z-10">
-          <h2 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
-            Start Your Journey <br/><span className="text-blue-600 dark:text-blue-400">with ACE Today</span>
+          <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
+            Start Your Journey <br/><span className="text-blue-400">with ACE Today</span>
           </h2>
-          <ul className="space-y-4 text-slate-700 dark:text-slate-300 text-lg">
+          <ul className="space-y-4 text-slate-300 text-lg">
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Unify your CRM, Communications, and AI
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Intelligent WhatsApp integration
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
               Smart voice routing and transcriptions
             </li>
           </ul>
         </div>
         
-        <div className="relative z-10 text-sm text-slate-500 dark:text-slate-400">
+        <div className="relative z-10 text-sm text-slate-400">
           © 2026 ACE Platform. All rights reserved.
         </div>
       </div>
@@ -251,7 +251,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white p-1 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 transition-colors"
                   title={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}

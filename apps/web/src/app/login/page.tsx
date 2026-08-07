@@ -42,14 +42,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
       {/* Left Column: Branding */}
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e]">
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 opacity-40"></div>
         
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-7 h-7 text-slate-900 dark:text-white" />
+            <Sparkles className="w-7 h-7 text-white" />
           </div>
           <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
             ACE Platform
@@ -57,25 +57,25 @@ export default function LoginPage() {
         </div>
         
         <div className="relative z-10">
-          <h2 className="text-5xl font-bold text-slate-900 dark:text-white mb-6 leading-tight">
-            AI-Powered Customer Experience <br/><span className="text-blue-600 dark:text-blue-400">for Nigerian Businesses</span>
+          <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
+            AI-Powered Customer Experience <br/><span className="text-blue-400">for Nigerian Businesses</span>
           </h2>
-          <p className="text-slate-600 dark:text-slate-400 text-lg max-w-md">
+          <p className="text-slate-300 text-lg max-w-md">
             Unify your CRM, Knowledge Base, and Omnichannel Communications in one premium dashboard.
           </p>
 
-          <div className="mt-8 p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 max-w-md">
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-semibold mb-1">
+          <div className="mt-8 p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 max-w-md">
+            <div className="flex items-center gap-2 text-blue-400 text-sm font-semibold mb-1">
               <ShieldCheck className="w-4 h-4" /> Secure by design
             </div>
-            <p className="text-xs text-slate-700 dark:text-slate-300">
+            <p className="text-xs text-slate-300">
               Every organization's data is isolated. Sessions are revocable and all
               integration credentials stay under your control.
             </p>
           </div>
         </div>
         
-        <div className="relative z-10 text-sm text-slate-500 dark:text-slate-400">
+        <div className="relative z-10 text-sm text-slate-400">
           © 2026 ACE Platform. All rights reserved.
         </div>
       </div>
@@ -126,7 +126,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white p-1 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 transition-colors"
                   title={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}

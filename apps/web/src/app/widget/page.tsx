@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { useToast } from '@/components/ui/Toast';
 import { copyToClipboard } from "@/lib/clipboard";
 import { Code, Save, Copy, Check, Palette, MessageSquare, ToggleLeft, Monitor } from "lucide-react";
 
 export default function WidgetPage() {
+  const toast = useToast();
   const [config, setConfig] = useState({
     welcomeMessage: "Hi there! How can I help you today?",
     primaryColor: "#3b82f6",
@@ -49,7 +51,7 @@ export default function WidgetPage() {
       const res: any = await api.organizations.regenerateApiKey();
       if (res?.apiKey) setApiKey(res.apiKey);
     } catch (e: any) {
-      alert(e?.message || "Could not generate an API key.");
+      toast.error(e?.message || "Could not generate an API key.");
     } finally {
       setGenerating(false);
     }
@@ -61,10 +63,10 @@ export default function WidgetPage() {
       await api.organizations.updateSettings({
         welcomeMessage: config.welcomeMessage,
       });
-      alert("Settings saved successfully!");
+      toast.success("Widget settings saved.");
     } catch (e) {
       console.error(e);
-      alert("Failed to save settings");
+      toast.error("Could not save the widget settings. Check your connection and try again.");
     } finally {
       setSaving(false);
     }

@@ -304,7 +304,7 @@ export default function AgentConsolePage() {
                   key={conv.id}
                   onClick={() => setActiveId(conv.id)}
                   className={`w-full text-left p-3 rounded-xl transition-all ${
-                    isActive ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20' : 'hover:bg-slate-50 dark:bg-slate-800/60 border border-transparent'
+                    isActive ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'
                   }`}
                 >
                   <div className="flex items-start gap-2.5">

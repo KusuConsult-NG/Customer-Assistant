@@ -219,3 +219,77 @@ Two private Supabase Storage buckets must exist: `knowledge-documents` and
 They were absent in this project — a consequence of the upload bug above, since nothing
 had ever successfully written to one.
 
+---
+
+## Pass 4 — UI behaviour
+
+The visual design was not the problem; the behaviour was. Everything below was found by
+driving the running app in a browser against a database roughly a second away, which is
+what made most of it visible.
+
+### The UI stated things that were not true
+
+- **Empty states rendered while data was still loading.** `LeadsTable`, `DealsTable`
+  and `TicketsTable` received no `loading` prop at all, and `ContactsTable` started
+  `loading = false` behind a 300ms debounce. A fresh sign-in therefore showed *"No
+  contacts yet. Your first customers will appear here"* to an account with thousands,
+  then silently corrected itself. Every list now renders a skeleton until its request
+  resolves.
+- **The dashboard reported a fabricated metric.** "Avg Resolution Time **1.4 mins** —
+  Instant AI handover" was a hardcoded string rendered as a live emerald statistic, on
+  an account with zero conversations and zero calls. Resolution time is not computed
+  anywhere in the codebase. Replaced with open ticket count, which is real.
+- **A status panel contradicted itself.** Under a line that could read "Analytics:
+  Unavailable" sat the static text "All gateways (WhatsApp, Voice, CRM) active" —
+  nothing had checked any gateway. It now describes the period the figures cover, or
+  says the figures may be incomplete.
+- **"No activity recorded yet. Your AI assistant is active."** On an account with no
+  channel connected the assistant is not active and never will be. Replaced with a
+  setup checklist driven by real counts, linking to the page that fixes each gap.
+- **The dashboard greeted the user by the product name** — `orgName` defaulted to the
+  literal `'ACE Platform'`, so it read "Welcome back, ACE Platform". It now uses the
+  signed-in user's first name.
+- **A contact quick action was an `alert()` stub.** "Ticket" announced *"Initiating
+  support ticket for …"* and did nothing. Wired to the real ticket modal.
+
+### Dead CSS that silently changed behaviour
+
+Tailwind resolves conflicting utilities by stylesheet order, not source order, so a
+duplicated utility does not error — it quietly wins. Fixed across 23 files:
+
+| Pattern | Count | Effect |
+|---|---|---|
+| `hover:text-slate-900 dark:text-white` | 23 | Intended as the dark hover colour. Written unprefixed it applies at all times in dark mode, overriding the resting colour and removing hover feedback entirely. |
+| `border … dark:border-slate-800 shadow-sm border … dark:border-slate-700` | 30 | Two conflicting border colours in one class list. |
+| `text-slate-900 dark:text-slate-900 dark:text-white` | 18 | Two dark values; the first is dead. |
+| `hover:bg-slate-50 dark:bg-slate-800/60` | 4 | Same shape, backgrounds. |
+
+### Light mode was broken on the two pages every user sees first
+
+The login and register hero panels have a **fixed dark gradient in both themes**, but
+their contents were styled `text-slate-900 dark:text-white`. In light mode the headline
+rendered dark navy on dark navy — effectively invisible. Their contents are now styled
+for dark unconditionally, because the panel is unconditionally dark.
+
+### Feedback
+
+19 `alert()` calls replaced with a portal-rendered toast system. `alert()` blocks the
+event loop, cannot show two things at once, and — the practical problem — halts every
+subsequent browser interaction until a human clicks OK, which makes automated testing of
+any flow that touches it impossible. Errors stay until dismissed; a message explaining
+why something failed is exactly the message someone needs time to read.
+
+### Empty states now carry the next action
+
+"No contacts yet" is a dead end. "No contacts yet — [Add a contact] [Connect WhatsApp]
+[Set up a number]" is a next step. Applied to contacts, leads, deals, tickets,
+conversations, knowledge documents, FAQs and call logs. Every one of these surfaces is
+reachable on day one, so they are the first thing a new operator sees.
+
+### New shared primitives
+
+`apps/web/src/components/ui/` — `Skeleton.tsx` (table/card/list), `EmptyState.tsx`,
+`Toast.tsx`. Use these rather than hand-rolling; the loading-vs-empty rule is the one
+that matters, and `EmptyState` exists partly to make it hard to render an empty state
+without first considering the loading case.
+

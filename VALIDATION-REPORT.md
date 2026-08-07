@@ -236,7 +236,7 @@ These are **not passes**. Each needs the stated prerequisite.
 |---|---|---|
 | ~~**K-01**~~ | ~~Workflow engine executes nothing.~~ **RESOLVED in Pass 3.** The engine now performs real actions, with durable runs, condition branching, delays, BullMQ retries and dead-lettering. Verified by `WF-001`…`WF-014`, including a lead created through the CRM API firing a workflow that writes a ticket with no manual trigger. See §P3.1. | ~~HIGH~~ |
 | **K-02** | **API and database in different regions.** `render.yaml` deployed the API to `oregon` against a `eu-central-1` database — every query a transatlantic round trip (~950ms measured, 4 per list request). Corrected to `frankfurt` in `render.yaml`, but **the region must be set to match your actual Supabase project**. | **HIGH** |
-| **K-03** | Duplicate search input on the CRM page — two boxes, one non-functional. Cosmetic. | LOW |
+| ~~**K-03**~~ | ~~Duplicate search input on the CRM page.~~ **RESOLVED in Pass 4.** It was worse than cosmetic: the second box was clipped by its container and only the page-level one reached the server, so a search that looked like it ran did nothing. The table now takes the query from the page. | ~~LOW~~ |
 | **K-04** | Root layout is a client component, so every page ships an empty shell and paints only after hydration. Acceptable for a dashboard; means no SEO and a blank screen if JS fails. | LOW |
 | **K-06** | SMS reminders are not implemented (no provider integrated). Now logs honestly rather than claiming delivery, but 24h/6h SMS reminders do not reach customers. | MEDIUM |
 
