@@ -38,7 +38,10 @@ export default function LoginPage() {
 
   const handleFillDemoCreds = () => {
     setEmail('admin@acedemo.com');
-    setPassword('Password123!');
+    // Must match packages/database/prisma/seed.js (bcrypt.hash('Admin@2030!')).
+    // The previous value ('Password123!') never matched the seeded hash, so the
+    // advertised demo login always failed with "Invalid email or password".
+    setPassword('Admin@2030!');
     setError('');
   };
 

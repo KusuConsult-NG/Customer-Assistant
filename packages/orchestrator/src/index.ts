@@ -36,6 +36,22 @@ const RAG_TOP_K = 3;
  */
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 30;
 
+/**
+ * Returns tomorrow at 10:00 Africa/Lagos as a Date, regardless of the server's
+ * local timezone.
+ *
+ * Lagos is UTC+1 year-round (no DST), so 10:00 Lagos === 09:00 UTC.
+ * The previous implementation used setHours(10, ...) which is interpreted in the
+ * SERVER's timezone — correct only if TZ=Africa/Lagos. In a Docker container
+ * (default TZ=UTC) every "10 AM" booking landed at 11:00 Lagos.
+ */
+function tomorrowAt10Lagos(): Date {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCHours(9, 0, 0, 0); // 09:00 UTC == 10:00 Africa/Lagos (UTC+1, no DST)
+  return d;
+}
+
 // ─── RAG Service ─────────────────────────────────────────────────────────────
 
 /**
@@ -702,9 +718,7 @@ export class ConversationOrchestrator {
       return { message: 'I need your phone number on file to reschedule. Please contact our team directly.' };
     }
 
-    const newTime = new Date();
-    newTime.setDate(newTime.getDate() + 1);
-    newTime.setHours(10, 0, 0, 0); // Default: tomorrow 10 AM Lagos
+    const newTime = tomorrowAt10Lagos(); // Default: tomorrow 10 AM Lagos (TZ-safe)
 
     // Try booking
     const booking = await prisma.booking.findFirst({
@@ -859,9 +873,7 @@ export class ConversationOrchestrator {
   private async executeBookAppointment(context: ConversationContext) {
     const contact = await this.getOrCreateContact(context);
 
-    const startTime = new Date();
-    startTime.setDate(startTime.getDate() + 1); // Tomorrow
-    startTime.setHours(10, 0, 0, 0); // 10:00 AM Lagos time (UTC+1)
+    const startTime = tomorrowAt10Lagos(); // Tomorrow 10:00 Africa/Lagos (TZ-safe)
 
     const endTime = new Date(startTime.getTime() + DEFAULT_APPOINTMENT_DURATION_MINUTES * 60 * 1000);
 

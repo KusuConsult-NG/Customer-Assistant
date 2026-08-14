@@ -45,8 +45,20 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://ace_user:ace_secure_password_2030!@postgres:5432/ace_customer_assistance?schema=public
+      # DIRECT_URL is only consumed by `prisma migrate`, but the schema declares
+      # it, so keep it in sync with DATABASE_URL for local compose.
+      DIRECT_URL: postgresql://ace_user:ace_secure_password_2030!@postgres:5432/ace_customer_assistance?schema=public
       REDIS_URL: redis://redis:6379
       JWT_SECRET: super_secret_ace_jwt_token_key_2030
+      # The API's startup validation (env.validation.ts) hard-exits if any of
+      # the variables below are missing — without them this container was a
+      # crash loop (exit 1 + restart: always). Values come from your local .env
+      # (docker compose reads it automatically); dev defaults keep local boots
+      # working, but WhatsApp/AI features need real values to function.
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_ace_refresh_token_key_2030}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-local-dev-not-a-real-key}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-local-dev-whatsapp-app-secret}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-local-dev-verify-token}
       CORS_ORIGIN: "*"
     depends_on:
       postgres:

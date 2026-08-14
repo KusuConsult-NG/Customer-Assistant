@@ -16,18 +16,25 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
-import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
-    // Rate limiting — 3 named tiers used via @Throttle({ <tier>: {} }) decorator
-    // 'auth'    : 5  requests / 60s  — login, register, forgot-password
-    // 'default' : 60 requests / 60s  — all authenticated API routes
-    // 'webhooks': 300 requests / 60s — Meta WhatsApp + Twilio + Paystack webhooks (bursting allowed)
+    // Rate limiting.
+    //
+    // IMPORTANT: with @nestjs/throttler, EVERY named throttler passed to forRoot
+    // applies to EVERY route simultaneously — named tiers are NOT opt-in via
+    // @Throttle({ tier: {} }). The previous config declared an 'auth' tier of
+    // 5 req/60s which therefore capped every endpoint in the API at 5 requests
+    // per minute per IP (the dashboard polls every 8s → constant 429s).
+    //
+    // Correct model:
+    //   - ONE global 'default' tier: 60 req / 60s per IP per route.
+    //   - Stricter auth limit via @Throttle({ default: { limit: 5, ttl: 60_000 } })
+    //     on AuthController (see auth.controller.ts).
+    //   - Webhooks opt out entirely with @SkipThrottle() — they are protected by
+    //     HMAC signature verification, and throttling them loses messages.
     ThrottlerModule.forRoot([
-      { name: 'auth',     ttl: 60_000, limit: 5   },
-      { name: 'default',  ttl: 60_000, limit: 60  },
-      { name: 'webhooks', ttl: 60_000, limit: 300 },
+      { name: 'default', ttl: 60_000, limit: 60 },
     ]),
     AuthModule,
     OrganizationsModule,
@@ -48,8 +55,12 @@ import { RolesGuard } from './common/guards/roles.guard';
     VoiceStreamGateway,
     // Apply default throttle tier globally to every route.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // Enforce RBAC roles globally for @Roles() decorated routes.
-    { provide: APP_GUARD, useClass: RolesGuard },
+    // NOTE: RolesGuard must NOT be registered globally. Global guards run BEFORE
+    // controller-level guards, and req.user is only attached when the
+    // controller-level JwtAuthGuard (passport) runs — so a global RolesGuard
+    // sees user === undefined and returns 403 for EVERY @Roles() route, even for
+    // a valid OWNER token. RolesGuard is instead bound per-controller, always
+    // AFTER JwtAuthGuard: @UseGuards(JwtAuthGuard, RolesGuard).
   ],
 })
 export class AppModule {}

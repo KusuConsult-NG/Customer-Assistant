@@ -142,9 +142,25 @@ export class WhatsappService {
       });
 
       if (!config) {
-        // Fallback: any active config (supports single-tenant deployments with
-        // a single WhatsApp number not yet mapped to a specific incoming number ID)
-        config = await prisma.whatsAppConfig.findFirst({ where: { isActive: true } });
+        // Fallback for single-tenant deployments whose one WhatsApp number is
+        // not yet mapped to the incoming phone_number_id.
+        //
+        // ONLY when exactly one active config exists in the whole system:
+        // with 2+ tenants, "any active config" would silently deliver Tenant A's
+        // customer messages into Tenant B's CRM and let Tenant B's AI reply.
+        const activeConfigs = await prisma.whatsAppConfig.findMany({
+          where: { isActive: true },
+          take: 2,
+        });
+        if (activeConfigs.length === 1) {
+          config = activeConfigs[0];
+          log.warn('whatsapp_config_fallback_single_tenant', {
+            correlationId,
+            event: 'phone_number_id_not_mapped',
+            phoneNumberId,
+            usedConfigId: config.id,
+          });
+        }
       }
 
       if (!config) {

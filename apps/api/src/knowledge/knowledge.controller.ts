@@ -1,11 +1,14 @@
 import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
+// RolesGuard is listed AFTER JwtAuthGuard so req.user exists when roles are
+// checked. Routes without @Roles() pass through RolesGuard untouched.
 @Controller('api/knowledge')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class KnowledgeController {
   constructor(private knowledgeService: KnowledgeService) {}
 
