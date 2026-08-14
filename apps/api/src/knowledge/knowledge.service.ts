@@ -246,7 +246,10 @@ export class KnowledgeService {
     });
 
     // ── Enqueue async processing job (with inline fallback) ──────────────
+    const TEXT_MIME_TYPES = ['text/plain', 'text/markdown', 'application/json'];
     let jobId: string | undefined = undefined;
+    let inlineStatus: 'INDEXED' | 'FAILED' | undefined;
+
     try {
       const queue = getDocumentQueue();
       const job = await queue.add('process_document', {
@@ -259,34 +262,56 @@ export class KnowledgeService {
       });
       jobId = job.id;
     } catch {
-      // Fallback: If Redis/BullMQ is unreachable, perform inline indexing for text files
-      const textContent = data.fileBuffer.toString('utf-8');
-      const chunks = textContent.match(/[\s\S]{1,500}/g) || [textContent];
+      // Redis/BullMQ unreachable — inline fallback.
+      //
+      // ONLY plain-text formats can be inline-indexed: the old code called
+      // fileBuffer.toString('utf-8') on ANY file, so a PDF or DOCX became
+      // binary garbage chunks marked INDEXED — fabricated success that
+      // poisoned RAG search results. Binary formats need the worker's real
+      // extraction pipeline, so without a queue they are honestly FAILED.
+      if (TEXT_MIME_TYPES.includes(data.mimeType)) {
+        const textContent = data.fileBuffer.toString('utf-8');
+        const chunks = textContent.match(/[\s\S]{1,500}/g) || [textContent];
 
-      await prisma.documentChunk.createMany({
-        data: chunks.map((chunkText, idx) => ({
-          documentId: doc.id,
-          organizationId,
-          chunkIndex: idx,
-          content: chunkText,
-        })),
-      });
+        await prisma.documentChunk.createMany({
+          data: chunks.map((chunkText, idx) => ({
+            documentId: doc.id,
+            organizationId,
+            chunkIndex: idx,
+            content: chunkText,
+          })),
+        });
 
-
-      await prisma.knowledgeDocument.update({
-        where: { id: doc.id },
-        data: { status: 'INDEXED', chunkCount: chunks.length },
-      });
+        await prisma.knowledgeDocument.update({
+          where: { id: doc.id },
+          data: { status: 'INDEXED', chunkCount: chunks.length },
+        });
+        inlineStatus = 'INDEXED';
+      } else {
+        await prisma.knowledgeDocument.update({
+          where: { id: doc.id },
+          data: {
+            status: 'FAILED',
+            errorMessage:
+              `${data.mimeType} files require the background ingestion worker (REDIS_URL not configured or Redis unreachable). ` +
+              `The raw file is stored — re-upload once Redis is available, or upload a plain-text version.`,
+          },
+        });
+        inlineStatus = 'FAILED';
+      }
     }
 
+    const status = jobId ? 'PENDING' : inlineStatus!;
     return {
       documentId: doc.id,
       title: doc.title,
       fileName: doc.fileName,
-      status: jobId ? 'PENDING' : 'INDEXED',
+      status,
       message: jobId
         ? 'Document uploaded successfully. Processing and indexing will complete in 1-2 minutes.'
-        : 'Document uploaded and indexed successfully in single-node mode.',
+        : status === 'INDEXED'
+          ? 'Document uploaded and indexed successfully in single-node mode.'
+          : 'Document stored, but indexing failed: this file type needs the background worker (Redis). Upload a .txt/.md version or configure REDIS_URL.',
       jobId,
     };
   }
@@ -315,8 +340,12 @@ export class KnowledgeService {
   }
 
   /**
-   * Delete a document from both Supabase Storage and the database.
-   * Also removes all associated vector chunks from Qdrant (handled by the worker on re-index).
+   * Delete a document from Supabase Storage, the database, AND Qdrant.
+   *
+   * The Qdrant deletion is essential: the old code claimed vectors were
+   * "handled by the worker on re-index" — nothing did that, so deleted
+   * documents kept answering customer questions through vector search
+   * indefinitely. Deleted knowledge must actually stop being served.
    */
   async deleteDocument(organizationId: string, documentId: string) {
     const doc = await prisma.knowledgeDocument.findFirst({
@@ -329,6 +358,10 @@ export class KnowledgeService {
 
     // Delete from Supabase Storage
     await deleteFromSupabaseStorage(doc.storageUrl);
+
+    // Delete vectors from Qdrant (best-effort — log loudly on failure so
+    // operators know stale vectors remain and can re-run the delete)
+    await this.deleteQdrantVectors(organizationId, documentId);
 
     // Delete chunks and document record from PostgreSQL
     await prisma.documentChunk.deleteMany({ where: { documentId } });
@@ -347,6 +380,37 @@ export class KnowledgeService {
   }
 
   /**
+   * Delete all Qdrant points belonging to a document (delete-by-filter).
+   * Best-effort: failure is logged, never thrown — the DB delete must proceed.
+   */
+  private async deleteQdrantVectors(organizationId: string, documentId: string): Promise<void> {
+    const qdrantUrl = process.env.QDRANT_URL;
+    if (!qdrantUrl) return; // no vector store configured — nothing to delete
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (process.env.QDRANT_API_KEY) headers['api-key'] = process.env.QDRANT_API_KEY;
+
+    try {
+      const res = await fetch(
+        `${qdrantUrl}/collections/org_${organizationId}/points/delete?wait=true`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            filter: { must: [{ key: 'documentId', match: { value: documentId } }] },
+          }),
+        }
+      );
+      if (!res.ok && res.status !== 404) {
+        const errText = await res.text();
+        log.warn('qdrant_vector_delete_failed', { organizationId, documentId, status: res.status, error: errText.slice(0, 200) });
+      }
+    } catch (err: any) {
+      log.warn('qdrant_vector_delete_failed', { organizationId, documentId, error: err.message });
+    }
+  }
+
+  /**
    * Crawl a website URL, extract text content, and index it directly into the Knowledge Base.
    */
   async crawlAndIndexWebsite(organizationId: string, websiteUrl: string) {
@@ -355,22 +419,37 @@ export class KnowledgeService {
       cleanUrl = 'https://' + cleanUrl;
     }
 
-    // SSRF Prevention: Validate URL and block internal/private IP space
+    // ── SSRF Prevention ──────────────────────────────────────────────────────
+    // Three layers (the old code had only #1, which two classic bypasses defeat):
+    //  1. Hostname literal check (localhost, private ranges, metadata IP, .local)
+    //  2. DNS resolution check — a public-looking hostname can resolve to a
+    //     private IP (DNS-based SSRF). We resolve and validate the ACTUAL IPs.
+    //  3. Redirects are NOT followed — a public URL 302ing to
+    //     http://169.254.169.254/ bypassed the old check entirely.
+    const isPrivateIp = (ip: string): boolean => {
+      if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) return true;
+      const v4 = ip.replace(/^::ffff:/, '');
+      return (
+        v4.startsWith('10.') ||
+        v4.startsWith('127.') ||
+        v4.startsWith('0.') ||
+        v4.startsWith('192.168.') ||
+        v4.startsWith('169.254.') ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(v4)
+      );
+    };
+
+    let hostname: string;
     try {
       const parsedUrl = new URL(cleanUrl);
-      const hostname = parsedUrl.hostname.toLowerCase();
-      
+      hostname = parsedUrl.hostname.toLowerCase();
+
       const isInternal =
         hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
         hostname === '0.0.0.0' ||
-        hostname === '::1' ||
-        hostname === '169.254.169.254' ||
-        hostname.startsWith('10.') ||
-        hostname.startsWith('192.168.') ||
-        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
         hostname.endsWith('.internal') ||
-        hostname.endsWith('.local');
+        hostname.endsWith('.local') ||
+        isPrivateIp(hostname);
 
       if (isInternal) {
         throw new BadRequestException('Crawling internal or private network IP addresses is strictly prohibited.');
@@ -380,16 +459,44 @@ export class KnowledgeService {
       throw new BadRequestException('Invalid website URL provided.');
     }
 
+    // Layer 2: resolve DNS and validate the real IPs (skip for IP-literal hosts,
+    // already validated above)
+    if (!/^[\d.]+$/.test(hostname) && !hostname.includes(':')) {
+      try {
+        const dns = await import('dns');
+        const results = await dns.promises.lookup(hostname, { all: true });
+        if (results.some((r) => isPrivateIp(r.address))) {
+          throw new BadRequestException('This hostname resolves to a private network address and cannot be crawled.');
+        }
+      } catch (e: any) {
+        if (e instanceof BadRequestException) throw e;
+        throw new BadRequestException(`Could not resolve hostname ${hostname}: ${e?.code ?? e?.message ?? 'DNS error'}`);
+      }
+    }
+
+    const MAX_CRAWL_BYTES = 2 * 1024 * 1024; // 2MB page cap — protects heap
     let html = '';
     try {
       const response = await fetch(cleanUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ACE-Platform-Bot/1.0' },
+        redirect: 'manual', // Layer 3: never silently follow redirects
+        signal: AbortSignal.timeout(15_000),
       });
+      if (response.status >= 300 && response.status < 400) {
+        throw new BadRequestException(
+          `This URL redirects (HTTP ${response.status}). Please provide the final destination URL directly.`
+        );
+      }
       if (!response.ok) {
         throw new BadRequestException(`Failed to fetch URL ${cleanUrl} (HTTP ${response.status})`);
       }
-      html = await response.text();
+      const contentLength = parseInt(response.headers.get('content-length') ?? '0', 10);
+      if (contentLength > MAX_CRAWL_BYTES) {
+        throw new BadRequestException('Page is too large to index (over 2MB). Try a more specific page URL.');
+      }
+      html = (await response.text()).slice(0, MAX_CRAWL_BYTES);
     } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(`Could not reach website URL ${cleanUrl}: ${err?.message || 'Network error'}`);
     }
 

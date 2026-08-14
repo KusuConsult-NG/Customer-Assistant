@@ -289,6 +289,53 @@ export class AuthService {
     return { message: 'Password reset successfully. You can now log in with your new password.' };
   }
 
+  /**
+   * Team-invite account setup — consume the invite token and set the first password.
+   *
+   * This endpoint was MISSING entirely: addTeamMember emailed a link to
+   * /setup-account, whose form POSTs { token, password } to
+   * /api/auth/setup-account — which did not exist, so no invited team member
+   * could ever activate their account (the whole invite flow 404ed at the
+   * final step).
+   *
+   * The invite stores a SHA-256 hash of the token in passwordResetToken with a
+   * 7-day expiry (organizations.service.ts addTeamMember). The token is
+   * 256-bit random, so lookup by token hash alone is safe. Accepting the
+   * invite also verifies the email — the link only exists in that inbox.
+   */
+  async setupAccount(token: string, password: string) {
+    if (!token) throw new BadRequestException('Setup token is required');
+    if (!password || password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired setup link. Ask your admin to send a new invitation.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+        emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        isActive: true,
+      },
+    });
+
+    return { message: 'Account set up successfully. You can now log in with your new password.', email: user.email };
+  }
+
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');

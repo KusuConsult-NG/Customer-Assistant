@@ -75,16 +75,24 @@ export class WorkflowsService {
     return prisma.workflow.delete({ where: { id } });
   }
 
+  /**
+   * Dry-run a workflow trigger: reports which active workflows MATCH the
+   * trigger type. No action nodes are executed — there is no execution engine
+   * wired yet. The response says so explicitly (`simulated: true`); the old
+   * field name `workflowsExecuted` claimed execution that never happened.
+   */
   async executeWorkflowTrigger(organizationId: string, triggerType: string, payload: any) {
     const activeWorkflows = await prisma.workflow.findMany({
       where: { organizationId, triggerType, isActive: true },
     });
 
-    log.info('executing_workflow_trigger', { organizationId, triggerType, count: activeWorkflows.length });
+    log.info('workflow_trigger_simulated', { organizationId, triggerType, count: activeWorkflows.length });
 
     return {
+      simulated: true,
       triggeredCount: activeWorkflows.length,
-      workflowsExecuted: activeWorkflows.map(w => w.name),
+      matchedWorkflows: activeWorkflows.map(w => w.name),
+      note: 'Dry run — matching workflows are listed but no actions were executed (execution engine not yet enabled).',
       timestamp: new Date().toISOString(),
     };
   }

@@ -172,8 +172,9 @@ export const api = {
   },
 
   analytics: {
-    getOverview: async () => {
-      const res = await fetch(`${API_URL}/api/analytics/overview`, { headers: getHeaders() });
+    // Backend route is /api/analytics/dashboard — /overview never existed.
+    getOverview: async (period: '7d' | '30d' | '90d' = '7d') => {
+      const res = await fetch(`${API_URL}/api/analytics/dashboard?period=${period}`, { headers: getHeaders() });
       return handleResponse(res);
     },
   },

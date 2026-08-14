@@ -889,7 +889,7 @@ export class ConversationOrchestrator {
       orderBy: { startTime: 'desc' },
     });
 
-    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}`;
+    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
     const subject = booking
       ? `Refund Request — ${booking.serviceName} on ${booking.startTime.toLocaleDateString('en-NG')}`
       : `Refund Request — Reservation (${contact.fullName})`;
@@ -938,26 +938,52 @@ export class ConversationOrchestrator {
   private async executeBookAppointment(context: ConversationContext) {
     const contact = await this.getOrCreateContact(context);
 
-    const { startTime, endTime } = await findNextFreeSlot(
-      context.organizationId,
-      DEFAULT_APPOINTMENT_DURATION_MINUTES
+    // Two attempts: find a free slot, then re-check + create inside ONE
+    // transaction so a concurrent booking between "find" and "create" is
+    // caught. If the slot was taken in that window, re-scan once (the scan
+    // now sees the competitor's row). Not fully serializable, but it closes
+    // the common single-overlap race without transaction-retry machinery.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { startTime, endTime } = await findNextFreeSlot(
+        context.organizationId,
+        DEFAULT_APPOINTMENT_DURATION_MINUTES
+      );
+
+      const booking = await prisma.$transaction(async (tx: any) => {
+        const clash = await tx.booking.findFirst({
+          where: {
+            organizationId: context.organizationId,
+            status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+            startTime: { lt: endTime },
+            endTime: { gt: startTime },
+          },
+          select: { id: true },
+        });
+        if (clash) return null;
+
+        return tx.booking.create({
+          data: {
+            organizationId: context.organizationId,
+            contactId: contact.id,
+            serviceName: 'General Consultation',
+            startTime,
+            endTime,
+            status: 'CONFIRMED',
+          },
+        });
+      });
+
+      if (booking) {
+        return {
+          bookingId: booking.id,
+          time: startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }),
+        };
+      }
+    }
+
+    throw new Error(
+      `Could not secure a booking slot after 2 attempts (organizationId=${context.organizationId}) — heavy concurrent booking activity.`
     );
-
-    const booking = await prisma.booking.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        serviceName: 'General Consultation',
-        startTime,
-        endTime,
-        status: 'CONFIRMED',
-      },
-    });
-
-    return {
-      bookingId: booking.id,
-      time: startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }),
-    };
   }
 
   private async executeManageReservation(context: ConversationContext) {
@@ -992,7 +1018,7 @@ export class ConversationOrchestrator {
    */
   private async executeGenerateQuotation(context: ConversationContext, promptText: string) {
     const contact = await this.getOrCreateContact(context);
-    const quoteNum = `QUO-${Date.now().toString().slice(-6)}`;
+    const quoteNum = `QUO-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
     const ticket = await prisma.ticket.create({
       data: {
@@ -1024,7 +1050,7 @@ export class ConversationOrchestrator {
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
-    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}`;
+    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
     const ticket = await prisma.ticket.create({
       data: {

@@ -113,14 +113,23 @@ export class TelephonyService {
     if (providerType === TelephonyProviderType.TWILIO) {
       const authToken = config?.authToken ?? process.env.TWILIO_AUTH_TOKEN;
       const twilioSig = headers['x-twilio-signature'] as string | undefined;
-      const callbackUrl = `${process.env.API_URL || 'https://your-api-domain.com'}/api/telephony/inbound/twilio`;
+      // API_URL with API_BASE_URL fallback: the rest of the codebase uses
+      // API_BASE_URL — using only API_URL here meant a correctly-configured
+      // deployment could still verify against the wrong callback URL and
+      // reject every legitimate Twilio call.
+      const apiBase = process.env.API_URL || process.env.API_BASE_URL || 'https://your-api-domain.com';
+      const callbackUrl = `${apiBase}/api/telephony/inbound/twilio`;
 
-      if (authToken && twilioSig) {
-        const isValid = verifyTwilioSignature(authToken, twilioSig, callbackUrl, body as Record<string, string>);
+      if (authToken) {
+        // When an auth token IS configured, a missing signature header is a
+        // REJECTION, not a skip — otherwise an attacker bypasses verification
+        // by simply omitting the header (real Twilio always sends it).
+        const isValid = !!twilioSig && verifyTwilioSignature(authToken, twilioSig, callbackUrl, body as Record<string, string>);
         if (!isValid) {
           log.warn('telephony_twilio_invalid_signature', {
             correlationId,
             event: 'signature_rejected',
+            signatureProvided: !!twilioSig,
             callSid,
           });
           return `<?xml version="1.0" encoding="UTF-8"?>
@@ -133,7 +142,7 @@ export class TelephonyService {
       } else {
         log.warn('telephony_twilio_signature_skipped', {
           correlationId,
-          reason: authToken ? 'missing_twilio_signature_header' : 'TWILIO_AUTH_TOKEN_not_configured',
+          reason: 'TWILIO_AUTH_TOKEN_not_configured',
           callSid,
         });
       }
@@ -194,7 +203,7 @@ export class TelephonyService {
     const welcomeMsg = config?.organization?.welcomeMessage
       ?? 'Hello! Thank you for calling. How may I assist you today?';
 
-    const wsBaseUrl = process.env.API_URL?.replace(/^http/, 'ws') ?? 'ws://localhost:4000';
+    const wsBaseUrl = (process.env.API_URL || process.env.API_BASE_URL)?.replace(/^http/, 'ws') ?? 'ws://localhost:4000';
     // Embed org/from/to so TwilioMediaStreamHandler can identify the session
     // without a DB lookup inside the WS upgrade handler.
     const streamParams = new URLSearchParams({

@@ -62,6 +62,11 @@ export class AuthController {
     return this.authService.resetPassword(body.email, body.token, body.newPassword);
   }
 
+  @Post('setup-account')
+  async setupAccount(@Body() body: { token: string; password: string }) {
+    return this.authService.setupAccount(body.token, body.password);
+  }
+
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(@Req() req: { user: AuthUser }) {
