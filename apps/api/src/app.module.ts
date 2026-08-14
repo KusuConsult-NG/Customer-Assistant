@@ -16,6 +16,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
+import { RedisThrottlerStorage } from './config/redis-throttler-storage';
 
 @Module({
   imports: [
@@ -33,9 +34,16 @@ import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
     //     on AuthController (see auth.controller.ts).
     //   - Webhooks opt out entirely with @SkipThrottle() — they are protected by
     //     HMAC signature verification, and throttling them loses messages.
-    ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 60 },
-    ]),
+    //
+    // Storage: Redis-backed when REDIS_URL is set, so counters survive restarts
+    // and are shared across pods (in-memory storage silently multiplies the
+    // limit by the replica count). Fails open if Redis is down.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 60 }],
+      ...(process.env.REDIS_URL
+        ? { storage: new RedisThrottlerStorage(process.env.REDIS_URL) }
+        : {}),
+    }),
     AuthModule,
     OrganizationsModule,
     CrmModule,

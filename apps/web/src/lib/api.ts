@@ -143,10 +143,14 @@ export const api = {
       const res = await fetch(`${API_URL}/api/billing/subscription`, { headers: getHeaders() });
       return handleResponse(res);
     },
-    initializePayment: async () => {
-      const res = await fetch(`${API_URL}/api/billing/initialize-payment`, {
+    // Starts a Paystack checkout for the given plan.
+    // (Previously POSTed to /api/billing/initialize-payment, which does not
+    // exist on the backend — the real endpoint is /api/billing/checkout.)
+    initializePayment: async (plan: string) => {
+      const res = await fetch(`${API_URL}/api/billing/checkout`, {
         method: "POST",
         headers: getHeaders(),
+        body: JSON.stringify({ plan }),
       });
       return handleResponse(res);
     },

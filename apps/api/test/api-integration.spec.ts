@@ -35,13 +35,23 @@ describe('ACE Platform API Integration Tests', () => {
       expect(res.body).toHaveProperty('timestamp');
     });
 
-    it('GET /api/widget/config - should return public widget configuration', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/widget/config?apiKey=test-api-key')
-        .expect(200);
+    it('GET /api/widget/config - unknown apiKey must NOT resolve to another tenant (404)', async () => {
+      // Tenant isolation contract: a key that matches no organization returns
+      // 404. (Previously this fell back to findFirst() — an arbitrary org's
+      // config — which this test unintentionally enshrined by expecting 200.)
+      await request(app.getHttpServer())
+        .get('/api/widget/config?apiKey=key-that-matches-no-org')
+        .expect(404);
+    });
 
-      expect(res.body).toHaveProperty('organizationName');
-      expect(res.body).toHaveProperty('enableVoiceCall');
+    it('GET /api/widget/config - no apiKey uses single-org demo fallback', async () => {
+      const res = await request(app.getHttpServer()).get('/api/widget/config');
+      // 200 with a seeded org, 404 on an empty database — both are correct.
+      expect([200, 404]).toContain(res.status);
+      if (res.status === 200) {
+        expect(res.body).toHaveProperty('organizationName');
+        expect(res.body).toHaveProperty('enableVoiceCall');
+      }
     });
   });
 

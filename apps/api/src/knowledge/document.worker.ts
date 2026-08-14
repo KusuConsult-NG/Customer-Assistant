@@ -42,7 +42,6 @@
 import { Worker, Job } from 'bullmq';
 import { createClient } from 'redis';
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
 const CHUNK_SIZE_CHARS = 1800; // ~450 tokens at ~4 chars/token
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
@@ -306,43 +305,52 @@ async function processDocumentJob(job: Job<DocumentJob>): Promise<void> {
   }
 }
 
-// ── Start the Worker ───────────────────────────────────────────────────────────
+// ── Worker factory ─────────────────────────────────────────────────────────────
+//
+// IMPORTANT: this must stay a factory, not a top-level `new Worker(...)`.
+// The previous version instantiated the Worker as an import side effect and
+// exported it — but nothing ever imported this file and no deploy manifest ran
+// it as a separate process, so with Redis configured every upload sat at
+// PENDING forever. It is now started inside the API process by
+// DocumentWorkerHost (knowledge.module.ts) when REDIS_URL is set.
 
-const worker = new Worker<DocumentJob>(
-  'document-ingestion',
-  processDocumentJob,
-  {
-    connection: {
-      url: REDIS_URL,
-    },
-    concurrency: DOCUMENT_CONCURRENCY,
-  }
-);
+export function startDocumentWorker(redisUrl: string): Worker<DocumentJob> {
+  const worker = new Worker<DocumentJob>(
+    'document-ingestion',
+    processDocumentJob,
+    {
+      connection: {
+        url: redisUrl,
+      },
+      concurrency: DOCUMENT_CONCURRENCY,
+    }
+  );
 
-worker.on('completed', (job: Job) => {
-  console.log(JSON.stringify({ level: 'info', service: 'DocumentWorker', event: 'worker_job_done', jobId: job.id }));
-});
+  worker.on('completed', (job: Job) => {
+    console.log(JSON.stringify({ level: 'info', service: 'DocumentWorker', event: 'worker_job_done', jobId: job.id }));
+  });
 
-worker.on('failed', (job: Job | undefined, err: Error) => {
-  console.error(JSON.stringify({
-    level: 'error',
+  worker.on('failed', (job: Job | undefined, err: Error) => {
+    console.error(JSON.stringify({
+      level: 'error',
+      service: 'DocumentWorker',
+      event: 'worker_job_failed',
+      jobId: job?.id,
+      error: err.message,
+    }));
+  });
+
+  worker.on('error', (err: Error) => {
+    console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_error', error: err.message }));
+  });
+
+  console.log(JSON.stringify({
+    level: 'info',
     service: 'DocumentWorker',
-    event: 'worker_job_failed',
-    jobId: job?.id,
-    error: err.message,
+    event: 'worker_started',
+    concurrency: DOCUMENT_CONCURRENCY,
+    redisUrl: redisUrl.replace(/:[^:@]+@/, ':***@'), // Mask password
   }));
-});
 
-worker.on('error', (err: Error) => {
-  console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_error', error: err.message }));
-});
-
-console.log(JSON.stringify({
-  level: 'info',
-  service: 'DocumentWorker',
-  event: 'worker_started',
-  concurrency: DOCUMENT_CONCURRENCY,
-  redisUrl: REDIS_URL.replace(/:[^:@]+@/, ':***@'), // Mask password
-}));
-
-export { worker };
+  return worker;
+}

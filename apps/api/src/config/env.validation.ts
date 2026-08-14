@@ -48,6 +48,11 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'ELEVENLABS_API_KEY', required: false, description: 'ElevenLabs TTS API key (required for voice synthesis)' },
   { key: 'TWILIO_ACCOUNT_SID', required: false, description: 'Twilio Account SID (required for Voice AI telephony)' },
   { key: 'TWILIO_AUTH_TOKEN', required: false, description: 'Twilio Auth Token (required for Voice AI telephony)' },
+  { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
+  { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
+  { key: 'RESEND_API_KEY', required: false, description: 'Resend API key (required for verification/reset/booking emails)' },
+  { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in Paystack callbacks and TwiML stream URLs)' },
+  { key: 'WEB_BASE_URL', required: false, description: 'Public dashboard URL (used in emailed links; defaults to localhost)' },
 ];
 
 export function validateEnvironment(): void {
@@ -73,6 +78,10 @@ export function validateEnvironment(): void {
     // Validate JWT_SECRET length
     if (spec.key === 'JWT_SECRET' && value.length < 32) {
       errors.push(`  ✗ [WEAK_SECRET] JWT_SECRET must be at least 32 characters long. Current length: ${value.length}`);
+    }
+    // Warn (not fail — existing deployments may have shorter values) on weak refresh secret
+    if (spec.key === 'JWT_REFRESH_SECRET' && value.length < 32) {
+      warnings.push(`  ⚠ [WEAK_SECRET] JWT_REFRESH_SECRET is shorter than 32 characters (${value.length}). Rotate to a longer value.`);
     }
   }
 

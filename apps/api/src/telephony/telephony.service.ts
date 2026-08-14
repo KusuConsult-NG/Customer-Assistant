@@ -343,9 +343,19 @@ export class TelephonyService {
     if (org) return org.id;
 
     log.warn('telephony_no_org_found_creating_default', { correlationId });
-    const newOrg = await prisma.organization.create({
-      data: { name: 'Default Organization', slug: 'default-org' },
-    });
-    return newOrg.id;
+    try {
+      const newOrg = await prisma.organization.create({
+        data: { name: 'Default Organization', slug: 'default-org' },
+      });
+      return newOrg.id;
+    } catch (err: any) {
+      // P2002: two concurrent unmatched calls both tried to create the fixed
+      // 'default-org' slug — the other request won; use its organization.
+      if (err.code === 'P2002') {
+        const existing = await prisma.organization.findUnique({ where: { slug: 'default-org' } });
+        if (existing) return existing.id;
+      }
+      throw err;
+    }
   }
 }

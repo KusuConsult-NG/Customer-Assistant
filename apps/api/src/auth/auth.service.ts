@@ -5,6 +5,7 @@ import { UserRole, IndustryType } from '@ace/shared-types';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes, createHash } from 'crypto';
 import { Resend } from 'resend';
+import { getJwtRefreshSecret } from './jwt-secrets';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +24,10 @@ export class AuthService {
       throw new ConflictException('A user with this email already exists.');
     }
 
-    const slug = dto.organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now().toString().slice(-4);
+    // Random suffix, not a time suffix: Date.now().slice(-4) repeats every ~2.8
+    // hours, so two same-named orgs registering in different "windows" could
+    // still collide on the unique slug. 3 random bytes = 16.7M values.
+    const slug = dto.organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + randomBytes(3).toString('hex');
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const organization = await prisma.organization.create({
@@ -107,7 +111,7 @@ export class AuthService {
     const payload = { userId, organizationId, email, fullName, role };
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1d' });
     const refreshToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_REFRESH_SECRET || 'super_secret_ace_platform_refresh_key_2026',
+      secret: getJwtRefreshSecret(),
       expiresIn: '7d',
     });
 
@@ -159,7 +163,7 @@ export class AuthService {
   async refreshToken(refreshTokenStr: string) {
     try {
       const payload = this.jwtService.verify(refreshTokenStr, {
-        secret: process.env.JWT_REFRESH_SECRET || 'super_secret_ace_platform_refresh_key_2026',
+        secret: getJwtRefreshSecret(),
       });
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },

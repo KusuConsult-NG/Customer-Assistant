@@ -109,14 +109,16 @@ export class WidgetService {
       }
     }
 
-    // Find or create Conversation
+    // Find or create Conversation (messages: last 10 only — enough for AI
+    // context without loading an unbounded thread on every message)
+    const lastMessages = { orderBy: { sentAt: 'desc' as const }, take: 10 };
     let conversation = await prisma.conversation.findFirst({
       where: {
         organizationId,
         contactId: contact.id,
         channel: ChannelType.WEBCHAT,
       },
-      include: { messages: true },
+      include: { messages: lastMessages },
     });
 
     if (!conversation) {
@@ -127,7 +129,7 @@ export class WidgetService {
           channel: ChannelType.WEBCHAT,
           isHumanHandoffActive: false,
         },
-        include: { messages: true },
+        include: { messages: lastMessages },
       });
     }
 
@@ -159,7 +161,13 @@ export class WidgetService {
           organizationId,
           customerPhoneNumber: contact.phoneNumber,
           channel: ChannelType.WEBCHAT,
-          history: [],
+          // Last 10 messages, restored to chronological order — previously []
+          // so the widget AI had no memory of the conversation at all.
+          history: [...conversation.messages].reverse().map((m: any) => ({
+            sender: m.sender,
+            content: m.content,
+            timestamp: m.sentAt,
+          })),
           slots: {},
           isHumanHandoffActive: conversation.isHumanHandoffActive,
         },

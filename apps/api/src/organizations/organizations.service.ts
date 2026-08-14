@@ -30,6 +30,9 @@ export class OrganizationsService {
       logoUrl?: string;
       webhookUrl?: string;
       enabledWebhookEvents?: string[];
+      paymentBankName?: string;
+      paymentAccountName?: string;
+      paymentAccountNumber?: string;
     }
   ) {
     return prisma.organization.update({
@@ -42,6 +45,10 @@ export class OrganizationsService {
         ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
         ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
         ...(data.enabledWebhookEvents !== undefined && { enabledWebhookEvents: data.enabledWebhookEvents }),
+        // Payment details used by the AI's payment guidance. Empty string clears.
+        ...(data.paymentBankName !== undefined && { paymentBankName: data.paymentBankName || null }),
+        ...(data.paymentAccountName !== undefined && { paymentAccountName: data.paymentAccountName || null }),
+        ...(data.paymentAccountNumber !== undefined && { paymentAccountNumber: data.paymentAccountNumber || null }),
       },
     });
   }
