@@ -10,7 +10,7 @@ import { WebSocketServer } from 'ws';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { validateEnvironment } from './config/env.validation';
-import { attachRedisAdapter } from './config/socket-redis-adapter';
+import { RedisSocketIoAdapter } from './config/socket-redis-adapter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
 
 async function bootstrap() {
@@ -94,15 +94,28 @@ async function bootstrap() {
     })
   );
 
-  // ── 6. Start listening ────────────────────────────────────────────────────
+  // ── 6. Socket.IO Redis adapter — BEFORE listen ─────────────────────────────
+  // The adapter must be registered before Nest bootstraps the WebSocket
+  // gateways (which happens during listen()). The previous version ran after
+  // listen() and searched for the Socket.IO server on the Express instance,
+  // where it never exists — so multi-pod fan-out silently never worked.
+  // connectToRedis() never throws: no/void Redis → single-node mode.
+  const socketIoAdapter = new RedisSocketIoAdapter(app);
+  if (process.env.REDIS_URL) {
+    await socketIoAdapter.connectToRedis(process.env.REDIS_URL);
+  } else {
+    logger.warn(
+      'REDIS_URL is not set — Socket.IO running in single-node mode. ' +
+      'Set REDIS_URL and restart to enable cross-pod events.'
+    );
+  }
+  app.useWebSocketAdapter(socketIoAdapter);
+
+  // ── 7. Start listening ────────────────────────────────────────────────────
   // (Body size limits are configured via useBodyParser above — registering a
   //  second express.json() here would silently disable rawBody capture.)
   const port = parseInt(process.env.PORT ?? '4000', 10);
   await app.listen(port, '0.0.0.0');
-
-  // ── 7. Attach Redis adapter for multi-pod Socket.IO ───────────────────────
-  // Must run AFTER app.listen() so the Socket.IO server is fully initialised.
-  await attachRedisAdapter(app);
 
   // ── 8. Mount raw WebSocket server for Twilio Media Streams ────────────────
   //

@@ -103,8 +103,10 @@ async function findNextFreeSlot(
     }
   }
 
-  // Fully booked for 14 days — extremely unlikely at SME scale. Fall back to
-  // tomorrow 10:00 so the customer still gets a booking a human can then move.
+  // Fully booked for 14 days — extremely unlikely at SME scale. Return
+  // tomorrow 10:00 anyway; the transactional clash-check in
+  // executeBookAppointment will reject it, and the caller's catch degrades to
+  // an honest "connecting you to a human" reply with handoff.
   const fallback = tomorrowAt10Lagos();
   return {
     startTime: fallback,
@@ -347,14 +349,37 @@ export class ConversationOrchestrator {
     // ── 3. Tool: Appointment Booking ─────────────────────────────────────────
     const APPOINTMENT_PHRASES = ['appointment', 'schedule consultation', 'book a doctor', 'reserve slot', 'book an appointment', 'book appointment'];
     if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p))) {
-      const toolResult = await this.executeBookAppointment(context);
-      return {
-        replyText: `✅ Your appointment has been confirmed for *${toolResult.time}*.\n\nYou'll receive a confirmation shortly. Is there anything else I can help with?`,
-        intentDetected: 'BOOK_APPOINTMENT',
-        confidenceScore: 0.98,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
-      };
+      // executeBookAppointment can throw (no free slot in 14 days, or both
+      // transactional attempts lost their race). An unhandled throw here would
+      // bubble to the channel's catch-all and the customer would get NO reply
+      // at all — degrade to an honest message + human handoff instead.
+      try {
+        const toolResult = await this.executeBookAppointment(context);
+        return {
+          replyText: `✅ Your appointment has been confirmed for *${toolResult.time}*.\n\nYou'll receive a confirmation shortly. Is there anything else I can help with?`,
+          intentDetected: 'BOOK_APPOINTMENT',
+          confidenceScore: 0.98,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
+        };
+      } catch (bookErr: any) {
+        console.error(JSON.stringify({
+          level: 'error',
+          service: 'ConversationOrchestrator',
+          event: 'book_appointment_failed',
+          organizationId: context.organizationId,
+          error: bookErr.message,
+        }));
+        return {
+          replyText:
+            `I wasn't able to secure an appointment slot automatically just now. ` +
+            `Let me connect you with a team member who will book a time that works for you.`,
+          intentDetected: 'BOOK_APPOINTMENT',
+          confidenceScore: 0.9,
+          shouldHandoff: true,
+          handoffReason: HandoffReason.TOOL_FAILURE,
+        };
+      }
     }
 
     // ── 4. Tool: Reservation ─────────────────────────────────────────────────
