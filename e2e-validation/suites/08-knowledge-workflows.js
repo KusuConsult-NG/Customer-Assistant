@@ -59,6 +59,9 @@ module.exports = async function () {
   await check('KB-005', 'A real document upload reaches object storage and comes back', async () => {
     // The rejection tests above never touch storage. This one does — it is the only
     // check that would have caught the upload path failing on an auth header.
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return { blocked: 'Supabase Storage is not configured in this environment — the round trip cannot be certified.' };
+    }
     const body = 'ACE storage round-trip probe. ' + 'Lorem ipsum dolor sit amet. '.repeat(40);
     const res = await api('POST', '/api/knowledge/documents', {
       token,

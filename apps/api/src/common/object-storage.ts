@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('ObjectStorage');
@@ -30,7 +31,10 @@ function credentials(): { url: string; key: string } {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    throw new Error(
+    // ServiceUnavailableException (503), not a bare Error: a bare throw surfaces
+    // to the client as a generic 500 "unexpected error", hiding the actionable
+    // reason from the operator staring at a failed upload.
+    throw new ServiceUnavailableException(
       'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set, so object storage is unavailable. ' +
       'Set both in the API environment.'
     );

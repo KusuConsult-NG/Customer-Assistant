@@ -690,7 +690,7 @@ export class ConversationOrchestrator {
           intentDetected: 'REQUEST_QUOTATION',
           confidenceScore: 0.9,
           shouldHandoff: quoteResult.shouldHandoff,
-          ...(quoteResult.shouldHandoff ? { handoffReason: HandoffReason.COMPLEX_QUERY } : {}),
+          ...(quoteResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
           toolCallsExecuted: [{ toolName: 'request_quotation', result: quoteResult }],
         };
       } catch (err) {

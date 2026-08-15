@@ -208,7 +208,7 @@ module.exports = async function () {
     const ct = res.headers.get('content-type') || '';
     if (!/csv/i.test(ct)) return { expected: 'text/csv', actual: ct };
     const lines = res.text.trim().split('\n');
-    if (!/^ID,Full Name,Phone Number,Email,Tags/.test(lines[0])) return { expected: 'header row', actual: lines[0].slice(0, 80) };
+    if (!/^ID,Full Name,Phone Number,Email,Address,City,State,Tags/.test(lines[0])) return { expected: 'header row', actual: lines[0].slice(0, 80) };
     if (lines.length < BULK) return { expected: `>${BULK} rows`, actual: `${lines.length} lines` };
     return { ok: true, evidence: `${lines.length} lines, ${res.text.length} bytes, ${res.ms}ms` };
   }, 'HIGH');
@@ -233,9 +233,10 @@ module.exports = async function () {
     const line = res.text.split('\n').find(l => l.includes('Sunny'));
     if (!line) return { expected: 'row present', actual: 'missing' };
     if (!line.includes('""Sunny""')) return { expected: 'doubled quotes per RFC4180', actual: line.slice(0, 100) };
-    // Field count must still be 5 despite the embedded comma.
+    // Field count must still be 8 (ID, name, phone, email, address, city, state,
+    // tags) despite the embedded comma — every field is quoted by the exporter.
     const fields = line.match(/"(?:[^"]|"")*"/g) || [];
-    if (fields.length !== 5) return { expected: '5 quoted fields', actual: `${fields.length} — embedded comma broke the row` };
+    if (fields.length !== 8) return { expected: '8 quoted fields', actual: `${fields.length} — embedded comma broke the row` };
     return { ok: true, evidence: line.slice(0, 90) };
   }, 'HIGH');
 
