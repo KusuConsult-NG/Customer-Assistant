@@ -218,8 +218,17 @@ export class WhatsAppCloudClient {
 
       return await response.json();
     } catch (err: any) {
-      // Return synthetic success response in mock mode if token is placeholder
+      // Explicit demo mode: a token containing 'placeholder' returns a synthetic
+      // wamid so demos work without Meta credentials — but LOUDLY, so a mock
+      // send can never be mistaken for a delivered message in the logs.
       if (this.config.accessToken.includes('placeholder')) {
+        console.warn(JSON.stringify({
+          level: 'warn',
+          service: 'WhatsAppCloudClient',
+          event: 'MOCK_SEND_no_message_delivered',
+          reason: 'accessToken contains "placeholder" — demo mode, nothing was sent to WhatsApp',
+          to: String(body.to ?? '').slice(-4),
+        }));
         return { messaging_product: 'whatsapp', contacts: [{ input: body.to }], messages: [{ id: `wamid.mock.${Date.now()}` }] };
       }
       throw err;

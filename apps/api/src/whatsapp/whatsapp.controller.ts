@@ -89,14 +89,18 @@ export class WhatsappController {
    *
    * Meta sends every inbound WhatsApp message here.
    *
-   * Security contract:
-   *  1. We always respond 200 immediately (Meta requires this within 20s or it retries).
-   *  2. We verify the HMAC-SHA256 signature BEFORE any database or business logic.
-   *  3. Processing is async — the response is sent before await completes.
+   * Security contract — VERIFY, then ACK, then process async:
+   *  1. HMAC-SHA256 signature is verified BEFORE the 200 is sent. Verification
+   *     is a few microseconds — nowhere near Meta's 20s deadline.
+   *  2. Invalid signature → 403. Server-side misconfiguration (missing secret,
+   *     missing rawBody) → 500, so Meta RETRIES instead of the message being
+   *     lost forever. The previous version ACKed 200 first, which turned every
+   *     downstream failure into silent, unrecoverable message loss.
+   *  3. Business processing still runs after the ACK — a processing error does
+   *     not trigger a Meta retry storm for a message we did receive intact.
    *
-   * @SkipThrottle — Meta delivers messages in bursts during high-traffic periods
-   *  and retries if we return non-200. Throttling these webhooks would cause message loss.
-   *  Security is handled by HMAC-SHA256 signature verification, not rate limiting.
+   * @SkipThrottle — Meta delivers messages in bursts and retries on non-200.
+   *  Security is handled by signature verification, not rate limiting.
    */
   @SkipThrottle()
   @SkipSubscriptionCheck()
@@ -108,22 +112,22 @@ export class WhatsappController {
     @Headers('x-hub-signature-256') signature: string | undefined,
     @Res() res: Response
   ) {
-    // Always ACK immediately — Meta will retry if we take > 20s
-    res.status(200).send('EVENT_RECEIVED');
-
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
 
     const appSecret = process.env.WHATSAPP_APP_SECRET;
     if (!appSecret) {
       log.error('WHATSAPP_APP_SECRET not configured — webhook signature cannot be verified', new Error('Missing env var'), { correlationId });
+      // 500 → Meta retries; messages are delayed, not lost, while config is fixed.
+      res.status(500).send('Server misconfiguration');
       return;
     }
 
     // Use the raw body buffer for HMAC — NOT the parsed JSON body
     const rawBody = req.rawBody;
     if (!rawBody) {
-      log.error('rawBody is undefined. Ensure NestFactory.create(AppModule, { rawBody: true }) in main.ts', new Error('Missing rawBody'), { correlationId });
+      log.error('rawBody is undefined. Ensure NestFactory.create(AppModule, { rawBody: true }) in main.ts and no competing body parser (see main.ts comments)', new Error('Missing rawBody'), { correlationId });
+      res.status(500).send('Server misconfiguration');
       return;
     }
 
@@ -133,9 +137,12 @@ export class WhatsappController {
         event: 'signature_rejected',
         signatureProvided: !!signature,
       });
-      // Do not process — silently drop. We already sent 200 to Meta.
+      res.status(403).send('Invalid signature');
       return;
     }
+
+    // Signature verified — ACK now, then process asynchronously.
+    res.status(200).send('EVENT_RECEIVED');
 
     log.info('whatsapp_webhook_received', {
       correlationId,
@@ -143,7 +150,7 @@ export class WhatsappController {
       messageCount: body?.entry?.[0]?.changes?.[0]?.value?.messages?.length ?? 0,
     });
 
-    // Process asynchronously — any errors are caught inside the service
+    // Any errors are caught inside the service
     this.whatsappService.processIncomingWebhook(body, correlationId).catch((err) => {
       log.error('whatsapp_webhook_processing_failed', err, { correlationId });
     });

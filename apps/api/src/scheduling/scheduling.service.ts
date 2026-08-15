@@ -181,7 +181,7 @@ export class SchedulingService {
     });
     if (!booking) throw new NotFoundException(`Booking ${bookingId} not found`);
 
-    const ticketNumber = `REF-BK-${Date.now().toString().slice(-6)}`;
+    const ticketNumber = `REF-BK-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
     const ticket = await prisma.ticket.create({
       data: {
         organizationId,
@@ -334,7 +334,7 @@ export class SchedulingService {
     });
     if (!reservation) throw new NotFoundException(`Reservation ${reservationId} not found`);
 
-    const ticketNumber = `REF-RS-${Date.now().toString().slice(-6)}`;
+    const ticketNumber = `REF-RS-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
     const ticket = await prisma.ticket.create({
       data: {
         organizationId,

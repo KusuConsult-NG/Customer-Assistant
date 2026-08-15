@@ -142,9 +142,25 @@ export class WhatsappService {
       });
 
       if (!config) {
-        // Fallback: any active config (supports single-tenant deployments with
-        // a single WhatsApp number not yet mapped to a specific incoming number ID)
-        config = await prisma.whatsAppConfig.findFirst({ where: { isActive: true } });
+        // Fallback for single-tenant deployments whose one WhatsApp number is
+        // not yet mapped to the incoming phone_number_id.
+        //
+        // ONLY when exactly one active config exists in the whole system:
+        // with 2+ tenants, "any active config" would silently deliver Tenant A's
+        // customer messages into Tenant B's CRM and let Tenant B's AI reply.
+        const activeConfigs = await prisma.whatsAppConfig.findMany({
+          where: { isActive: true },
+          take: 2,
+        });
+        if (activeConfigs.length === 1) {
+          config = activeConfigs[0];
+          log.warn('whatsapp_config_fallback_single_tenant', {
+            correlationId,
+            event: 'phone_number_id_not_mapped',
+            phoneNumberId,
+            usedConfigId: config.id,
+          });
+        }
       }
 
       if (!config) {
@@ -369,16 +385,21 @@ export class WhatsappService {
   }
 
   async getConversations(organizationId: string) {
-    return prisma.conversation.findMany({
+    // NOTE: messages must be the LAST 50, not the first 50. With
+    // orderBy asc + take 50, any conversation longer than 50 messages showed
+    // only its OLDEST messages and new activity never appeared in the console.
+    // We fetch desc + take 50, then restore chronological order for the UI.
+    const conversations = await prisma.conversation.findMany({
       where: { organizationId },
       include: {
         contact: true,
-        messages: { orderBy: { sentAt: 'asc' }, take: 50 },
+        messages: { orderBy: { sentAt: 'desc' }, take: 50 },
         assignedUser: { select: { id: true, fullName: true, email: true } },
       },
       orderBy: { lastMessageAt: 'desc' },
       take: 100, // paginate: never return unbounded result sets
     });
+    return conversations.map((c: any) => ({ ...c, messages: c.messages.reverse() }));
   }
 
   async sendAgentMessage(conversationId: string, content: string, agentUserId: string) {

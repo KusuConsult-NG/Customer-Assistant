@@ -1,36 +1,34 @@
 /**
- * ACE Platform — Socket.IO Redis Adapter Configuration
+ * ACE Platform — Socket.IO Redis Adapter (NestJS IoAdapter subclass)
  *
  * WHY this is critical:
- *   Socket.IO rooms are in-memory by default. When you run more than one NestJS
- *   API pod behind a load balancer (ALB, Nginx, Cloudflare), each pod has its
- *   own isolated in-memory room registry.
+ *   Socket.IO rooms are in-memory by default. With more than one API pod
+ *   behind a load balancer, an event emitted on pod B never reaches a client
+ *   whose socket lives on pod A. The @socket.io/redis-adapter bridges pods
+ *   over Redis pub/sub.
  *
- *   Scenario that breaks without this:
- *     - Agent connects to Pod A, joins room org_abc123
- *     - Customer sends WhatsApp message, webhook lands on Pod B
- *     - Pod B emits 'new_message_received' to org_abc123
- *     - Pod A never receives this event — agent sees no live updates
+ * WHY this file was rewritten:
+ *   The previous implementation ran AFTER app.listen() and tried to find the
+ *   Socket.IO server via `app.getHttpAdapter().getInstance().io` — a property
+ *   that does not exist in a NestJS app (socket.io attaches to the HTTP
+ *   server, and Nest's IoAdapter keeps its own reference). The lookup always
+ *   failed, the code logged "Socket.IO server instance not found — this is
+ *   expected", and the multi-pod feature silently never worked anywhere.
  *
- *   The @socket.io/redis-adapter publishes events to a Redis pub/sub channel.
- *   All pods subscribe to the same channel and fan-out to their local room clients.
- *   This makes WebSocket events work correctly across any number of pods.
+ *   The correct NestJS pattern (per the official docs) is to subclass
+ *   IoAdapter, connect the Redis clients BEFORE the app starts listening, and
+ *   apply the adapter inside createIOServer() — which Nest calls when it
+ *   bootstraps the gateways. main.ts registers this adapter before listen().
  *
- * Degraded mode (no Redis):
- *   If REDIS_URL is not set, or Redis is unreachable, the adapter is skipped.
- *   The API continues to work in single-node mode — all REST endpoints and
- *   WebSocket connections on the same pod function normally. Only cross-pod
- *   fan-out is degraded.
- *
- *   Error logging is THROTTLED to prevent log spam: only the first connection
- *   error and then one error per minute are logged. This keeps the console clean
- *   during local development without Redis.
- *
- * Reference:
- *   https://socket.io/docs/v4/redis-adapter/
+ * Degraded mode (no Redis / Redis down):
+ *   connectToRedis() gives up after 5 s and leaves adapterConstructor unset —
+ *   createIOServer() then behaves exactly like the default IoAdapter
+ *   (single-node, in-memory rooms). The API always boots.
  */
 
 import { INestApplication, Logger } from '@nestjs/common';
+import { IoAdapter } from '@nestjs/platform-socket.io';
+import { ServerOptions } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 
@@ -57,80 +55,64 @@ function makeThrottledErrorHandler(clientName: string) {
   };
 }
 
-export async function attachRedisAdapter(app: INestApplication): Promise<void> {
-  const redisUrl = process.env.REDIS_URL;
+export class RedisSocketIoAdapter extends IoAdapter {
+  private adapterConstructor: ReturnType<typeof createAdapter> | null = null;
 
-  if (!redisUrl) {
-    logger.warn(
-      'REDIS_URL is not set — Socket.IO running in single-node mode. ' +
-      'Set REDIS_URL=redis://localhost:6379 and start Redis to enable cross-pod events.'
-    );
-    return;
+  constructor(app: INestApplication) {
+    super(app);
   }
 
-  const pubClient = createClient({
-    url: redisUrl,
-    socket: {
-      reconnectStrategy: (retries) => {
-        // Exponential backoff: 100ms → 200ms → 400ms → ... capped at 30s
-        const delay = Math.min(100 * Math.pow(2, retries), 30_000);
-        return delay;
+  /**
+   * Connect pub/sub clients and prepare the adapter. Never throws — on any
+   * failure the adapter simply stays unset and sockets run single-node.
+   * The clients keep retrying in the background; if Redis appears later the
+   * already-created adapter picks it up automatically.
+   */
+  async connectToRedis(redisUrl: string): Promise<void> {
+    const pubClient = createClient({
+      url: redisUrl,
+      socket: {
+        reconnectStrategy: (retries: number) => Math.min(100 * Math.pow(2, retries), 30_000),
       },
-    },
-  });
-  const subClient = pubClient.duplicate();
+    });
+    const subClient = pubClient.duplicate();
 
-  pubClient.on('error', makeThrottledErrorHandler('pub'));
-  subClient.on('error', makeThrottledErrorHandler('sub'));
+    pubClient.on('error', makeThrottledErrorHandler('pub'));
+    subClient.on('error', makeThrottledErrorHandler('sub'));
+    pubClient.on('connect', () => logger.log('Redis pub client connected'));
+    subClient.on('connect', () => logger.log('Redis sub client connected'));
 
-  pubClient.on('connect',   () => logger.log('Redis pub client connected'));
-  pubClient.on('reconnecting', () => logger.log('Redis pub client reconnecting...'));
-  subClient.on('connect',   () => logger.log('Redis sub client connected'));
-
-  try {
-    // Connect with a 5-second timeout — don't block server startup indefinitely
-    await Promise.race([
-      Promise.all([pubClient.connect(), subClient.connect()]),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Redis connection timeout after 5s')), 5_000)
-      ),
-    ]);
-
-    // Get the underlying Socket.IO server from the NestJS HTTP adapter
-    const httpAdapter = app.getHttpAdapter() as any;
-    const io = httpAdapter?.getInstance?.()?.io;
-
-    if (!io) {
-      logger.warn(
-        'Socket.IO server instance not found — Redis adapter not attached. ' +
-        'This is expected if no WebSocket gateway is bootstrapped.'
-      );
-      return;
-    }
-
-    io.adapter(createAdapter(pubClient, subClient));
-    logger.log('✅ Socket.IO Redis adapter attached — multi-node real-time events enabled.');
-    logger.log(`   Redis: ${redisUrl.replace(/:[^:@]+@/, ':***@')}`);
-
-  } catch (err: any) {
-    // Redis is down — fall back to single-node gracefully, no crash
-    logger.warn(
-      `Redis unavailable (${err.message}) — Socket.IO running in single-node mode. ` +
-      `Start Redis with: brew services start redis   OR   docker compose up -d redis`
-    );
-
-    // Clients will keep trying to reconnect in the background with exponential backoff.
-    // If Redis comes up later, they'll auto-reconnect and the adapter will activate.
-    // We still attach the adapter so it activates once clients reconnect.
     try {
-      const httpAdapter = app.getHttpAdapter() as any;
-      const io = httpAdapter?.getInstance?.()?.io;
-      if (io) {
-        io.adapter(createAdapter(pubClient, subClient));
-        logger.log('Redis adapter registered — will activate automatically when Redis reconnects.');
+      // 5-second cap — never block server startup on a slow/absent Redis
+      await Promise.race([
+        Promise.all([pubClient.connect(), subClient.connect()]),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Redis connection timeout after 5s')), 5_000)
+        ),
+      ]);
+
+      this.adapterConstructor = createAdapter(pubClient, subClient);
+      logger.log('✅ Socket.IO Redis adapter ready — multi-node real-time events enabled.');
+      logger.log(`   Redis: ${redisUrl.replace(/:[^:@]+@/, ':***@')}`);
+    } catch (err: any) {
+      logger.warn(
+        `Redis unavailable (${err.message}) — Socket.IO running in single-node mode. ` +
+        `Clients keep retrying in the background.`
+      );
+      // Still register the adapter: it activates when the clients reconnect.
+      try {
+        this.adapterConstructor = createAdapter(pubClient, subClient);
+      } catch {
+        this.adapterConstructor = null;
       }
-    } catch {
-      // Silently ignore — single-node mode is acceptable for development
     }
+  }
+
+  override createIOServer(port: number, options?: ServerOptions): any {
+    const server = super.createIOServer(port, options);
+    if (this.adapterConstructor) {
+      server.adapter(this.adapterConstructor);
+    }
+    return server;
   }
 }

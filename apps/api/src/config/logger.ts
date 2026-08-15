@@ -93,8 +93,11 @@ export class AceLogger {
       const orgId = entry.organizationId ? ` org=${entry.organizationId.slice(0, 8)}` : '';
       const corrId = entry.correlationId ? ` corr=${entry.correlationId.slice(0, 8)}` : '';
       console.log(`${color}[${entry.level.toUpperCase()}]${reset} ${entry.service}: ${entry.message}${orgId}${corrId}${latency}`);
+      // entry.error may be a structured {name,message,stack} from log.error(),
+      // OR a plain string if a caller passed context {error: '...'} — printing
+      // .stack on a string logs the literal "undefined".
       if (entry.error) {
-        console.error(entry.error.stack);
+        console.error(typeof entry.error === 'string' ? entry.error : entry.error.stack ?? entry.error.message);
       }
     }
   }

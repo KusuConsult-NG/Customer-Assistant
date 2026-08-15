@@ -5,10 +5,14 @@ import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { IndustryType } from '@ace/shared-types';
 
-// All auth routes use the strict 'auth' tier: 5 requests / 60 seconds per IP.
+// All auth routes are limited to 5 requests / 60 seconds per IP.
 // This prevents brute-force attacks on login, credential stuffing on register,
 // and enumeration attacks on forgot-password.
-@Throttle({ auth: {} })
+//
+// This overrides the global 'default' throttler (60/60s) for this controller.
+// Do NOT model this as a separate named tier in ThrottlerModule.forRoot —
+// every named tier there applies to EVERY route in the app simultaneously.
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
 @Controller('api/auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -56,6 +60,11 @@ export class AuthController {
   @Post('reset-password')
   async resetPassword(@Body() body: { email: string; token: string; newPassword: string }) {
     return this.authService.resetPassword(body.email, body.token, body.newPassword);
+  }
+
+  @Post('setup-account')
+  async setupAccount(@Body() body: { token: string; password: string }) {
+    return this.authService.setupAccount(body.token, body.password);
   }
 
   @Post('logout')

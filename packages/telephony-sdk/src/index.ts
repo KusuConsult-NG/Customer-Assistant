@@ -60,22 +60,21 @@ export class TwilioProvider implements TelephonyProvider {
             provider: this.type,
           };
         }
-      } catch {
-        // Fallback to local record if network or credentials fail
+        // HONESTY: a failed Twilio API call used to fall through to a
+        // fabricated CA_TW_* record with status QUEUED — the dashboard showed
+        // a call that never existed. Failure must be visible.
+        const errText = await res.text().catch(() => res.statusText);
+        throw new Error(`Twilio call initiation failed (HTTP ${res.status}): ${errText.slice(0, 300)}`);
+      } catch (err: any) {
+        if (err?.message?.startsWith('Twilio call initiation failed')) throw err;
+        throw new Error(`Twilio call initiation failed: ${err?.message ?? err}`);
       }
     }
 
-    const callSid = `CA_TW_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId: callSid,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    throw new Error(
+      'Twilio credentials are not configured (accountSid/authToken or TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN). ' +
+      'Outbound calls cannot be placed — configure credentials under Settings → Telephony.'
+    );
   }
 
 
@@ -134,17 +133,12 @@ export class PlivoProvider implements TelephonyProvider {
   ) {}
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `PL_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    // HONESTY: this used to return a fabricated PL_* record with status
+    // QUEUED — the dashboard logged an outbound call that never existed.
+    throw new Error(
+      `PlivoProvider outbound origination is not implemented yet. ` +
+      `Use the TWILIO provider for outbound calls (options.provider = 'TWILIO').`
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
@@ -189,7 +183,6 @@ export class TelnyxProvider implements TelephonyProvider {
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
     const key = this.apiKey || process.env.TELNYX_API_KEY;
-    const callId = `TL_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     if (key) {
       try {
@@ -219,21 +212,16 @@ export class TelnyxProvider implements TelephonyProvider {
             provider: this.type,
           };
         }
-      } catch (err) {
-        console.error('Telnyx call initiation error:', err);
+        throw new Error(`Telnyx call initiation failed: ${JSON.stringify(data?.errors ?? data).slice(0, 300)}`);
+      } catch (err: any) {
+        if (err?.message?.startsWith('Telnyx call initiation failed')) throw err;
+        throw new Error(`Telnyx call initiation failed: ${err?.message ?? err}`);
       }
     }
 
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    throw new Error(
+      'Telnyx API key is not configured (apiKey or TELNYX_API_KEY). Outbound calls cannot be placed.'
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
@@ -267,17 +255,12 @@ export class AfricasTalkingProvider implements TelephonyProvider {
   ) {}
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `AT_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    // HONESTY: this used to return a fabricated AT_* record with status
+    // QUEUED — the dashboard logged an outbound call that never existed.
+    throw new Error(
+      `Africa's Talking outbound origination is not implemented yet. ` +
+      `Use the TWILIO provider for outbound calls (options.provider = 'TWILIO').`
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
@@ -328,17 +311,12 @@ export class NigeriaCarrierForwardProvider implements TelephonyProvider {
   type = TelephonyProviderType.NIGERIA_CARRIER_FORWARD;
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `NG_TELCO_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    // HONESTY: this used to return a fabricated NG_TELCO_* record with status
+    // QUEUED — the dashboard logged an outbound call that never existed.
+    throw new Error(
+      `NIGERIA_CARRIER_FORWARD works by carrier-side call forwarding and cannot ORIGINATE outbound calls. ` +
+      `Use the TWILIO provider for outbound calls (options.provider = 'TWILIO').`
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
@@ -377,17 +355,12 @@ export class MTNEnterpriseSIPProvider implements TelephonyProvider {
   type = TelephonyProviderType.MTN_ENTERPRISE_SIP;
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `MTN_SIP_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    // HONESTY: this used to return a fabricated MTN_SIP_* record with status
+    // QUEUED — the dashboard logged an outbound call that never existed.
+    throw new Error(
+      `MTN Enterprise SIP outbound origination is not implemented yet. ` +
+      `Use the TWILIO provider for outbound calls (options.provider = 'TWILIO').`
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
@@ -420,17 +393,12 @@ export class AirtelBusinessSIPProvider implements TelephonyProvider {
   type = TelephonyProviderType.AIRTEL_BUSINESS_SIP;
 
   async initiateCall(options: CallInitiateOptions): Promise<CallRecord> {
-    const callId = `AIRTEL_SIP_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    return {
-      callId,
-      organizationId: options.organizationId,
-      from: options.fromNumber,
-      to: options.toNumber,
-      direction: CallDirection.OUTBOUND,
-      status: CallStatus.QUEUED,
-      startTime: new Date(),
-      provider: this.type,
-    };
+    // HONESTY: this used to return a fabricated AIRTEL_SIP_* record with status
+    // QUEUED — the dashboard logged an outbound call that never existed.
+    throw new Error(
+      `Airtel Business SIP outbound origination is not implemented yet. ` +
+      `Use the TWILIO provider for outbound calls (options.provider = 'TWILIO').`
+    );
   }
 
   async transferCall(options: CallTransferOptions): Promise<{ success: boolean; message: string }> {

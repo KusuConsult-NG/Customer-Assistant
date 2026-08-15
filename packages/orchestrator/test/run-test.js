@@ -55,21 +55,21 @@ async function testOrchestrator() {
   assert.strictEqual(activeHandoffRes.shouldHandoff, true, 'Active handoff context should always shouldHandoff=true');
   assert.strictEqual(activeHandoffRes.replyText, '', 'Active handoff should return empty replyText (AI is silent)');
 
-  // ── Test 4: Tool call (appointment) throws without DB — no fake fallback ──
-  // This confirms we removed the mock_contact_ fallback and throw properly.
-  let appointmentThrew = false;
-  try {
-    await orchestrator.processIncomingMessage(baseContext, 'I want to book an appointment');
-  } catch (err) {
-    appointmentThrew = true;
-    assert.ok(
-      err.message.includes('Failed to upsert contact') || err.message.includes('DATABASE_URL') || err.message.includes('customerPhoneNumber'),
-      `Expected a real DB error, got: ${err.message}`
-    );
+  // ── Test 4: Tool call (appointment) NEVER throws — no customer silence ──
+  // CONTRACT (updated): tool intents no longer propagate exceptions. On any
+  // failure (DB down, unknown org, no free slot) the orchestrator returns an
+  // honest reply with shouldHandoff=true / TOOL_FAILURE, because an uncaught
+  // throw meant the customer received NO reply at all. What is still NOT
+  // valid is returning a fake bookingId.
+  const apptRes = await orchestrator.processIncomingMessage(baseContext, 'I want to book an appointment');
+  assert.ok(typeof apptRes.replyText === 'string' && apptRes.replyText.length > 0, 'Appointment intent must always reply');
+  if (apptRes.shouldHandoff) {
+    assert.strictEqual(apptRes.handoffReason, 'TOOL_FAILURE', 'Failed booking must hand off with TOOL_FAILURE');
+    console.log('  Appointment tool: failed gracefully → honest reply + handoff ✓');
+  } else {
+    assert.ok(apptRes.toolCallsExecuted?.[0]?.result?.bookingId, 'Successful booking must carry a real bookingId');
+    console.log('  Appointment tool: succeeded with real DB ✓');
   }
-  // Either it throws (correct — no DB available) or it succeeds (if DB is available)
-  // Both outcomes are valid. What is NOT valid is returning a fake bookingId.
-  console.log(`  Appointment tool: ${appointmentThrew ? 'threw real DB error (no DB available) ✓' : 'succeeded with real DB ✓'}`);
 
   // ── Test 5: Greeting detection without DB (RAG fallback graceful) ─────
   // General inquiry path should NOT throw even without DB, because
@@ -80,31 +80,29 @@ async function testOrchestrator() {
   assert.strictEqual(greetingRes.shouldHandoff, false, 'Greeting should not trigger handoff');
 
   // ── Test 6: Pricing intent routing ────────────────────────────────────
+  // CONTRACT (updated): quotations now file a real QUO-* ticket (DB write) and
+  // never invent prices or dead PDF links. Without a working DB/org the intent
+  // degrades to an honest handoff instead of throwing.
   const pricingRes = await orchestrator.processIncomingMessage(baseContext, 'I need a price quote for services');
-  // No DB needed for quotation — it only generates a reference number and URL
-  if (!pricingRes.shouldHandoff) {
-    // If it didn't handoff, check intent routing
-    if (pricingRes.intentDetected === 'REQUEST_QUOTATION') {
-      assert.ok(pricingRes.toolCallsExecuted.length > 0, 'Should execute quotation tool');
-      assert.ok(pricingRes.replyText.includes('QT-'), 'Quotation reply should include quote number');
-    }
+  assert.strictEqual(pricingRes.intentDetected, 'REQUEST_QUOTATION', 'Pricing phrase must route to quotation intent');
+  if (pricingRes.shouldHandoff) {
+    assert.strictEqual(pricingRes.handoffReason, 'TOOL_FAILURE', 'Failed quotation must hand off with TOOL_FAILURE');
+    console.log('  Quotation tool: failed gracefully → honest reply + handoff ✓');
+  } else {
+    assert.ok(pricingRes.replyText.includes('QUO-'), 'Quotation reply should include QUO- ticket number');
+    assert.ok(!pricingRes.replyText.includes('₦'), 'Quotation reply must NOT invent a price');
+    console.log('  Quotation tool: filed real QUO ticket ✓');
   }
 
-  // ── Test 7: Missing phone number throws — no phantom CRM records ──────
+  // ── Test 7: Missing phone number → graceful handoff, no phantom records ──
+  // CONTRACT (updated): previously this threw (correct vs. the even older
+  // phantom-contact fallback); now it degrades to a handoff reply. The
+  // invariant that matters is unchanged: NO contact record is fabricated.
   const noPhoneContext = { ...baseContext, customerPhoneNumber: undefined };
-  let noPhoneThrew = false;
-  try {
-    await orchestrator.processIncomingMessage(noPhoneContext, 'book appointment');
-  } catch (err) {
-    noPhoneThrew = true;
-    assert.ok(
-      err.message.includes('customerPhoneNumber is missing'),
-      `Expected phone missing error, got: ${err.message}`
-    );
-  }
-  if (noPhoneThrew) {
-    console.log('  Missing phone number: threw correct error ✓');
-  }
+  const noPhoneRes = await orchestrator.processIncomingMessage(noPhoneContext, 'book appointment');
+  assert.ok(noPhoneRes.replyText.length > 0, 'Missing phone must still produce a reply');
+  assert.strictEqual(noPhoneRes.shouldHandoff, true, 'Missing phone must hand off to a human');
+  console.log('  Missing phone number: graceful handoff, no phantom contact ✓');
 
   console.log('\n✅ ALL ORCHESTRATOR UNIT TESTS PASSED SUCCESSFULLY!');
   console.log('   (Integration tests against live DB run separately with npm run test:integration)');

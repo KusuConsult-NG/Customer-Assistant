@@ -59,17 +59,31 @@ export class BillingService {
 
     if (!org) throw new InternalServerErrorException(`Organization not found: ${organizationId}`);
 
-    // Aggregate real usage from database
+    // ── Current billing period start ─────────────────────────────────────────
+    // Previously usage was aggregated ALL-TIME, so "used this month" only ever
+    // grew and every org eventually appeared over quota. The period is anchored
+    // to the subscription renewal date when one exists (renewsAt - 30 days),
+    // otherwise the start of the current calendar month (trial orgs).
+    let periodStart: Date;
+    if (org.subscriptionRenewsAt && org.subscriptionRenewsAt > new Date()) {
+      periodStart = new Date(org.subscriptionRenewsAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else {
+      const now = new Date();
+      periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    }
+
+    // Aggregate real usage from database, scoped to the current period
     const [callMinutesUsed, whatsappMessagesUsed] = await Promise.all([
       prisma.callLog.aggregate({
         _sum: { durationSeconds: true },
-        where: { organizationId },
+        where: { organizationId, startedAt: { gte: periodStart } },
       }).then((r: any) => Math.ceil((r._sum.durationSeconds ?? 0) / 60)),
 
       prisma.message.count({
         where: {
           conversation: { organizationId },
           sender: 'AI',
+          sentAt: { gte: periodStart },
         },
       }),
     ]);
@@ -91,14 +105,20 @@ export class BillingService {
       callMinutesIncluded: limits.callMinutes,
       whatsappMessagesIncluded: limits.whatsappMessages,
       renewalDate: org.subscriptionRenewsAt?.toISOString() ?? null,
+      usagePeriodStart: periodStart.toISOString(),
       callMinutesUsed,
       whatsappMessagesUsed,
     };
   }
 
   /**
-   * AI-Assisted Payment Guidance for Customer Services & Invoices
-   * Generates step-by-step payment instructions for WhatsApp, Voice AI, and Webchat.
+   * AI-Assisted Payment Guidance for Customer Services & Invoices.
+   *
+   * Uses the organization's CONFIGURED payment details (Settings → payment
+   * fields). When none are configured, it says so instead of inventing them.
+   * The previous version hardcoded a Providus Bank account (9928374102),
+   * fabricated USSD codes, and linked /api/billing/pay-service — a nonexistent
+   * endpoint. Real customers would have paid into a placeholder account.
    */
   async generateServicePaymentGuidance(
     organizationId: string,
@@ -106,30 +126,50 @@ export class BillingService {
     amountNgn: number,
     contactPhone?: string
   ) {
-    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, paymentBankName: true, paymentAccountName: true, paymentAccountNumber: true },
+    });
     const reference = `ACE_SVC_${organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
-    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-    const checkoutUrl = `${baseUrl}/api/billing/pay-service?ref=${reference}&amount=${amountNgn}&service=${encodeURIComponent(serviceName)}`;
+    const formattedAmount = `₦${amountNgn.toLocaleString()}`;
+    const hasBankDetails = !!(org?.paymentBankName && org?.paymentAccountNumber);
 
+    if (!hasBankDetails) {
+      return {
+        reference,
+        serviceName,
+        amountNgn,
+        formattedAmount,
+        configured: false,
+        aiGuidanceText:
+          `💳 *Payment for ${serviceName}* — Total: *${formattedAmount}* (Reference: \`${reference}\`)\n\n` +
+          `Payment details for ${org?.name ?? 'this organization'} haven't been configured yet, so I won't guess at ` +
+          `account numbers. A teammate will confirm the payment details with you directly.\n\n` +
+          `(Admin: set your bank details under Settings → Organization to enable automatic payment guidance.)`,
+      };
+    }
+
+    const accountName = org!.paymentAccountName ?? org!.name;
     return {
       reference,
       serviceName,
       amountNgn,
-      formattedAmount: `₦${amountNgn.toLocaleString()}`,
-      checkoutUrl,
+      formattedAmount,
+      configured: true,
       virtualAccount: {
-        bankName: 'Providus Bank',
-        accountName: org?.name ? `${org.name} Collections` : 'ACE Customer Care',
-        accountNumber: '9928374102',
-        instructions: `Transfer exactly ₦${amountNgn.toLocaleString()} to Providus Bank 9928374102. Reply 'PAID' once completed.`,
+        bankName: org!.paymentBankName,
+        accountName,
+        accountNumber: org!.paymentAccountNumber,
+        instructions: `Transfer exactly ${formattedAmount} to ${org!.paymentBankName} ${org!.paymentAccountNumber} (${accountName}). Reply 'PAID' once completed.`,
       },
-      ussdCodes: {
-        gtbank: `*737*000*${reference.slice(-4)}#`,
-        zenith: `*966*000*${reference.slice(-4)}#`,
-        access: `*901*000*${reference.slice(-4)}#`,
-        firstbank: `*894*000*${reference.slice(-4)}#`,
-      },
-      aiGuidanceText: `💳 *Payment Guidance for ${serviceName}*\n\nTotal Amount: *₦${amountNgn.toLocaleString()}*\nReference: \`${reference}\`\n\n*Payment Options:*\n1️⃣ *Online Card/Paystack*: ${checkoutUrl}\n2️⃣ *Bank Transfer*: Transfer ₦${amountNgn.toLocaleString()} to *Providus Bank*, Acc No: \`9928374102\` (Name: ${org?.name || 'ACE Care'})\n3️⃣ *GTBank USSD*: Dial \`*737*000*9928#\`\n\nOnce transferred, reply *"PAID"* or send a screenshot of your receipt for instant automated confirmation.`,
+      aiGuidanceText:
+        `💳 *Payment Guidance for ${serviceName}*\n\n` +
+        `Total Amount: *${formattedAmount}*\nReference: \`${reference}\`\n\n` +
+        `*Bank Transfer*\n` +
+        `• Bank: *${org!.paymentBankName}*\n` +
+        `• Account Name: *${accountName}*\n` +
+        `• Account Number: \`${org!.paymentAccountNumber}\`\n\n` +
+        `Once transferred, reply *"PAID"* or send a screenshot of your receipt and our team will confirm your payment.`,
     };
   }
 

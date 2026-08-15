@@ -5,6 +5,7 @@ import { UserRole, IndustryType } from '@ace/shared-types';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes, createHash } from 'crypto';
 import { Resend } from 'resend';
+import { getJwtRefreshSecret } from './jwt-secrets';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +24,10 @@ export class AuthService {
       throw new ConflictException('A user with this email already exists.');
     }
 
-    const slug = dto.organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now().toString().slice(-4);
+    // Random suffix, not a time suffix: Date.now().slice(-4) repeats every ~2.8
+    // hours, so two same-named orgs registering in different "windows" could
+    // still collide on the unique slug. 3 random bytes = 16.7M values.
+    const slug = dto.organizationName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + randomBytes(3).toString('hex');
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const organization = await prisma.organization.create({
@@ -107,7 +111,7 @@ export class AuthService {
     const payload = { userId, organizationId, email, fullName, role };
     const accessToken = this.jwtService.sign(payload, { expiresIn: '1d' });
     const refreshToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_REFRESH_SECRET || 'super_secret_ace_platform_refresh_key_2026',
+      secret: getJwtRefreshSecret(),
       expiresIn: '7d',
     });
 
@@ -159,7 +163,7 @@ export class AuthService {
   async refreshToken(refreshTokenStr: string) {
     try {
       const payload = this.jwtService.verify(refreshTokenStr, {
-        secret: process.env.JWT_REFRESH_SECRET || 'super_secret_ace_platform_refresh_key_2026',
+        secret: getJwtRefreshSecret(),
       });
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
@@ -283,6 +287,53 @@ export class AuthService {
     });
 
     return { message: 'Password reset successfully. You can now log in with your new password.' };
+  }
+
+  /**
+   * Team-invite account setup — consume the invite token and set the first password.
+   *
+   * This endpoint was MISSING entirely: addTeamMember emailed a link to
+   * /setup-account, whose form POSTs { token, password } to
+   * /api/auth/setup-account — which did not exist, so no invited team member
+   * could ever activate their account (the whole invite flow 404ed at the
+   * final step).
+   *
+   * The invite stores a SHA-256 hash of the token in passwordResetToken with a
+   * 7-day expiry (organizations.service.ts addTeamMember). The token is
+   * 256-bit random, so lookup by token hash alone is safe. Accepting the
+   * invite also verifies the email — the link only exists in that inbox.
+   */
+  async setupAccount(token: string, password: string) {
+    if (!token) throw new BadRequestException('Setup token is required');
+    if (!password || password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired setup link. Ask your admin to send a new invitation.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+        emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        isActive: true,
+      },
+    });
+
+    return { message: 'Account set up successfully. You can now log in with your new password.', email: user.email };
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {

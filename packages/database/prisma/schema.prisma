@@ -143,6 +143,12 @@ model Organization {
   logoUrl              String?
   aiPersonaPrompt      String?      @db.Text
   welcomeMessage       String?      @db.Text
+  // ─── Customer payment collection details (shown by the AI assistant) ───────
+  // Set by the org owner in Settings. When unset, the AI does NOT invent bank
+  // details — it defers to a human instead. Never hardcode account numbers.
+  paymentBankName      String?
+  paymentAccountName   String?
+  paymentAccountNumber String?
   // ─── Subscription & Billing ────────────────────────────────────────────────
   // Updated by BillingService when Paystack fires charge.success webhook.
   // subscriptionPlan matches SubscriptionPlan enum values: STARTER | PROFESSIONAL | BUSINESS | ENTERPRISE

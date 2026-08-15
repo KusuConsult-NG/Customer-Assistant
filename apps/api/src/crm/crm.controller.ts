@@ -17,7 +17,7 @@ export class CrmController {
   @Post('contacts')
   async createContact(
     @Req() req: { user: AuthUser },
-    @Body() body: { fullName: string; phoneNumber: string; email?: string; tags?: string[] }
+    @Body() body: { fullName: string; phoneNumber: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }
   ) {
     return this.crmService.createContact(req.user.organizationId, body);
   }
@@ -74,7 +74,7 @@ export class CrmController {
   }
 
   @Patch('contacts/:id')
-  async updateContact(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[] }) {
+  async updateContact(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }) {
     return this.crmService.updateContact(id, body, req.user.organizationId);
   }
 
@@ -117,9 +117,18 @@ export class CrmController {
   @Get('export/contacts')
   async exportContacts(@Req() req: { user: AuthUser }, @Res() res: any) {
     const contacts = await this.crmService.getContacts(req.user.organizationId, 1, 99999);
-    let csv = 'ID,Full Name,Phone Number,Email,Tags\n';
+    // Proper CSV quoting: a name containing a double-quote used to break the
+    // row (values were interpolated unescaped). Doubling quotes is the CSV
+    // escape rule; the leading-character guard blocks spreadsheet formula
+    // injection (=, +, -, @) when the file is opened in Excel.
+    const q = (v: any) => {
+      let s = String(v ?? '');
+      if (/^[=+\-@]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    let csv = 'ID,Full Name,Phone Number,Email,Address,City,State,Tags\n';
     contacts.data.forEach((c: any) => {
-      csv += `"${c.id}","${c.fullName}","${c.phoneNumber}","${c.email || ''}","${(c.tags || []).join(';')}"\n`;
+      csv += [c.id, c.fullName, c.phoneNumber, c.email || '', c.address || '', c.city || '', c.state || '', (c.tags || []).join(';')].map(q).join(',') + '\n';
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=contacts.csv');

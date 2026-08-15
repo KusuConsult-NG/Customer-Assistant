@@ -14,29 +14,33 @@ export class WidgetService {
   constructor(private webhookDispatcher: WebhookDispatcherService) {}
 
   async getWidgetConfig(apiKeyOrOrgId: string) {
-    let org = await prisma.organization.findFirst({
-      where: { id: apiKeyOrOrgId },
-      select: {
-        id: true,
-        name: true,
-        welcomeMessage: true,
-        aiPersonaPrompt: true,
-        logoUrl: true,
-        phone: true,
-      },
-    });
+    const orgSelect = {
+      id: true,
+      name: true,
+      welcomeMessage: true,
+      aiPersonaPrompt: true,
+      logoUrl: true,
+      phone: true,
+    } as const;
 
-    if (!org) {
+    let org = null;
+    if (apiKeyOrOrgId) {
       org = await prisma.organization.findFirst({
-        select: {
-          id: true,
-          name: true,
-          welcomeMessage: true,
-          aiPersonaPrompt: true,
-          logoUrl: true,
-          phone: true,
-        },
+        where: { id: apiKeyOrOrgId },
+        select: orgSelect,
       });
+      // Tenant isolation: a key WAS provided but matches nothing. Do NOT fall
+      // back to "any organization" — that would route this visitor's chat (and
+      // their conversation history) into an unrelated tenant's CRM.
+      if (!org) {
+        throw new NotFoundException(
+          'Organization not found for the provided widget key. Check the embed snippet on Settings → Widget.'
+        );
+      }
+    } else {
+      // No key at all: single-tenant/demo convenience — use the only org.
+      // In a multi-tenant deployment the embed snippet always includes the key.
+      org = await prisma.organization.findFirst({ select: orgSelect });
     }
 
     if (!org) throw new NotFoundException('Organization not found for widget');
@@ -65,40 +69,56 @@ export class WidgetService {
     const config = await this.getWidgetConfig(data.apiKey || '');
     const organizationId = config.organizationId;
 
-    // Find or create Contact
-    let contact = null;
-    if (data.customerPhone || data.customerEmail) {
-      contact = await prisma.contact.findFirst({
-        where: {
-          organizationId,
-          OR: [
-            ...(data.customerPhone ? [{ phoneNumber: data.customerPhone }] : []),
-            ...(data.customerEmail ? [{ email: data.customerEmail }] : []),
-          ],
-        },
-      });
-    }
+    // Find or create Contact.
+    // Anonymous visitors are identified by their widget sessionId, giving them a
+    // STABLE synthetic identity (web_<sessionId>). The previous web_<Date.now()>
+    // scheme minted a brand-new contact + conversation for EVERY message, so the
+    // AI never saw history and the CRM filled with one-message ghost contacts.
+    const anonymousIdentity = `web_${data.sessionId || Date.now()}`;
+
+    let contact = await prisma.contact.findFirst({
+      where: {
+        organizationId,
+        OR: [
+          ...(data.customerPhone ? [{ phoneNumber: data.customerPhone }] : []),
+          ...(data.customerEmail ? [{ email: data.customerEmail }] : []),
+          { phoneNumber: anonymousIdentity },
+        ],
+      },
+    });
 
     if (!contact) {
-      contact = await prisma.contact.create({
-        data: {
-          organizationId,
-          fullName: data.customerName || 'Web Visitor',
-          phoneNumber: data.customerPhone || `web_${Date.now()}`,
-          email: data.customerEmail,
-          tags: ['web-widget'],
-        },
-      });
+      try {
+        contact = await prisma.contact.create({
+          data: {
+            organizationId,
+            fullName: data.customerName || 'Web Visitor',
+            phoneNumber: data.customerPhone || anonymousIdentity,
+            email: data.customerEmail,
+            tags: ['web-widget'],
+          },
+        });
+      } catch (err: any) {
+        // P2002: two concurrent first-messages from the same session raced on
+        // @@unique([organizationId, phoneNumber]) — the other request won.
+        if (err.code !== 'P2002') throw err;
+        contact = await prisma.contact.findFirst({
+          where: { organizationId, phoneNumber: data.customerPhone || anonymousIdentity },
+        });
+        if (!contact) throw err;
+      }
     }
 
-    // Find or create Conversation
+    // Find or create Conversation (messages: last 10 only — enough for AI
+    // context without loading an unbounded thread on every message)
+    const lastMessages = { orderBy: { sentAt: 'desc' as const }, take: 10 };
     let conversation = await prisma.conversation.findFirst({
       where: {
         organizationId,
         contactId: contact.id,
         channel: ChannelType.WEBCHAT,
       },
-      include: { messages: true },
+      include: { messages: lastMessages },
     });
 
     if (!conversation) {
@@ -109,7 +129,7 @@ export class WidgetService {
           channel: ChannelType.WEBCHAT,
           isHumanHandoffActive: false,
         },
-        include: { messages: true },
+        include: { messages: lastMessages },
       });
     }
 
@@ -141,7 +161,13 @@ export class WidgetService {
           organizationId,
           customerPhoneNumber: contact.phoneNumber,
           channel: ChannelType.WEBCHAT,
-          history: [],
+          // Last 10 messages, restored to chronological order — previously []
+          // so the widget AI had no memory of the conversation at all.
+          history: [...conversation.messages].reverse().map((m: any) => ({
+            sender: m.sender,
+            content: m.content,
+            timestamp: m.sentAt,
+          })),
           slots: {},
           isHumanHandoffActive: conversation.isHumanHandoffActive,
         },
@@ -171,11 +197,27 @@ export class WidgetService {
     };
   }
 
+  /**
+   * Return the message history for THIS widget session only.
+   *
+   * The previous implementation ignored sessionId and returned the
+   * organization's first WEBCHAT conversation — i.e. one visitor could read
+   * another visitor's chat. History is now resolved via the session's stable
+   * synthetic contact identity (web_<sessionId>); unknown sessions get [].
+   */
   async getSessionHistory(apiKey: string, sessionId: string) {
     const config = await this.getWidgetConfig(apiKey);
+    if (!sessionId) return [];
+
+    const contact = await prisma.contact.findFirst({
+      where: { organizationId: config.organizationId, phoneNumber: `web_${sessionId}` },
+    });
+    if (!contact) return [];
+
     const conversation = await prisma.conversation.findFirst({
       where: {
         organizationId: config.organizationId,
+        contactId: contact.id,
         channel: ChannelType.WEBCHAT,
       },
       include: {

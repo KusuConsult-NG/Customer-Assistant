@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
@@ -30,6 +30,9 @@ export class OrganizationsService {
       logoUrl?: string;
       webhookUrl?: string;
       enabledWebhookEvents?: string[];
+      paymentBankName?: string;
+      paymentAccountName?: string;
+      paymentAccountNumber?: string;
     }
   ) {
     return prisma.organization.update({
@@ -42,6 +45,10 @@ export class OrganizationsService {
         ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
         ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
         ...(data.enabledWebhookEvents !== undefined && { enabledWebhookEvents: data.enabledWebhookEvents }),
+        // Payment details used by the AI's payment guidance. Empty string clears.
+        ...(data.paymentBankName !== undefined && { paymentBankName: data.paymentBankName || null }),
+        ...(data.paymentAccountName !== undefined && { paymentAccountName: data.paymentAccountName || null }),
+        ...(data.paymentAccountNumber !== undefined && { paymentAccountNumber: data.paymentAccountNumber || null }),
       },
     });
   }
@@ -58,17 +65,26 @@ export class OrganizationsService {
 
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
 
-    const user = await prisma.user.create({
-      data: {
-        organizationId,
-        email: userData.email,
-        fullName: userData.fullName,
-        role: userData.role,
-        passwordHash: unusablePasswordHash,
-        passwordResetToken: hashedToken,
-        passwordResetExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    });
+    let user;
+    try {
+      user = await prisma.user.create({
+        data: {
+          organizationId,
+          email: userData.email,
+          fullName: userData.fullName,
+          role: userData.role,
+          passwordHash: unusablePasswordHash,
+          passwordResetToken: hashedToken,
+          passwordResetExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+    } catch (err: any) {
+      // P2002 on the unique email — surface a clear 409 instead of a raw 500.
+      if (err.code === 'P2002') {
+        throw new ConflictException(`A user with email ${userData.email} already exists.`);
+      }
+      throw err;
+    }
 
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {

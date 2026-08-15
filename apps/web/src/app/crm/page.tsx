@@ -800,10 +800,22 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all placeholder-slate-400 font-medium";
 const selectCls = `${inputCls} appearance-none cursor-pointer bg-white dark:bg-slate-800`;
 
+// All 36 Nigerian states + FCT, for the contact location picker.
+const NIGERIAN_STATES = [
+  'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue', 'Borno',
+  'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'FCT (Abuja)', 'Gombe',
+  'Imo', 'Jigawa', 'Kaduna', 'Kano', 'Katsina', 'Kebbi', 'Kogi', 'Kwara', 'Lagos',
+  'Nasarawa', 'Niger', 'Ogun', 'Ondo', 'Osun', 'Oyo', 'Plateau', 'Rivers', 'Sokoto',
+  'Taraba', 'Yobe', 'Zamfara',
+];
+
 function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -812,7 +824,15 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
     setLoading(true);
     setError('');
     try {
-      await api.crm.addContact({ fullName, phoneNumber, email, tags: ['customer'] });
+      await api.crm.addContact({
+        fullName,
+        phoneNumber,
+        email,
+        tags: ['customer'],
+        ...(address ? { address } : {}),
+        ...(city ? { city } : {}),
+        ...(state ? { state } : {}),
+      });
       onAdded();
     } catch (err: any) {
       setError(err.message || 'Failed to add contact');
@@ -828,6 +848,16 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Emeka Okafor" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
         <Field label="Email (optional)"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="emeka@example.com" /></Field>
+        <Field label="Street Address (optional)"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className={inputCls} placeholder="e.g. 14 Adeola Odeku Street" /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="City (optional)"><input type="text" value={city} onChange={e => setCity(e.target.value)} className={inputCls} placeholder="e.g. Victoria Island" /></Field>
+          <Field label="State (optional)">
+            <select value={state} onChange={e => setState(e.target.value)} className={inputCls}>
+              <option value="">Select state…</option>
+              {NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+        </div>
         <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Contact'}
         </button>
@@ -1040,6 +1070,11 @@ function ContactDetailModal({ contact, onClose }: { contact: any; onClose: () =>
                 <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
                   <Mail className="w-3.5 h-3.5" /> {contact.email || 'No email registered'}
                 </p>
+                {(contact.address || contact.city || contact.state) && (
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 font-medium">
+                    📍 {[contact.address, contact.city, contact.state].filter(Boolean).join(', ')}
+                  </p>
+                )}
               </div>
             </div>
           </div>

@@ -1,7 +1,9 @@
 # Multi-stage Dockerfile for NestJS API Server (@ace/api)
 FROM node:20-alpine AS base
 WORKDIR /app
-RUN apk add --no-libc-compat python3 make g++
+# --no-cache: don't keep the apk index (smaller layer). The previous flag
+# (--no-libc-compat) is not a valid apk option and failed the build outright.
+RUN apk add --no-cache python3 make g++
 
 FROM base AS dependencies
 COPY package.json package-lock.json ./

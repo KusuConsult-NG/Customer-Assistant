@@ -1,6 +1,10 @@
-import { Controller, Get, Post, Body, Req, Headers, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req, Headers, UseGuards, BadRequestException } from '@nestjs/common';
+import { RawBodyRequest } from '@nestjs/common';
+import { Request } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { BillingService, SubscriptionPlan } from './billing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
@@ -14,7 +18,8 @@ export class BillingController {
     return this.billingService.getSubscriptionDetails(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Guard order matters: JwtAuthGuard attaches req.user, RolesGuard reads it.
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'ADMIN')
   @Post('checkout')
   async checkout(
@@ -28,7 +33,7 @@ export class BillingController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'ADMIN')
   @Post('activate')
   async activate(
@@ -52,9 +57,29 @@ export class BillingController {
     );
   }
 
+  /**
+   * Paystack webhook.
+   *
+   * MUST receive the raw request Buffer (req.rawBody), never the parsed @Body():
+   * HMAC-SHA256 is computed over the exact bytes Paystack sent. The previous
+   * version passed the parsed JSON object, which made createHmac().update()
+   * throw a TypeError on every single webhook — payments never activated plans.
+   *
+   * @SkipThrottle — authenticity is enforced by signature verification;
+   * rate-limiting a payment webhook can drop charge.success events.
+   */
+  @SkipThrottle()
   @Post('paystack-webhook')
-  async handleWebhook(@Body() body: any, @Headers('x-paystack-signature') signature: string) {
-    await this.billingService.handlePaystackWebhook(body, signature);
+  async handleWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-paystack-signature') signature: string
+  ) {
+    if (!req.rawBody) {
+      // rawBody requires NestFactory.create(AppModule, { rawBody: true }) and
+      // no competing body parser registered ahead of Nest's (see main.ts).
+      throw new BadRequestException('Raw request body unavailable — cannot verify webhook signature');
+    }
+    await this.billingService.handlePaystackWebhook(req.rawBody, signature);
     return { status: 'success' };
   }
 }

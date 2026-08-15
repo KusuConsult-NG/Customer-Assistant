@@ -22,7 +22,12 @@ export class CrmService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async createContact(organizationId: string, data: { fullName: string; phoneNumber: string; email?: string; tags?: string[] }) {
+  async createContact(
+    organizationId: string,
+    data: { fullName: string; phoneNumber: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }
+  ) {
+    // address/city/state existed in the schema from day one but were silently
+    // dropped here — no API or form could ever set a contact's location.
     const contact = await prisma.contact.create({
       data: {
         organizationId,
@@ -30,6 +35,9 @@ export class CrmService {
         phoneNumber: data.phoneNumber,
         email: data.email,
         tags: data.tags || [],
+        address: data.address,
+        city: data.city,
+        state: data.state,
       },
     });
 
@@ -129,7 +137,11 @@ export class CrmService {
 
   async createTicket(organizationId: string, data: { contactId: string; subject: string; description: string; priority?: TicketPriority }) {
     const count = await prisma.ticket.count({ where: { organizationId } });
-    const ticketNumber = `TCK-${Date.now().toString().slice(-4)}-${count + 1}`;
+    // Random suffix: ticketNumber is globally unique, but the old
+    // time-slice + per-org-count pair could collide across orgs (and the
+    // read-then-create count races with itself), turning into a P2002 500.
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const ticketNumber = `TCK-${Date.now().toString().slice(-4)}-${count + 1}-${rand}`;
 
     const ticket = await prisma.ticket.create({
       data: {
@@ -173,7 +185,7 @@ export class CrmService {
     });
   }
 
-  async updateContact(contactId: string, data: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[] }, organizationId: string) {
+  async updateContact(contactId: string, data: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }, organizationId: string) {
     const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
     if (!contact) throw new NotFoundException('Contact not found');
     return prisma.contact.update({
@@ -228,45 +240,36 @@ export class CrmService {
     });
   }
 
+  /**
+   * Quotation data for a real deal. Unknown dealId → 404.
+   *
+   * The old fallback fabricated a "Service & Operations Retainer — ₦150,000"
+   * quotation with placeholder phone numbers for ANY unknown id — a fake
+   * financial document presented as genuine. Quotations are only generated
+   * from actual deal records; placeholder contact details are omitted, not
+   * invented.
+   */
   async getQuotationData(dealId: string, organizationId: string) {
     const deal = await prisma.deal.findFirst({
       where: { id: dealId, organizationId },
       include: { contact: true, organization: true },
     });
 
-    if (deal) {
-      return {
-        quotationNumber: `QUO-${deal.id.slice(0, 8).toUpperCase()}`,
-        organizationName: deal.organization?.name || 'ACE Customer Care',
-        organizationPhone: deal.organization?.phone || '+234 1 700 8000',
-        customerName: deal.contact?.fullName || 'Valued Customer',
-        customerPhone: deal.contact?.phoneNumber || '+234 800 000 0000',
-        items: [
-          { description: deal.title || 'Service Quotation', quantity: 1, unitPrice: deal.amount, totalPrice: deal.amount },
-        ],
-        subtotal: deal.amount,
-        tax: 0,
-        grandTotal: deal.amount,
-        currency: 'NGN',
-        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      };
-    }
+    if (!deal) throw new NotFoundException(`Deal not found: ${dealId}`);
 
-    // Fallback if dealId is a custom ref
-    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
     return {
-      quotationNumber: dealId.toUpperCase(),
-      organizationName: org?.name || 'ACE Customer Care',
-      organizationPhone: org?.phone || '+234 1 700 8000',
-      customerName: 'Valued Customer',
-      customerPhone: '+234 800 000 0000',
+      quotationNumber: `QUO-${deal.id.slice(0, 8).toUpperCase()}`,
+      organizationName: deal.organization?.name || 'Your Organization',
+      organizationPhone: deal.organization?.phone || '',
+      customerName: deal.contact?.fullName || 'Customer',
+      customerPhone: deal.contact?.phoneNumber || '',
       items: [
-        { description: 'Service & Operations Retainer', quantity: 1, unitPrice: 150000, totalPrice: 150000 },
+        { description: deal.title || 'Service Quotation', quantity: 1, unitPrice: deal.amount, totalPrice: deal.amount },
       ],
-      subtotal: 150000,
+      subtotal: deal.amount,
       tax: 0,
-      grandTotal: 150000,
-      currency: 'NGN',
+      grandTotal: deal.amount,
+      currency: deal.currency || 'NGN',
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     };
   }

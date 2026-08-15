@@ -1,10 +1,16 @@
+// Load .env BEFORE anything reads process.env. Several modules (AuthModule,
+// JwtStrategy) capture env values at import time, and validateEnvironment()
+// tells the operator to "fix your .env file" — which only works if something
+// actually loads it. Real environment variables always win over .env entries.
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { WebSocketServer } from 'ws';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { validateEnvironment } from './config/env.validation';
-import { attachRedisAdapter } from './config/socket-redis-adapter';
+import { RedisSocketIoAdapter } from './config/socket-redis-adapter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
 
 async function bootstrap() {
@@ -21,10 +27,36 @@ async function bootstrap() {
   //   - WhatsApp webhook HMAC-SHA256 signature verification (X-Hub-Signature-256)
   //   - Paystack webhook HMAC-SHA256 signature verification (X-Paystack-Signature)
   // Without this, request.rawBody is undefined and signature checks always fail.
-  const app = await NestFactory.create(AppModule, {
+  //
+  // bodyParser: false + app.useBodyParser() below is REQUIRED — do not "simplify"
+  // this back to a bare app.use(express.json()):
+  //   Nest's own parser is the ONLY one wired with the `verify` hook that captures
+  //   req.rawBody. body-parser marks a request as consumed (req._body), so any
+  //   json parser registered before Nest's (e.g. a manual express.json() call in
+  //   this file — the previous bug) parses first WITHOUT the hook, Nest's parser
+  //   then skips, and req.rawBody is undefined on EVERY request. That silently
+  //   drops every WhatsApp webhook. useBodyParser registers exactly one parser,
+  //   with the rawBody hook AND our size limit.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody:    true,
+    bodyParser: false,
     bufferLogs: true,
   });
+
+  // JSON limit is configurable because the knowledge-base upload sends files as
+  // base64 inside a JSON body (~4/3 size overhead). 10mb allows ~7.5MB documents.
+  // At larger scale, switch uploads to multipart or direct-to-storage signed URLs.
+  const jsonBodyLimit = process.env.JSON_BODY_LIMIT ?? '10mb';
+  app.useBodyParser('json', { limit: jsonBodyLimit });
+  app.useBodyParser('urlencoded', { extended: true, limit: '1mb' });
+
+  // Behind a load balancer / reverse proxy (Render, Nginx, Cloudflare) the
+  // client IP arrives in X-Forwarded-For. Without trust proxy, ThrottlerGuard
+  // rate-limits ALL users as one shared IP (the balancer's). Opt-in via env so
+  // a directly-exposed deployment can't be tricked by forged XFF headers.
+  if (process.env.TRUST_PROXY) {
+    app.set('trust proxy', parseInt(process.env.TRUST_PROXY, 10) || 1);
+  }
 
   // ── 3. CORS configuration ──────────────────────────────────────────────────
   // In production, replace '*' with your actual dashboard origin.
@@ -62,17 +94,28 @@ async function bootstrap() {
     })
   );
 
-  // ── 6. Global request size limits ─────────────────────────────────────────
-  app.use(require('express').json({ limit: '1mb' }));
-  app.use(require('express').urlencoded({ extended: true, limit: '1mb' }));
+  // ── 6. Socket.IO Redis adapter — BEFORE listen ─────────────────────────────
+  // The adapter must be registered before Nest bootstraps the WebSocket
+  // gateways (which happens during listen()). The previous version ran after
+  // listen() and searched for the Socket.IO server on the Express instance,
+  // where it never exists — so multi-pod fan-out silently never worked.
+  // connectToRedis() never throws: no/void Redis → single-node mode.
+  const socketIoAdapter = new RedisSocketIoAdapter(app);
+  if (process.env.REDIS_URL) {
+    await socketIoAdapter.connectToRedis(process.env.REDIS_URL);
+  } else {
+    logger.warn(
+      'REDIS_URL is not set — Socket.IO running in single-node mode. ' +
+      'Set REDIS_URL and restart to enable cross-pod events.'
+    );
+  }
+  app.useWebSocketAdapter(socketIoAdapter);
 
-  // ── 6. Start listening ────────────────────────────────────────────────────
+  // ── 7. Start listening ────────────────────────────────────────────────────
+  // (Body size limits are configured via useBodyParser above — registering a
+  //  second express.json() here would silently disable rawBody capture.)
   const port = parseInt(process.env.PORT ?? '4000', 10);
   await app.listen(port, '0.0.0.0');
-
-  // ── 7. Attach Redis adapter for multi-pod Socket.IO ───────────────────────
-  // Must run AFTER app.listen() so the Socket.IO server is fully initialised.
-  await attachRedisAdapter(app);
 
   // ── 8. Mount raw WebSocket server for Twilio Media Streams ────────────────
   //
@@ -126,7 +169,7 @@ async function bootstrap() {
   logger.log(`🚀 ACE Platform API running at http://0.0.0.0:${port}`);
   logger.log(`📡 Environment: ${process.env.NODE_ENV ?? 'development'}`);
   logger.log(`🔒 CORS Origin: ${allowedOrigin}`);
-  logger.log(`📦 Raw body buffering: ENABLED (required for webhook signature verification)`);
+  logger.log(`📦 Raw body buffering: ENABLED (required for webhook signature verification) | JSON body limit: ${jsonBodyLimit}`);
   logger.log(`📞 Twilio Media Streams: listening on /telephony/stream/:callSid`);
 }
 

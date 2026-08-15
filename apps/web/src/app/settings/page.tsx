@@ -204,6 +204,9 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [name, setName] = useState(org?.name || '');
   const [aiPersonaPrompt, setAiPersonaPrompt] = useState(org?.aiPersonaPrompt || '');
   const [welcomeMessage, setWelcomeMessage] = useState(org?.welcomeMessage || '');
+  const [paymentBankName, setPaymentBankName] = useState(org?.paymentBankName || '');
+  const [paymentAccountName, setPaymentAccountName] = useState(org?.paymentAccountName || '');
+  const [paymentAccountNumber, setPaymentAccountNumber] = useState(org?.paymentAccountNumber || '');
   const [saving, setSaving] = useState(false);
 
   const save = async (e: React.FormEvent) => {
@@ -212,7 +215,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     try {
       const res = await fetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
-        body: JSON.stringify({ name, aiPersonaPrompt, welcomeMessage }),
+        body: JSON.stringify({ name, aiPersonaPrompt, welcomeMessage, paymentBankName, paymentAccountName, paymentAccountNumber }),
       });
       if (!res.ok) throw new Error('Failed');
       showToast('Settings saved!');
@@ -256,6 +259,21 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             placeholder="Hello! 👋 Welcome to [Company]. I'm your AI assistant. How can I help you today?"
           />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">First message sent to every new customer conversation.</p>
+        </div>
+      </Section>
+
+      <Section title="Payment Details" description="Bank account your AI assistant shares when customers ask how to pay. Leave empty and the AI will defer to a human instead of quoting account details.">
+        <div>
+          <label className={labelCls}>Bank Name</label>
+          <input type="text" value={paymentBankName} onChange={e => setPaymentBankName(e.target.value)} className={inputCls} placeholder="e.g. Providus Bank" />
+        </div>
+        <div>
+          <label className={labelCls}>Account Name</label>
+          <input type="text" value={paymentAccountName} onChange={e => setPaymentAccountName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services Ltd" />
+        </div>
+        <div>
+          <label className={labelCls}>Account Number</label>
+          <input type="text" value={paymentAccountNumber} onChange={e => setPaymentAccountNumber(e.target.value)} className={inputCls} placeholder="e.g. 0123456789" />
         </div>
       </Section>
 

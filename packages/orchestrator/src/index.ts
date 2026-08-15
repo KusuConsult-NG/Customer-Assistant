@@ -36,6 +36,84 @@ const RAG_TOP_K = 3;
  */
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 30;
 
+/**
+ * Returns tomorrow at 10:00 Africa/Lagos as a Date, regardless of the server's
+ * local timezone.
+ *
+ * Lagos is UTC+1 year-round (no DST), so 10:00 Lagos === 09:00 UTC.
+ * The previous implementation used setHours(10, ...) which is interpreted in the
+ * SERVER's timezone — correct only if TZ=Africa/Lagos. In a Docker container
+ * (default TZ=UTC) every "10 AM" booking landed at 11:00 Lagos.
+ */
+function tomorrowAt10Lagos(): Date {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCHours(9, 0, 0, 0); // 09:00 UTC == 10:00 Africa/Lagos (UTC+1, no DST)
+  return d;
+}
+
+/**
+ * Find the next conflict-free slot for an AI-created booking.
+ *
+ * The old executeBookAppointment created bookings unconditionally (its comment
+ * claimed a read-before-write conflict check that did not exist). This scans
+ * business hours (10:00–17:00 Lagos, 30-min slots) starting tomorrow, up to 14
+ * days out, and returns the first slot with no overlapping active booking.
+ *
+ * One query per day (all active bookings for that day), overlap resolved in
+ * memory — bounded at 14 queries worst case. Still read-then-write: two truly
+ * concurrent requests can race into the same slot. Acceptable at SME volume;
+ * at >500 bookings/day wrap the create in a serializable transaction.
+ */
+async function findNextFreeSlot(
+  organizationId: string,
+  durationMinutes: number
+): Promise<{ startTime: Date; endTime: Date }> {
+  const SLOT_MS = 30 * 60 * 1000;
+  const DAY_START_UTC_HOUR = 9;   // 10:00 Lagos
+  const LAST_START_UTC_HOUR = 16; // 17:00 Lagos (last slot starts 16:30 Lagos)
+
+  for (let dayOffset = 1; dayOffset <= 14; dayOffset++) {
+    const dayStart = new Date();
+    dayStart.setUTCDate(dayStart.getUTCDate() + dayOffset);
+    dayStart.setUTCHours(DAY_START_UTC_HOUR, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCHours(LAST_START_UTC_HOUR, 30, 0, 0);
+
+    const dayBookings = await prisma.booking.findMany({
+      where: {
+        organizationId,
+        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { lt: new Date(dayEnd.getTime() + SLOT_MS) },
+        endTime: { gt: dayStart },
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    for (let t = dayStart.getTime(); t <= dayEnd.getTime() - SLOT_MS; t += SLOT_MS) {
+      const slotStart = t;
+      const slotEnd = t + durationMinutes * 60 * 1000;
+      const clash = dayBookings.some(
+        (b: { startTime: Date; endTime: Date }) =>
+          b.startTime.getTime() < slotEnd && b.endTime.getTime() > slotStart
+      );
+      if (!clash) {
+        return { startTime: new Date(slotStart), endTime: new Date(slotEnd) };
+      }
+    }
+  }
+
+  // Fully booked for 14 days — extremely unlikely at SME scale. Return
+  // tomorrow 10:00 anyway; the transactional clash-check in
+  // executeBookAppointment will reject it, and the caller's catch degrades to
+  // an honest "connecting you to a human" reply with handoff.
+  const fallback = tomorrowAt10Lagos();
+  return {
+    startTime: fallback,
+    endTime: new Date(fallback.getTime() + durationMinutes * 60 * 1000),
+  };
+}
+
 // ─── RAG Service ─────────────────────────────────────────────────────────────
 
 /**
@@ -228,6 +306,34 @@ export class ConversationOrchestrator {
     this.ragService = new QdrantRAGService();
   }
 
+  /**
+   * Uniform failure path for every DB-backed tool intent.
+   *
+   * Any tool can throw (database down, FK violation, missing contact). An
+   * uncaught throw bubbles to the channel's catch-all and the customer gets
+   * NO reply at all — silence is the worst possible outcome mid-conversation.
+   * Every tool branch routes failures here: log the real error, reply
+   * honestly, hand off to a human.
+   */
+  private toolFailureReply(intent: string, err: any): OrchestrationResult {
+    console.error(JSON.stringify({
+      level: 'error',
+      service: 'ConversationOrchestrator',
+      event: 'tool_execution_failed',
+      intent,
+      error: err?.message ?? String(err),
+    }));
+    return {
+      replyText:
+        `I ran into a technical problem completing that automatically. ` +
+        `Let me connect you with a team member who can help right away.`,
+      intentDetected: intent,
+      confidenceScore: 0.9,
+      shouldHandoff: true,
+      handoffReason: HandoffReason.TOOL_FAILURE,
+    };
+  }
+
   async processIncomingMessage(
     context: ConversationContext,
     userMessageText: string
@@ -271,27 +377,54 @@ export class ConversationOrchestrator {
     // ── 3. Tool: Appointment Booking ─────────────────────────────────────────
     const APPOINTMENT_PHRASES = ['appointment', 'schedule consultation', 'book a doctor', 'reserve slot', 'book an appointment', 'book appointment'];
     if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p))) {
-      const toolResult = await this.executeBookAppointment(context);
-      return {
-        replyText: `✅ Your appointment has been confirmed for *${toolResult.time}*.\n\nYou'll receive a confirmation shortly. Is there anything else I can help with?`,
-        intentDetected: 'BOOK_APPOINTMENT',
-        confidenceScore: 0.98,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
-      };
+      // executeBookAppointment can throw (no free slot in 14 days, or both
+      // transactional attempts lost their race). An unhandled throw here would
+      // bubble to the channel's catch-all and the customer would get NO reply
+      // at all — degrade to an honest message + human handoff instead.
+      try {
+        const toolResult = await this.executeBookAppointment(context);
+        return {
+          replyText: `✅ Your appointment has been confirmed for *${toolResult.time}*.\n\nYou'll receive a confirmation shortly. Is there anything else I can help with?`,
+          intentDetected: 'BOOK_APPOINTMENT',
+          confidenceScore: 0.98,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
+        };
+      } catch (bookErr: any) {
+        console.error(JSON.stringify({
+          level: 'error',
+          service: 'ConversationOrchestrator',
+          event: 'book_appointment_failed',
+          organizationId: context.organizationId,
+          error: bookErr.message,
+        }));
+        return {
+          replyText:
+            `I wasn't able to secure an appointment slot automatically just now. ` +
+            `Let me connect you with a team member who will book a time that works for you.`,
+          intentDetected: 'BOOK_APPOINTMENT',
+          confidenceScore: 0.9,
+          shouldHandoff: true,
+          handoffReason: HandoffReason.TOOL_FAILURE,
+        };
+      }
     }
 
     // ── 4. Tool: Reservation ─────────────────────────────────────────────────
     const RESERVATION_PHRASES = ['reservation', 'book room', 'book table', 'book a room', 'book a table', 'reserve a table', 'make a reservation'];
     if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p))) {
-      const toolResult = await this.executeManageReservation(context);
-      return {
-        replyText: `✅ Your reservation for *${toolResult.partySize} guest(s)* at *${toolResult.time}* is confirmed. We look forward to hosting you!`,
-        intentDetected: 'MANAGE_RESERVATION',
-        confidenceScore: 0.96,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'manage_reservation', result: toolResult }],
-      };
+      try {
+        const toolResult = await this.executeManageReservation(context);
+        return {
+          replyText: `✅ Your reservation for *${toolResult.partySize} guest(s)* at *${toolResult.time}* is confirmed. We look forward to hosting you!`,
+          intentDetected: 'MANAGE_RESERVATION',
+          confidenceScore: 0.96,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'manage_reservation', result: toolResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('MANAGE_RESERVATION', err);
+      }
     }
 
     // ── 5. Tool: Check Booking / Reservation Status ──────────────────────────
@@ -300,14 +433,18 @@ export class ConversationOrchestrator {
       'when is my appointment', 'booking status', 'reservation status', 'view my booking',
     ];
     if (CHECK_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeCheckBookingStatus(context);
-      return {
-        replyText: result.message,
-        intentDetected: 'CHECK_BOOKING_STATUS',
-        confidenceScore: 0.95,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'check_booking_status', result }],
-      };
+      try {
+        const result = await this.executeCheckBookingStatus(context);
+        return {
+          replyText: result.message,
+          intentDetected: 'CHECK_BOOKING_STATUS',
+          confidenceScore: 0.95,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'check_booking_status', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('CHECK_BOOKING_STATUS', err);
+      }
     }
 
     // ── 6. Tool: Cancel Booking / Reservation ─────────────────────────────────
@@ -317,14 +454,18 @@ export class ConversationOrchestrator {
       'please cancel', 'cancel booking',
     ];
     if (CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeCancelBookingOrReservation(context);
-      return {
-        replyText: result.message,
-        intentDetected: 'CANCEL_BOOKING',
-        confidenceScore: 0.97,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
-      };
+      try {
+        const result = await this.executeCancelBookingOrReservation(context);
+        return {
+          replyText: result.message,
+          intentDetected: 'CANCEL_BOOKING',
+          confidenceScore: 0.97,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('CANCEL_BOOKING', err);
+      }
     }
 
     // ── 7. Tool: Reschedule Booking / Reservation ─────────────────────────────
@@ -334,14 +475,18 @@ export class ConversationOrchestrator {
       'different time', 'another time', 'change the date',
     ];
     if (RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeRescheduleBookingOrReservation(context);
-      return {
-        replyText: result.message,
-        intentDetected: 'RESCHEDULE_BOOKING',
-        confidenceScore: 0.96,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
-      };
+      try {
+        const result = await this.executeRescheduleBookingOrReservation(context);
+        return {
+          replyText: result.message,
+          intentDetected: 'RESCHEDULE_BOOKING',
+          confidenceScore: 0.96,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('RESCHEDULE_BOOKING', err);
+      }
     }
 
     // ── 8. Tool: Request Refund ───────────────────────────────────────────────
@@ -351,39 +496,51 @@ export class ConversationOrchestrator {
       'return my money', 'reimburse', 'reimbursement',
     ];
     if (REFUND_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeRequestRefund(context, cleanInput);
-      return {
-        replyText: result.message,
-        intentDetected: 'REQUEST_REFUND',
-        confidenceScore: 0.97,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'request_refund', result }],
-      };
+      try {
+        const result = await this.executeRequestRefund(context, cleanInput);
+        return {
+          replyText: result.message,
+          intentDetected: 'REQUEST_REFUND',
+          confidenceScore: 0.97,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'request_refund', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_REFUND', err);
+      }
     }
 
     const QUOTATION_PHRASES = ['quotation', 'price quote', 'how much for', 'billing breakdown', 'get a quote', 'cost of', 'pricing'];
     if (QUOTATION_PHRASES.some((p) => lowerInput.includes(p))) {
-      const quoteResult = await this.executeGenerateQuotation(context, cleanInput);
-      return {
-        replyText: `${quoteResult.summaryText}\n\n📎 View full document: ${quoteResult.documentUrl}`,
-        intentDetected: 'REQUEST_QUOTATION',
-        confidenceScore: 0.96,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'request_quotation', result: quoteResult }],
-      };
+      try {
+        const quoteResult = await this.executeGenerateQuotation(context, cleanInput);
+        return {
+          replyText: quoteResult.summaryText,
+          intentDetected: 'REQUEST_QUOTATION',
+          confidenceScore: 0.96,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'request_quotation', result: quoteResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_QUOTATION', err);
+      }
     }
 
     // ── 10. Tool: Support Ticket ───────────────────────────────────────────────
     const TICKET_PHRASES = ['file a complaint', 'open ticket', 'issue with service', 'report problem', 'complaint', 'not working', 'broken'];
     if (TICKET_PHRASES.some((p) => lowerInput.includes(p))) {
-      const ticketResult = await this.executeCreateTicket(context, cleanInput);
-      return {
-        replyText: `I've opened support ticket *#${ticketResult.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
-        intentDetected: 'CREATE_TICKET',
-        confidenceScore: 0.95,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'create_support_ticket', result: ticketResult }],
-      };
+      try {
+        const ticketResult = await this.executeCreateTicket(context, cleanInput);
+        return {
+          replyText: `I've opened support ticket *#${ticketResult.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
+          intentDetected: 'CREATE_TICKET',
+          confidenceScore: 0.95,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'create_support_ticket', result: ticketResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('CREATE_TICKET', err);
+      }
     }
 
     // ── 11. Tool: AI Service Payment Guidance & Account Details ────────────────
@@ -393,14 +550,18 @@ export class ConversationOrchestrator {
       'transfer details', 'pay now', 'make payment', 'send payment details', 'how much to pay'
     ];
     if (PAYMENT_GUIDANCE_PHRASES.some((p) => lowerInput.includes(p))) {
-      const guidanceResult = await this.executeProvidePaymentGuidance(context);
-      return {
-        replyText: guidanceResult.replyText,
-        intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
-        confidenceScore: 0.98,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
-      };
+      try {
+        const guidanceResult = await this.executeProvidePaymentGuidance(context);
+        return {
+          replyText: guidanceResult.replyText,
+          intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
+          confidenceScore: 0.98,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('PROVIDE_PAYMENT_GUIDANCE', err);
+      }
     }
 
     // ── 11. RAG Knowledge Search ──────────────────────────────────────────────
@@ -446,12 +607,19 @@ export class ConversationOrchestrator {
 
     const orgName = org?.name ?? 'our service';
 
-    // Stealth Human Persona Directive Protection
+    // Honest AI disclosure.
+    // The previous version denied being an AI ("Haha, no! I'm a customer support
+    // representative..."). That is a compliance liability — the EU AI Act's
+    // transparency obligations and Meta's WhatsApp Business messaging policies
+    // require automated agents to identify as such when asked — and it burns
+    // customer trust the moment the deception is noticed.
     const AI_DISCLOSURE_PHRASES = ['are you an ai', 'are you a robot', 'are you ai', 'is this a bot', 'are you human', 'am i talking to a machine'];
     if (AI_DISCLOSURE_PHRASES.some((p) => lowerInput.includes(p))) {
       return {
-        replyText: `Haha, no! I'm a customer support representative here at ${orgName}. How can I assist you today?`,
-        intentDetected: 'HUMAN_VERIFICATION',
+        replyText:
+          `Yes — I'm ${orgName}'s AI assistant. I can help with bookings, payments, and any questions about our services, ` +
+          `and I can bring in a human teammate whenever you prefer: just say *"speak to an agent"*.`,
+        intentDetected: 'AI_DISCLOSURE',
         confidenceScore: 1.0,
         shouldHandoff: false,
       };
@@ -702,10 +870,6 @@ export class ConversationOrchestrator {
       return { message: 'I need your phone number on file to reschedule. Please contact our team directly.' };
     }
 
-    const newTime = new Date();
-    newTime.setDate(newTime.getDate() + 1);
-    newTime.setHours(10, 0, 0, 0); // Default: tomorrow 10 AM Lagos
-
     // Try booking
     const booking = await prisma.booking.findFirst({
       where: {
@@ -718,7 +882,10 @@ export class ConversationOrchestrator {
     });
 
     if (booking) {
-      const endTime = new Date(newTime.getTime() + 30 * 60 * 1000);
+      const { startTime: newTime, endTime } = await findNextFreeSlot(
+        context.organizationId,
+        DEFAULT_APPOINTMENT_DURATION_MINUTES
+      );
       await prisma.booking.update({
         where: { id: booking.id },
         data: { status: 'RESCHEDULED', startTime: newTime, endTime, updatedAt: new Date() },
@@ -747,6 +914,7 @@ export class ConversationOrchestrator {
     });
 
     if (reservation) {
+      const newTime = tomorrowAt10Lagos(); // reservations have no slot model — default to tomorrow 10:00 Lagos
       await prisma.reservation.update({
         where: { id: reservation.id },
         data: { status: 'RESCHEDULED', reservationTime: newTime, updatedAt: new Date() },
@@ -806,7 +974,7 @@ export class ConversationOrchestrator {
       orderBy: { startTime: 'desc' },
     });
 
-    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}`;
+    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
     const subject = booking
       ? `Refund Request — ${booking.serviceName} on ${booking.startTime.toLocaleDateString('en-NG')}`
       : `Refund Request — Reservation (${contact.fullName})`;
@@ -846,40 +1014,61 @@ export class ConversationOrchestrator {
 
 
   /**
-   * Book an appointment for the next available slot (tomorrow, same time).
+   * Book an appointment at the next CONFLICT-FREE slot (see findNextFreeSlot).
    *
-   * Race condition note: Two concurrent requests CAN create overlapping bookings
-   * because we do read-then-write without a lock. For a high-traffic business,
-   * this should be wrapped in a PostgreSQL serializable transaction or use
-   * SELECT ... FOR UPDATE. This is documented as a known limitation.
-   *
-   * At scale (> 500 bookings/day), replace with:
-   *   prisma.$transaction(async (tx) => { ... }, { isolationLevel: 'Serializable' })
+   * Race condition note: still read-then-write without a lock — two truly
+   * concurrent requests can race into the same slot. At > 500 bookings/day,
+   * wrap in prisma.$transaction(..., { isolationLevel: 'Serializable' }).
    */
   private async executeBookAppointment(context: ConversationContext) {
     const contact = await this.getOrCreateContact(context);
 
-    const startTime = new Date();
-    startTime.setDate(startTime.getDate() + 1); // Tomorrow
-    startTime.setHours(10, 0, 0, 0); // 10:00 AM Lagos time (UTC+1)
+    // Two attempts: find a free slot, then re-check + create inside ONE
+    // transaction so a concurrent booking between "find" and "create" is
+    // caught. If the slot was taken in that window, re-scan once (the scan
+    // now sees the competitor's row). Not fully serializable, but it closes
+    // the common single-overlap race without transaction-retry machinery.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { startTime, endTime } = await findNextFreeSlot(
+        context.organizationId,
+        DEFAULT_APPOINTMENT_DURATION_MINUTES
+      );
 
-    const endTime = new Date(startTime.getTime() + DEFAULT_APPOINTMENT_DURATION_MINUTES * 60 * 1000);
+      const booking = await prisma.$transaction(async (tx: any) => {
+        const clash = await tx.booking.findFirst({
+          where: {
+            organizationId: context.organizationId,
+            status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+            startTime: { lt: endTime },
+            endTime: { gt: startTime },
+          },
+          select: { id: true },
+        });
+        if (clash) return null;
 
-    const booking = await prisma.booking.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        serviceName: 'General Consultation',
-        startTime,
-        endTime,
-        status: 'CONFIRMED',
-      },
-    });
+        return tx.booking.create({
+          data: {
+            organizationId: context.organizationId,
+            contactId: contact.id,
+            serviceName: 'General Consultation',
+            startTime,
+            endTime,
+            status: 'CONFIRMED',
+          },
+        });
+      });
 
-    return {
-      bookingId: booking.id,
-      time: startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }),
-    };
+      if (booking) {
+        return {
+          bookingId: booking.id,
+          time: startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }),
+        };
+      }
+    }
+
+    throw new Error(
+      `Could not secure a booking slot after 2 attempts (organizationId=${context.organizationId}) — heavy concurrent booking activity.`
+    );
   }
 
   private async executeManageReservation(context: ConversationContext) {
@@ -903,23 +1092,50 @@ export class ConversationOrchestrator {
     };
   }
 
+  /**
+   * Quotation request → ticket for the team, honest reply to the customer.
+   *
+   * The previous version invented a price ("Estimated Total: ₦35,000") for any
+   * organization and any service, and linked a PDF at /api/documents/quotation/
+   * — an endpoint that does not exist. A chatbot quoting fabricated prices to
+   * real customers is a business liability; the honest behavior is to log the
+   * request and have the team send a real quotation.
+   */
   private async executeGenerateQuotation(context: ConversationContext, promptText: string) {
-    const quoteNum = `QT-${Date.now().toString().slice(-6)}`;
-    const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+    const contact = await this.getOrCreateContact(context);
+    const quoteNum = `QUO-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+
+    const ticket = await prisma.ticket.create({
+      data: {
+        organizationId: context.organizationId,
+        contactId: contact.id,
+        ticketNumber: quoteNum,
+        subject: `Quotation Request — ${promptText.slice(0, 80)}`,
+        description:
+          `Customer requested a price quotation via AI assistant.\n\n` +
+          `Contact: ${contact.fullName} (${contact.phoneNumber})\n\n` +
+          `Customer message: "${promptText.slice(0, 300)}"`,
+        status: 'OPEN',
+        priority: 'MEDIUM',
+        updatedAt: new Date(),
+      },
+    });
+
     return {
       quotationNumber: quoteNum,
+      ticketId: ticket.id,
       summaryText:
-        `📄 *Official Price Quotation #${quoteNum}*\n` +
-        `Service: General Consultation & Diagnostics\n` +
-        `Estimated Total: ₦35,000\n` +
-        `Payment Methods: Bank Transfer, Debit Card (POS), Paystack`,
-      documentUrl: `${apiBaseUrl}/api/documents/quotation/${quoteNum}.pdf`,
+        `📄 *Quotation Request Logged — #${quoteNum}*\n\n` +
+        `I've passed your request to our team, who will prepare an official quotation with exact pricing ` +
+        `and send it to you on this channel shortly.\n\n` +
+        `To speed things up, feel free to reply with any details about what you need ` +
+        `(service type, quantity, dates).`,
     };
   }
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
-    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}`;
+    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
     const ticket = await prisma.ticket.create({
       data: {
@@ -936,34 +1152,52 @@ export class ConversationOrchestrator {
     return { ticketId: ticket.id, ticketNumber: ticket.ticketNumber };
   }
 
+  /**
+   * Payment guidance — uses the organization's CONFIGURED payment details
+   * (Settings → payment fields), or honestly defers to a human when none are set.
+   *
+   * The previous version quoted a hardcoded Providus Bank account (9928374102),
+   * fabricated USSD merchant codes, and linked /api/billing/pay-service — an
+   * endpoint that does not exist. Customers would have wired real money to a
+   * placeholder account. The AI must never invent payment destinations.
+   */
   private async executeProvidePaymentGuidance(context: ConversationContext) {
-    const org = await prisma.organization.findUnique({ where: { id: context.organizationId } });
-    const orgName = org?.name ?? 'ACE Care';
+    const org = await prisma.organization.findUnique({
+      where: { id: context.organizationId },
+      select: { name: true, paymentBankName: true, paymentAccountName: true, paymentAccountNumber: true },
+    });
+    const orgName = org?.name ?? 'our team';
     const reference = `ACE_PAY_${context.organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
-    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-    const checkoutUrl = `${baseUrl}/api/billing/pay-service?ref=${reference}`;
 
-    const replyText = `💳 *Payment Guidance & Account Details (${orgName})*\n\n` +
-      `You can complete your payment securely using any of the following payment channels:\n\n` +
-      `1️⃣ *Bank Transfer (Instant Confirmation)*\n` +
-      `• Bank Name: *Providus Bank*\n` +
-      `• Account Name: *${orgName} Collections*\n` +
-      `• Account Number: \`9928374102\`\n` +
-      `• Payment Reference: \`${reference}\`\n\n` +
-      `2️⃣ *Online Debit/Credit Card (Paystack Gateway)*\n` +
-      `• Pay online via Card: ${checkoutUrl}\n\n` +
-      `3️⃣ *Bank USSD Quick Codes*\n` +
-      `• GTBank: \`*737*000*9928#\`\n` +
-      `• Zenith Bank: \`*966*000*9928#\`\n` +
-      `• Access Bank: \`*901*000*9928#\`\n\n` +
-      `📌 *After Payment:* Reply *"PAID"* or send a screenshot of your bank transfer receipt. Our AI assistant will automatically confirm your payment and issue your receipt!`;
+    const hasBankDetails = !!(org?.paymentBankName && org?.paymentAccountNumber);
 
+    if (hasBankDetails) {
+      const replyText =
+        `💳 *Payment Details (${orgName})*\n\n` +
+        `1️⃣ *Bank Transfer*\n` +
+        `• Bank Name: *${org!.paymentBankName}*\n` +
+        `• Account Name: *${org!.paymentAccountName ?? orgName}*\n` +
+        `• Account Number: \`${org!.paymentAccountNumber}\`\n` +
+        `• Payment Reference: \`${reference}\`\n\n` +
+        `📌 *After Payment:* Reply *"PAID"* or send a screenshot of your transfer receipt, ` +
+        `and our team will confirm your payment.`;
+
+      return {
+        reference,
+        bankName: org!.paymentBankName,
+        accountName: org!.paymentAccountName ?? orgName,
+        accountNumber: org!.paymentAccountNumber,
+        replyText,
+      };
+    }
+
+    // No payment details configured — defer instead of inventing an account.
     return {
       reference,
-      accountNumber: '9928374102',
-      bankName: 'Providus Bank',
-      checkoutUrl,
-      replyText,
+      replyText:
+        `I want to make sure your payment goes to the right place, so I won't guess at account details. ` +
+        `A teammate from ${orgName} will confirm the payment details with you right away — ` +
+        `or say *"speak to an agent"* and I'll connect you now.`,
     };
   }
 
