@@ -50,6 +50,10 @@ export class AnalyticsService {
 
       openTickets = await prisma.ticket.count({ where: { organizationId, status: 'OPEN' } }).catch(() => 0);
       resolvedTickets = await prisma.ticket.count({ where: { organizationId, status: 'RESOLVED' } }).catch(() => 0);
+      // These two feed aiReplyRate — previously declared but never queried,
+      // so aiReplyRate was permanently null on the dashboard.
+      totalMessages = await prisma.message.count({ where: { conversation: { organizationId } } }).catch(() => 0);
+      totalAiMessages = await prisma.message.count({ where: { conversation: { organizationId }, sender: 'AI' } }).catch(() => 0);
       whatsappConversations = await prisma.conversation.count({ where: { organizationId, channel: 'WHATSAPP' } }).catch(() => 0);
       webchatConversations = await prisma.conversation.count({ where: { organizationId, channel: 'WEBCHAT' } }).catch(() => 0);
 

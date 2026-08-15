@@ -5,12 +5,6 @@ import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('AppointmentReminderService');
 
-/** How often the reminder sweep runs. */
-const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-
-/** Bookings processed per sweep, per window. Bounds memory and mail-send bursts. */
-const SWEEP_BATCH_SIZE = 200;
-
 /**
  * AppointmentReminderService
  *
@@ -19,65 +13,64 @@ const SWEEP_BATCH_SIZE = 200;
  *  - 48h (2 Days Before): Email sent if customer has an email address.
  *  - 24h (1 Day Before):
  *      - If customer has NO email: Send 24h SMS reminder.
- *      - If customer HAS email AND HAS PAID: Send 24h SMS reminder.
+ *      - If customer HAS email AND HAS PAID (notes contain [PAID]): Send 24h SMS reminder.
  *      - If customer HAS email BUT HAS NOT PAID: Skip SMS reminder (emails already sent at 72h & 48h).
+ *
+ * Duplicate-safety: each reminder is CLAIMED before it is sent, via an atomic
+ * updateMany guarded by the not-yet-marked filter. Only the caller whose
+ * updateMany reports count=1 sends — so concurrent pods (or an overlapping
+ * next tick on the same pod) can never send the same reminder twice. The old
+ * send-then-mark order duplicated reminders on any crash or pod overlap.
+ * A crash after claim but before send loses that one reminder — the safer
+ * failure mode.
  */
 @Injectable()
 export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy {
-  /**
-   * Null when RESEND_API_KEY is unset.
-   *
-   * This used to be `new Resend(process.env.RESEND_API_KEY || 're_mock_key')`, which
-   * produced a client that issues a real HTTPS request against the Resend API with a
-   * bogus key on every single reminder — a guaranteed 401, four times per booking,
-   * every five minutes. Nothing was ever sent and the failures were only visible in
-   * the error log.
-   */
-  private readonly resend: Resend | null;
-  private sweepTimer: ReturnType<typeof setInterval> | null = null;
-  private sweepInFlight = false;
+  private resend: Resend | null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
+    // No fake fallback key: with no RESEND_API_KEY every send is skipped with
+    // an explicit log line, instead of failing against 're_mock_key' each time.
     const key = process.env.RESEND_API_KEY;
     this.resend = key ? new Resend(key) : null;
-    if (!key) {
-      log.warn('appointment_reminders_email_disabled', {
-        reason: 'RESEND_API_KEY is not set — no appointment reminder emails will be sent.',
-      });
-    }
   }
 
   onModuleInit() {
-    // Run immediately on boot then poll every 5 minutes.
-    void this.runSweep();
-    this.sweepTimer = setInterval(() => void this.runSweep(), SWEEP_INTERVAL_MS);
-    // Do not hold the process open purely for the reminder timer.
-    this.sweepTimer.unref?.();
+    // Run immediately on boot then poll every 5 minutes
+    this.checkAndSendReminders().catch((err) =>
+      log.error('Initial appointment reminder check failed', err),
+    );
+    this.pollTimer = setInterval(
+      () =>
+        this.checkAndSendReminders().catch((err) =>
+          log.error('Appointment reminder check failed', err),
+        ),
+      5 * 60 * 1000,
+    );
   }
 
-  /** Clears the interval so tests and graceful shutdowns don't leak a live timer. */
   onModuleDestroy() {
-    if (this.sweepTimer) clearInterval(this.sweepTimer);
-    this.sweepTimer = null;
+    if (this.pollTimer) clearInterval(this.pollTimer);
   }
 
   /**
-   * Guards against overlapping sweeps: a slow mail provider could otherwise let the
-   * next 5-minute tick start before the previous pass had marked its bookings,
-   * sending every reminder twice.
+   * Atomically claim a reminder marker for a booking. A single UPDATE appends
+   * the marker only if it is not already present; the affected-row count tells
+   * us whether WE won the claim. Returns true for exactly one caller across
+   * all pods and ticks.
    */
-  private async runSweep() {
-    if (this.sweepInFlight) {
-      log.warn('appointment_reminder_sweep_overlap_skipped', {});
-      return;
-    }
-    this.sweepInFlight = true;
+  private async claimMarker(booking: { id: string }, marker: string): Promise<boolean> {
     try {
-      await this.checkAndSendReminders();
-    } catch (err) {
-      log.error('Appointment reminder check failed', err as Error);
-    } finally {
-      this.sweepInFlight = false;
+      const count = await prisma.$executeRaw`
+        UPDATE "bookings"
+        SET "notes" = COALESCE("notes", '') || ${' ' + marker}
+        WHERE "id" = ${booking.id}
+          AND COALESCE("notes", '') NOT LIKE ${'%' + marker + '%'}`;
+      return count === 1;
+    } catch (err: any) {
+      log.error('reminder_claim_failed', err, { bookingId: booking.id, marker });
+      return false; // fail closed: never send unclaimed
     }
   }
 
@@ -95,17 +88,13 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
         NOT: { notes: { contains: '[REMINDED_72H]' } },
       },
       include: { contact: true, organization: true },
-      take: SWEEP_BATCH_SIZE,
     });
 
     for (const booking of bookings72h) {
+      if (!(await this.claimMarker(booking, '[REMINDED_72H]'))) continue;
       if (booking.contact?.email) {
         await this.sendBookingEmailReminder(booking, '3 days');
       }
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { notes: `${booking.notes ?? ''} [REMINDED_72H]` },
-      });
     }
 
     // ── 2. 48-Hour (2 Days) Email Reminders ───────────────────────────────────
@@ -119,17 +108,13 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
         NOT: { notes: { contains: '[REMINDED_48H]' } },
       },
       include: { contact: true, organization: true },
-      take: SWEEP_BATCH_SIZE,
     });
 
     for (const booking of bookings48h) {
+      if (!(await this.claimMarker(booking, '[REMINDED_48H]'))) continue;
       if (booking.contact?.email) {
         await this.sendBookingEmailReminder(booking, '2 days');
       }
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { notes: `${booking.notes ?? ''} [REMINDED_48H]` },
-      });
     }
 
     // ── 3. 24-Hour (1 Day) Reminders: SMS conditional on payment & email ──────
@@ -143,16 +128,17 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
         NOT: { notes: { contains: '[REMINDED_24H]' } },
       },
       include: { contact: true, organization: true },
-      take: SWEEP_BATCH_SIZE,
     });
 
     for (const booking of bookings24h) {
+      if (!(await this.claimMarker(booking, '[REMINDED_24H]'))) continue;
+
       const hasEmail = Boolean(booking.contact?.email?.trim());
-      // `status === 'CONFIRMED'` is NOT evidence of payment, and every booking in this
-      // result set is CONFIRMED by construction (see the query above) — so the old
-      // expression `notes.includes('[PAID]') || status === 'CONFIRMED'` was constant
-      // true and the documented "skip SMS for unpaid customers who already got two
-      // emails" rule never once fired. Payment is tracked by the [PAID] note marker.
+      // BUG FIX: the old check was `notes.includes('[PAID]') || status === 'CONFIRMED'`
+      // — but this query filters on status: 'CONFIRMED', so the second clause was
+      // ALWAYS true and every customer got the SMS, making the documented
+      // "skip SMS for unpaid email customers" rule dead code. Payment is marked
+      // only by the [PAID] notes marker.
       const isPaid = Boolean(booking.notes?.includes('[PAID]'));
 
       // Rule: Send SMS 24h before IF:
@@ -169,11 +155,6 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           reason: 'Customer has email but has not paid — emails sent at 72h & 48h',
         });
       }
-
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { notes: `${booking.notes ?? ''} [REMINDED_24H]` },
-      });
     }
 
     // ── 4. 6-Hour Short-Notice SMS Reminders (for bookings < 24h to due date) ─
@@ -187,10 +168,11 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
         NOT: { notes: { contains: '[REMINDED_6H]' } },
       },
       include: { contact: true, organization: true },
-      take: SWEEP_BATCH_SIZE,
     });
 
     for (const booking of bookings6h) {
+      if (!(await this.claimMarker(booking, '[REMINDED_6H]'))) continue;
+
       const createdAt = new Date(booking.createdAt).getTime();
       const startTime = new Date(booking.startTime).getTime();
       const hoursBetweenCreationAndDue = (startTime - createdAt) / (1000 * 60 * 60);
@@ -202,17 +184,16 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           `Urgent Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is in 6 hours (due at ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`
         );
       }
-
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { notes: `${booking.notes ?? ''} [REMINDED_6H]` },
-      });
     }
   }
 
   private async sendBookingEmailReminder(booking: any, timeUntil: string) {
     const email = booking.contact?.email;
     if (!email) return;
+    if (!this.resend) {
+      log.warn('booking_email_reminder_skipped', { bookingId: booking.id, reason: 'RESEND_API_KEY not set' });
+      return;
+    }
 
     const dateStr = new Date(booking.startTime).toLocaleString('en-NG', {
       weekday: 'long',
@@ -224,13 +205,8 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       timeZone: 'Africa/Lagos',
     });
 
-    if (!this.resend) {
-      log.warn('booking_email_reminder_skipped', { bookingId: booking.id, reason: 'RESEND_API_KEY not set' });
-      return;
-    }
-
     try {
-      await this.resend.emails.send({
+      await this.resend!.emails.send({
         from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
         to: email,
         subject: `Upcoming Appointment Reminder (${timeUntil} before) — ${booking.organization.name}`,
@@ -254,33 +230,20 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     }
   }
 
-  /**
-   * SMS reminders are NOT implemented.
-   *
-   * This method used to log `sms_reminder_sent` and return — no SMS provider is
-   * integrated anywhere in the codebase. Operators reading the logs (or the code)
-   * would reasonably conclude that 24-hour and 6-hour SMS reminders were going out
-   * when no customer has ever received one. The log line now says what actually
-   * happened, and `smsAvailable` is false so callers can fall back to email.
-   *
-   * To implement: add a provider (Termii and Africa's Talking are the usual choices
-   * for Nigerian numbers), then send here and record delivery.
-   */
-  private readonly smsAvailable = false;
-
   private async sendSmsNotification(phoneNumber?: string, message?: string) {
     if (!phoneNumber || !message) return;
-    log.warn('sms_reminder_skipped_not_implemented', {
-      phoneNumberSuffix: phoneNumber.slice(-4),
-      reason: 'No SMS provider is configured in this build — the reminder was not delivered.',
+    // HONESTY: no SMS gateway is integrated yet — this used to log
+    // 'sms_reminder_sent', which read as a delivered SMS in the logs.
+    log.warn('sms_reminder_skipped_no_provider', {
+      phoneNumber,
+      reason: 'No SMS provider integrated — wire Twilio/Africa\'s Talking SMS here',
+      intendedMessage: message.slice(0, 120),
     });
   }
 
   /**
-   * Sends the customer an HTML booking confirmation.
-   *
-   * This is a confirmation, not a receipt: it states payment status from the booking
-   * record rather than asserting payment was received.
+   * Send an instant HTML Email Booking Confirmation & Formal Receipt to the customer.
+   * Triggered automatically when AI Assistant or API confirms a booking.
    */
   async sendBookingConfirmationAndReceiptEmail(bookingId: string) {
     const booking = await prisma.booking.findUnique({
@@ -289,6 +252,10 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     });
 
     if (!booking || !booking.contact?.email) return;
+    if (!this.resend) {
+      log.warn('booking_confirmation_email_skipped', { bookingId, reason: 'RESEND_API_KEY not set' });
+      return;
+    }
 
     const dateStr = new Date(booking.startTime).toLocaleString('en-NG', {
       weekday: 'long',
@@ -300,34 +267,23 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       timeZone: 'Africa/Lagos',
     });
 
-    const receiptRef = `REC-BK-${booking.id.slice(-6).toUpperCase()}`;
-
-    // Nothing in the booking flow records a payment, so this email must not assert
-    // one. It previously printed a hardcoded "CONFIRMED / PAID" payment status and
-    // called itself an "Official ... Service Receipt" — issuing what reads as a proof
-    // of payment for money that may never have changed hands.
-    const isPaid = Boolean(booking.notes?.includes('[PAID]'));
-
-    if (!this.resend) {
-      log.warn('booking_confirmation_email_skipped', { bookingId: booking.id, reason: 'RESEND_API_KEY not set' });
-      return;
-    }
+    const bookingRef = `BK-${booking.id.slice(-6).toUpperCase()}`;
 
     try {
-      await this.resend.emails.send({
+      await this.resend!.emails.send({
         from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
         to: booking.contact.email,
-        subject: `Booking Confirmation #${receiptRef} — ${booking.organization.name}`,
+        subject: `Booking Confirmation #${bookingRef} — ${booking.organization.name}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
             <div style="text-align: center; border-bottom: 2px solid #3b82f6; padding-bottom: 16px; margin-bottom: 20px;">
               <h2 style="color: #1e3a8a; margin: 0;">${booking.organization.name}</h2>
-              <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">Booking Confirmation</p>
+              <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">Official Booking Confirmation</p>
             </div>
 
             <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
-              <span style="color: #166534; font-weight: bold; font-size: 14px;">✅ BOOKING CONFIRMED</span>
-              <p style="color: #15803d; font-size: 12px; margin: 4px 0 0;">Reference: <strong>${receiptRef}</strong></p>
+              <span style="color: #166534; font-weight: bold; font-size: 14px;">✅ BOOKING CONFIRMED & REGISTERED</span>
+              <p style="color: #15803d; font-size: 12px; margin: 4px 0 0;">Booking Ref: <strong>${bookingRef}</strong></p>
             </div>
 
             <p style="color: #334155; font-size: 14px;">Dear <strong>${booking.contact.fullName || 'Valued Customer'}</strong>,</p>
@@ -339,7 +295,6 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
               <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Date & Time:</strong> ${dateStr} (WAT)</p>
               ${booking.staffName ? `<p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Assigned Specialist:</strong> ${booking.staffName}</p>` : ''}
               <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Customer Phone:</strong> ${booking.contact.phoneNumber}</p>
-              <p style="margin: 6px 0; font-size: 13px; color: #334155;"><strong>Payment Status:</strong> <span style="color: ${isPaid ? '#166534' : '#b45309'}; font-weight: bold;">${isPaid ? 'PAID' : 'PAYMENT PENDING'}</span></p>
             </div>
 
             <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 24px;">
@@ -348,7 +303,7 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           </div>
         `,
       });
-      log.info('booking_confirmation_email_sent', { bookingId: booking.id, email: booking.contact.email, receiptRef });
+      log.info('booking_confirmation_email_sent', { bookingId: booking.id, email: booking.contact.email, bookingRef });
     } catch (err: any) {
       log.error('booking_confirmation_email_failed', err, { bookingId: booking.id });
     }

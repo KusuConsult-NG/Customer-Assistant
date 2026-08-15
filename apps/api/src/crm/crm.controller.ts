@@ -21,7 +21,7 @@ export class CrmController {
   @Post('contacts')
   async createContact(
     @Req() req: { user: AuthUser },
-    @Body() body: { fullName: string; phoneNumber: string; email?: string; tags?: string[] }
+    @Body() body: { fullName: string; phoneNumber: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }
   ) {
     return this.crmService.createContact(req.user.organizationId, body);
   }
@@ -78,7 +78,7 @@ export class CrmController {
   }
 
   @Patch('contacts/:id')
-  async updateContact(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[] }) {
+  async updateContact(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }) {
     return this.crmService.updateContact(id, body, req.user.organizationId);
   }
 
@@ -140,9 +140,9 @@ export class CrmController {
       return `"${safe.replace(/"/g, '""')}"`;
     };
 
-    let csv = 'ID,Full Name,Phone Number,Email,Tags\n';
+    let csv = 'ID,Full Name,Phone Number,Email,Address,City,State,Tags\n';
     contacts.data.forEach((c: any) => {
-      csv += [cell(c.id), cell(c.fullName), cell(c.phoneNumber), cell(c.email), cell((c.tags || []).join(';'))].join(',') + '\n';
+      csv += [cell(c.id), cell(c.fullName), cell(c.phoneNumber), cell(c.email), cell(c.address), cell(c.city), cell(c.state), cell((c.tags || []).join(';'))].join(',') + '\n';
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=contacts.csv');

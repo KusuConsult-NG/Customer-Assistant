@@ -77,6 +77,7 @@ interface QueuedUtterance {
 }
 
 interface CallSession {
+  twilioWs: WebSocket;   // kept so teardown can actually hang up the call
   callSid:      string;
   streamSid:    string;
   organizationId: string;
@@ -229,6 +230,7 @@ export class TwilioMediaStreamHandler {
     }
 
     const built: CallSession = {
+      twilioWs,
       callSid,
       streamSid:           '',
       organizationId:      resolvedOrgId,
@@ -573,6 +575,11 @@ export class TwilioMediaStreamHandler {
     if (session.ttsAbortController) session.ttsAbortController.abort();
 
     try { session.deepgramWs?.close(); } catch {}
+    // Actually hang up: without this, a silence hard-stop left the caller in
+    // dead air on a still-billing call until THEY hung up.
+    try {
+      if (session.twilioWs.readyState === WebSocket.OPEN) session.twilioWs.close();
+    } catch {}
     this.sessions.delete(callSid);
 
     // ── FIX 9: Real call duration ─────────────────────────────────────────

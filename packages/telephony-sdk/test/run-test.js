@@ -18,10 +18,18 @@ async function testTelephonySDK() {
   assert.strictEqual(invalidNum, false, 'Should reject invalid short number');
 
   // Test 2: Twilio TwiML Generation
+  //
+  // CONTRACT (updated): the TwiML deliberately contains NO <Say> — the welcome
+  // message is played through ElevenLabs over the media stream so the entire
+  // call uses one consistent voice (see twilio-media-stream.handler.ts, Fix 4).
+  // The old assertions checked for the prompt text in the TwiML, which is the
+  // exact behavior that was removed on purpose.
   const twilio = new TwilioProvider('AC_mock', 'token_mock');
   const xml = twilio.generateInboundWebhookResponse('Hello ApexCare', 'wss://api.apexcare.ng/stream');
-  assert.ok(xml.includes('Hello ApexCare'), 'TwiML response should include prompt text');
-  assert.ok(xml.includes('<Stream url="wss://api.apexcare.ng/stream" />'), 'TwiML response should contain WebSocket Stream URL');
+  assert.ok(!xml.includes('<Say>'), 'TwiML must NOT contain <Say> — welcome plays via ElevenLabs on the stream');
+  assert.ok(xml.includes('<Connect>'), 'TwiML must open a <Connect> block');
+  assert.ok(xml.includes('<Stream url="wss://api.apexcare.ng/stream"'), 'TwiML must contain the WebSocket Stream URL');
+  assert.ok(xml.includes('track="both_tracks"'), 'Stream must request both audio tracks');
 
   console.log('✅ ALL TELEPHONY SDK TESTS PASSED SUCCESSFULLY!');
 }

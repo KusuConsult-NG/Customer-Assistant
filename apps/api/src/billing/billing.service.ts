@@ -60,16 +60,29 @@ export class BillingService {
     if (!org) throw new InternalServerErrorException(`Organization not found: ${organizationId}`);
 
     // Aggregate real usage from database
+    // Usage is scoped to the CURRENT billing period — previously aggregated
+    // all-time, so "used this month" only ever grew and every org eventually
+    // appeared over quota. Anchored to the renewal date when one exists,
+    // otherwise the start of the current calendar month.
+    let periodStart: Date;
+    if (org.subscriptionRenewsAt && org.subscriptionRenewsAt > new Date()) {
+      periodStart = new Date(org.subscriptionRenewsAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else {
+      const now = new Date();
+      periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    }
+
     const [callMinutesUsed, whatsappMessagesUsed] = await Promise.all([
       prisma.callLog.aggregate({
         _sum: { durationSeconds: true },
-        where: { organizationId },
+        where: { organizationId, startedAt: { gte: periodStart } },
       }).then((r: any) => Math.ceil((r._sum.durationSeconds ?? 0) / 60)),
 
       prisma.message.count({
         where: {
           conversation: { organizationId },
           sender: 'AI',
+          sentAt: { gte: periodStart },
         },
       }),
     ]);
@@ -91,6 +104,7 @@ export class BillingService {
       callMinutesIncluded: limits.callMinutes,
       whatsappMessagesIncluded: limits.whatsappMessages,
       renewalDate: org.subscriptionRenewsAt?.toISOString() ?? null,
+      usagePeriodStart: periodStart.toISOString(),
       callMinutesUsed,
       whatsappMessagesUsed,
     };

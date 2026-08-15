@@ -41,7 +41,6 @@
 
 import { Worker, Job } from 'bullmq';
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
 const CHUNK_SIZE_CHARS = 1800; // ~450 tokens at ~4 chars/token
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
@@ -198,7 +197,9 @@ async function downloadDocument(storageUrl: string): Promise<Buffer> {
   const res = await fetch(
     `${supabaseUrl}/storage/v1/object/${SUPABASE_BUCKET}/${storageUrl}`,
     {
-      headers: { Authorization: `Bearer ${serviceKey}` },
+      // Supabase Storage requires BOTH headers — Authorization alone yields a
+      // misleading 400/403 ("Invalid Compact JWS"). See common/object-storage.ts.
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
       signal: AbortSignal.timeout(60_000),
     }
   );
@@ -420,41 +421,41 @@ async function processDocumentJob(job: Job<DocumentJob>): Promise<void> {
 
 // ── Start the Worker ───────────────────────────────────────────────────────────
 
-const worker = new Worker<DocumentJob>(
-  'document-ingestion',
-  processDocumentJob,
-  {
-    connection: {
-      url: REDIS_URL,
-    },
-    concurrency: DOCUMENT_CONCURRENCY,
-  }
-);
+export function startDocumentWorker(redisUrl: string): Worker<DocumentJob> {
+  const worker = new Worker<DocumentJob>(
+    'document-ingestion',
+    processDocumentJob,
+    {
+      connection: { url: redisUrl },
+      concurrency: DOCUMENT_CONCURRENCY,
+    }
+  );
 
-worker.on('completed', (job: Job) => {
-  console.log(JSON.stringify({ level: 'info', service: 'DocumentWorker', event: 'worker_job_done', jobId: job.id }));
-});
+  worker.on('completed', (job: Job) => {
+    console.log(JSON.stringify({ level: 'info', service: 'DocumentWorker', event: 'worker_job_done', jobId: job.id }));
+  });
 
-worker.on('failed', (job: Job | undefined, err: Error) => {
-  console.error(JSON.stringify({
-    level: 'error',
+  worker.on('failed', (job: Job | undefined, err: Error) => {
+    console.error(JSON.stringify({
+      level: 'error',
+      service: 'DocumentWorker',
+      event: 'worker_job_failed',
+      jobId: job?.id,
+      error: err.message,
+    }));
+  });
+
+  worker.on('error', (err: Error) => {
+    console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_error', error: err.message }));
+  });
+
+  console.log(JSON.stringify({
+    level: 'info',
     service: 'DocumentWorker',
-    event: 'worker_job_failed',
-    jobId: job?.id,
-    error: err.message,
+    event: 'worker_started',
+    concurrency: DOCUMENT_CONCURRENCY,
+    redisUrl: redisUrl.replace(/:[^:@]+@/, ':***@'),
   }));
-});
 
-worker.on('error', (err: Error) => {
-  console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_error', error: err.message }));
-});
-
-console.log(JSON.stringify({
-  level: 'info',
-  service: 'DocumentWorker',
-  event: 'worker_started',
-  concurrency: DOCUMENT_CONCURRENCY,
-  redisUrl: REDIS_URL.replace(/:[^:@]+@/, ':***@'), // Mask password
-}));
-
-export { worker };
+  return worker;
+}

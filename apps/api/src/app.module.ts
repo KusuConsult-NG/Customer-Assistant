@@ -15,6 +15,7 @@ import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { RedisThrottlerStorage } from './config/redis-throttler-storage';
 import { WorkflowTriggerModule } from './workflows/workflow-trigger.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 
@@ -30,9 +31,15 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     // So there is exactly one tier. Routes that need a different budget override it
     // per-controller/handler with @Throttle({ default: { limit, ttl } }), and webhooks
     // opt out entirely with @SkipThrottle().
-    ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 120 },
-    ]),
+    // Storage: Redis-backed when REDIS_URL is set, so counters survive restarts
+    // and are shared across pods (in-memory storage silently multiplies the
+    // limit by the replica count). Fails open if Redis is down.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+      ...(process.env.REDIS_URL
+        ? { storage: new RedisThrottlerStorage(process.env.REDIS_URL) }
+        : {}),
+    }),
     // Global: lets any module fire workflow triggers without a circular import.
     WorkflowTriggerModule,
     // Global: WhatsApp inbound and the workflow engine both attach selfies.

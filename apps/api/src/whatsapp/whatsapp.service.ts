@@ -479,16 +479,21 @@ export class WhatsappService {
   }
 
   async getConversations(organizationId: string) {
-    return prisma.conversation.findMany({
+    // messages must be the LAST 50, not the first 50 — with asc+take, any
+    // conversation longer than 50 messages showed only its OLDEST messages
+    // and new activity never appeared in the console. Fetch desc, then
+    // restore chronological order for the UI.
+    const conversations = await prisma.conversation.findMany({
       where: { organizationId },
       include: {
         contact: true,
-        messages: { orderBy: { sentAt: 'asc' }, take: 50 },
+        messages: { orderBy: { sentAt: 'desc' }, take: 50 },
         assignedUser: { select: { id: true, fullName: true, email: true } },
       },
       orderBy: { lastMessageAt: 'desc' },
       take: 100, // paginate: never return unbounded result sets
     });
+    return conversations.map((c: any) => ({ ...c, messages: [...c.messages].reverse() }));
   }
 
   /**

@@ -1,0 +1,118 @@
+# ACE Platform CI
+#
+# Mirrors the verification pipeline that was proven locally: full monorepo
+# build, all seven package unit suites, the Jest API integration suite
+# against a real PostgreSQL 16 + Redis, and the Playwright browser e2e
+# suite against the fully booted stack.
+#
+# Test-only secrets below are deliberately dummy values — startup env
+# validation requires them to be PRESENT, not real. No third-party calls
+# succeed in CI (OpenAI/Meta/Twilio paths degrade gracefully by design).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DATABASE_URL: postgresql://ace:ace@localhost:5432/ace_ci
+  DIRECT_URL: postgresql://ace:ace@localhost:5432/ace_ci
+  JWT_SECRET: ci_only_jwt_secret_that_is_long_enough_1234
+  JWT_REFRESH_SECRET: ci_only_refresh_secret_that_is_long_enough
+  OPENAI_API_KEY: sk-ci-dummy
+  WHATSAPP_APP_SECRET: ci-app-secret
+  WHATSAPP_VERIFY_TOKEN: ci-verify-token
+  REDIS_URL: redis://localhost:6379
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ace
+          POSTGRES_PASSWORD: ace
+          POSTGRES_DB: ace_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema=packages/database/prisma/schema.prisma
+
+      - name: Push Prisma schema to CI database
+        run: npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+
+      - name: Apply SQL-only constraints (EXCLUDE cannot be expressed in schema.prisma)
+        run: |
+          PGPASSWORD=ace psql -h localhost -U ace -d ace_ci \
+            -f packages/database/prisma/migrations/20260807020000_booking_overlap_constraint/migration.sql
+
+      - name: Build all workspaces
+        run: npx turbo run build
+
+      - name: Package unit suites
+        run: |
+          set -e
+          for p in orchestrator telephony-sdk whatsapp-sdk pdf-generator scheduling-engine omnichannel-adapters voice-biometrics; do
+            echo "── $p ──"
+            (cd "packages/$p" && node test/run-test.js)
+          done
+
+      - name: API integration tests (Jest, live PostgreSQL)
+        working-directory: apps/api
+        run: npx jest --forceExit
+
+      - name: Install Playwright Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Boot API + web for e2e
+        run: |
+          node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          (cd apps/web && npx next start -p 3000 > /tmp/web.log 2>&1 &)
+          for i in $(seq 1 30); do
+            a=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/api/health || true)
+            w=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login || true)
+            [ "$a" = "200" ] && [ "$w" = "200" ] && break
+            sleep 2
+          done
+          echo "api=$a web=$w"
+          [ "$a" = "200" ] && [ "$w" = "200" ]
+
+      - name: Playwright e2e (full stack)
+        working-directory: apps/web
+        run: npx playwright test
+
+      - name: Surface server logs on failure
+        if: failure()
+        run: |
+          echo "── api.log ──"; tail -80 /tmp/api.log || true
+          echo "── web.log ──"; tail -40 /tmp/web.log || true

@@ -35,7 +35,7 @@ export class CrmService {
     return pageEnvelope(data, total, paging);
   }
 
-  async createContact(organizationId: string, data: { fullName: string; phoneNumber: string; email?: string; tags?: string[] }) {
+  async createContact(organizationId: string, data: { fullName: string; phoneNumber: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }) {
     let contact;
     try {
       contact = await prisma.contact.create({
@@ -45,6 +45,11 @@ export class CrmService {
           phoneNumber: data.phoneNumber,
           email: data.email,
           tags: data.tags || [],
+          // address/city/state existed in the schema from day one but were
+          // silently dropped — no API or form could ever set a contact's location.
+          address: data.address,
+          city: data.city,
+          state: data.state,
         },
       });
     } catch (err: any) {
@@ -271,7 +276,7 @@ export class CrmService {
     return updated;
   }
 
-  async updateContact(contactId: string, data: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[] }, organizationId: string) {
+  async updateContact(contactId: string, data: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }, organizationId: string) {
     const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
     if (!contact) throw new NotFoundException('Contact not found');
     return prisma.contact.update({
