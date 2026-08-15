@@ -32,18 +32,24 @@ const prisma = new PrismaClient();
 const DEMO_OWNER_EMAIL = 'demo@gatekipa.com';
 const DEMO_OWNER_PASSWORD = 'GateKipa#Demo2026';
 
+const WELCOME_MESSAGE =
+  'Hi! 👋 Welcome to GateKipa. I can answer your questions about tracking your subscriptions and stopping unwanted recurring charges. How can I help?';
+
+const PERSONA_PROMPT =
+  'You are the AI customer assistant for GateKipa, a Nigerian fintech platform by Westgate Stratagem Limited (founder: Eric Martyns, launched in Jos, Plateau State) that helps individuals and businesses stop unwanted subscription deductions. Speak clear, friendly Nigerian English. Only state facts you have been given about GateKipa: users track all their subscriptions in one app; each subscription gets its own separate virtual card instead of one card used everywhere; users define payment rules upfront and transactions outside those conditions are automatically blocked; controls include time-based restrictions and geographic limits on where payments can originate; businesses can manage subscriptions across teams, vendors, and operational expenses; it is free to use; it is available for Android. NEVER invent prices, features, launch dates, or partnerships — if you do not know, say so and offer to connect the visitor with the GateKipa team.';
+
 const FAQS = [
   {
     question: 'What is GateKipa?',
     answer:
-      'GateKipa is a Nigerian fintech platform that helps individuals and businesses take control of recurring payments and subscription charges. It lets you see and track all your subscriptions from one app, so you stop paying for services you no longer use.',
+      'GateKipa is a Nigerian fintech platform that helps individuals and businesses take control of recurring payments and subscription charges. You track all your subscriptions from one app and pay each one with its own virtual card under rules you define — so you stop paying for services you no longer use.',
     category: 'About',
     sortOrder: 1,
   },
   {
     question: 'How does GateKipa stop silent subscription deductions?',
     answer:
-      'GateKipa gives you one view of all your active subscriptions, so recurring charges are never invisible. When you spot a service you no longer use, you can act on it before it keeps deducting — that "financial leakage" from forgotten subscriptions is exactly what GateKipa exists to end.',
+      'Instead of using one card everywhere, you create a separate virtual card for each subscription and define the rules upfront — payments only go through when they meet your conditions, and any transaction outside them is automatically blocked before it happens. You can also add time-based restrictions (limit transactions to certain hours) and geographic controls on where payments can originate.',
     category: 'Product',
     sortOrder: 2,
   },
@@ -61,18 +67,25 @@ const FAQS = [
     sortOrder: 4,
   },
   {
+    question: 'Does GateKipa work for businesses?',
+    answer:
+      'Yes — GateKipa gives businesses tools to manage subscriptions across teams, vendors, and operational expenses, cutting the inefficiencies of untracked corporate spending.',
+    category: 'Product',
+    sortOrder: 5,
+  },
+  {
     question: 'Who is behind GateKipa?',
     answer:
-      'GateKipa was built by Westgate Stratagem Limited and launched in Jos, Plateau State, Nigeria.',
+      'GateKipa was built by Westgate Stratagem Limited, founded by Eric Martyns, and launched at the A+ MSME Hub in Jos, Plateau State, Nigeria.',
     category: 'About',
-    sortOrder: 5,
+    sortOrder: 6,
   },
   {
     question: 'Can I speak to a human?',
     answer:
       'Of course — just say "I want to speak to a human agent" at any point and I will connect you with a member of the GateKipa team.',
     category: 'Support',
-    sortOrder: 6,
+    sortOrder: 7,
   },
 ];
 
@@ -90,15 +103,24 @@ async function main() {
         industry: 'OTHER',
         country: 'Nigeria',
         timezone: 'Africa/Lagos',
-        welcomeMessage:
-          'Hi! 👋 Welcome to GateKipa. I can answer your questions about tracking your subscriptions and stopping unwanted recurring charges. How can I help?',
-        aiPersonaPrompt:
-          'You are the AI customer assistant for GateKipa, a Nigerian fintech platform by Westgate Stratagem Limited that helps individuals and businesses track recurring payments and stop unwanted subscription deductions. Speak clear, friendly Nigerian English. Only state facts you have been given about GateKipa: it tracks all of a user\'s subscriptions in one app, it is free to use, and it is available for Android. NEVER invent prices, features, launch dates, or partnerships — if you do not know, say so and offer to connect the visitor with the GateKipa team.',
+        welcomeMessage: WELCOME_MESSAGE,
+        aiPersonaPrompt: PERSONA_PROMPT,
       },
     });
     console.log(`✅ Created organization: ${org.name} (${org.id})`);
   } else {
-    console.log(`✅ Using existing organization: ${org.name} (${org.id})`);
+    // The persona and welcome message follow this file on re-runs so fact
+    // corrections here actually land. Trade-off, stated plainly: dashboard
+    // edits to these two fields are overwritten by re-running this seed.
+    if (org.aiPersonaPrompt !== PERSONA_PROMPT || org.welcomeMessage !== WELCOME_MESSAGE) {
+      org = await prisma.organization.update({
+        where: { id: org.id },
+        data: { aiPersonaPrompt: PERSONA_PROMPT, welcomeMessage: WELCOME_MESSAGE },
+      });
+      console.log(`✅ Updated organization persona/welcome: ${org.name} (${org.id})`);
+    } else {
+      console.log(`✅ Using existing organization: ${org.name} (${org.id})`);
+    }
   }
 
   // ── 2. Dashboard owner login ────────────────────────────────────────────────
@@ -130,6 +152,18 @@ async function main() {
     if (!existing) {
       await prisma.faqEntry.create({ data: { organizationId: org.id, ...faq } });
       console.log(`  + FAQ: ${faq.question}`);
+    } else if (
+      existing.answer !== faq.answer ||
+      existing.category !== faq.category ||
+      existing.sortOrder !== faq.sortOrder
+    ) {
+      // Keep re-runs in sync with this file — an answer corrected here must
+      // reach a database that was seeded from an older version.
+      await prisma.faqEntry.update({
+        where: { id: existing.id },
+        data: { answer: faq.answer, category: faq.category, sortOrder: faq.sortOrder },
+      });
+      console.log(`  ~ FAQ updated: ${faq.question}`);
     } else {
       console.log(`  . FAQ exists: ${faq.question}`);
     }
