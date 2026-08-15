@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { CrmService } from './crm.service';
+import { CrmTimelineService } from './crm-timeline.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, LeadStatus, DealStage, TicketPriority, TicketStatus } from '@ace/shared-types';
 
@@ -7,11 +8,14 @@ import { AuthUser, LeadStatus, DealStage, TicketPriority, TicketStatus } from '@
 @Controller('api/crm')
 @UseGuards(JwtAuthGuard)
 export class CrmController {
-  constructor(private crmService: CrmService) {}
+  constructor(
+    private crmService: CrmService,
+    private crmTimelineService: CrmTimelineService
+  ) {}
 
   @Get('contacts')
-  async getContacts(@Req() req: { user: AuthUser }, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.crmService.getContacts(req.user.organizationId, parseInt(page) || 1, parseInt(limit) || 50);
+  async getContacts(@Req() req: { user: AuthUser }, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.crmService.getContacts(req.user.organizationId, page, limit);
   }
 
   @Post('contacts')
@@ -23,8 +27,8 @@ export class CrmController {
   }
 
   @Get('leads')
-  async getLeads(@Req() req: { user: AuthUser }, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.crmService.getLeads(req.user.organizationId, parseInt(page) || 1, parseInt(limit) || 50);
+  async getLeads(@Req() req: { user: AuthUser }, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.crmService.getLeads(req.user.organizationId, page, limit);
   }
 
   @Post('leads')
@@ -38,8 +42,8 @@ export class CrmController {
   }
 
   @Get('deals')
-  async getDeals(@Req() req: { user: AuthUser }, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.crmService.getDeals(req.user.organizationId, parseInt(page) || 1, parseInt(limit) || 50);
+  async getDeals(@Req() req: { user: AuthUser }, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.crmService.getDeals(req.user.organizationId, page, limit);
   }
 
   @Post('deals')
@@ -51,8 +55,8 @@ export class CrmController {
   }
 
   @Get('tickets')
-  async getTickets(@Req() req: { user: AuthUser }, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.crmService.getTickets(req.user.organizationId, parseInt(page) || 1, parseInt(limit) || 50);
+  async getTickets(@Req() req: { user: AuthUser }, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.crmService.getTickets(req.user.organizationId, page, limit);
   }
 
   @Post('tickets')
@@ -104,6 +108,15 @@ export class CrmController {
     return this.crmService.searchContacts(req.user.organizationId, q);
   }
 
+  /**
+   * Unified activity timeline (calls, bookings, deals, tickets) plus a health score.
+   * Declared before `contacts/:id` so the literal segment wins the route match.
+   */
+  @Get('contacts/:id/timeline')
+  async getContactTimeline(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    return this.crmTimelineService.getCustomerTimeline(id, req.user.organizationId);
+  }
+
   @Get('contacts/:id')
   async getContact(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.getContactById(id, req.user.organizationId);
@@ -116,19 +129,20 @@ export class CrmController {
 
   @Get('export/contacts')
   async exportContacts(@Req() req: { user: AuthUser }, @Res() res: any) {
-    const contacts = await this.crmService.getContacts(req.user.organizationId, 1, 99999);
-    // Proper CSV quoting: a name containing a double-quote used to break the
-    // row (values were interpolated unescaped). Doubling quotes is the CSV
-    // escape rule; the leading-character guard blocks spreadsheet formula
-    // injection (=, +, -, @) when the file is opened in Excel.
-    const q = (v: any) => {
-      let s = String(v ?? '');
-      if (/^[=+\-@]/.test(s)) s = `'${s}`;
-      return `"${s.replace(/"/g, '""')}"`;
+    const contacts = await this.crmService.getAllContactsForExport(req.user.organizationId);
+    // RFC 4180: a double quote inside a quoted field is escaped by doubling it.
+    // Without this a contact named `Ade "Sunny" Bello` — or one whose name begins
+    // with '=' — corrupts the export or injects a formula into the operator's
+    // spreadsheet.
+    const cell = (value: unknown) => {
+      const str = String(value ?? '');
+      const safe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+      return `"${safe.replace(/"/g, '""')}"`;
     };
+
     let csv = 'ID,Full Name,Phone Number,Email,Address,City,State,Tags\n';
     contacts.data.forEach((c: any) => {
-      csv += [c.id, c.fullName, c.phoneNumber, c.email || '', c.address || '', c.city || '', c.state || '', (c.tags || []).join(';')].map(q).join(',') + '\n';
+      csv += [cell(c.id), cell(c.fullName), cell(c.phoneNumber), cell(c.email), cell(c.address), cell(c.city), cell(c.state), cell((c.tags || []).join(';'))].join(',') + '\n';
     });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=contacts.csv');

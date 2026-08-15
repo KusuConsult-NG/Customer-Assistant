@@ -6,6 +6,7 @@ import { AuthUser } from '@ace/shared-types';
 
 import { RolesGuard } from '../common/guards/roles.guard';
 
+// Guard order matters: RolesGuard reads request.user, which JwtAuthGuard populates.
 @Controller('api/organizations')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OrganizationsController {
@@ -20,7 +21,11 @@ export class OrganizationsController {
   @Patch('settings')
   async updateSettings(
     @Req() req: { user: AuthUser },
-    @Body() body: { name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string; logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[]; paymentBankName?: string; paymentAccountName?: string; paymentAccountNumber?: string }
+    @Body() body: {
+      name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string;
+      logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
+      payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
+    }
   ) {
     return this.orgsService.updateSettings(req.user.organizationId, body);
   }
@@ -73,6 +78,7 @@ export class OrganizationsController {
     return this.orgsService.removeTeamMember(req.user.organizationId, userId);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Post('whatsapp-config')
   async updateWhatsAppConfig(
     @Req() req: { user: AuthUser },
@@ -81,6 +87,7 @@ export class OrganizationsController {
     return this.orgsService.updateWhatsAppConfig(req.user.organizationId, body);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Post('telephony-config')
   async updateTelephonyConfig(
     @Req() req: { user: AuthUser },
@@ -89,6 +96,7 @@ export class OrganizationsController {
     return this.orgsService.updateTelephonyConfig(req.user.organizationId, body);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Post('api-keys/regenerate')
   async regenerateApiKey(@Req() req: { user: AuthUser }) {
     return this.orgsService.regenerateApiKey(req.user.organizationId);

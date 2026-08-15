@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 const log = new AceLogger('WhatsappService');
 
@@ -39,7 +41,11 @@ function resolveWhatsAppClient(config: {
 export class WhatsappService {
   private orchestrator = new ConversationOrchestrator();
 
-  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+  constructor(
+    private webhookDispatcher: WebhookDispatcherService,
+    private workflows: WorkflowTriggerService,
+    private onboarding: OnboardingService
+  ) {}
 
   /**
    * processIncomingWebhook
@@ -137,31 +143,16 @@ export class WhatsappService {
 
 
       // ── 1. Resolve Organization from phone number ID ──────────────────────────
-      let config = await prisma.whatsAppConfig.findFirst({
-        where: { phoneNumberId },
+      //
+      // phoneNumberId is the only tenant identifier Meta gives us, so it must match
+      // exactly. There is deliberately no "fall back to any active config" branch:
+      // that routed a customer's inbound message — and the AI reply, the new contact
+      // record and the transcript — into an unrelated organization whenever the
+      // number id was unmapped, and answered them with that org's AI persona and
+      // knowledge base.
+      const config = await prisma.whatsAppConfig.findFirst({
+        where: { phoneNumberId, isActive: true },
       });
-
-      if (!config) {
-        // Fallback for single-tenant deployments whose one WhatsApp number is
-        // not yet mapped to the incoming phone_number_id.
-        //
-        // ONLY when exactly one active config exists in the whole system:
-        // with 2+ tenants, "any active config" would silently deliver Tenant A's
-        // customer messages into Tenant B's CRM and let Tenant B's AI reply.
-        const activeConfigs = await prisma.whatsAppConfig.findMany({
-          where: { isActive: true },
-          take: 2,
-        });
-        if (activeConfigs.length === 1) {
-          config = activeConfigs[0];
-          log.warn('whatsapp_config_fallback_single_tenant', {
-            correlationId,
-            event: 'phone_number_id_not_mapped',
-            phoneNumberId,
-            usedConfigId: config.id,
-          });
-        }
-      }
 
       if (!config) {
         log.warn('whatsapp_no_config_found', {
@@ -169,6 +160,7 @@ export class WhatsappService {
           event: 'config_not_found',
           phoneNumberId,
           fromNumber: fromNumber.slice(-4),
+          hint: 'Add this phoneNumberId under Settings → WhatsApp Integration for the owning organization.',
         });
         return;
       }
@@ -191,17 +183,43 @@ export class WhatsappService {
       // ── 3. Upsert Conversation ────────────────────────────────────────────────
       const conversation = await this.upsertConversation(organizationId, contact.id, correlationId);
 
-      // ── 4. Persist inbound message ────────────────────────────────────────────
-      await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          sender: MessageSender.CUSTOMER,
-          content: textContent,
-          mediaUrl: mediaUrl ?? null,
-          mediaType: mediaType ?? null,
-          metadata: { messageId, messageType: message.type },
-        },
-      });
+      // ── 4. Persist inbound message — and make redelivery a no-op ─────────────
+      //
+      // Meta's webhook delivery is AT LEAST ONCE. It retries on timeout, on network
+      // error, and sometimes for no visible reason. Without a guard here a retry wrote
+      // a second copy of the customer's message and then ran the whole assistant
+      // pipeline again — so the customer received two replies to one question, and any
+      // action the assistant took (a ticket, a booking, a payment instruction) happened
+      // twice.
+      //
+      // The insert IS the idempotency claim. A check-then-insert would not close it:
+      // two retries can be in flight simultaneously and both would pass the check. The
+      // unique index on `externalId` is what actually makes this safe, and a P2002 here
+      // means someone else already claimed this message — so stop, without replying.
+      try {
+        await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            sender: MessageSender.CUSTOMER,
+            content: textContent,
+            mediaUrl: mediaUrl ?? null,
+            mediaType: mediaType ?? null,
+            externalId: messageId,
+            metadata: { messageId, messageType: message.type },
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === 'P2002') {
+          log.info('whatsapp_duplicate_delivery_ignored', {
+            correlationId,
+            organizationId,
+            messageId,
+            note: 'Meta redelivered a message already processed; not answering twice.',
+          });
+          return;
+        }
+        throw err;
+      }
 
       await prisma.conversation.update({
         where: { id: conversation.id },
@@ -213,6 +231,32 @@ export class WhatsappService {
         message: textContent,
         conversationId: conversation.id,
       }).catch(err => log.error('webhook_dispatch_failed', err, { correlationId }));
+
+      this.workflows.emitAsync(organizationId, 'MESSAGE_RECEIVED', {
+        channel: 'WHATSAPP',
+        message: textContent,
+        messageType: message.type,
+        conversationId: conversation.id,
+        contactId: contact.id,
+        contactPhone: fromNumber,
+        contact: { id: contact.id, fullName: contact.fullName, phoneNumber: contact.phoneNumber, email: contact.email },
+      });
+
+      // ── 4b. Onboarding selfie ────────────────────────────────────────────────
+      //
+      // If this contact was asked for a selfie and has just sent a photo, that photo
+      // IS the answer — it must not fall through to the AI, which would reply to
+      // "[Customer sent an image]" with generic small talk while the onboarding step
+      // stayed open forever.
+      //
+      // The image bytes are downloaded here rather than stored as a Meta media id:
+      // those ids expire, and a link that 404s in a week is not a record of anything.
+      if (message.type === 'image' && message.image?.id) {
+        const handled = await this.handleSelfieImage(
+          organizationId, contact.id, config, message.image.id, fromNumber, conversation.id, correlationId
+        );
+        if (handled) return;
+      }
 
       // ── 5. Human agent takeover check ─────────────────────────────────────────
       if (conversation.isHumanHandoffActive) {
@@ -332,6 +376,56 @@ export class WhatsappService {
    * We catch that and fall back to a findFirst — this is the correct pattern
    * for "find-or-create" without advisory locks.
    */
+  /**
+   * Downloads an inbound WhatsApp image and, if the contact has a pending selfie
+   * request, stores it against that request.
+   *
+   * Returns true when the photo was consumed as a selfie (accepted OR rejected) —
+   * either way the customer gets a specific reply and the AI stays out of it.
+   * Returns false when there was no pending request, so the image is just an image.
+   */
+  private async handleSelfieImage(
+    organizationId: string,
+    contactId: string,
+    config: { phoneNumberId: string | null; accessToken: string | null; webhookVerifyToken: string | null },
+    mediaId: string,
+    fromNumber: string,
+    conversationId: string,
+    correlationId: string
+  ): Promise<boolean> {
+    try {
+      const client = resolveWhatsAppClient(config);
+      const media = await client.downloadMedia(mediaId);
+      if (!media) {
+        log.warn('whatsapp_selfie_download_failed', { correlationId, organizationId, mediaId });
+        return false;
+      }
+
+      const result = await this.onboarding.attachWhatsAppSelfie(organizationId, contactId, media.bytes);
+      if (!result.requestId) return false; // nothing was pending — ordinary attachment
+
+      const reply = result.accepted
+        ? 'Thank you — we have received your photo and your onboarding is complete on our side.'
+        : `${result.reason} Please send another photo when you can.`;
+
+      await client.sendTextMessage(fromNumber, reply);
+      await prisma.message.create({
+        data: { conversationId, sender: MessageSender.SYSTEM, content: reply },
+      }).catch(() => {});
+
+      log.info('whatsapp_selfie_handled', {
+        correlationId, organizationId, contactId,
+        requestId: result.requestId, accepted: result.accepted,
+      });
+      return true;
+    } catch (err: any) {
+      // A selfie problem must never swallow the message. Fall through to the normal
+      // pipeline so the customer still gets a response.
+      log.error('whatsapp_selfie_handling_failed', err as Error, { correlationId, organizationId, contactId });
+      return false;
+    }
+  }
+
   private async upsertContact(organizationId: string, phoneNumber: string, correlationId: string) {
     try {
       const existing = await prisma.contact.findFirst({
@@ -385,10 +479,10 @@ export class WhatsappService {
   }
 
   async getConversations(organizationId: string) {
-    // NOTE: messages must be the LAST 50, not the first 50. With
-    // orderBy asc + take 50, any conversation longer than 50 messages showed
-    // only its OLDEST messages and new activity never appeared in the console.
-    // We fetch desc + take 50, then restore chronological order for the UI.
+    // messages must be the LAST 50, not the first 50 — with asc+take, any
+    // conversation longer than 50 messages showed only its OLDEST messages
+    // and new activity never appeared in the console. Fetch desc, then
+    // restore chronological order for the UI.
     const conversations = await prisma.conversation.findMany({
       where: { organizationId },
       include: {
@@ -399,19 +493,33 @@ export class WhatsappService {
       orderBy: { lastMessageAt: 'desc' },
       take: 100, // paginate: never return unbounded result sets
     });
-    return conversations.map((c: any) => ({ ...c, messages: c.messages.reverse() }));
+    return conversations.map((c: any) => ({ ...c, messages: [...c.messages].reverse() }));
   }
 
-  async sendAgentMessage(conversationId: string, content: string, agentUserId: string) {
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
+  /**
+   * Sends a human agent's reply out over WhatsApp.
+   *
+   * `organizationId` is required and enforced. The lookup used to be a bare
+   * `findUnique({ where: { id: conversationId } })`, so any authenticated user of any
+   * tenant could post into another tenant's conversation just by knowing (or guessing)
+   * its id — the message would be delivered to that tenant's customer over that
+   * tenant's WhatsApp number, and stored in their transcript.
+   */
+  async sendAgentMessage(
+    conversationId: string,
+    content: string,
+    agentUserId: string,
+    organizationId: string
+  ) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
       include: {
         contact: true,
         organization: { include: { whatsAppConfigs: { where: { isActive: true }, take: 1 } } },
       },
     });
 
-    if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
+    if (!conversation) throw new NotFoundException(`Conversation not found: ${conversationId}`);
 
     // Resolve client first — throws early if credentials missing before writing to DB
     const config = conversation.organization.whatsAppConfigs[0];
@@ -438,7 +546,20 @@ export class WhatsappService {
     return msg;
   }
 
-  async toggleHumanHandoff(conversationId: string, isHumanHandoffActive: boolean, agentUserId?: string) {
+  async toggleHumanHandoff(
+    conversationId: string,
+    isHumanHandoffActive: boolean,
+    organizationId: string,
+    agentUserId?: string
+  ) {
+    // Tenant-scoped: without this check any authenticated user could seize or release
+    // human handoff on another organization's live conversation.
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
+      select: { id: true },
+    });
+    if (!conversation) throw new NotFoundException(`Conversation not found: ${conversationId}`);
+
     return prisma.conversation.update({
       where: { id: conversationId },
       data: {
@@ -480,7 +601,15 @@ export class WhatsappService {
         bodyText: data.bodyText,
         footerText: data.footerText,
         buttons: data.buttons ? data.buttons : undefined,
-        status: 'APPROVED',
+        // PENDING_SUBMISSION, not APPROVED.
+        //
+        // Creating a row here does not register anything with Meta. Only templates
+        // Meta has reviewed and approved can be used in a broadcast, so marking a
+        // freshly-typed local row 'APPROVED' told operators a template was ready to
+        // send when every send using it would be rejected with error 132001
+        // ("template name does not exist"). Submit it in WhatsApp Manager, then set
+        // metaTemplateId and status here.
+        status: 'PENDING_SUBMISSION',
       },
     });
   }
@@ -489,7 +618,7 @@ export class WhatsappService {
     const template = await prisma.whatsAppTemplate.findFirst({
       where: { id, organizationId },
     });
-    if (!template) throw new Error('Template not found');
+    if (!template) throw new NotFoundException('Template not found');
     return prisma.whatsAppTemplate.delete({ where: { id } });
   }
 
@@ -513,7 +642,14 @@ export class WhatsappService {
       where: { id: data.templateId, organizationId },
     });
 
-    if (!template) throw new Error('WhatsApp template not found');
+    if (!template) throw new NotFoundException('WhatsApp template not found');
+
+    if (template.status !== 'APPROVED') {
+      throw new BadRequestException(
+        `Template "${template.name}" has not been approved by Meta yet (status: ${template.status}). ` +
+        'Submit it in WhatsApp Manager and mark it approved before broadcasting.'
+      );
+    }
 
     const config = await prisma.whatsAppConfig.findFirst({
       where: { organizationId, isActive: true },
@@ -534,39 +670,55 @@ export class WhatsappService {
 
     let sentCount = 0;
     let failedCount = 0;
+    const errors: string[] = [];
 
-    if (config?.phoneNumberId && config?.accessToken && !config.accessToken.includes('placeholder')) {
-      const client = resolveWhatsAppClient(config);
-
-      for (const phone of data.recipients) {
-        try {
-          const components: any[] = [];
-          if (data.variables && Object.keys(data.variables).length > 0) {
-            components.push({
-              type: 'body',
-              parameters: Object.values(data.variables).map(v => ({ type: 'text', text: v })),
-            });
-          }
-
-          await client.sendTemplateMessage(phone, template.name, template.language, components);
-          sentCount++;
-        } catch (err) {
-          failedCount++;
-          log.warn('broadcast_recipient_failed', { phone, error: (err as Error).message });
-        }
-      }
-    } else {
-      sentCount = data.recipients.length;
+    // If WhatsApp is not configured, the campaign is FAILED — not "sent".
+    // This branch used to do `sentCount = data.recipients.length`, reporting a
+    // fully-delivered campaign to an audience that received nothing at all.
+    if (!config?.phoneNumberId || !config?.accessToken) {
+      await prisma.broadcastCampaign.update({
+        where: { id: campaign.id },
+        data: { sentCount: 0, failedCount: data.recipients.length, status: 'FAILED' },
+      });
+      throw new BadRequestException(
+        'WhatsApp is not connected for this organization, so no messages were sent. ' +
+        'Configure your Meta credentials under Settings → WhatsApp Integration.'
+      );
     }
 
-    return prisma.broadcastCampaign.update({
+    const client = resolveWhatsAppClient(config);
+
+    for (const phone of data.recipients) {
+      try {
+        const components: any[] = [];
+        if (data.variables && Object.keys(data.variables).length > 0) {
+          components.push({
+            type: 'body',
+            parameters: Object.values(data.variables).map(v => ({ type: 'text', text: v })),
+          });
+        }
+
+        await client.sendTemplateMessage(phone, template.name, template.language, components);
+        sentCount++;
+      } catch (err) {
+        failedCount++;
+        const message = (err as Error).message;
+        if (errors.length < 5) errors.push(message.slice(0, 200));
+        log.warn('broadcast_recipient_failed', { phone: phone.slice(-4), error: message });
+      }
+    }
+
+    const campaignResult = await prisma.broadcastCampaign.update({
       where: { id: campaign.id },
       data: {
         sentCount,
         failedCount,
-        status: failedCount > 0 && sentCount === 0 ? 'FAILED' : 'COMPLETED',
+        status: sentCount === 0 ? 'FAILED' : failedCount > 0 ? 'PARTIAL' : 'COMPLETED',
       },
       include: { template: true },
     });
+
+    // Surface why delivery failed instead of returning a green campaign row.
+    return { ...campaignResult, errors };
   }
 }

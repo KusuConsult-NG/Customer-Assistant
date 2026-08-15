@@ -57,7 +57,7 @@ The Playwright suite registers its own org through the real API and injects the 
 
 **Multi-tenancy** is by `organizationId` scoping on every query — there is no automatic tenant filter. Every service method takes `organizationId` from the JWT (`req.user.organizationId`) and must include it in `where` clauses. The widget resolves its tenant from an explicit `apiKey`/org-id query param; a request with no key falls back to the FIRST org in the DB (single-tenant demo convenience — production embeds must always pass the key).
 
-**Auth**: `JwtStrategy.validate` re-checks the user in the DB on every request — deactivation and role changes take effect on the next request, not at token expiry. Do not remove this in favor of trusting token claims. JWT secrets come from `apps/api/src/auth/jwt-secrets.ts` (throws in production if unset; deterministic dev/test fallback). `RolesGuard` is registered globally and reads `@Roles(...)` metadata.
+**Auth**: `JwtStrategy.validate` re-checks the user in the DB on every request — deactivation and role changes take effect on the next request, not at token expiry. Do not remove this in favor of trusting token claims. JWT secrets are read from env with NO fallback anywhere (module factory throws if unset) — tests and local boots must set `JWT_SECRET`/`JWT_REFRESH_SECRET`. `tokenVersion` on User is embedded in every token and checked per request: bump it to revoke all outstanding sessions (logout/password change already do). `RolesGuard` is registered globally and reads `@Roles(...)` metadata.
 
 **The orchestrator** (`packages/orchestrator`) is a keyword-matching intent engine, channel-agnostic, called by the WhatsApp service, widget service, and voice media-stream handler. Its contract: **tool intents never throw to the caller** — every DB-backed tool routes failures through `toolFailureReply()` (honest reply + `shouldHandoff: true`/`TOOL_FAILURE`), because an uncaught throw means the customer receives no reply at all. Unmatched input goes to RAG (Qdrant vector search with a Postgres ILIKE fallback) and then GPT-4o-mini synthesis with the org's persona prompt.
 
@@ -73,13 +73,21 @@ The Playwright suite registers its own org through the real API and injects the 
 
 **Document ingestion**: uploads go to Supabase Storage (path, not URL, stored in `storageUrl`), then a BullMQ job on Redis; `DocumentWorkerHost` runs the worker inside the API process when `REDIS_URL` is set. Extraction is mime-typed (pdf-parse / mammoth / UTF-8) — binary types must never be decoded as UTF-8 and indexed. Without Redis, only plain-text types are inline-indexed; binary uploads are honestly marked FAILED. Deleting a document must also delete its Qdrant points, or the deleted knowledge keeps answering in RAG.
 
+**Booking integrity** is enforced by a PostgreSQL `EXCLUDE USING gist` constraint (`bookings_no_staff_overlap`, requires `btree_gist`) that lives ONLY in `packages/database/prisma/migrations/…booking_overlap_constraint/migration.sql` — `db push` cannot create it (Prisma cannot express EXCLUDE), so any fresh database needs that SQL applied after push (CI does this). Application-level conflict checks are a UX nicety; the constraint is the guarantee.
+
+**The workflow engine is real** (`workflow-executor/runner/actions/trigger` services): typed nodes (`kind`+`action`+config), durable `workflow_runs`/`workflow_run_steps`, BullMQ worker with an inline sweeper fallback, and domain events fired from CRM/WhatsApp/widget/scheduling/telephony via `WorkflowTriggerService.emitAsync`. Runs are claimed with a conditional `updateMany` — keep it, or the worker and sweeper double-execute every step.
+
+**Onboarding selfies** (`apps/api/src/onboarding/`): one-time upload tokens stored only as SHA-256 hashes, magic-byte image validation (SVG refused), 5-minute signed URLs, private `onboarding-selfies` bucket. This is capture, NOT verification — `verifiedAt` is never set without a real biometric provider.
+
+**Supabase Storage requires BOTH `Authorization` and `apikey` headers** (`apps/api/src/common/object-storage.ts`) — with only the bearer token every upload fails with a misleading 400/403. Both buckets (`knowledge-documents`, `onboarding-selfies`) must be created manually as PRIVATE. Runtime `DATABASE_URL` must use the Supabase pooler in transaction mode (port 6543, `pgbouncer=true`); `DIRECT_URL` stays on 5432 for migrations.
+
 **Appointment reminders** (`appointment-reminder.service.ts`) use an atomic claim-before-send: one raw `UPDATE ... WHERE notes NOT LIKE '%[MARKER]%'` appends the marker, and only the caller whose update count is 1 sends. This is what makes concurrent pods safe — keep claim-then-send ordering.
 
 ## Non-negotiable invariants (each reverses a shipped bug)
 
 1. **Never fabricate success or data shown to humans**: no invented bank accounts/USSD codes, no fake call records when a provider API fails (throw with the reason), no placeholder quotes/prices, no "PAID" status on unpaid bookings, no links to endpoints that don't exist. Degrade honestly and hand off to a human.
 2. The AI must identify as an AI when asked (regulatory + Meta policy). Do not restore any "I'm a human" persona reply.
-3. Payment details shown to customers come ONLY from the org's configured `paymentBankName/paymentAccountName/paymentAccountNumber` fields; unset → defer to a human.
+3. Payment details shown to customers come ONLY from the org's configured `payoutBankName/payoutAccountName/payoutAccountNumber/payoutUssdCode` fields; unset → defer to a human.
 4. Env naming drift: telephony historically read `API_URL` while the rest reads `API_BASE_URL`; code now falls back between them — preserve the fallback if touching those paths.
 5. Conversation lists must return the LAST N messages (query desc, reverse for display), never the first N.
 

@@ -112,26 +112,14 @@ const PLANS: Plan[] = [
   },
 ];
 
-type PaymentMethod = 'CARD' | 'TRANSFER' | 'USSD';
-
 export default function BillingPage() {
   const [subscription, setSubscription] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CARD');
   const [processing, setProcessing] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [copiedAccount, setCopiedAccount] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState<any>(null);
-
-  // Card details state
-  const [cardForm, setCardForm] = useState({
-    cardNumber: '',
-    expiry: '',
-    cvv: '',
-    nameOnCard: '',
-  });
 
   useEffect(() => {
     setIsClient(true);
@@ -163,31 +151,8 @@ export default function BillingPage() {
     fetchSubscription();
   }, [fetchSubscription]);
 
-  const handleCardInputChange = (field: string, value: string) => {
-    setCardForm((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleProcessPayment = async () => {
     if (!selectedPlan) return;
-
-    if (paymentMethod === 'CARD') {
-      if (!cardForm.cardNumber || cardForm.cardNumber.replace(/\s/g, '').length < 16) {
-        showToast('Please enter a valid 16-digit card number.', 'error');
-        return;
-      }
-      if (!cardForm.expiry || !cardForm.expiry.includes('/')) {
-        showToast('Please enter card expiry date (MM/YY).', 'error');
-        return;
-      }
-      if (!cardForm.cvv || cardForm.cvv.length < 3) {
-        showToast('Please enter 3-digit CVV security code.', 'error');
-        return;
-      }
-      if (!cardForm.nameOnCard.trim()) {
-        showToast('Please enter cardholder full name.', 'error');
-        return;
-      }
-    }
 
     setProcessing(true);
 
@@ -204,52 +169,35 @@ export default function BillingPage() {
         body: JSON.stringify({ plan: selectedPlan.id }),
       });
 
-      if (checkoutRes.ok) {
-        const data = await checkoutRes.json();
-        if (data.authorization_url || data?.data?.authorization_url) {
-          window.open(data.authorization_url || data.data.authorization_url, '_blank');
-          showToast('Redirecting to Paystack Secure Checkout...', 'success');
-        }
+      if (!checkoutRes.ok) {
+        const err = await checkoutRes.json().catch(() => ({} as any));
+        showToast(
+          Array.isArray(err.message) ? err.message.join(' ') : (err.message || 'Could not start checkout. Please try again.'),
+          'error'
+        );
+        return;
       }
 
-      // Activate plan in DB
-      const activateRes = await fetch(`${API_URL}/api/billing/activate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ plan: selectedPlan.id }),
-      });
+      const data = await checkoutRes.json();
+      const authorizationUrl = data.authorization_url || data?.data?.authorization_url;
 
-      if (activateRes.ok) {
-        const ref = `ACE_PAY_${Date.now().toString().slice(-8)}`;
-        setPaymentSuccess({
-          plan: selectedPlan.name,
-          amount: selectedPlan.price,
-          reference: ref,
-          method: paymentMethod === 'CARD' ? 'Debit/Credit Card' : paymentMethod === 'TRANSFER' ? 'Bank Transfer' : 'USSD Code',
-          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-        });
-        showToast(`Payment confirmed! Upgraded to ${selectedPlan.name} Plan.`, 'success');
-        setSelectedPlan(null);
-        await fetchSubscription();
-      } else {
-        showToast('Payment processing failed. Please try again.', 'error');
+      if (!authorizationUrl) {
+        showToast('Payment provider did not return a checkout link. Please try again.', 'error');
+        return;
       }
+
+      // Hand off to Paystack and stop here.
+      //
+      // This used to unconditionally POST /api/billing/activate straight after
+      // opening the checkout window, then render a "Payment confirmed!" receipt —
+      // upgrading the organization to the paid plan whether or not the customer ever
+      // completed (or even opened) the payment. The subscription is now activated
+      // only by Paystack's signed charge.success webhook.
+      window.location.href = authorizationUrl;
     } catch (err) {
       showToast('Network connection error during payment. Try again.', 'error');
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const copyVirtualAccount = async () => {
-    const ok = await copyToClipboard('9928374102');
-    if (ok) {
-      setCopiedAccount(true);
-      showToast('Virtual Account Number copied to clipboard!', 'success');
-      setTimeout(() => setCopiedAccount(false), 3000);
     }
   };
 
@@ -626,144 +574,26 @@ export default function BillingPage() {
                 </span>
               </div>
             </div>
-
-            {/* Payment Method Tabs */}
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                Select Payment Method
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'CARD', label: 'Card', icon: <CreditCard className="w-4 h-4" /> },
-                  { id: 'TRANSFER', label: 'Transfer', icon: <Building2 className="w-4 h-4" /> },
-                  { id: 'USSD', label: 'USSD Code', icon: <Smartphone className="w-4 h-4" /> },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
-                      paymentMethod === m.id
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    {m.icon}
-                    {m.label}
-                  </button>
-                ))}
+            {/* Payment is completed on Paystack's hosted checkout.
+                This modal previously collected the raw card number, expiry and CVV in
+                our own form — data that was validated, never transmitted anywhere, and
+                would have put this application squarely in PCI-DSS scope had it been.
+                It also advertised a hardcoded "Providus Bank 9928374102" virtual
+                account and four invented USSD codes as ways to pay. Card, transfer and
+                USSD are all offered by Paystack on the next screen, against real
+                accounts. */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-3 text-xs">
+              <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                Secure checkout by Paystack
               </div>
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                You&apos;ll be taken to Paystack to complete payment by card, bank transfer
+                or USSD. Your card details are entered on Paystack&apos;s systems and never
+                touch ours. Your plan activates automatically once Paystack confirms the
+                payment.
+              </p>
             </div>
-
-            {/* Payment Method Forms */}
-            {paymentMethod === 'CARD' && (
-              <div className="space-y-4 pt-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Cardholder Full Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Oluwaseun Adeleke"
-                    value={cardForm.nameOnCard}
-                    onChange={(e) => handleCardInputChange('nameOnCard', e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Card Number</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      maxLength={19}
-                      placeholder="5399 0000 0000 0000"
-                      value={cardForm.cardNumber}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
-                        handleCardInputChange('cardNumber', val);
-                      }}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                    <CreditCard className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Expiry (MM/YY)</label>
-                    <input
-                      type="text"
-                      maxLength={5}
-                      placeholder="12/28"
-                      value={cardForm.expiry}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\D/g, '');
-                        if (val.length >= 2) val = `${val.slice(0, 2)}/${val.slice(2, 4)}`;
-                        handleCardInputChange('expiry', val);
-                      }}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none text-center"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">CVV Security Code</label>
-                    <input
-                      type="password"
-                      maxLength={4}
-                      placeholder="882"
-                      value={cardForm.cvv}
-                      onChange={(e) => handleCardInputChange('cvv', e.target.value.replace(/\D/g, ''))}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none text-center"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {paymentMethod === 'TRANSFER' && (
-              <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-3 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600 dark:text-slate-400 font-semibold">Bank Name</span>
-                  <span className="font-bold text-slate-900 dark:text-white">Providus Bank / Paystack</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600 dark:text-slate-400 font-semibold">Account Name</span>
-                  <span className="font-bold text-slate-900 dark:text-white">ACE Customer Care NG</span>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-slate-600 dark:text-slate-400 font-semibold">Virtual Account Number</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-base font-extrabold text-blue-600 dark:text-blue-400">9928374102</span>
-                    <button
-                      onClick={copyVirtualAccount}
-                      className="p-1 rounded bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 hover:bg-blue-200"
-                    >
-                      {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center pt-2">
-                  Transfer the exact total amount to activate instantly. Expires in 30 mins.
-                </p>
-              </div>
-            )}
-
-            {paymentMethod === 'USSD' && (
-              <div className="space-y-3 pt-2 text-xs">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Select Your Bank USSD Quick Code</label>
-                <div className="space-y-2">
-                  {[
-                    { bank: 'GTBank', code: '*737*000*9928#' },
-                    { bank: 'Zenith Bank', code: '*966*000*9928#' },
-                    { bank: 'First Bank', code: '*894*000*9928#' },
-                    { bank: 'Access Bank', code: '*901*000*9928#' },
-                  ].map((b) => (
-                    <div key={b.bank} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                      <span className="font-bold text-slate-900 dark:text-white">{b.bank}</span>
-                      <span className="font-mono font-extrabold text-blue-600 dark:text-blue-400">{b.code}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Modal Actions */}
             <div className="space-y-2 pt-2">
@@ -773,7 +603,9 @@ export default function BillingPage() {
                 className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm shadow-xl shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                {processing ? 'Processing Payment...' : `Pay ₦${(selectedPlan.price * 1.075).toLocaleString()} & Activate Plan`}
+                {processing
+                  ? 'Opening secure checkout…'
+                  : `Continue to pay ₦${(selectedPlan.price * 1.075).toLocaleString()}`}
               </button>
 
               <button

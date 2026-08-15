@@ -147,7 +147,7 @@ export default function TelephonyPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <PhoneCall className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Voice AI Telephony & Call Intelligence
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage carriers, trigger live AI calls, inspect recordings and transcripts.</p>
@@ -162,7 +162,7 @@ export default function TelephonyPage() {
               <Radio className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 Voice Call Simulator (Demo Mode)
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-extrabold border border-emerald-300 dark:border-emerald-500/30">100% Free Web VoIP</span>
               </h2>
@@ -197,7 +197,7 @@ export default function TelephonyPage() {
             <Phone className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-slate-900 dark:text-white">Trigger Outbound Phone Call</h2>
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white">Trigger Outbound Phone Call</h2>
             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Enter a phone number to test Twilio / Africa's Talking voice call routing.</p>
           </div>
         </div>
@@ -208,7 +208,7 @@ export default function TelephonyPage() {
             value={demoMobileNumber}
             onChange={(e) => setDemoMobileNumber(e.target.value)}
             placeholder="Enter mobile number e.g. +2348031234567"
-            className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-indigo-500 shadow-sm"
+            className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-indigo-500 shadow-sm"
             required
           />
           <button
@@ -231,10 +231,10 @@ export default function TelephonyPage() {
       {/* Call History Table */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden space-y-3 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <h3 className="font-extrabold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-900 dark:text-white text-base flex items-center gap-2">
             <Volume2 className="w-5 h-5 text-purple-600 dark:text-purple-400" /> Live Call Logs & Audio Transcripts
           </h3>
-          <button onClick={fetchCallLogs} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:text-white transition-colors">
+          <button onClick={fetchCallLogs} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:hover:text-white transition-colors">
             <RefreshCw className={`w-4 h-4 ${logsLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
@@ -248,8 +248,8 @@ export default function TelephonyPage() {
             <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
               <PhoneOff className="w-8 h-8 text-slate-400" />
             </div>
-            <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">No items yet</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No calls recorded yet. Configure your telephony provider in Settings to start receiving calls.</p>
+            <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">No calls yet</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">Calls appear here once a phone number is pointed at this platform. Add your carrier credentials and webhook URL below to start receiving them.</p>
           </div>
         ) : (
           <table className="w-full text-sm text-left">

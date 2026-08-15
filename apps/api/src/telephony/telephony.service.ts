@@ -1,12 +1,32 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
+import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
 import { createHmac, timingSafeEqual, createPublicKey, verify as cryptoVerify } from 'crypto';
 
 const log = new AceLogger('TelephonyService');
+
+/**
+ * Public base URL of this API, e.g. https://ace-api.onrender.com
+ *
+ * This is the single source of truth for the callback and media-stream URLs handed
+ * to carriers. It reads API_BASE_URL — the name that is actually provisioned in
+ * .env / .env.example / render.yaml.
+ *
+ * Previously this file read `process.env.API_URL`, which is defined nowhere, so:
+ *   - Twilio signature verification hashed the literal "https://your-api-domain.com",
+ *     never matched, and every authenticated inbound call was answered with
+ *     "This call could not be authenticated. Goodbye.";
+ *   - the <Stream> URL fell back to ws://localhost:4000, which Twilio cannot reach,
+ *     so no production call ever established a media stream.
+ * API_URL is still honoured as a fallback so existing deployments that set it keep working.
+ */
+function apiBaseUrl(): string {
+  return (process.env.API_BASE_URL || process.env.API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+}
 
 /**
  * Verifies Twilio's X-Twilio-Signature header.
@@ -43,17 +63,9 @@ function verifyTwilioSignature(
 }
 
 /**
- * Verifies Telnyx's Ed25519 webhook signature.
- *
- * Telnyx signs `${timestamp}|${rawBody}` with Ed25519; the signature arrives
- * base64-encoded in `telnyx-signature-ed25519` with the timestamp in
- * `telnyx-timestamp`. The account's public key (base64, from the Telnyx
- * portal) is provided via TELNYX_PUBLIC_KEY.
- *
- * Node's crypto verifies Ed25519 natively — the raw 32-byte key just needs
- * wrapping in a SPKI DER envelope.
- *
- * Ref: https://developers.telnyx.com/docs/development/webhooks
+ * Verifies Telnyx's Ed25519 webhook signature (timestamp|rawBody, RFC 8410 key,
+ * 5-minute replay window). Node verifies Ed25519 natively — the raw 32-byte
+ * key just needs a SPKI DER envelope.
  */
 function verifyTelnyxSignature(
   publicKeyBase64: string,
@@ -63,16 +75,12 @@ function verifyTelnyxSignature(
 ): boolean {
   if (!signatureBase64 || !timestamp || !publicKeyBase64) return false;
   try {
-    // Reject stale timestamps (> 5 min skew) to block replay attacks
     const ts = parseInt(timestamp, 10);
     if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
-
     const rawKey = Buffer.from(publicKeyBase64, 'base64');
     if (rawKey.length !== 32) return false;
-    // SPKI DER prefix for an Ed25519 public key (RFC 8410)
     const spki = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), rawKey]);
     const keyObject = createPublicKey({ key: spki, format: 'der', type: 'spki' });
-
     const message = Buffer.concat([Buffer.from(`${timestamp}|`), rawBody]);
     return cryptoVerify(null, message, keyObject, Buffer.from(signatureBase64, 'base64'));
   } catch {
@@ -103,7 +111,10 @@ function verifyAfricasTalkingSignature(
 
 @Injectable()
 export class TelephonyService {
-  constructor(private webhookDispatcher: WebhookDispatcherService) {}
+  constructor(
+    private webhookDispatcher: WebhookDispatcherService,
+    private workflows: WorkflowTriggerService
+  ) {}
 
   async handleInboundCall(
     providerType: TelephonyProviderType,
@@ -129,39 +140,50 @@ export class TelephonyService {
     });
 
     // ── 1. Resolve organization from the dialled number ───────────────────────
+    //
+    // The dialled number is the only tenant identifier a carrier gives us, so it has
+    // to resolve exactly. `orgId` may also be supplied as a query param on outbound
+    // calls we placed ourselves.
+    const orgIdHint = typeof query?.orgId === 'string' ? query.orgId : undefined;
+
     let config = await prisma.telephonyConfig.findFirst({
-      where: { phoneNumber: toNumber },
+      where: {
+        phoneNumber: toNumber,
+        ...(orgIdHint ? { organizationId: orgIdHint } : {}),
+      },
       include: { organization: true },
     });
 
-    if (!config && toNumber === 'UNKNOWN') {
+    if (!config && orgIdHint) {
       config = await prisma.telephonyConfig.findFirst({
+        where: { organizationId: orgIdHint },
         include: { organization: true },
       });
     }
 
     if (!config) {
-      log.warn('No telephony config found for number', { phoneNumber: toNumber });
-      return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This number is not currently configured. Please try again later.</Say></Response>`;
+      // Never guess. Answering an unrecognised number with "the first telephony
+      // config in the database" served one tenant's AI persona, knowledge base and
+      // booking calendar to another tenant's caller.
+      log.warn('telephony_no_config_for_number', { correlationId, phoneNumber: toNumber, providerType });
+      return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This number is not currently configured. Please try again later.</Say><Hangup/></Response>`;
     }
 
-    const organizationId = config?.organizationId ?? (await this.getFallbackOrgId(correlationId));
+    const organizationId = config.organizationId;
 
     // ── 2. HMAC Signature Verification (per provider) ─────────────────────────
     if (providerType === TelephonyProviderType.TWILIO) {
       const authToken = config?.authToken ?? process.env.TWILIO_AUTH_TOKEN;
       const twilioSig = headers['x-twilio-signature'] as string | undefined;
-      // API_URL with API_BASE_URL fallback: the rest of the codebase uses
-      // API_BASE_URL — using only API_URL here meant a correctly-configured
-      // deployment could still verify against the wrong callback URL and
-      // reject every legitimate Twilio call.
-      const apiBase = process.env.API_URL || process.env.API_BASE_URL || 'https://your-api-domain.com';
-      const callbackUrl = `${apiBase}/api/telephony/inbound/twilio`;
+      // Twilio signs the exact URL it requested, query string included.
+      const rawQuery = new URLSearchParams(query ?? {}).toString();
+      const callbackUrl =
+        `${apiBaseUrl()}/api/telephony/inbound/twilio` + (rawQuery ? `?${rawQuery}` : '');
 
       if (authToken) {
-        // When an auth token IS configured, a missing signature header is a
-        // REJECTION, not a skip — otherwise an attacker bypasses verification
-        // by simply omitting the header (real Twilio always sends it).
+        // A missing signature header with a configured token is a REJECTION,
+        // not a skip — real Twilio always sends it; omitting it must not
+        // bypass verification.
         const isValid = !!twilioSig && verifyTwilioSignature(authToken, twilioSig, callbackUrl, body as Record<string, string>);
         if (!isValid) {
           log.warn('telephony_twilio_invalid_signature', {
@@ -187,19 +209,16 @@ export class TelephonyService {
     }
 
     if (providerType === TelephonyProviderType.TELNYX) {
-      // Ed25519 verification — previously the signature header was only LOGGED
-      // ("signature_received"), never verified: any request was accepted.
+      // Ed25519 verification — the previous block only LOGGED the header and
+      // accepted every request. With TELNYX_PUBLIC_KEY set, a missing, forged,
+      // or replayed (>5 min) signature is rejected.
       const telnyxPublicKey = process.env.TELNYX_PUBLIC_KEY;
       if (telnyxPublicKey) {
         const telnyxSig = headers['telnyx-signature-ed25519'] as string | undefined;
         const telnyxTs = headers['telnyx-timestamp'] as string | undefined;
         const isValid = !!rawBody && verifyTelnyxSignature(telnyxPublicKey, telnyxSig, telnyxTs, rawBody);
         if (!isValid) {
-          log.warn('telephony_telnyx_invalid_signature', {
-            correlationId,
-            callSid,
-            signatureProvided: !!telnyxSig,
-          });
+          log.warn('telephony_telnyx_invalid_signature', { correlationId, callSid, signatureProvided: !!telnyxSig });
           return `<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>`;
         }
         log.info('telephony_telnyx_signature_verified', { correlationId, callSid });
@@ -212,9 +231,8 @@ export class TelephonyService {
       const apiKey = config?.apiKey ?? process.env.AT_API_KEY;
       const atSig = headers['x-africastalking-signature'] as string | undefined;
       if (apiKey) {
-        // Same bypass-hardening as Twilio: when a key IS configured, a missing
-        // signature header (or missing rawBody) is a rejection — omitting the
-        // header must not skip verification.
+        // When a key IS configured, a missing header is a rejection — otherwise
+        // an attacker bypasses verification by simply omitting it.
         const isValid = !!atSig && !!rawBody && verifyAfricasTalkingSignature(apiKey, atSig, rawBody);
         if (!isValid) {
           log.warn('telephony_at_invalid_signature', { correlationId, callSid, signatureProvided: !!atSig });
@@ -224,10 +242,17 @@ export class TelephonyService {
     }
 
     // ── 3. Record call log ─────────────────────────────────────────────────────
-    const callLog = await prisma.callLog.create({
-      data: {
+    //
+    // callSid is @unique. Carriers retry webhooks on timeout or 5xx, and Twilio also
+    // re-POSTs the voice URL after a <Redirect>, so a plain create() threw P2002 and
+    // returned a 500 — which made the carrier retry again. upsert makes the handler
+    // idempotent.
+    const callLog = await prisma.callLog.upsert({
+      where:  { callSid },
+      update: { status: CallStatus.IN_PROGRESS },
+      create: {
         organizationId,
-        telephonyConfigId: config?.id,
+        telephonyConfigId: config.id,
         callSid,
         fromNumber,
         toNumber,
@@ -259,7 +284,7 @@ export class TelephonyService {
     const welcomeMsg = config?.organization?.welcomeMessage
       ?? 'Hello! Thank you for calling. How may I assist you today?';
 
-    const wsBaseUrl = (process.env.API_URL || process.env.API_BASE_URL)?.replace(/^http/, 'ws') ?? 'ws://localhost:4000';
+    const wsBaseUrl = apiBaseUrl().replace(/^http/, 'ws');
     // Embed org/from/to so TwilioMediaStreamHandler can identify the session
     // without a DB lookup inside the WS upgrade handler.
     const streamParams = new URLSearchParams({
@@ -285,63 +310,60 @@ export class TelephonyService {
   async initiateOutboundCall(
     organizationId: string,
     toNumber: string,
-    // Default TWILIO: it is the only provider that can actually ORIGINATE an
-    // outbound call. The old default (NIGERIA_CARRIER_FORWARD) is a passive
-    // forwarding setup — its SDK used to fabricate a QUEUED record for calls
-    // that never happened, and now honestly throws instead.
-    providerType: TelephonyProviderType = TelephonyProviderType.TWILIO
+    providerType?: TelephonyProviderType
   ) {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
 
-    const config = await prisma.telephonyConfig.findFirst({
-      where: { organizationId, isDefault: true },
-    });
+    // Fall back to *any* config for the org, not just isDefault.
+    // OrganizationsService.updateTelephonyConfig never writes isDefault, so an
+    // isDefault-only lookup returned null for every org configured through the
+    // dashboard and outbound calls were placed from the placeholder number
+    // +2348030000000 — which no carrier would accept as a verified caller ID.
+    const config =
+      (await prisma.telephonyConfig.findFirst({ where: { organizationId, isDefault: true } })) ??
+      (await prisma.telephonyConfig.findFirst({ where: { organizationId }, orderBy: { createdAt: 'asc' } }));
 
-    const fromNumber = config?.phoneNumber || process.env.DEFAULT_FROM_NUMBER || '+2348030000000';
+    if (!config?.phoneNumber) {
+      throw new BadRequestException(
+        'No outbound phone number is configured for this organization. ' +
+        'Add one under Settings → Voice & Telephony before placing calls.'
+      );
+    }
+
+    const fromNumber = config.phoneNumber;
+    const resolvedProvider = providerType ?? (config.provider as TelephonyProviderType);
 
     log.info('telephony_outbound_call_initiating', {
       correlationId,
       organizationId,
       toNumber: toNumber.slice(-4).padStart(toNumber.length, '*'),
-      providerType,
+      providerType: resolvedProvider,
     });
 
-    const provider = TelephonyFactory.createProvider(providerType, {
-      accountSid: config?.accountSid,
-      authToken:  config?.authToken,
-      apiKey:     config?.apiKey,
+    const provider = TelephonyFactory.createProvider(resolvedProvider, {
+      accountSid: config.accountSid,
+      authToken:  config.authToken,
+      apiKey:     config.apiKey,
     });
 
     const isVerified = await provider.verifyCallerId(fromNumber);
     if (!isVerified) {
-      log.warn('telephony_caller_id_verification_failed', {
-        correlationId,
-        providerType,
-        fromNumberSuffix: fromNumber.slice(-4),
-      });
+      // The caller ID is what the carrier will reject, so failing here gives the
+      // operator an actionable error instead of a CallLog row for a call that the
+      // carrier silently dropped.
+      throw new BadRequestException(
+        `"${fromNumber}" is not a valid caller ID for the ${resolvedProvider} provider. ` +
+        `Verify the number with your carrier and update Settings → Voice & Telephony.`
+      );
     }
 
-    let record;
-    try {
-      record = await provider.initiateCall({
-        organizationId,
-        fromNumber,
-        toNumber,
-        provider: providerType,
-      });
-    } catch (err: any) {
-      // Surface provider failures as a clear 400 with the real reason —
-      // previously the SDK swallowed failures and returned a fabricated
-      // QUEUED record, so the dashboard showed calls that never existed.
-      log.warn('telephony_outbound_call_failed', {
-        correlationId,
-        organizationId,
-        providerType,
-        error: err?.message,
-      });
-      throw new BadRequestException(err?.message ?? 'Outbound call could not be placed');
-    }
+    const record = await provider.initiateCall({
+      organizationId,
+      fromNumber,
+      toNumber,
+      provider: resolvedProvider,
+    });
 
     const callLog = await prisma.callLog.create({
       data: {
@@ -351,7 +373,7 @@ export class TelephonyService {
         toNumber,
         direction:   CallDirection.OUTBOUND,
         status:      CallStatus.QUEUED,
-        provider:    providerType as any,
+        provider:    resolvedProvider as any,
       },
     });
 
@@ -393,6 +415,15 @@ export class TelephonyService {
         callSid,
         durationSeconds: duration,
       }).catch(() => {});
+
+      this.workflows.emitAsync(callLog.organizationId, 'CALL_ENDED', {
+        callSid,
+        durationSeconds: duration ?? 0,
+        direction: callLog.direction,
+        fromNumber: callLog.fromNumber,
+        contactId: callLog.contactId ?? undefined,
+        contact: { phoneNumber: callLog.fromNumber },
+      });
     }
 
     log.info('telephony_call_status_updated', {
@@ -419,26 +450,5 @@ export class TelephonyService {
       prisma.callLog.count({ where: { organizationId } }),
     ]);
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
-  }
-
-  private async getFallbackOrgId(correlationId: string): Promise<string> {
-    const org = await prisma.organization.findFirst();
-    if (org) return org.id;
-
-    log.warn('telephony_no_org_found_creating_default', { correlationId });
-    try {
-      const newOrg = await prisma.organization.create({
-        data: { name: 'Default Organization', slug: 'default-org' },
-      });
-      return newOrg.id;
-    } catch (err: any) {
-      // P2002: two concurrent unmatched calls both tried to create the fixed
-      // 'default-org' slug — the other request won; use its organization.
-      if (err.code === 'P2002') {
-        const existing = await prisma.organization.findUnique({ where: { slug: 'default-org' } });
-        if (existing) return existing.id;
-      }
-      throw err;
-    }
   }
 }

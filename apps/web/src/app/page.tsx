@@ -4,7 +4,8 @@ import { api, API_URL } from '@/lib/api';
 import {
   Users, MessageSquareText, PhoneCall, BookOpen,
   TrendingUp, Activity, Clock, CheckCircle2, Bot,
-  ArrowRight, Zap, DollarSign, BarChart3, RefreshCw, Sparkles, Layers, Phone
+  ArrowRight, Zap, DollarSign, BarChart3, RefreshCw, Sparkles, Layers, Phone,
+  ArrowUpRight
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -44,8 +45,11 @@ export default function DashboardPage() {
     openTickets: 0,
   });
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [orgName, setOrgName] = useState('ACE Platform');
+  // Starts true: with it false the stat cards rendered real-looking zeros before any
+  // request had returned, so a populated account briefly read as an empty one.
+  const [loading, setLoading] = useState(true);
+  const [orgName, setOrgName] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
   const [dashboardData, setDashboardData] = useState<any>(null);
 
@@ -99,30 +103,47 @@ export default function DashboardPage() {
 
       if (dashboard) setDashboardData(dashboard);
 
-      const totalRevenue = dashboard?.pipelineValue ?? (deals
-        .filter((d: any) => d.stage === 'CLOSED_WON')
-        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0));
+      // The analytics endpoint nests its numbers under `metrics`.
+      //
+      // Every read here used to be `dashboard?.totalContacts` etc. against the
+      // top-level object, which is always undefined — so conversations, bookings,
+      // reservations and openTickets fell back to a hardcoded 0 and the rest silently
+      // reverted to counting whatever the CRM list endpoints happened to return
+      // (capped at one page). The whole dashboard displayed wrong figures.
+      const m = dashboard?.metrics ?? {};
 
+      const totalRevenue = m.pipelineValue ?? deals
+        .filter((d: any) => d.stage === 'CLOSED_WON')
+        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+
+      // No invented default. This used to fall back to a hardcoded 68%, so a brand
+      // new account with no leads at all was shown a 68% conversion rate.
       const convRate = leads.length > 0
         ? Math.round((leads.filter((l: any) => l.status === 'CONVERTED').length / leads.length) * 100)
-        : 68;
+        : 0;
 
       setStats({
-        contacts: dashboard?.totalContacts ?? contacts.length,
-        leads: dashboard?.totalLeads ?? leads.length,
-        calls: dashboard?.totalCalls ?? calls.length,
+        contacts: m.totalContacts ?? contacts.length,
+        leads: m.totalLeads ?? leads.length,
+        calls: m.totalCalls ?? calls.length,
         docs: docs.length,
         revenue: totalRevenue,
         conversionRate: convRate,
-        conversations: dashboard?.totalConversations ?? 0,
-        bookings: dashboard?.totalBookings ?? 0,
-        reservations: dashboard?.totalReservations ?? 0,
-        openTickets: dashboard?.openTickets ?? 0,
+        conversations: m.totalConversations ?? 0,
+        bookings: m.totalBookings ?? 0,
+        reservations: m.totalReservations ?? 0,
+        openTickets: m.openTickets ?? 0,
       });
 
       if (orgRes.status === 'fulfilled' && orgRes.value?.name) {
         setOrgName(orgRes.value.name);
       }
+
+      // The signed-in user's own name, from the session the login flow stored.
+      try {
+        const u = JSON.parse(localStorage.getItem('ace_user') || 'null');
+        if (u?.fullName) setFirstName(String(u.fullName).split(' ')[0]);
+      } catch { /* a malformed session is not worth failing the dashboard over */ }
 
       const recentActivities: Activity[] = [];
       calls.slice(0, 4).forEach((c: any) => {
@@ -131,7 +152,9 @@ export default function DashboardPage() {
           type: 'call',
           title: `Voice call ${c.status === 'COMPLETED' ? 'completed' : 'ended'}`,
           subtitle: `From ${c.fromNumber || 'Customer'} · ${Math.round((c.durationSeconds || 0) / 60)}m ${(c.durationSeconds || 0) % 60}s`,
-          time: c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+          // CallLog has startedAt, not createdAt — reading createdAt made every row
+          // display the literal string "Recently".
+          time: c.startedAt ? new Date(c.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
           status: c.status,
         });
       });
@@ -161,15 +184,28 @@ export default function DashboardPage() {
         web: 0,
       }));
     }
-    const perDay = Math.round(stats.conversations / 7) || 0;
-    const callsPerDay = Math.round(stats.calls / 7) || 0;
-    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
-      day, whatsapp: perDay, voice: callsPerDay, web: 0,
-    }));
+    // Return nothing rather than a fabricated flat line.
+    //
+    // The fallback used to spread the all-time totals evenly across seven days and
+    // render it as a trend chart, so an account with 70 conversations was shown a
+    // perfectly flat "10 per day" history that never happened.
+    return [];
   })();
 
-  const maxVal = Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)));
-  const aiResolutionRate = stats.conversations > 0 ? Math.round(((stats.conversations - stats.openTickets) / stats.conversations) * 100) : 0;
+  // Math.max(...[]) is -Infinity, which turns every bar height into -0.
+  const maxVal = weeklyData.length
+    ? Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)))
+    : 1;
+  // Use the value the API computes (resolved tickets / total tickets) rather than
+  // deriving one from conversations minus open tickets — two unrelated populations,
+  // which could produce a negative percentage when tickets outnumbered conversations.
+  const aiResolutionRate: number | null = dashboardData?.aiMetrics?.resolutionRate ?? null;
+  const aiReplyRate: number | null = dashboardData?.aiMetrics?.aiReplyRate ?? null;
+  // Handover rate is measured independently by the API; it is NOT 100 minus the
+  // resolution rate — those are different populations (conversations vs tickets),
+  // and subtracting one from the other produced a meaningless, sometimes negative,
+  // percentage.
+  const handoverRate: number | null = dashboardData?.aiMetrics?.handoverRate ?? null;
 
   if (loading) {
     return (
@@ -194,18 +230,22 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1 uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" /> Executive Command Center
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white tracking-tight">Welcome back, {orgName} 👋</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Here is your live AI customer assistance performance & pipeline overview for {today}.</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {firstName ? `Welcome back, ${firstName}` : 'Welcome back'} 👋
+          </h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+            {orgName ? `${orgName} — ` : ''}live performance and pipeline for {today}.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl">
-            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>7d</button>
-            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>30d</button>
-            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white'}`}>90d</button>
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
           </div>
           <button
             onClick={fetchAll}
-            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-900 dark:text-white transition-colors shadow-sm"
+            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors shadow-sm"
             title="Refresh Data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -261,7 +301,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 Omnichannel Conversation Volume
               </h3>
@@ -282,6 +322,11 @@ export default function DashboardPage() {
 
           {/* Bar chart grid */}
           <div className="h-56 flex items-end justify-between gap-3 pt-6 px-2 border-b border-slate-200 dark:border-slate-800/60">
+            {weeklyData.length === 0 && (
+              <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 dark:text-slate-400">
+                No activity recorded in this period yet.
+              </div>
+            )}
             {weeklyData.map((d: any, idx: number) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="w-full max-w-[36px] flex items-end justify-center gap-1 h-full">
@@ -317,9 +362,9 @@ export default function DashboardPage() {
               <p className="text-lg font-bold text-purple-600 dark:text-purple-400 mt-1">{stats.calls} calls</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Avg Resolution Time</p>
-              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">1.4 mins</p>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-semibold">Instant AI handover</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Open Tickets</p>
+              <p className="text-lg font-bold text-amber-600 dark:text-amber-400 mt-1">{stats.openTickets}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Awaiting resolution</p>
             </div>
           </div>
         </div>
@@ -327,7 +372,7 @@ export default function DashboardPage() {
         {/* AI Performance Gauge & Metrics */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-6 flex flex-col justify-between">
           <div>
-            <h3 className="font-bold text-slate-900 dark:text-slate-900 dark:text-white text-base flex items-center gap-2">
+            <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-500" />
               AI Agent Efficiency
             </h3>
@@ -336,37 +381,52 @@ export default function DashboardPage() {
 
           <div className="space-y-4">
             <ProgressMetric
-              label="Autonomous AI Resolution"
-              percentage={aiResolutionRate}
-              value={`${aiResolutionRate}% of queries solved without human agent`}
+              label="Ticket Resolution Rate"
+              percentage={aiResolutionRate ?? 'N/A'}
+              value={aiResolutionRate === null
+                ? 'No tickets recorded yet'
+                : `${aiResolutionRate}% of support tickets resolved`}
               color="bg-emerald-500"
+            />
+            <ProgressMetric
+              label="AI Reply Share"
+              percentage={aiReplyRate ?? 'N/A'}
+              value={aiReplyRate === null
+                ? 'No messages recorded yet'
+                : `${aiReplyRate}% of all replies written by AI`}
+              color="bg-indigo-500"
             />
             <ProgressMetric
               label="Knowledge Retrieval Accuracy"
               percentage={'N/A'}
-              value="Awaiting knowledge interaction data"
-              color="bg-indigo-500"
-            />
-            <ProgressMetric
-              label="Voice Speech-To-Text Confidence"
-              percentage={'N/A'}
-              value="Awaiting Deepgram STT data"
+              value="Not measured — retrieval scoring is not instrumented"
               color="bg-purple-500"
             />
             <ProgressMetric
               label="Human Handover Rate"
-              percentage={100 - aiResolutionRate}
-              value={`${100 - aiResolutionRate}% escalated to human team`}
+              percentage={handoverRate ?? 'N/A'}
+              value={handoverRate === null
+                ? 'No conversations recorded yet'
+                : `${handoverRate}% of conversations escalated to a human`}
               color="bg-amber-500"
             />
           </div>
 
           <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+              <div className={`w-3 h-3 rounded-full ${dashboardData ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
               <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-slate-900 dark:text-white">System Status: Optimal</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">All gateways (WhatsApp, Voice, CRM) active</p>
+                {/* Reflects whether analytics actually loaded. This used to read
+                    "System Status: Optimal" unconditionally — including while the API
+                    was unreachable and every tile showed zero. */}
+                <p className="text-xs font-bold text-slate-900 dark:text-white">
+                  {dashboardData ? 'Analytics: Connected' : 'Analytics: Unavailable'}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {dashboardData
+                    ? `Figures below cover the last ${timeRange === '7d' ? '7 days' : timeRange === '30d' ? '30 days' : '90 days'}.`
+                    : 'Could not load analytics — the figures below may be incomplete.'}
+                </p>
               </div>
             </div>
           </div>
@@ -378,7 +438,7 @@ export default function DashboardPage() {
         {/* Live Activity Timeline */}
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-slate-400" /> Recent Live Activity
             </h3>
             <Link href="/agent-console" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold">
@@ -398,9 +458,55 @@ export default function DashboardPage() {
                 </div>
               ))
             ) : activities.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                <Bot className="w-10 h-10 mb-3 opacity-40" />
-                <p className="text-sm font-medium">No activity recorded yet. Your AI assistant is active.</p>
+              // Previously: "No activity recorded yet. Your AI assistant is active."
+              // On an account with no channel connected the assistant is NOT active and
+              // never will be, so that sentence was both a dead end and untrue. This
+              // shows what is actually missing and links straight to it.
+              <div className="px-6 py-10">
+                <div className="flex flex-col items-center text-center mb-5">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-3">
+                    <Bot className="w-6 h-6 text-slate-400" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No activity yet</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
+                    Conversations, calls and bookings appear here as they happen. Finish the steps below and your
+                    assistant starts handling them.
+                  </p>
+                </div>
+
+                <ul className="space-y-2 max-w-md mx-auto">
+                  {[
+                    { done: stats.conversations > 0, label: 'Connect WhatsApp so customers can message you', href: '/settings' },
+                    { done: stats.calls > 0, label: 'Point a phone number at the Voice AI', href: '/telephony' },
+                    { done: stats.docs > 0, label: 'Add knowledge so the AI can answer questions', href: '/knowledge' },
+                    { done: stats.contacts > 0, label: 'Import or add your first contacts', href: '/crm' },
+                  ].map((step) => (
+                    <li key={step.label}>
+                      <a
+                        href={step.href}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+                          step.done
+                            ? 'border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/60 dark:bg-emerald-500/10'
+                            : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                            step.done
+                              ? 'bg-emerald-500 text-white'
+                              : 'border border-slate-300 dark:border-slate-600 text-transparent'
+                          }`}
+                        >
+                          ✓
+                        </span>
+                        <span className={`text-xs flex-1 ${step.done ? 'text-slate-500 dark:text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300 font-medium'}`}>
+                          {step.label}
+                        </span>
+                        {!step.done && <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : (
               activities.map((a) => (
@@ -431,7 +537,7 @@ export default function DashboardPage() {
 
         {/* Quick Launch & System Shortcuts */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
             <Layers className="w-4 h-4 text-purple-500" /> Platform Shortcuts
           </h3>
 
@@ -453,7 +559,7 @@ export default function DashboardPage() {
                   <p className={`text-xs font-bold ${s.color}`}>{s.label}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.desc}</p>
                 </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-slate-900 dark:text-white transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-slate-900 dark:hover:text-white transition-colors" />
               </Link>
             ))}
           </div>
@@ -471,7 +577,7 @@ function KpiCard({ title, value, subtitle, icon, badge, badgeColor }: any) {
         <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/50">{icon}</div>
       </div>
       <div>
-        <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-900 dark:text-white tracking-tight">{value}</p>
+        <p className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{value}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">{subtitle}</p>
       </div>
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60">
@@ -486,7 +592,7 @@ function ProgressMetric({ label, percentage, value, color }: any) {
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-xs">
         <span className="font-bold text-slate-900 dark:text-slate-200">{label}</span>
-        <span className="font-extrabold text-slate-900 dark:text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
+        <span className="font-extrabold text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
       </div>
       <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: percentage === 'N/A' ? '0%' : `${percentage}%` }} />

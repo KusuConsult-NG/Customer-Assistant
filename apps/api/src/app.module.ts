@@ -15,35 +15,35 @@ import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
 import { WorkflowsModule } from './workflows/workflows.module';
-import { VoiceStreamGateway } from './telephony/voice-stream.gateway';
 import { RedisThrottlerStorage } from './config/redis-throttler-storage';
+import { WorkflowTriggerModule } from './workflows/workflow-trigger.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
     // Rate limiting.
     //
-    // IMPORTANT: with @nestjs/throttler, EVERY named throttler passed to forRoot
-    // applies to EVERY route simultaneously — named tiers are NOT opt-in via
-    // @Throttle({ tier: {} }). The previous config declared an 'auth' tier of
-    // 5 req/60s which therefore capped every endpoint in the API at 5 requests
-    // per minute per IP (the dashboard polls every 8s → constant 429s).
+    // IMPORTANT: ThrottlerGuard applies EVERY configured throttler to EVERY route
+    // (they are ANDed, not selected by decorator). Registering several named tiers
+    // here therefore imposes the *strictest* tier on the whole API — a previous
+    // 3-tier config silently capped every endpoint at 5 requests/minute.
     //
-    // Correct model:
-    //   - ONE global 'default' tier: 60 req / 60s per IP per route.
-    //   - Stricter auth limit via @Throttle({ default: { limit: 5, ttl: 60_000 } })
-    //     on AuthController (see auth.controller.ts).
-    //   - Webhooks opt out entirely with @SkipThrottle() — they are protected by
-    //     HMAC signature verification, and throttling them loses messages.
-    //
+    // So there is exactly one tier. Routes that need a different budget override it
+    // per-controller/handler with @Throttle({ default: { limit, ttl } }), and webhooks
+    // opt out entirely with @SkipThrottle().
     // Storage: Redis-backed when REDIS_URL is set, so counters survive restarts
     // and are shared across pods (in-memory storage silently multiplies the
     // limit by the replica count). Fails open if Redis is down.
     ThrottlerModule.forRoot({
-      throttlers: [{ name: 'default', ttl: 60_000, limit: 60 }],
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
       ...(process.env.REDIS_URL
         ? { storage: new RedisThrottlerStorage(process.env.REDIS_URL) }
         : {}),
     }),
+    // Global: lets any module fire workflow triggers without a circular import.
+    WorkflowTriggerModule,
+    // Global: WhatsApp inbound and the workflow engine both attach selfies.
+    OnboardingModule,
     AuthModule,
     OrganizationsModule,
     CrmModule,
@@ -60,15 +60,17 @@ import { RedisThrottlerStorage } from './config/redis-throttler-storage';
   ],
   controllers: [AppController],
   providers: [
-    VoiceStreamGateway,
-    // Apply default throttle tier globally to every route.
+    // Apply the default throttle tier globally to every route.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // NOTE: RolesGuard must NOT be registered globally. Global guards run BEFORE
-    // controller-level guards, and req.user is only attached when the
-    // controller-level JwtAuthGuard (passport) runs — so a global RolesGuard
-    // sees user === undefined and returns 403 for EVERY @Roles() route, even for
-    // a valid OWNER token. RolesGuard is instead bound per-controller, always
-    // AFTER JwtAuthGuard: @UseGuards(JwtAuthGuard, RolesGuard).
+    //
+    // RolesGuard is deliberately NOT registered globally. Nest runs guards in the
+    // order global → controller → route, so a global RolesGuard executes BEFORE the
+    // controller's JwtAuthGuard has populated request.user — which made every
+    // @Roles()-decorated endpoint reject with 403 unconditionally. It is now applied
+    // per-controller *after* JwtAuthGuard: @UseGuards(JwtAuthGuard, RolesGuard).
+    //
+    // VoiceStreamGateway is likewise not listed here — TelephonyModule already
+    // provides it, and declaring it twice bound the same Socket.IO namespace twice.
   ],
 })
 export class AppModule {}

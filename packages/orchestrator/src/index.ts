@@ -4,7 +4,8 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { prisma } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl } from '@ace/database';
+import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -31,87 +32,122 @@ const RAG_QUERY_MAX_CHARS = 500;
 const RAG_TOP_K = 3;
 
 /**
+ * Embedding model and its output dimensionality.
+ *
+ * These MUST match what document.worker.ts writes, or query vectors will not be
+ * comparable with stored ones (Qdrant rejects a dimension mismatch outright).
+ */
+const EMBEDDING_MODEL = 'text-embedding-3-small';
+const EMBEDDING_DIMENSIONS = 1536;
+
+/**
  * Appointment duration in minutes. Should come from organization config in a
  * future iteration — currently a platform-wide default.
  */
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 30;
 
+/** Business timezone for all customer-facing times. */
+const BUSINESS_TIMEZONE = 'Africa/Lagos';
+
+/** Operating hours, in West Africa Time (UTC+1, no DST). */
+const BUSINESS_OPEN_HOUR_WAT = 8;
+const BUSINESS_CLOSE_HOUR_WAT = 18;
+
+/** Prior turns handed to the LLM as conversational context. */
+const MAX_HISTORY_TURNS = 12;
+
+// ─── Time helpers ────────────────────────────────────────────────────────────
+
 /**
- * Returns tomorrow at 10:00 Africa/Lagos as a Date, regardless of the server's
- * local timezone.
- *
- * Lagos is UTC+1 year-round (no DST), so 10:00 Lagos === 09:00 UTC.
- * The previous implementation used setHours(10, ...) which is interpreted in the
- * SERVER's timezone — correct only if TZ=Africa/Lagos. In a Docker container
- * (default TZ=UTC) every "10 AM" booking landed at 11:00 Lagos.
+ * West Africa Time is UTC+1 year-round (no daylight saving), so the offset is a
+ * constant. This matters because the previous code used `Date#setHours`, which
+ * applies the *server's* local timezone — on a UTC host (every container in
+ * render.yaml) "10:00 AM Lagos time" was actually written as 10:00 UTC, i.e. 11:00
+ * in Lagos, and then re-rendered with `toLocaleString('en-NG', { timeZone })` so the
+ * customer was quoted an hour later than the slot that was reserved.
  */
-function tomorrowAt10Lagos(): Date {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + 1);
-  d.setUTCHours(9, 0, 0, 0); // 09:00 UTC == 10:00 Africa/Lagos (UTC+1, no DST)
-  return d;
+const WAT_OFFSET_HOURS = 1;
+
+function watHour(date: Date): number {
+  return (date.getUTCHours() + WAT_OFFSET_HOURS) % 24;
+}
+
+/** Day of week in WAT: 0 = Sunday … 6 = Saturday. */
+function watDay(date: Date): number {
+  const shifted = new Date(date.getTime() + WAT_OFFSET_HOURS * 60 * 60 * 1000);
+  return shifted.getUTCDay();
+}
+
+function isWithinBusinessHours(date: Date): boolean {
+  const day = watDay(date);
+  if (day === 0 || day === 6) return false; // closed at weekends
+  const hour = watHour(date);
+  return hour >= BUSINESS_OPEN_HOUR_WAT && hour < BUSINESS_CLOSE_HOUR_WAT;
+}
+
+function formatLagos(date: Date): string {
+  return date.toLocaleString('en-NG', {
+    timeZone: BUSINESS_TIMEZONE,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// ─── Message parsing helpers ─────────────────────────────────────────────────
+
+/**
+ * True when the customer is asking whether they are talking to a machine.
+ *
+ * Answering honestly is not optional: disclosure on request is required in several
+ * of the markets this platform targets (California B.O.T. Act §17941, EU AI Act
+ * Art. 50), and this code used to actively deny it.
+ */
+function isAiDisclosureQuestion(lowerInput: string): boolean {
+  const PHRASES = [
+    'are you an ai', 'are you ai', 'are you a robot', 'are you a bot',
+    'is this a bot', 'is this an ai', 'is this a robot',
+    'are you human', 'are you a human', 'are you a person', 'are you a real person',
+    'is this a real person', 'is this a human',
+    'am i talking to a machine', 'am i talking to a robot', 'am i talking to a bot',
+    'am i speaking to a robot', 'am i chatting with a bot',
+  ];
+  return PHRASES.some((p) => lowerInput.includes(p));
+}
+
+/** "table for 6", "party of four", "6 people" → 6 */
+function extractPartySize(text: string): number | null {
+  const WORDS: Record<string, number> = {
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+    seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12,
+  };
+
+  const numeric = text.match(/\b(?:for|of|party of|table for)\s+(\d{1,2})\b/i)
+    ?? text.match(/\b(\d{1,2})\s*(?:people|persons|guests|pax)\b/i);
+  if (numeric) {
+    const n = parseInt(numeric[1], 10);
+    if (n >= 1 && n <= 50) return n;
+  }
+
+  const worded = text.match(/\b(?:for|of|party of|table for)\s+(one|two|three|four|five|six|seven|eight|nine|ten|twelve)\b/i);
+  if (worded) return WORDS[worded[1].toLowerCase()] ?? null;
+
+  return null;
 }
 
 /**
- * Find the next conflict-free slot for an AI-created booking.
- *
- * The old executeBookAppointment created bookings unconditionally (its comment
- * claimed a read-before-write conflict check that did not exist). This scans
- * business hours (10:00–17:00 Lagos, 30-min slots) starting tomorrow, up to 14
- * days out, and returns the first slot with no overlapping active booking.
- *
- * One query per day (all active bookings for that day), overlap resolved in
- * memory — bounded at 14 queries worst case. Still read-then-write: two truly
- * concurrent requests can race into the same slot. Acceptable at SME volume;
- * at >500 bookings/day wrap the create in a serializable transaction.
+ * Best-effort service name from the customer's own words, so a booking is not
+ * always filed as "General Consultation" regardless of what was asked for.
  */
-async function findNextFreeSlot(
-  organizationId: string,
-  durationMinutes: number
-): Promise<{ startTime: Date; endTime: Date }> {
-  const SLOT_MS = 30 * 60 * 1000;
-  const DAY_START_UTC_HOUR = 9;   // 10:00 Lagos
-  const LAST_START_UTC_HOUR = 16; // 17:00 Lagos (last slot starts 16:30 Lagos)
-
-  for (let dayOffset = 1; dayOffset <= 14; dayOffset++) {
-    const dayStart = new Date();
-    dayStart.setUTCDate(dayStart.getUTCDate() + dayOffset);
-    dayStart.setUTCHours(DAY_START_UTC_HOUR, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCHours(LAST_START_UTC_HOUR, 30, 0, 0);
-
-    const dayBookings = await prisma.booking.findMany({
-      where: {
-        organizationId,
-        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-        startTime: { lt: new Date(dayEnd.getTime() + SLOT_MS) },
-        endTime: { gt: dayStart },
-      },
-      select: { startTime: true, endTime: true },
-    });
-
-    for (let t = dayStart.getTime(); t <= dayEnd.getTime() - SLOT_MS; t += SLOT_MS) {
-      const slotStart = t;
-      const slotEnd = t + durationMinutes * 60 * 1000;
-      const clash = dayBookings.some(
-        (b: { startTime: Date; endTime: Date }) =>
-          b.startTime.getTime() < slotEnd && b.endTime.getTime() > slotStart
-      );
-      if (!clash) {
-        return { startTime: new Date(slotStart), endTime: new Date(slotEnd) };
-      }
-    }
+function extractServiceName(text: string): string {
+  const match = text.match(/\b(?:book|schedule|arrange|need|want)\s+(?:an?\s+)?([a-z][a-z\s-]{2,40}?)\s*(?:appointment|consultation|session|for|on|at|tomorrow|today|next|please|$)/i);
+  const candidate = match?.[1]?.trim();
+  if (candidate && candidate.length >= 3 && !/^(a|an|the|me|us|it)$/i.test(candidate)) {
+    return candidate.replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
   }
-
-  // Fully booked for 14 days — extremely unlikely at SME scale. Return
-  // tomorrow 10:00 anyway; the transactional clash-check in
-  // executeBookAppointment will reject it, and the caller's catch degrades to
-  // an honest "connecting you to a human" reply with handoff.
-  const fallback = tomorrowAt10Lagos();
-  return {
-    startTime: fallback,
-    endTime: new Date(fallback.getTime() + durationMinutes * 60 * 1000),
-  };
+  return 'General Consultation';
 }
 
 // ─── RAG Service ─────────────────────────────────────────────────────────────
@@ -183,7 +219,7 @@ export class QdrantRAGService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'text-embedding-3-small',
+        model: EMBEDDING_MODEL,
         input: query,
       }),
     });
@@ -228,6 +264,131 @@ export class QdrantRAGService {
       content: r.payload?.content ?? '',
       score: r.score ?? 0,
     }));
+  }
+
+  /**
+   * Embeds and upserts document chunks into the organization's Qdrant collection,
+   * creating the collection if it does not exist.
+   *
+   * Both inline ingestion paths in KnowledgeService (the Redis-unavailable fallback
+   * and website crawling) wrote chunk rows to PostgreSQL and marked the document
+   * INDEXED without ever producing a vector, so `searchKnowledgeBase` could not
+   * retrieve any of it semantically.
+   */
+  async upsertChunks(
+    organizationId: string,
+    chunks: Array<{ chunkId: string; documentId: string; chunkIndex: number; content: string }>
+  ): Promise<void> {
+    if (chunks.length === 0) return;
+    if (!this.openAiKey) {
+      throw new Error('OPENAI_API_KEY is not set — embeddings cannot be generated.');
+    }
+
+    const collectionName = `org_${organizationId}`;
+    await this.ensureCollection(collectionName);
+
+    // Embed in batches: the OpenAI embeddings endpoint accepts an array of inputs,
+    // so one request per chunk would be needlessly slow and rate-limit-prone.
+    const BATCH = 64;
+    for (let i = 0; i < chunks.length; i += BATCH) {
+      const batch = chunks.slice(i, i + BATCH);
+      const vectors = await this.embedBatch(batch.map((c) => c.content.slice(0, 8000)));
+
+      const points = batch.map((c, idx) => ({
+        id: c.chunkId,
+        vector: vectors[idx],
+        payload: {
+          chunkId: c.chunkId,
+          documentId: c.documentId,
+          organizationId,
+          chunkIndex: c.chunkIndex,
+          content: c.content,
+        },
+      }));
+
+      const res = await fetch(`${this.qdrantUrl}/collections/${collectionName}/points?wait=true`, {
+        method: 'PUT',
+        headers: this.qdrantHeaders(),
+        body: JSON.stringify({ points }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Qdrant upsert failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+      }
+    }
+  }
+
+  /**
+   * Removes a document's vectors from Qdrant.
+   *
+   * KnowledgeService.deleteDocument deleted the file and the PostgreSQL rows but left
+   * the vectors in place, with a comment claiming the worker would clean them up on
+   * re-index — it does not. The stale vectors kept surfacing as RAG context, so the
+   * assistant went on quoting documents the operator had deliberately deleted.
+   */
+  async deleteDocumentVectors(organizationId: string, documentId: string): Promise<void> {
+    const res = await fetch(
+      `${this.qdrantUrl}/collections/org_${organizationId}/points/delete?wait=true`,
+      {
+        method: 'POST',
+        headers: this.qdrantHeaders(),
+        body: JSON.stringify({
+          filter: { must: [{ key: 'documentId', match: { value: documentId } }] },
+        }),
+      }
+    );
+
+    // 404 means the collection was never created — nothing to remove.
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`Qdrant delete failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+    }
+  }
+
+  private qdrantHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.apiKey) headers['api-key'] = this.apiKey;
+    return headers;
+  }
+
+  /** Creates the per-tenant collection if absent. Vector size matches the model. */
+  private async ensureCollection(collectionName: string): Promise<void> {
+    const check = await fetch(`${this.qdrantUrl}/collections/${collectionName}`, {
+      headers: this.qdrantHeaders(),
+    });
+    if (check.ok) return;
+
+    const create = await fetch(`${this.qdrantUrl}/collections/${collectionName}`, {
+      method: 'PUT',
+      headers: this.qdrantHeaders(),
+      body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSIONS, distance: 'Cosine' } }),
+    });
+    if (!create.ok) {
+      throw new Error(
+        `Failed to create Qdrant collection ${collectionName}: ${(await create.text()).slice(0, 300)}`
+      );
+    }
+  }
+
+  private async embedBatch(inputs: string[]): Promise<number[][]> {
+    const res = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.openAiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: EMBEDDING_MODEL, input: inputs }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`OpenAI Embeddings API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+
+    const data: any = await res.json();
+    // Responses are not guaranteed to preserve input order; sort by index.
+    return (data.data ?? [])
+      .slice()
+      .sort((a: any, b: any) => a.index - b.index)
+      .map((d: any) => d.embedding);
   }
 
   /**
@@ -307,11 +468,9 @@ export class ConversationOrchestrator {
   }
 
   /**
-   * Uniform failure path for every DB-backed tool intent.
-   *
-   * Any tool can throw (database down, FK violation, missing contact). An
-   * uncaught throw bubbles to the channel's catch-all and the customer gets
-   * NO reply at all — silence is the worst possible outcome mid-conversation.
+   * Uniform failure path for every DB-backed tool intent. Any tool can throw
+   * (database down, FK violation, missing contact); an uncaught throw bubbles
+   * to the channel's catch-all and the customer receives NO reply at all.
    * Every tool branch routes failures here: log the real error, reply
    * honestly, hand off to a human.
    */
@@ -360,10 +519,31 @@ export class ConversationOrchestrator {
     }
 
     // ── 2. Explicit escalation request ───────────────────────────────────────
+    // ── 2a. "Are you a bot?" ────────────────────────────────────────────────
+    //
+    // Checked BEFORE escalation. 'real person' is an escalation trigger, so
+    // "is this a real person?" — a question about the assistant — used to be read as
+    // "put me through to a real person" and silently handed the customer to a queue
+    // instead of answering them.
+    if (isAiDisclosureQuestion(lowerInput)) {
+      const discloseOrgName = await this.getOrganizationName(context.organizationId);
+      return {
+        replyText:
+          `I'm an AI assistant for ${discloseOrgName} — but I can help with most things right away, ` +
+          `and I'll bring in a human colleague the moment you'd prefer one. ` +
+          `What can I do for you?`,
+        intentDetected: 'AI_DISCLOSURE',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+      };
+    }
+
+    // ── 2b. Explicit escalation request ─────────────────────────────────────
     const ESCALATION_PHRASES = [
-      'speak to human', 'human agent', 'representative',
-      'customer care agent', 'talk to a person', 'agent please',
-      'i need a person', 'real person',
+      'speak to human', 'speak to a human', 'human agent', 'representative',
+      'customer care agent', 'talk to a person', 'talk to a human', 'agent please',
+      'i need a person', 'i want a human', 'speak to a real person',
+      'talk to a real person', 'get me a human',
     ];
     if (ESCALATION_PHRASES.some((p) => lowerInput.includes(p))) {
       return {
@@ -375,38 +555,28 @@ export class ConversationOrchestrator {
     }
 
     // ── 3. Tool: Appointment Booking ─────────────────────────────────────────
+    //
+    // Note on scope: this books the next FREE slot in the organization's working
+    // hours and says exactly which slot it took, so the customer can correct it.
+    // It used to unconditionally write "tomorrow at 10:00" for a "General
+    // Consultation" and reply "✅ Your appointment has been confirmed" — regardless
+    // of what the customer asked for, whether the business is open then, or whether
+    // that slot was already taken. Customers were told a time nobody was expecting
+    // them, and staff got silently double-booked.
     const APPOINTMENT_PHRASES = ['appointment', 'schedule consultation', 'book a doctor', 'reserve slot', 'book an appointment', 'book appointment'];
     if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p))) {
-      // executeBookAppointment can throw (no free slot in 14 days, or both
-      // transactional attempts lost their race). An unhandled throw here would
-      // bubble to the channel's catch-all and the customer would get NO reply
-      // at all — degrade to an honest message + human handoff instead.
       try {
-        const toolResult = await this.executeBookAppointment(context);
+        const toolResult = await this.executeBookAppointment(context, cleanInput);
         return {
-          replyText: `✅ Your appointment has been confirmed for *${toolResult.time}*.\n\nYou'll receive a confirmation shortly. Is there anything else I can help with?`,
-          intentDetected: 'BOOK_APPOINTMENT',
-          confidenceScore: 0.98,
-          shouldHandoff: false,
-          toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
-        };
-      } catch (bookErr: any) {
-        console.error(JSON.stringify({
-          level: 'error',
-          service: 'ConversationOrchestrator',
-          event: 'book_appointment_failed',
-          organizationId: context.organizationId,
-          error: bookErr.message,
-        }));
-        return {
-          replyText:
-            `I wasn't able to secure an appointment slot automatically just now. ` +
-            `Let me connect you with a team member who will book a time that works for you.`,
+          replyText: toolResult.message,
           intentDetected: 'BOOK_APPOINTMENT',
           confidenceScore: 0.9,
-          shouldHandoff: true,
-          handoffReason: HandoffReason.TOOL_FAILURE,
+          shouldHandoff: toolResult.shouldHandoff,
+          ...(toolResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+          toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
         };
+      } catch (err) {
+        return this.toolFailureReply('BOOK_APPOINTMENT', err);
       }
     }
 
@@ -414,12 +584,13 @@ export class ConversationOrchestrator {
     const RESERVATION_PHRASES = ['reservation', 'book room', 'book table', 'book a room', 'book a table', 'reserve a table', 'make a reservation'];
     if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
-        const toolResult = await this.executeManageReservation(context);
+        const toolResult = await this.executeManageReservation(context, cleanInput);
         return {
-          replyText: `✅ Your reservation for *${toolResult.partySize} guest(s)* at *${toolResult.time}* is confirmed. We look forward to hosting you!`,
+          replyText: toolResult.message,
           intentDetected: 'MANAGE_RESERVATION',
-          confidenceScore: 0.96,
-          shouldHandoff: false,
+          confidenceScore: 0.9,
+          shouldHandoff: toolResult.shouldHandoff,
+          ...(toolResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
           toolCallsExecuted: [{ toolName: 'manage_reservation', result: toolResult }],
         };
       } catch (err) {
@@ -517,8 +688,9 @@ export class ConversationOrchestrator {
         return {
           replyText: quoteResult.summaryText,
           intentDetected: 'REQUEST_QUOTATION',
-          confidenceScore: 0.96,
-          shouldHandoff: false,
+          confidenceScore: 0.9,
+          shouldHandoff: quoteResult.shouldHandoff,
+          ...(quoteResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
           toolCallsExecuted: [{ toolName: 'request_quotation', result: quoteResult }],
         };
       } catch (err) {
@@ -556,11 +728,42 @@ export class ConversationOrchestrator {
           replyText: guidanceResult.replyText,
           intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
           confidenceScore: 0.98,
-          shouldHandoff: false,
+          shouldHandoff: guidanceResult.shouldHandoff,
+          ...(guidanceResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
           toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
         };
       } catch (err) {
         return this.toolFailureReply('PROVIDE_PAYMENT_GUIDANCE', err);
+      }
+    }
+
+    // ── 12. Tool: Onboarding selfie ────────────────────────────────────────────
+    //
+    // Two situations, one tool:
+    //   - the customer is ready to send their photo and needs a link;
+    //   - the customer is on a voice call, where no photo can be sent at all, and the
+    //     only honest answer is "I have texted you a link".
+    //
+    // Note what this deliberately does NOT do: claim the photo verifies anyone. It is
+    // captured and passed to a human; nothing here checks liveness or identity.
+    const SELFIE_PHRASES = [
+      'selfie', 'send my photo', 'send you my photo', 'upload my photo', 'upload a photo',
+      'take a picture of myself', 'photo of myself', 'picture of myself', 'where do i send my picture',
+      'how do i send my photo', 'verify my identity', 'identity photo', 'id photo',
+    ];
+    if (SELFIE_PHRASES.some((p) => lowerInput.includes(p))) {
+      try {
+        const selfieResult = await this.executeRequestSelfie(context);
+        return {
+          replyText: selfieResult.replyText,
+          intentDetected: 'REQUEST_SELFIE',
+          confidenceScore: 0.9,
+          shouldHandoff: selfieResult.shouldHandoff,
+          ...(selfieResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+          toolCallsExecuted: [{ toolName: 'request_onboarding_selfie', result: selfieResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_SELFIE', err);
       }
     }
 
@@ -571,12 +774,13 @@ export class ConversationOrchestrator {
       RAG_TOP_K
     );
 
-    let kbContextText = '';
-    if (searchResults.length > 0) {
-      // Only use high-confidence results (score > 0.5)
-      const relevant = searchResults.filter((r) => r.score > 0.5);
-      kbContextText = relevant.map((r) => r.content).join('\n---\n');
-    }
+    // Keep reasonably-confident results. The threshold is `>=` because the Postgres
+    // ILIKE fallback assigns descending scores 0.6 / 0.55 / 0.5 — a strict `>` threw
+    // away its third hit every time, for no reason.
+    const kbContextText = searchResults
+      .filter((r) => r.score >= 0.5)
+      .map((r) => r.content)
+      .join('\n---\n');
 
     // ── 12. Persona & GPT-4o response synthesis ──────────────────────────────
     let org: any = null;
@@ -607,24 +811,6 @@ export class ConversationOrchestrator {
 
     const orgName = org?.name ?? 'our service';
 
-    // Honest AI disclosure.
-    // The previous version denied being an AI ("Haha, no! I'm a customer support
-    // representative..."). That is a compliance liability — the EU AI Act's
-    // transparency obligations and Meta's WhatsApp Business messaging policies
-    // require automated agents to identify as such when asked — and it burns
-    // customer trust the moment the deception is noticed.
-    const AI_DISCLOSURE_PHRASES = ['are you an ai', 'are you a robot', 'are you ai', 'is this a bot', 'are you human', 'am i talking to a machine'];
-    if (AI_DISCLOSURE_PHRASES.some((p) => lowerInput.includes(p))) {
-      return {
-        replyText:
-          `Yes — I'm ${orgName}'s AI assistant. I can help with bookings, payments, and any questions about our services, ` +
-          `and I can bring in a human teammate whenever you prefer: just say *"speak to an agent"*.`,
-        intentDetected: 'AI_DISCLOSURE',
-        confidenceScore: 1.0,
-        shouldHandoff: false,
-      };
-    }
-
     // ── GPT-4o synthesis — uses the org's configured persona prompt ───────────
     const openAiKey = process.env.OPENAI_API_KEY;
 
@@ -644,15 +830,43 @@ export class ConversationOrchestrator {
 
     if (openAiKey) {
       try {
-        const systemPrompt = org?.aiPersonaPrompt
+        const basePrompt = org?.aiPersonaPrompt
           ? org.aiPersonaPrompt
           : `You are a professional customer support assistant for ${orgName}. ` +
             `Be helpful, concise, and friendly. Respond in plain text without markdown unless formatting helps clarity. ` +
             `If you cannot answer something, offer to connect the customer with a human agent.`;
 
+        // Guardrails appended after the tenant's own persona prompt so a
+        // well-meaning (or careless) persona cannot instruct the model to claim it is
+        // human, or to invent prices, availability or bank details — the exact
+        // failure modes this file used to hardcode.
+        const systemPrompt =
+          `${basePrompt}\n\n` +
+          `Non-negotiable rules:\n` +
+          `- If asked whether you are an AI, a bot, or a human, say plainly that you are an AI assistant. Never claim to be a person.\n` +
+          `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If you do not have a fact, say so and offer a human colleague.\n` +
+          `- Only state something as confirmed when the information above shows it was actually done.`;
+
         const userContent = kbContextText
           ? `The following information from our knowledge base may be relevant:\n\n${kbContextText}\n\n---\n\nCustomer message: ${cleanInput}`
           : cleanInput;
+
+        // Feed prior turns to the model.
+        //
+        // ConversationContext.history was populated by every caller
+        // (WhatsappService, WidgetService, TwilioMediaStreamHandler) but never read
+        // here: only the current message was sent. The assistant therefore had no
+        // memory at all — a customer who answered a question it had just asked got a
+        // reply that ignored the entire exchange. The final entry is skipped when it
+        // is the message we are already sending as `userContent`.
+        const priorTurns = (context.history ?? [])
+          .filter((m) => m.content?.trim())
+          .slice(-MAX_HISTORY_TURNS)
+          .filter((m, i, arr) => !(i === arr.length - 1 && m.content.trim() === cleanInput))
+          .map((m) => ({
+            role: m.sender === 'CUSTOMER' ? ('user' as const) : ('assistant' as const),
+            content: m.content,
+          }));
 
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -666,9 +880,11 @@ export class ConversationOrchestrator {
             temperature: 0.6,
             messages: [
               { role: 'system', content: systemPrompt },
+              ...priorTurns,
               { role: 'user', content: userContent },
             ],
           }),
+          signal: AbortSignal.timeout(20_000),
         });
 
         if (gptResponse.ok) {
@@ -704,17 +920,34 @@ export class ConversationOrchestrator {
       }
     }
 
-    // Fallback: if GPT call fails or key not set, use KB text or a minimal template
-    const fallbackReply = kbContextText
-      ? `${kbContextText}\n\nIs there anything else I can help you with?`
-      : `Thank you for contacting ${orgName}. A member of our team will follow up with you shortly regarding your inquiry. ` +
-        `You can also say *"speak to an agent"* to be connected immediately.`;
+    // ── Degraded mode ────────────────────────────────────────────────────────
+    //
+    // We reach here when the LLM was unavailable (missing key, quota exhausted,
+    // network failure) or returned nothing.
+    //
+    // If the knowledge base answered the question we can still serve the customer.
+    // If it did not, the honest outcome is a HANDOFF, not a dead end: the previous
+    // behaviour returned "a member of our team will follow up with you shortly" with
+    // shouldHandoff:false, so the conversation stayed assigned to an AI that was not
+    // working, no agent was ever notified, and nobody followed up. A model outage
+    // would have silently swallowed every inbound customer message.
+    if (kbContextText) {
+      return {
+        replyText: `${kbContextText}\n\nIs there anything else I can help you with?`,
+        intentDetected: 'KB_ANSWER_DEGRADED',
+        confidenceScore: 0.6,
+        shouldHandoff: false,
+      };
+    }
 
     return {
-      replyText: fallbackReply,
-      intentDetected: 'GENERAL_INQUIRY',
-      confidenceScore: kbContextText ? 0.72 : 0.50,
-      shouldHandoff: false,
+      replyText:
+        `Thanks for getting in touch with ${orgName}. I'm not able to answer that one myself, ` +
+        `so I'm passing you to a colleague who can help.`,
+      intentDetected: 'AI_UNAVAILABLE',
+      confidenceScore: 0,
+      shouldHandoff: true,
+      handoffReason: HandoffReason.TOOL_FAILURE,
     };
   }
 
@@ -870,6 +1103,10 @@ export class ConversationOrchestrator {
       return { message: 'I need your phone number on file to reschedule. Please contact our team directly.' };
     }
 
+    const newTime = new Date();
+    newTime.setDate(newTime.getDate() + 1);
+    newTime.setHours(10, 0, 0, 0); // Default: tomorrow 10 AM Lagos
+
     // Try booking
     const booking = await prisma.booking.findFirst({
       where: {
@@ -882,10 +1119,7 @@ export class ConversationOrchestrator {
     });
 
     if (booking) {
-      const { startTime: newTime, endTime } = await findNextFreeSlot(
-        context.organizationId,
-        DEFAULT_APPOINTMENT_DURATION_MINUTES
-      );
+      const endTime = new Date(newTime.getTime() + 30 * 60 * 1000);
       await prisma.booking.update({
         where: { id: booking.id },
         data: { status: 'RESCHEDULED', startTime: newTime, endTime, updatedAt: new Date() },
@@ -914,7 +1148,6 @@ export class ConversationOrchestrator {
     });
 
     if (reservation) {
-      const newTime = tomorrowAt10Lagos(); // reservations have no slot model — default to tomorrow 10:00 Lagos
       await prisma.reservation.update({
         where: { id: reservation.id },
         data: { status: 'RESCHEDULED', reservationTime: newTime, updatedAt: new Date() },
@@ -974,7 +1207,7 @@ export class ConversationOrchestrator {
       orderBy: { startTime: 'desc' },
     });
 
-    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}`;
     const subject = booking
       ? `Refund Request — ${booking.serviceName} on ${booking.startTime.toLocaleDateString('en-NG')}`
       : `Refund Request — Reservation (${contact.fullName})`;
@@ -1014,128 +1247,311 @@ export class ConversationOrchestrator {
 
 
   /**
-   * Book an appointment at the next CONFLICT-FREE slot (see findNextFreeSlot).
+   * Books the next genuinely free slot inside the organization's working hours.
    *
-   * Race condition note: still read-then-write without a lock — two truly
-   * concurrent requests can race into the same slot. At > 500 bookings/day,
-   * wrap in prisma.$transaction(..., { isolationLevel: 'Serializable' }).
+   * Conflicts are checked against existing bookings before writing. Two concurrent
+   * requests can still race between the check and the insert; at Nigerian SME volume
+   * (< 500 bookings/day) that window is negligible, and closing it properly needs a
+   * serializable transaction or a database exclusion constraint on the time range.
    */
-  private async executeBookAppointment(context: ConversationContext) {
-    const contact = await this.getOrCreateContact(context);
-
-    // Two attempts: find a free slot, then re-check + create inside ONE
-    // transaction so a concurrent booking between "find" and "create" is
-    // caught. If the slot was taken in that window, re-scan once (the scan
-    // now sees the competitor's row). Not fully serializable, but it closes
-    // the common single-overlap race without transaction-retry machinery.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { startTime, endTime } = await findNextFreeSlot(
-        context.organizationId,
-        DEFAULT_APPOINTMENT_DURATION_MINUTES
-      );
-
-      const booking = await prisma.$transaction(async (tx: any) => {
-        const clash = await tx.booking.findFirst({
-          where: {
-            organizationId: context.organizationId,
-            status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-            startTime: { lt: endTime },
-            endTime: { gt: startTime },
-          },
-          select: { id: true },
-        });
-        if (clash) return null;
-
-        return tx.booking.create({
-          data: {
-            organizationId: context.organizationId,
-            contactId: contact.id,
-            serviceName: 'General Consultation',
-            startTime,
-            endTime,
-            status: 'CONFIRMED',
-          },
-        });
-      });
-
-      if (booking) {
-        return {
-          bookingId: booking.id,
-          time: startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }),
-        };
-      }
+  private async executeBookAppointment(context: ConversationContext, messageText: string) {
+    let contact;
+    try {
+      contact = await this.getOrCreateContact(context);
+    } catch {
+      return {
+        booked: false,
+        shouldHandoff: true,
+        message:
+          `I'd be glad to book that for you — I just need a phone number to put the ` +
+          `appointment under. Let me bring in a colleague who can take your details.`,
+      };
     }
 
-    throw new Error(
-      `Could not secure a booking slot after 2 attempts (organizationId=${context.organizationId}) — heavy concurrent booking activity.`
+    const slot = await this.findNextAvailableSlot(
+      context.organizationId,
+      DEFAULT_APPOINTMENT_DURATION_MINUTES
     );
+
+    if (!slot) {
+      return {
+        booked: false,
+        shouldHandoff: true,
+        message:
+          `We're fully booked for the next couple of weeks, so I don't want to guess at a ` +
+          `time. I'm passing you to a colleague who can find something that works for you.`,
+      };
+    }
+
+    const serviceName = extractServiceName(messageText);
+
+    const booking = await prisma.booking.create({
+      data: {
+        organizationId: context.organizationId,
+        contactId: contact.id,
+        serviceName,
+        startTime: slot.start,
+        endTime: slot.end,
+        status: 'CONFIRMED',
+        notes: `Booked by AI assistant from: "${messageText.slice(0, 200)}"`,
+      },
+    });
+
+    const when = formatLagos(slot.start);
+
+    return {
+      booked: true,
+      shouldHandoff: false,
+      bookingId: booking.id,
+      serviceName,
+      startTime: slot.start.toISOString(),
+      // Say what was actually booked and invite a correction, rather than asserting
+      // that a time the customer never chose is "confirmed".
+      message:
+        `I've put you down for *${serviceName}* on *${when}* (West Africa Time).\n\n` +
+        `Reference: #${booking.id.slice(-8).toUpperCase()}\n\n` +
+        `If that time doesn't work, just say *"reschedule"* and I'll move it.`,
+    };
   }
 
-  private async executeManageReservation(context: ConversationContext) {
-    const contact = await this.getOrCreateContact(context);
-    const reservationTime = new Date(Date.now() + 48 * 60 * 60 * 1000);
+  private async executeManageReservation(context: ConversationContext, messageText: string) {
+    let contact;
+    try {
+      contact = await this.getOrCreateContact(context);
+    } catch {
+      return {
+        booked: false,
+        shouldHandoff: true,
+        message:
+          `Happy to arrange that — I just need a phone number for the reservation. ` +
+          `Let me bring in a colleague who can take your details.`,
+      };
+    }
+
+    // Read the party size out of the message rather than always assuming two people.
+    const partySize = extractPartySize(messageText) ?? 2;
+
+    const slot = await this.findNextAvailableSlot(context.organizationId, 90);
+    if (!slot) {
+      return {
+        booked: false,
+        shouldHandoff: true,
+        message:
+          `We're fully booked over the next couple of weeks. I'm passing you to a colleague ` +
+          `who can look for a table for you.`,
+      };
+    }
 
     const reservation = await prisma.reservation.create({
       data: {
         organizationId: context.organizationId,
         contactId: contact.id,
-        partySize: 2,
-        reservationTime,
+        partySize,
+        reservationTime: slot.start,
         status: 'CONFIRMED',
+        specialRequests: `Requested via AI assistant: "${messageText.slice(0, 200)}"`,
       },
     });
 
     return {
+      booked: true,
+      shouldHandoff: false,
       reservationId: reservation.id,
-      partySize: 2,
-      time: reservationTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' }),
+      partySize,
+      message:
+        `I've reserved a table for *${partySize} guest${partySize === 1 ? '' : 's'}* on ` +
+        `*${formatLagos(slot.start)}* (West Africa Time).\n\n` +
+        `Reference: #${reservation.id.slice(-8).toUpperCase()}\n\n` +
+        `Say *"reschedule"* if you'd prefer a different time, or tell me your party size if I got it wrong.`,
     };
   }
 
   /**
-   * Quotation request → ticket for the team, honest reply to the customer.
-   *
-   * The previous version invented a price ("Estimated Total: ₦35,000") for any
-   * organization and any service, and linked a PDF at /api/documents/quotation/
-   * — an endpoint that does not exist. A chatbot quoting fabricated prices to
-   * real customers is a business liability; the honest behavior is to log the
-   * request and have the team send a real quotation.
+   * Finds the earliest free slot within the organization's operating hours
+   * (Mon–Fri, 08:00–18:00 West Africa Time), skipping anything already booked.
    */
-  private async executeGenerateQuotation(context: ConversationContext, promptText: string) {
-    const contact = await this.getOrCreateContact(context);
-    const quoteNum = `QUO-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+  private async findNextAvailableSlot(
+    organizationId: string,
+    durationMinutes: number
+  ): Promise<{ start: Date; end: Date } | null> {
+    const SEARCH_HORIZON_DAYS = 14;
+    const now = Date.now();
+    const horizon = new Date(now + SEARCH_HORIZON_DAYS * 24 * 60 * 60 * 1000);
 
-    const ticket = await prisma.ticket.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        ticketNumber: quoteNum,
-        subject: `Quotation Request — ${promptText.slice(0, 80)}`,
-        description:
-          `Customer requested a price quotation via AI assistant.\n\n` +
-          `Contact: ${contact.fullName} (${contact.phoneNumber})\n\n` +
-          `Customer message: "${promptText.slice(0, 300)}"`,
-        status: 'OPEN',
-        priority: 'MEDIUM',
-        updatedAt: new Date(),
+    const existing = await prisma.booking.findMany({
+      where: {
+        organizationId,
+        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date(now), lte: horizon },
       },
+      select: { startTime: true, endTime: true },
     });
 
+    const busy = existing.map((b) => [b.startTime.getTime(), b.endTime.getTime()] as const);
+    const durationMs = durationMinutes * 60 * 1000;
+
+    // Start at the next half-hour boundary, at least an hour out.
+    let cursor = new Date(now + 60 * 60 * 1000);
+    cursor.setUTCSeconds(0, 0);
+    cursor.setUTCMinutes(cursor.getUTCMinutes() > 30 ? 60 : 30);
+
+    while (cursor.getTime() < horizon.getTime()) {
+      const end = new Date(cursor.getTime() + durationMs);
+
+      if (isWithinBusinessHours(cursor) && isWithinBusinessHours(new Date(end.getTime() - 1))) {
+        const clashes = busy.some(([s, e]) => cursor.getTime() < e && end.getTime() > s);
+        if (!clashes) return { start: new Date(cursor), end };
+      }
+
+      cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
+    }
+
+    return null;
+  }
+
+  /**
+   * Quotes a price from the organization's own deal history.
+   *
+   * The previous implementation returned a flat "₦35,000 — General Consultation &
+   * Diagnostics" for every business in every industry, labelled it an "Official Price
+   * Quotation", and attached a link to `/api/documents/quotation/<n>.pdf`, a route
+   * that has never existed — so the customer got a 404 for their "official" quote.
+   * We do not invent prices: unless the organization has closed comparable deals we
+   * hand the request to a human.
+   */
+  private async executeGenerateQuotation(context: ConversationContext, promptText: string) {
+    const recentDeals = await prisma.deal.findMany({
+      where: { organizationId: context.organizationId, stage: 'CLOSED_WON' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { title: true, amount: true, currency: true },
+    });
+
+    if (recentDeals.length === 0) {
+      return {
+        quoted: false,
+        shouldHandoff: true,
+        summaryText:
+          `I'd rather get you an accurate price than guess at one. Let me pass you to a ` +
+          `colleague who can put a proper quote together for you.`,
+      };
+    }
+
+    const amounts = recentDeals.map((d) => d.amount).filter((a) => a > 0).sort((a, b) => a - b);
+    const low = amounts[0] ?? 0;
+    const high = amounts[amounts.length - 1] ?? 0;
+    const currency = recentDeals[0].currency === 'NGN' ? '₦' : recentDeals[0].currency + ' ';
+
     return {
-      quotationNumber: quoteNum,
-      ticketId: ticket.id,
+      quoted: true,
+      shouldHandoff: false,
+      indicativeLow: low,
+      indicativeHigh: high,
       summaryText:
-        `📄 *Quotation Request Logged — #${quoteNum}*\n\n` +
-        `I've passed your request to our team, who will prepare an official quotation with exact pricing ` +
-        `and send it to you on this channel shortly.\n\n` +
-        `To speed things up, feel free to reply with any details about what you need ` +
-        `(service type, quantity, dates).`,
+        `Comparable work we've done recently has ranged from *${currency}${low.toLocaleString('en-NG')}* ` +
+        `to *${currency}${high.toLocaleString('en-NG')}*, depending on scope.\n\n` +
+        `That's indicative, not a formal quote — tell me a bit more about what you need and ` +
+        `I'll have a colleague send you an exact figure.`,
     };
+  }
+
+  /**
+   * Issues a one-time selfie upload link for the current contact.
+   *
+   * On WhatsApp the customer can simply reply with a photo, so the link is offered as
+   * an alternative. On a voice call it is the only route — a phone call carries no
+   * image — so the reply says the link has been sent rather than asking the caller to
+   * do something the channel cannot do.
+   */
+  private async executeRequestSelfie(context: ConversationContext) {
+    try {
+      const contact = await this.getOrCreateContact(context);
+      const onVoice = context.channel === ChannelType.VOICE;
+
+      const request = await createSelfieRequest({
+        organizationId: context.organizationId,
+        contactId: contact.id,
+        channel: onVoice ? 'VOICE' : 'WHATSAPP',
+        purpose: 'account onboarding',
+        conversationId: context.conversationId,
+      });
+
+      const url = selfieUploadUrl(request.token);
+
+      if (!onVoice) {
+        return {
+          replyText:
+            `Sure — you can reply here with a photo of yourself, or use this secure link:\n${url}\n\n` +
+            'It works once and expires in a day. We will never ask you for your PIN or password.',
+          selfieRequestId: request.id,
+          delivered: true,
+          shouldHandoff: false,
+        };
+      }
+
+      // Voice. Reading a 43-character token aloud is useless, and it would put the
+      // credential into the call recording. The link has to be delivered out of band —
+      // and the reply may only say it was sent if it actually was.
+      const sent = await this.sendSelfieLinkOverWhatsApp(context.organizationId, contact.phoneNumber, url);
+
+      return sent
+        ? {
+            replyText:
+              "No problem — I've sent a secure upload link to your WhatsApp. Open it and take the photo there; " +
+              'it works once and expires in a day. Nobody will ever ask you for your PIN or password.',
+            selfieRequestId: request.id,
+            delivered: true,
+            shouldHandoff: false,
+          }
+        : {
+            replyText:
+              "I've started that for you, but I couldn't get the upload link to your phone automatically. " +
+              "I'm passing you to a colleague who will send it to you directly.",
+            selfieRequestId: request.id,
+            delivered: false,
+            shouldHandoff: true,
+          };
+    } catch (err: any) {
+      // A failure here means the customer is stuck mid-onboarding. Hand to a human
+      // rather than telling them a link is on the way when it is not.
+      return {
+        replyText:
+          "I wasn't able to set up the photo upload just now. I'm passing you to a colleague who can help you finish this.",
+        error: err?.message ?? 'unknown error',
+        shouldHandoff: true,
+      };
+    }
+  }
+
+  /**
+   * Sends the upload link over WhatsApp. Returns whether it genuinely went out —
+   * the caller's wording depends on the answer, so a silent failure here would turn
+   * into a false statement to a customer.
+   */
+  private async sendSelfieLinkOverWhatsApp(organizationId: string, phoneNumber: string, url: string): Promise<boolean> {
+    try {
+      const config = await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } });
+      if (!config?.phoneNumberId || !config?.accessToken) return false;
+
+      const client = new WhatsAppCloudClient({
+        phoneNumberId: config.phoneNumberId,
+        accessToken: config.accessToken,
+        verifyToken: config.webhookVerifyToken ?? '',
+      });
+      await client.sendTextMessage(
+        phoneNumber,
+        `Here is your secure photo upload link:\n${url}\n\n` +
+          'It works once and expires in a day. We will never ask you for your PIN or password.'
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
-    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}`;
 
     const ticket = await prisma.ticket.create({
       data: {
@@ -1153,51 +1569,71 @@ export class ConversationOrchestrator {
   }
 
   /**
-   * Payment guidance — uses the organization's CONFIGURED payment details
-   * (Settings → payment fields), or honestly defers to a human when none are set.
+   * Tells the customer how to pay, using ONLY the organization's own configured
+   * payment details.
    *
-   * The previous version quoted a hardcoded Providus Bank account (9928374102),
-   * fabricated USSD merchant codes, and linked /api/billing/pay-service — an
-   * endpoint that does not exist. Customers would have wired real money to a
-   * placeholder account. The AI must never invent payment destinations.
+   * This method previously read out a hardcoded "Providus Bank / 9928374102" account
+   * with the tenant's name spliced in, three invented USSD strings, and a checkout
+   * link to `/api/billing/pay-service` — a route that does not exist. Every one of
+   * those would have sent a paying customer's money somewhere the business does not
+   * control, and the "our AI assistant will automatically confirm your payment"
+   * promise had nothing behind it either. If the details are not configured we say
+   * so and hand over to a human.
    */
   private async executeProvidePaymentGuidance(context: ConversationContext) {
     const org = await prisma.organization.findUnique({
       where: { id: context.organizationId },
-      select: { name: true, paymentBankName: true, paymentAccountName: true, paymentAccountNumber: true },
+      select: {
+        name: true,
+        payoutBankName: true,
+        payoutAccountName: true,
+        payoutAccountNumber: true,
+        payoutUssdCode: true,
+      },
     });
+
     const orgName = org?.name ?? 'our team';
-    const reference = `ACE_PAY_${context.organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
+    const reference = `PAY-${context.conversationId.slice(-6).toUpperCase()}`;
 
-    const hasBankDetails = !!(org?.paymentBankName && org?.paymentAccountNumber);
+    const channels: string[] = [];
 
-    if (hasBankDetails) {
-      const replyText =
-        `💳 *Payment Details (${orgName})*\n\n` +
-        `1️⃣ *Bank Transfer*\n` +
-        `• Bank Name: *${org!.paymentBankName}*\n` +
-        `• Account Name: *${org!.paymentAccountName ?? orgName}*\n` +
-        `• Account Number: \`${org!.paymentAccountNumber}\`\n` +
-        `• Payment Reference: \`${reference}\`\n\n` +
-        `📌 *After Payment:* Reply *"PAID"* or send a screenshot of your transfer receipt, ` +
-        `and our team will confirm your payment.`;
+    if (org?.payoutBankName && org?.payoutAccountNumber) {
+      channels.push(
+        `*Bank transfer*\n` +
+        `• Bank: *${org.payoutBankName}*\n` +
+        `• Account Name: *${org.payoutAccountName ?? orgName}*\n` +
+        `• Account Number: \`${org.payoutAccountNumber}\`\n` +
+        `• Reference: \`${reference}\``
+      );
+    }
 
+    if (org?.payoutUssdCode) {
+      channels.push(`*USSD*: dial \`${org.payoutUssdCode}\``);
+    }
+
+    if (channels.length === 0) {
       return {
         reference,
-        bankName: org!.paymentBankName,
-        accountName: org!.paymentAccountName ?? orgName,
-        accountNumber: org!.paymentAccountNumber,
-        replyText,
+        configured: false,
+        shouldHandoff: true,
+        replyText:
+          `I don't have our payment details on hand to share with you, and I don't want to ` +
+          `give you the wrong account. Let me pass you to a colleague at ${orgName} who can ` +
+          `send them across right away.`,
       };
     }
 
-    // No payment details configured — defer instead of inventing an account.
+    const numbered = channels.map((c, i) => `${i + 1}️⃣ ${c}`).join('\n\n');
+
     return {
       reference,
+      configured: true,
+      shouldHandoff: false,
+      bankName: org?.payoutBankName ?? null,
+      accountNumber: org?.payoutAccountNumber ?? null,
       replyText:
-        `I want to make sure your payment goes to the right place, so I won't guess at account details. ` +
-        `A teammate from ${orgName} will confirm the payment details with you right away — ` +
-        `or say *"speak to an agent"* and I'll connect you now.`,
+        `💳 *How to pay ${orgName}*\n\n${numbered}\n\n` +
+        `📌 Once you've paid, reply here with your receipt and a member of our team will confirm it.`,
     };
   }
 
@@ -1211,6 +1647,19 @@ export class ConversationOrchestrator {
    * This replaces the previous fallback to '+2348000000000' which would have
    * created a single phantom contact absorbing all anonymous sessions.
    */
+  /** Organization display name, with a neutral fallback if the row is unreachable. */
+  private async getOrganizationName(organizationId: string): Promise<string> {
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { name: true },
+      });
+      return org?.name ?? 'our team';
+    } catch {
+      return 'our team';
+    }
+  }
+
   private async getOrCreateContact(context: ConversationContext) {
     const phone = context.customerPhoneNumber;
     if (!phone) {

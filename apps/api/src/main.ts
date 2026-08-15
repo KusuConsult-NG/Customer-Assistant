@@ -11,6 +11,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { validateEnvironment } from './config/env.validation';
 import { RedisSocketIoAdapter } from './config/socket-redis-adapter';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
 
 async function bootstrap() {
@@ -46,7 +47,7 @@ async function bootstrap() {
   // JSON limit is configurable because the knowledge-base upload sends files as
   // base64 inside a JSON body (~4/3 size overhead). 10mb allows ~7.5MB documents.
   // At larger scale, switch uploads to multipart or direct-to-storage signed URLs.
-  const jsonBodyLimit = process.env.JSON_BODY_LIMIT ?? '10mb';
+  const jsonBodyLimit = process.env.JSON_BODY_LIMIT ?? process.env.MAX_JSON_BODY_SIZE ?? '70mb';
   app.useBodyParser('json', { limit: jsonBodyLimit });
   app.useBodyParser('urlencoded', { extended: true, limit: '1mb' });
 
@@ -83,6 +84,10 @@ async function bootstrap() {
     })
   );
   logger.log('🛡️  Helmet security headers: ENABLED');
+
+  // Map Prisma known errors (P2002 unique violation → 409, P2025 not found → 404,
+  // …) to proper HTTP responses instead of opaque 500s. (From PR #1.)
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   // ── 5. Global validation pipe ──────────────────────────────────────────────
   app.useGlobalPipes(

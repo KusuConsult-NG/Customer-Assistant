@@ -1,9 +1,17 @@
 services:
   # ─── 1. API Backend (NestJS) ─────────────────────────────────────────────────
+  # REGION MUST MATCH THE DATABASE.
+  #
+  # Measured: with the API in oregon and the Supabase project in eu-central-1, every
+  # query is a transatlantic round trip — ~950ms observed per round trip, and a single
+  # list request makes 4. Co-locating the API with the database is the single largest
+  # latency win available and costs nothing.
+  #
+  # Set this to the region of your Supabase project (Dashboard → Settings → General).
   - type: web
     name: ace-api
     env: node
-    region: oregon
+    region: frankfurt
     plan: starter          # upgrade to standard for 24/7 uptime (no spin-down)
     rootDir: .
     buildCommand: >
@@ -26,10 +34,15 @@ services:
         sync: false           # e.g. https://ace-web.onrender.com
       - key: CORS_ORIGIN
         sync: false           # e.g. https://ace-web.onrender.com
+      # RUNTIME connection: Supavisor TRANSACTION mode on port 6543 with
+      # pgbouncer=true. Port 5432 is SESSION mode, which holds one Postgres backend
+      # per client and hard-caps at pool_size 15 — measured returning HTTP 500
+      # (EMAXCONNSESSION) past ~15 concurrent requests.
       - key: DATABASE_URL
-        sync: false           # your Supabase pooler URL (port 6543, pgbouncer=true)
+        sync: false           # postgresql://…:6543/postgres?pgbouncer=true&connection_limit=15
+      # MIGRATIONS ONLY: direct/session connection on port 5432.
       - key: DIRECT_URL
-        sync: false           # your Supabase direct URL (port 5432)
+        sync: false           # postgresql://…:5432/postgres
       - key: JWT_SECRET
         sync: false
       - key: JWT_REFRESH_SECRET
@@ -73,12 +86,38 @@ services:
         sync: false
       - key: PAYSTACK_WEBHOOK_SECRET
         sync: false
+      # Signs outbound webhooks to customer endpoints. Without it the dispatcher
+      # falls back to a secret that is hardcoded in the repository.
+      - key: WEBHOOK_SECRET
+        sync: false
+      # Vector search + background document ingestion.
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Voice AI.
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
 
   # ─── 2. Web Dashboard (Next.js) ──────────────────────────────────────────────
   - type: web
     name: ace-web
     env: node
-    region: oregon
+    region: frankfurt
     plan: starter
     rootDir: .
     buildCommand: >

@@ -2,7 +2,25 @@
   const scriptTag = document.currentScript || document.querySelector('script[src*="widget.js"]');
   const apiKey = scriptTag?.getAttribute('data-api-key') || '';
   const orgId = scriptTag?.getAttribute('data-org-id') || '';
-  const apiUrl = window.ACE_WIDGET_API_URL || 'http://localhost:4000';
+  // Resolution order: explicit global → data-api-url attribute → the origin the
+  // script itself was served from. The previous hardcoded 'http://localhost:4000'
+  // default meant every embed on a real customer website pointed at the visitor's
+  // own machine and silently failed (and was blocked as mixed content on HTTPS).
+  const apiUrl = (
+    window.ACE_WIDGET_API_URL ||
+    scriptTag?.getAttribute('data-api-url') ||
+    (scriptTag?.src ? new URL(scriptTag.src).origin : '')
+  ).replace(/\/+$/, '');
+
+  if (!apiUrl) {
+    console.error('[ACE Widget] No API URL configured. Set data-api-url on the script tag.');
+    return;
+  }
+
+  if (!apiKey && !orgId) {
+    console.error('[ACE Widget] Missing data-api-key. The widget will not load.');
+    return;
+  }
 
   let config = {
     organizationName: 'ACE Widget',

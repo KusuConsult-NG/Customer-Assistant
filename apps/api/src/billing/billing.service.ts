@@ -1,5 +1,5 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { prisma } from '@ace/database';
 import { AceLogger } from '../config/logger';
 
@@ -59,11 +59,11 @@ export class BillingService {
 
     if (!org) throw new InternalServerErrorException(`Organization not found: ${organizationId}`);
 
-    // ── Current billing period start ─────────────────────────────────────────
-    // Previously usage was aggregated ALL-TIME, so "used this month" only ever
-    // grew and every org eventually appeared over quota. The period is anchored
-    // to the subscription renewal date when one exists (renewsAt - 30 days),
-    // otherwise the start of the current calendar month (trial orgs).
+    // Aggregate real usage from database
+    // Usage is scoped to the CURRENT billing period — previously aggregated
+    // all-time, so "used this month" only ever grew and every org eventually
+    // appeared over quota. Anchored to the renewal date when one exists,
+    // otherwise the start of the current calendar month.
     let periodStart: Date;
     if (org.subscriptionRenewsAt && org.subscriptionRenewsAt > new Date()) {
       periodStart = new Date(org.subscriptionRenewsAt.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -72,7 +72,6 @@ export class BillingService {
       periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     }
 
-    // Aggregate real usage from database, scoped to the current period
     const [callMinutesUsed, whatsappMessagesUsed] = await Promise.all([
       prisma.callLog.aggregate({
         _sum: { durationSeconds: true },
@@ -114,63 +113,130 @@ export class BillingService {
   /**
    * AI-Assisted Payment Guidance for Customer Services & Invoices.
    *
-   * Uses the organization's CONFIGURED payment details (Settings → payment
-   * fields). When none are configured, it says so instead of inventing them.
-   * The previous version hardcoded a Providus Bank account (9928374102),
-   * fabricated USSD codes, and linked /api/billing/pay-service — a nonexistent
-   * endpoint. Real customers would have paid into a placeholder account.
+   * Produces the payment instructions the AI assistant reads out to a customer over
+   * WhatsApp / voice / webchat.
+   *
+   * SAFETY: every detail here comes from the organization's own configuration.
+   * The previous implementation returned a hardcoded "Providus Bank / 9928374102"
+   * account with the tenant's name appended, plus USSD strings assembled from a
+   * random reference (`*737*000*<4 digits>#`). Those are not real payment channels:
+   * following them would have sent a customer's money to an account the tenant does
+   * not own, or to nobody at all. When an organization has not configured payment
+   * details we say so instead of inventing them.
    */
   async generateServicePaymentGuidance(
     organizationId: string,
     serviceName: string,
-    amountNgn: number,
-    contactPhone?: string
+    amountNgn: number
   ) {
-    const org = await prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { name: true, paymentBankName: true, paymentAccountName: true, paymentAccountNumber: true },
-    });
-    const reference = `ACE_SVC_${organizationId.slice(0, 6)}_${Date.now().toString().slice(-6)}`;
-    const formattedAmount = `₦${amountNgn.toLocaleString()}`;
-    const hasBankDetails = !!(org?.paymentBankName && org?.paymentAccountNumber);
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) throw new NotFoundException(`Organization not found: ${organizationId}`);
 
-    if (!hasBankDetails) {
-      return {
-        reference,
-        serviceName,
-        amountNgn,
-        formattedAmount,
-        configured: false,
-        aiGuidanceText:
-          `💳 *Payment for ${serviceName}* — Total: *${formattedAmount}* (Reference: \`${reference}\`)\n\n` +
-          `Payment details for ${org?.name ?? 'this organization'} haven't been configured yet, so I won't guess at ` +
-          `account numbers. A teammate will confirm the payment details with you directly.\n\n` +
-          `(Admin: set your bank details under Settings → Organization to enable automatic payment guidance.)`,
-      };
+    const reference = `ACE_SVC_${organizationId.slice(0, 6)}_${randomBytes(4).toString('hex').toUpperCase()}`;
+    const formattedAmount = `₦${amountNgn.toLocaleString('en-NG')}`;
+
+    // Card payment is only offered when Paystack is actually wired up.
+    const checkoutUrl = process.env.PAYSTACK_SECRET_KEY
+      ? (await this.createServiceCheckoutLink(org.id, serviceName, amountNgn, reference))
+      : null;
+
+    const bankTransfer =
+      org.payoutBankName && org.payoutAccountNumber
+        ? {
+            bankName: org.payoutBankName,
+            accountName: org.payoutAccountName ?? org.name,
+            accountNumber: org.payoutAccountNumber,
+            instructions:
+              `Transfer exactly ${formattedAmount} to ${org.payoutBankName}, account ` +
+              `${org.payoutAccountNumber} (${org.payoutAccountName ?? org.name}), ` +
+              `using reference ${reference}.`,
+          }
+        : null;
+
+    const options: string[] = [];
+    if (checkoutUrl) options.push(`1️⃣ *Pay by card (Paystack)*: ${checkoutUrl}`);
+    if (bankTransfer) {
+      options.push(
+        `${options.length + 1}️⃣ *Bank transfer*\n` +
+        `• Bank: *${bankTransfer.bankName}*\n` +
+        `• Account Name: *${bankTransfer.accountName}*\n` +
+        `• Account Number: \`${bankTransfer.accountNumber}\`\n` +
+        `• Reference: \`${reference}\``
+      );
+    }
+    if (org.payoutUssdCode) {
+      options.push(`${options.length + 1}️⃣ *USSD*: dial \`${org.payoutUssdCode}\``);
     }
 
-    const accountName = org!.paymentAccountName ?? org!.name;
+    const configured = options.length > 0;
+
+    const aiGuidanceText = configured
+      ? `💳 *Payment for ${serviceName}*\n\n` +
+        `Amount: *${formattedAmount}*\nReference: \`${reference}\`\n\n` +
+        `${options.join('\n\n')}\n\n` +
+        `📌 After paying, reply *"PAID"* with your receipt and our team will confirm it.`
+      : `Thanks — the total for *${serviceName}* is *${formattedAmount}*.\n\n` +
+        `I don't have our payment details on file to share right now, so I'm passing you ` +
+        `to a colleague who can send them to you directly.`;
+
     return {
       reference,
       serviceName,
       amountNgn,
       formattedAmount,
-      configured: true,
-      virtualAccount: {
-        bankName: org!.paymentBankName,
-        accountName,
-        accountNumber: org!.paymentAccountNumber,
-        instructions: `Transfer exactly ${formattedAmount} to ${org!.paymentBankName} ${org!.paymentAccountNumber} (${accountName}). Reply 'PAID' once completed.`,
-      },
-      aiGuidanceText:
-        `💳 *Payment Guidance for ${serviceName}*\n\n` +
-        `Total Amount: *${formattedAmount}*\nReference: \`${reference}\`\n\n` +
-        `*Bank Transfer*\n` +
-        `• Bank: *${org!.paymentBankName}*\n` +
-        `• Account Name: *${accountName}*\n` +
-        `• Account Number: \`${org!.paymentAccountNumber}\`\n\n` +
-        `Once transferred, reply *"PAID"* or send a screenshot of your receipt and our team will confirm your payment.`,
+      /** False when the organization has configured no payment channel at all. */
+      configured,
+      checkoutUrl,
+      bankTransfer,
+      ussdCode: org.payoutUssdCode ?? null,
+      aiGuidanceText,
+      /** Signals to the orchestrator that a human should take over. */
+      shouldHandoff: !configured,
     };
+  }
+
+  /**
+   * Creates a real Paystack checkout link for a one-off service charge.
+   * Returns null (rather than a link to a route that does not exist) on failure.
+   */
+  private async createServiceCheckoutLink(
+    organizationId: string,
+    serviceName: string,
+    amountNgn: number,
+    reference: string
+  ): Promise<string | null> {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) return null;
+
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { users: { where: { role: 'OWNER' }, select: { email: true }, take: 1 } },
+    });
+    const email = org?.users[0]?.email;
+    if (!email) return null;
+
+    try {
+      const response = await fetch('https://api.paystack.co/transaction/initialize', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          amount: Math.round(amountNgn * 100),
+          reference,
+          currency: 'NGN',
+          metadata: { organizationId, serviceName, kind: 'SERVICE_CHARGE' },
+        }),
+      });
+      if (!response.ok) {
+        log.warn('paystack_service_link_failed', { organizationId, httpStatus: response.status });
+        return null;
+      }
+      const data: any = await response.json();
+      return data?.data?.authorization_url ?? null;
+    } catch (err: any) {
+      log.error('paystack_service_link_error', err, { organizationId });
+      return null;
+    }
   }
 
   /**
@@ -185,7 +251,21 @@ export class BillingService {
    *  - PAYSTACK_SECRET_KEY is not set (should never reach here if env.validation.ts ran)
    *  - Paystack API returns a non-OK response
    */
-  async activatePlan(organizationId: string, plan: SubscriptionPlan) {
+  /**
+   * Grants a paid plan. INTERNAL ONLY.
+   *
+   * There is exactly one legitimate caller: the Paystack `charge.success` webhook,
+   * after it has verified the signature, matched the plan against our own price list
+   * and confirmed the amount paid. Nothing else may call this, because nothing else
+   * has established that anybody paid.
+   *
+   * It is deliberately not exported through a controller. `POST /api/billing/activate`
+   * used to call it directly behind nothing but a login check — so any authenticated
+   * user could hand themselves the ENTERPRISE plan (₦1,000,000/month) with a single
+   * request. That endpoint now verifies a real Paystack transaction first; see
+   * activateFromPaymentReference below.
+   */
+  private async activatePlanVerified(organizationId: string, plan: SubscriptionPlan, reason: string) {
     const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await prisma.organization.update({
       where: { id: organizationId },
@@ -195,7 +275,75 @@ export class BillingService {
         subscriptionRenewsAt: renewsAt,
       },
     });
+    log.info('subscription_activated', { organizationId, plan, reason });
     return { status: 'success', plan, message: `Successfully upgraded to ${plan} plan!` };
+  }
+
+  /**
+   * Activates a plan from a Paystack payment reference.
+   *
+   * Used when a customer paid but the webhook did not arrive — a real situation worth
+   * supporting, and the only reason a manual activation route should exist at all.
+   *
+   * Every claim in the request is re-checked against Paystack directly: that the
+   * transaction exists, that it succeeded, that it belongs to THIS organization, and
+   * that the amount covers the plan being claimed. The caller supplies a reference and
+   * nothing else that is trusted.
+   */
+  async activateFromPaymentReference(organizationId: string, plan: SubscriptionPlan, reference: string) {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) {
+      throw new ServiceUnavailableException(
+        'Online payments are not configured on this deployment, so a payment cannot be verified. ' +
+        'No plan has been activated.'
+      );
+    }
+
+    const expectedKobo = PLAN_PRICES_KOBO[plan];
+    if (!expectedKobo) throw new BadRequestException(`Unknown subscription plan: ${plan}`);
+    if (!reference?.trim()) throw new BadRequestException('A Paystack payment reference is required.');
+
+    let data: any;
+    try {
+      const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference.trim())}`, {
+        headers: { Authorization: `Bearer ${secretKey}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body: any = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.status) {
+        log.warn('paystack_verify_rejected', { organizationId, reference, status: res.status });
+        throw new BadRequestException(
+          `Paystack could not verify that payment (${body?.message ?? `HTTP ${res.status}`}). No plan has been activated.`
+        );
+      }
+      data = body.data;
+    } catch (e: any) {
+      if (e instanceof BadRequestException || e instanceof ServiceUnavailableException) throw e;
+      log.error('paystack_verify_failed', e as Error, { organizationId, reference });
+      throw new ServiceUnavailableException('Could not reach Paystack to verify that payment. No plan has been activated.');
+    }
+
+    if (data?.status !== 'success') {
+      throw new BadRequestException(`That payment has not succeeded (Paystack reports "${data?.status}"). No plan has been activated.`);
+    }
+
+    // The reference must belong to this tenant. Without this check, one organization
+    // could activate itself using another organization's payment reference.
+    const paidOrg = data?.metadata?.organizationId;
+    if (paidOrg && paidOrg !== organizationId) {
+      log.warn('paystack_reference_belongs_to_another_org', { organizationId, reference, paidOrg });
+      throw new BadRequestException('That payment reference belongs to a different organization.');
+    }
+
+    const paidKobo = Number(data?.amount ?? 0);
+    if (paidKobo < expectedKobo) {
+      throw new BadRequestException(
+        `That payment was ₦${(paidKobo / 100).toLocaleString()}, which does not cover the ` +
+        `${plan} plan at ₦${(expectedKobo / 100).toLocaleString()}. No plan has been activated.`
+      );
+    }
+
+    return this.activatePlanVerified(organizationId, plan, `paystack:${reference}`);
   }
 
   async initializePaystackTransaction(
@@ -205,9 +353,18 @@ export class BillingService {
   ) {
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
     if (!secretKey) {
-      // In sandbox/demo mode without live Paystack key, activate plan directly
-      log.info('paystack_sandbox_direct_activation', { organizationId, plan });
-      return this.activatePlan(organizationId, plan);
+      // Do NOT silently activate the plan. This branch used to call activatePlan(),
+      // which meant that on any deployment without PAYSTACK_SECRET_KEY the "Upgrade"
+      // button granted the ENTERPRISE plan to anyone who clicked it, for free.
+      log.error(
+        'paystack_not_configured',
+        new Error('PAYSTACK_SECRET_KEY missing'),
+        { organizationId, plan }
+      );
+      throw new ServiceUnavailableException(
+        'Online payments are not configured on this deployment. ' +
+        'Set PAYSTACK_SECRET_KEY, or ask an owner to activate the plan manually.'
+      );
     }
 
     const amountInKobo = PLAN_PRICES_KOBO[plan];
@@ -240,30 +397,35 @@ export class BillingService {
             { display_name: 'Plan', variable_name: 'plan', value: plan },
           ],
         },
-        callback_url: `${process.env.API_BASE_URL ?? 'http://localhost:4000'}/api/billing/paystack/callback`,
+        // Paystack redirects the customer's BROWSER here after payment, so it must be
+        // a page in the dashboard. It pointed at `${API_BASE_URL}/api/billing/paystack/callback`
+        // — an API route that has never existed — so every paying customer landed on
+        // a 404 immediately after being charged.
+        callback_url: `${(process.env.WEB_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '')}/billing/success`,
       }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      log.warn('paystack_init_fallback', {
+      const errText = await response.text().catch(() => response.statusText);
+      log.error('paystack_init_failed', new Error(errText), {
         organizationId,
         plan,
         httpStatus: response.status,
-        error: errText,
       });
-      return {
-        status: true,
-        message: 'Paystack checkout session created',
-        data: {
-          authorization_url: null,
-          access_code: `ACE_ACC_${Date.now()}`,
-          reference,
-        },
-      };
+      // Previously this returned `{ status: true, message: 'Paystack checkout session
+      // created', data: { authorization_url: null } }` — the dashboard read `status`
+      // as success and showed a confirmation for a checkout that does not exist.
+      throw new ServiceUnavailableException(
+        `Could not start the payment session with Paystack (HTTP ${response.status}). Please try again.`
+      );
     }
 
     const data: any = await response.json();
+
+    if (!data?.data?.authorization_url) {
+      log.error('paystack_init_no_url', new Error(JSON.stringify(data).slice(0, 300)), { organizationId, plan });
+      throw new ServiceUnavailableException('Paystack did not return a checkout URL. Please try again.');
+    }
 
     log.info('paystack_transaction_initialized', {
       organizationId,
@@ -329,40 +491,60 @@ export class BillingService {
           amountPaidNgn: amountPaidKobo / 100,
         });
 
-        if (organizationId && plan) {
-          // Calculate next renewal date based on billing period
-          // Monthly plans: 30 days; Annual plans: 365 days
-          const isAnnual = (plan as string).includes('ANNUAL');
-          const renewalDays = isAnnual ? 365 : 30;
-          const renewsAt = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000);
-
-          // Update the Organization with the confirmed subscription plan and status.
-          // In a future iteration this should write to a dedicated Subscription table
-          // to support per-seat billing, proration, and multi-plan history.
-          await prisma.organization.update({
-            where: { id: organizationId },
-            data: {
-              subscriptionPlan:    plan,
-              subscriptionStatus:  'ACTIVE',
-              subscriptionRenewsAt: renewsAt,
-            },
-          });
-
-          log.info('paystack_subscription_activated', {
-            event: 'subscription_activated',
-            organizationId,
-            plan,
-            reference,
-            renewsAt: renewsAt.toISOString(),
-          });
-        } else {
-          log.warn('paystack_charge_success_missing_metadata', {
-            event: 'metadata_missing',
+        if (!organizationId || !plan) {
+          // A one-off service charge (see generateServicePaymentGuidance) carries no
+          // plan, so this is expected traffic, not necessarily an error.
+          log.info('paystack_charge_success_not_a_subscription', {
+            event: 'non_subscription_charge',
             reference,
             hasOrgId: !!organizationId,
             hasPlan:  !!plan,
           });
+          break;
         }
+
+        // Validate the plan against our own price list rather than trusting the
+        // metadata round-trip, and confirm the customer actually paid that plan's
+        // price. Without this a crafted (or replayed-with-edits) payload could
+        // activate ENTERPRISE off a ₦1 charge.
+        const expectedKobo = PLAN_PRICES_KOBO[plan as SubscriptionPlan];
+        if (!expectedKobo) {
+          log.warn('paystack_unknown_plan_in_metadata', { event: 'unknown_plan', reference, plan });
+          break;
+        }
+        if (amountPaidKobo < expectedKobo) {
+          log.warn('paystack_underpayment_ignored', {
+            event: 'underpayment',
+            reference,
+            organizationId,
+            plan,
+            expectedNgn: expectedKobo / 100,
+            paidNgn: amountPaidKobo / 100,
+          });
+          break;
+        }
+
+        const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        // Update the Organization with the confirmed subscription plan and status.
+        // In a future iteration this should write to a dedicated Subscription table
+        // to support per-seat billing, proration, and multi-plan history.
+        await prisma.organization.update({
+          where: { id: organizationId },
+          data: {
+            subscriptionPlan:     plan,
+            subscriptionStatus:   'ACTIVE',
+            subscriptionRenewsAt: renewsAt,
+          },
+        });
+
+        log.info('paystack_subscription_activated', {
+          event: 'subscription_activated',
+          organizationId,
+          plan,
+          reference,
+          renewsAt: renewsAt.toISOString(),
+        });
         break;
       }
 

@@ -27,6 +27,11 @@ function SetupAccountContent() {
       return;
     }
 
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -36,13 +41,23 @@ function SetupAccountContent() {
         body: JSON.stringify({ token, password })
       });
       if (res.ok) {
+        // The endpoint returns a session, so an invited member lands straight in the
+        // dashboard instead of being sent back to a login screen.
+        const data = await res.json().catch(() => ({} as any));
+        if (data?.accessToken) {
+          localStorage.setItem('ace_token', data.accessToken);
+          if (data.refreshToken) localStorage.setItem('ace_refresh_token', data.refreshToken);
+          if (data.user) localStorage.setItem('ace_user', JSON.stringify(data.user));
+        }
         setSuccess(true);
         setTimeout(() => {
-          router.push('/login');
-        }, 2000);
+          router.push(data?.accessToken ? '/' : '/login');
+        }, 1500);
       } else {
         const err = await res.json().catch(() => ({}));
-        setError(err.message || 'Failed to setup account');
+        setError(
+          Array.isArray(err.message) ? err.message.join(' ') : (err.message || 'Failed to set up account')
+        );
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -66,7 +81,7 @@ function SetupAccountContent() {
           <div className="text-center space-y-4 py-4">
             <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400 mx-auto" />
             <h2 className="text-xl font-bold text-emerald-600 dark:text-emerald-400">Account created successfully!</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Redirecting to login...</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">Taking you to your workspace...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -82,8 +97,9 @@ function SetupAccountContent() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
-                placeholder="••••••••"
+                placeholder="Min 8 characters"
               />
             </div>
             <div>

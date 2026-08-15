@@ -1,12 +1,23 @@
-import { Controller, Get, Post, Body, Req, Headers, UseGuards, BadRequestException } from '@nestjs/common';
-import { RawBodyRequest } from '@nestjs/common';
-import { Request } from 'express';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Post,
+  RawBodyRequest,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { BillingService, SubscriptionPlan } from './billing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
+import { ActivatePlanDto, CheckoutDto, ServicePaymentGuidanceDto } from './billing.dto';
 
 @Controller('api/billing')
 export class BillingController {
@@ -18,14 +29,14 @@ export class BillingController {
     return this.billingService.getSubscriptionDetails(req.user.organizationId);
   }
 
-  // Guard order matters: JwtAuthGuard attaches req.user, RolesGuard reads it.
+  // RolesGuard must come *after* JwtAuthGuard in this list — guards run in order and
+  // RolesGuard reads request.user, which JwtAuthGuard populates. (It used to be
+  // registered as a global APP_GUARD, which runs before controller guards, so these
+  // endpoints rejected every caller with 403.)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('OWNER', 'ADMIN')
   @Post('checkout')
-  async checkout(
-    @Req() req: { user: AuthUser },
-    @Body() body: { plan: SubscriptionPlan }
-  ) {
+  async checkout(@Req() req: { user: AuthUser }, @Body() body: CheckoutDto) {
     return this.billingService.initializePaystackTransaction(
       req.user.organizationId,
       body.plan,
@@ -33,53 +44,71 @@ export class BillingController {
     );
   }
 
+  /**
+   * Activates a plan from a Paystack payment reference.
+   *
+   * For the case where a customer paid but the webhook never arrived. The reference is
+   * verified against Paystack — that it succeeded, that it belongs to this
+   * organization, and that the amount covers the plan.
+   *
+   * This route previously took only a plan name and activated it outright. @Roles
+   * ('OWNER') was doing nothing useful, because the first user of every organization
+   * IS its owner: any person who signed up could grant themselves the ENTERPRISE plan
+   * (₦1,000,000/month) with one request and no payment.
+   */
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER', 'ADMIN')
+  @Roles('OWNER')
   @Post('activate')
-  async activate(
-    @Req() req: { user: AuthUser },
-    @Body() body: { plan: SubscriptionPlan }
-  ) {
-    return this.billingService.activatePlan(req.user.organizationId, body.plan);
+  async activate(@Req() req: { user: AuthUser }, @Body() body: ActivatePlanDto) {
+    return this.billingService.activateFromPaymentReference(
+      req.user.organizationId,
+      body.plan,
+      body.reference,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('service-payment-guidance')
   async getServicePaymentGuidance(
     @Req() req: { user: AuthUser },
-    @Body() body: { serviceName: string; amountNgn: number; contactPhone?: string }
+    @Body() body: ServicePaymentGuidanceDto
   ) {
     return this.billingService.generateServicePaymentGuidance(
       req.user.organizationId,
       body.serviceName,
-      body.amountNgn,
-      body.contactPhone
+      body.amountNgn
     );
   }
 
   /**
    * Paystack webhook.
    *
-   * MUST receive the raw request Buffer (req.rawBody), never the parsed @Body():
-   * HMAC-SHA256 is computed over the exact bytes Paystack sent. The previous
-   * version passed the parsed JSON object, which made createHmac().update()
-   * throw a TypeError on every single webhook — payments never activated plans.
+   * The signature is an HMAC-SHA256 over the EXACT bytes Paystack sent, so this must
+   * read `req.rawBody` (enabled by `rawBody: true` in main.ts). The previous version
+   * passed the JSON-parsed `@Body()` object into `createHmac().update()`, which throws
+   * a TypeError on a plain object — every webhook 500'd, so Paystack retried and then
+   * disabled the endpoint, and no successful payment ever activated a subscription.
    *
-   * @SkipThrottle — authenticity is enforced by signature verification;
-   * rate-limiting a payment webhook can drop charge.success events.
+   * @SkipThrottle: Paystack bursts retries and treats a 429 as a delivery failure.
+   * Authenticity is established by the signature, not by rate limiting.
    */
   @SkipThrottle()
   @Post('paystack-webhook')
+  @HttpCode(200)
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('x-paystack-signature') signature: string
   ) {
     if (!req.rawBody) {
-      // rawBody requires NestFactory.create(AppModule, { rawBody: true }) and
-      // no competing body parser registered ahead of Nest's (see main.ts).
-      throw new BadRequestException('Raw request body unavailable — cannot verify webhook signature');
+      throw new BadRequestException(
+        'Raw request body unavailable — Paystack signature cannot be verified.'
+      );
     }
-    await this.billingService.handlePaystackWebhook(req.rawBody, signature);
-    return { status: 'success' };
+
+    const result = await this.billingService.handlePaystackWebhook(req.rawBody, signature);
+
+    // A rejected signature is reported as rejected rather than as `{status:'success'}`.
+    // Returning 200 keeps Paystack from retrying a request that will never verify.
+    return { status: result.processed ? 'success' : 'rejected', event: result.event };
   }
 }

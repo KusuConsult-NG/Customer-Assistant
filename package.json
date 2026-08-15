@@ -12,10 +12,12 @@
     "dev": "npx turbo run dev",
     "start": "npx turbo run start",
     "lint": "npx turbo run lint",
-    "test": "npx turbo run test",
+    "test": "npx turbo run test && npm run test:packages",
     "db:generate": "npm run --prefix packages/database generate",
     "db:push": "npm run --prefix packages/database push",
-    "db:studio": "npm run --prefix packages/database studio"
+    "db:studio": "npm run --prefix packages/database studio",
+    "test:packages": "npx jest --config jest.packages.config.js",
+    "typecheck": "npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit"
   },
   "dependencies": {
     "turbo": "^2.4.0",

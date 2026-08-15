@@ -27,6 +27,17 @@ import { AceLogger, generateCorrelationId } from '../config/logger';
 const log = new AceLogger('WhatsappController');
 
 /**
+ * NOTE ON GUARD ORDER
+ *
+ * SubscriptionGuard was previously applied at the class level with
+ * `@UseGuards(SubscriptionGuard)`. Nest runs guards global → controller → route, so
+ * it executed BEFORE the per-route JwtAuthGuard and always saw `request.user ===
+ * undefined`; its own `if (!user) return true` then waved every request through. The
+ * subscription check was therefore dead on this controller. It is now listed after
+ * JwtAuthGuard on each protected route, where request.user actually exists.
+ */
+
+/**
  * Verifies the X-Hub-Signature-256 header sent by Meta on every webhook POST.
  *
  * Why this matters: Without HMAC verification, any attacker who discovers your
@@ -51,7 +62,6 @@ function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | undefine
 }
 
 @Controller('api/whatsapp')
-@UseGuards(SubscriptionGuard)
 export class WhatsappController {
   constructor(private whatsappService: WhatsappService) {}
 
@@ -162,7 +172,7 @@ export class WhatsappController {
     return this.whatsappService.getConversations(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post('conversations/:id/messages')
   async sendAgentMessage(
     @Param('id') id: string,
@@ -170,10 +180,15 @@ export class WhatsappController {
     @Body() body: { content: string }
   ) {
     if (!body.content?.trim()) throw new BadRequestException('Message content cannot be empty');
-    return this.whatsappService.sendAgentMessage(id, body.content, req.user.userId);
+    return this.whatsappService.sendAgentMessage(
+      id,
+      body.content,
+      req.user.userId,
+      req.user.organizationId
+    );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post('conversations/:id/handoff')
   async toggleHandoff(
     @Param('id') id: string,
@@ -183,7 +198,12 @@ export class WhatsappController {
     if (typeof body.isHumanHandoffActive !== 'boolean') {
       throw new BadRequestException('isHumanHandoffActive must be a boolean');
     }
-    return this.whatsappService.toggleHumanHandoff(id, body.isHumanHandoffActive, req.user.userId);
+    return this.whatsappService.toggleHumanHandoff(
+      id,
+      body.isHumanHandoffActive,
+      req.user.organizationId,
+      req.user.userId
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -192,7 +212,7 @@ export class WhatsappController {
     return this.whatsappService.getTemplates(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post('templates')
   async createTemplate(
     @Req() req: { user: AuthUser },
@@ -213,7 +233,7 @@ export class WhatsappController {
     return this.whatsappService.createTemplate(req.user.organizationId, body);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Delete('templates/:id')
   async deleteTemplate(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.whatsappService.deleteTemplate(req.user.organizationId, id);
@@ -225,7 +245,7 @@ export class WhatsappController {
     return this.whatsappService.getBroadcasts(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post('broadcasts/send')
   async sendBroadcast(
     @Req() req: { user: AuthUser },

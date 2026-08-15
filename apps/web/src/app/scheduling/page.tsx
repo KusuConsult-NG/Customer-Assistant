@@ -277,11 +277,11 @@ export default function SchedulingPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm">
           <button
             onClick={() => setViewMode('table')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
+              viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <List className="w-3.5 h-3.5" /> Table
@@ -289,7 +289,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setViewMode('calendar')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
+              viewMode === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" /> Calendar Grid
@@ -553,14 +553,14 @@ export default function SchedulingPage() {
               </div>
               <button
                 onClick={() => setSelectedBooking(null)}
-                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-all"
+                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Quick Status Badge */}
-            <div className="flex items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm">
               <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Lifecycle Status</span>
               <div>{getStatusBadge(selectedBooking.status)}</div>
             </div>
@@ -664,14 +664,14 @@ export default function SchedulingPage() {
               </div>
               <button
                 onClick={() => setSelectedReservation(null)}
-                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-all"
+                className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-white/[0.1] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Quick Status Badge */}
-            <div className="flex items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm">
               <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Reservation Status</span>
               <div>{getStatusBadge(selectedReservation.status)}</div>
             </div>

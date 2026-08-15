@@ -2,6 +2,9 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api, API_URL } from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
+import SharedEmptyState from '@/components/ui/EmptyState';
+import { ListSkeleton } from '@/components/ui/Skeleton';
 import {
   BookOpen, Upload, Search, FileText, Loader2, AlertCircle,
   CheckCircle2, Clock, Globe, Sparkles, Trash2, RefreshCw,
@@ -36,6 +39,7 @@ interface FaqPair {
 }
 
 export default function KnowledgePage() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'documents' | 'faqs'>('documents');
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -233,10 +237,10 @@ export default function KnowledgePage() {
         setFaqQuestion('');
         setFaqAnswer('');
       } else {
-        alert('Failed to add FAQ');
+        toast.error('Could not add the FAQ.');
       }
     } catch (err) {
-      alert('Error adding FAQ');
+      toast.error('Could not reach the server to add the FAQ.');
     }
   };
 
@@ -252,10 +256,10 @@ export default function KnowledgePage() {
         fetchFaqs();
         setEditingFaq(null);
       } else {
-        alert('Failed to edit FAQ');
+        toast.error('Could not save the FAQ.');
       }
     } catch (err) {
-      alert('Error editing FAQ');
+      toast.error('Could not reach the server to save the FAQ.');
     }
   };
 
@@ -269,10 +273,10 @@ export default function KnowledgePage() {
       if (res.ok) {
         fetchFaqs();
       } else {
-        alert('Failed to delete FAQ');
+        toast.error('Could not delete the FAQ.');
       }
     } catch (err) {
-      alert('Error deleting FAQ');
+      toast.error('Could not reach the server to delete the FAQ.');
     }
   };
 
@@ -322,7 +326,7 @@ export default function KnowledgePage() {
           </button>
           <button
             onClick={() => setShowPasteModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:text-white text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-sm font-semibold transition-all"
           >
             <Plus className="w-4 h-4" /> Paste Text
           </button>
@@ -346,7 +350,7 @@ export default function KnowledgePage() {
 
       {/* Upload progress indicator */}
       {uploading && uploadProgress > 0 && (
-        <div className="rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 p-4">
+        <div className="rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2 text-sm">
             <span className="text-slate-700 dark:text-slate-300 font-medium">Extracting & Vectorizing Document Chunks...</span>
             <span className="text-blue-600 dark:text-blue-400 font-mono font-bold">{uploadProgress}%</span>
@@ -362,7 +366,7 @@ export default function KnowledgePage() {
 
       {/* KPI Stats */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
             <FileText className="w-5 h-5" />
           </div>
@@ -371,7 +375,7 @@ export default function KnowledgePage() {
             <p className="text-xs text-slate-500 dark:text-slate-400">Indexed Sources</p>
           </div>
         </div>
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
             <CheckCircle2 className="w-5 h-5" />
           </div>
@@ -380,7 +384,7 @@ export default function KnowledgePage() {
             <p className="text-xs text-slate-500 dark:text-slate-400">Active & Ready</p>
           </div>
         </div>
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
             <Database className="w-5 h-5" />
           </div>
@@ -429,7 +433,7 @@ export default function KnowledgePage() {
       </div>
 
       {/* Tabs Bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 w-fit">
+      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
         <button
           onClick={() => setActiveTab('documents')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -462,16 +466,16 @@ export default function KnowledgePage() {
               </div>
               {loading ? (
                 <div className="space-y-2">
-                  {[1, 2, 3].map(i => <div key={i} className="h-16 bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl border border-slate-200 dark:border-slate-800 animate-pulse" />)}
+                  {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/40 animate-pulse" />)}
                 </div>
               ) : docs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-                    <FileText className="w-8 h-8 text-slate-500 dark:text-slate-400" />
-                  </div>
-                  <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No documents uploaded. Upload PDFs, Word docs, or crawl your website to train your AI agent.</p>
-                </div>
+                <SharedEmptyState
+                  icon={FileText}
+                  title="No documents yet"
+                  description="Upload a document or crawl your website, and the AI will answer from it instead of falling back to a human."
+                  actions={[{ label: 'Crawl your website', primary: true, onClick: () => setShowPasteModal(true) }]}
+                  hint="Without any knowledge, every question the AI cannot answer becomes a handover."
+                />
               ) : (
                 <div className="space-y-2">
                   {docs.map(doc => {
@@ -483,7 +487,7 @@ export default function KnowledgePage() {
                         className={`flex items-center gap-3 p-4 rounded-xl border transition-all cursor-pointer group ${
                           selectedDoc?.id === doc.id
                             ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30'
-                            : 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:bg-slate-800/60'
+                            : 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${
@@ -521,7 +525,7 @@ export default function KnowledgePage() {
               </div>
               <div className="space-y-3">
                 {faqs.map((faq) => (
-                  <div key={faq.id} className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div key={faq.id} className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
                     {editingFaq === faq.id ? (
                       <div className="space-y-3">
                         <input type="text" value={editQuestion} onChange={e => setEditQuestion(e.target.value)} className="w-full px-3 py-1.5 rounded bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-sm" />
@@ -546,15 +550,16 @@ export default function KnowledgePage() {
                     )}
                   </div>
                 ))}
-                {faqs.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-4">
-                      <MessageSquare className="w-8 h-8 text-slate-500 dark:text-slate-400" />
-                    </div>
-                    <p className="text-slate-600 dark:text-slate-400 font-medium mb-1">No items yet</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">No FAQ rules defined. Add specific Q&A pairs for your AI to follow.</p>
-                  </div>
-                )}
+                {loading ? (
+                  <ListSkeleton rows={4} />
+                ) : faqs.length === 0 ? (
+                  <SharedEmptyState
+                    icon={MessageSquare}
+                    title="No FAQs yet"
+                    description="An FAQ is an exact answer the AI gives verbatim — useful for prices, opening hours, and policies you do not want it paraphrasing."
+                    actions={[{ label: 'Add your first FAQ', primary: true, onClick: () => setShowFaqModal(true) }]}
+                  />
+                ) : null}
               </div>
             </div>
           )}
@@ -565,7 +570,7 @@ export default function KnowledgePage() {
           <h2 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" /> RAG Search Playground
           </h2>
-          <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <form onSubmit={handleSearch} className="p-4 border-b border-slate-200 dark:border-slate-800">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />

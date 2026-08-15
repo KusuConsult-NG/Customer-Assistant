@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, Send, MessageCircle, Phone as WhatsAppIcon, User, Bot, AlertTriangle } from 'lucide-react';
 
 import { API_URL } from '@/lib/api';
+import SharedEmptyState from '@/components/ui/EmptyState';
 
 interface Conversation {
   id: string;
@@ -174,20 +175,23 @@ export default function ConversationsPage() {
 
   if (conversations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center h-full">
-        <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
-          <MessageCircle className="w-8 h-8 text-slate-400" />
-        </div>
-        <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">No conversations yet</p>
-        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">Connect your WhatsApp Business number in Settings to start receiving messages.</p>
-      </div>
+      <SharedEmptyState
+        icon={MessageCircle}
+        title="No conversations yet"
+        description="Messages land here from WhatsApp, the web chat widget, and phone calls. Connect a channel and the first one will appear automatically."
+        actions={[
+          { label: 'Connect WhatsApp', primary: true, href: '/settings' },
+          { label: 'Install the chat widget', href: '/widget' },
+          { label: 'Set up a phone number', href: '/telephony' },
+        ]}
+      />
     );
   }
 
   const selectedConversation = conversations.find(c => c.id === selectedId);
 
   return (
-    <div className="flex h-[calc(100vh-80px)] -m-6 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm">
+    <div className="flex h-[calc(100vh-80px)] -m-6 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
       {/* Left Panel - Conversation List */}
       <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-white dark:bg-slate-900 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -242,7 +246,7 @@ export default function ConversationsPage() {
             <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm z-10 shadow-sm flex-shrink-0">
               <div className="flex items-center gap-3">
                 <button 
-                  className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:text-white"
+                  className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:hover:text-white"
                   onClick={() => setSelectedId(null)}
                 >
                   ←
@@ -251,7 +255,7 @@ export default function ConversationsPage() {
                   {selectedConversation?.contactName?.slice(0, 2).toUpperCase() || 'U'}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-900 dark:text-white">{selectedConversation?.contactName || selectedConversation?.contactPhone}</h3>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">{selectedConversation?.contactName || selectedConversation?.contactPhone}</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{selectedConversation?.contactPhone}</p>
                 </div>
               </div>
@@ -266,7 +270,7 @@ export default function ConversationsPage() {
                 </div>
                 <button 
                   onClick={handleReturnToAI}
-                  className="text-xs px-3 py-1 bg-amber-100 dark:bg-slate-100 dark:bg-slate-800/60 hover:bg-amber-200 dark:hover:bg-slate-100 dark:bg-slate-800 rounded-lg text-amber-900 dark:text-slate-900 dark:text-white border border-amber-300 dark:border-slate-200 dark:border-slate-800 transition-colors font-bold"
+                  className="text-xs px-3 py-1 rounded-lg font-bold transition-colors bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/30"
                 >
                   Return to AI
                 </button>

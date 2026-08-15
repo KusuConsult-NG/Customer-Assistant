@@ -27,7 +27,7 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+    <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <h3 className="font-semibold text-slate-900 dark:text-white">{title}</h3>
         {description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</p>}
@@ -83,7 +83,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 w-fit">
+      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -204,9 +204,13 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [name, setName] = useState(org?.name || '');
   const [aiPersonaPrompt, setAiPersonaPrompt] = useState(org?.aiPersonaPrompt || '');
   const [welcomeMessage, setWelcomeMessage] = useState(org?.welcomeMessage || '');
-  const [paymentBankName, setPaymentBankName] = useState(org?.paymentBankName || '');
-  const [paymentAccountName, setPaymentAccountName] = useState(org?.paymentAccountName || '');
-  const [paymentAccountNumber, setPaymentAccountNumber] = useState(org?.paymentAccountNumber || '');
+  // Payment collection details. The AI assistant reads these out verbatim when a
+  // customer asks how to pay; with them blank it says it will fetch a colleague
+  // rather than guessing. (It used to recite a hardcoded account number instead.)
+  const [payoutBankName, setPayoutBankName] = useState(org?.payoutBankName || '');
+  const [payoutAccountName, setPayoutAccountName] = useState(org?.payoutAccountName || '');
+  const [payoutAccountNumber, setPayoutAccountNumber] = useState(org?.payoutAccountNumber || '');
+  const [payoutUssdCode, setPayoutUssdCode] = useState(org?.payoutUssdCode || '');
   const [saving, setSaving] = useState(false);
 
   const save = async (e: React.FormEvent) => {
@@ -215,7 +219,10 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     try {
       const res = await fetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
-        body: JSON.stringify({ name, aiPersonaPrompt, welcomeMessage, paymentBankName, paymentAccountName, paymentAccountNumber }),
+        body: JSON.stringify({
+          name, aiPersonaPrompt, welcomeMessage,
+          payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
+        }),
       });
       if (!res.ok) throw new Error('Failed');
       showToast('Settings saved!');
@@ -262,19 +269,31 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
         </div>
       </Section>
 
-      <Section title="Payment Details" description="Bank account your AI assistant shares when customers ask how to pay. Leave empty and the AI will defer to a human instead of quoting account details.">
-        <div>
-          <label className={labelCls}>Bank Name</label>
-          <input type="text" value={paymentBankName} onChange={e => setPaymentBankName(e.target.value)} className={inputCls} placeholder="e.g. Providus Bank" />
+      <Section
+        title="Payment Collection Details"
+        description="What the AI assistant tells customers when they ask how to pay. Leave blank and it will hand the conversation to a human instead of guessing."
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Bank Name</label>
+            <input type="text" value={payoutBankName} onChange={e => setPayoutBankName(e.target.value)} className={inputCls} placeholder="e.g. Zenith Bank" />
+          </div>
+          <div>
+            <label className={labelCls}>Account Name</label>
+            <input type="text" value={payoutAccountName} onChange={e => setPayoutAccountName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services Ltd" />
+          </div>
+          <div>
+            <label className={labelCls}>Account Number</label>
+            <input type="text" inputMode="numeric" value={payoutAccountNumber} onChange={e => setPayoutAccountNumber(e.target.value)} className={inputCls} placeholder="10-digit NUBAN" />
+          </div>
+          <div>
+            <label className={labelCls}>USSD Code (optional)</label>
+            <input type="text" value={payoutUssdCode} onChange={e => setPayoutUssdCode(e.target.value)} className={inputCls} placeholder="e.g. *966*1234#" />
+          </div>
         </div>
-        <div>
-          <label className={labelCls}>Account Name</label>
-          <input type="text" value={paymentAccountName} onChange={e => setPaymentAccountName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services Ltd" />
-        </div>
-        <div>
-          <label className={labelCls}>Account Number</label>
-          <input type="text" value={paymentAccountNumber} onChange={e => setPaymentAccountNumber(e.target.value)} className={inputCls} placeholder="e.g. 0123456789" />
-        </div>
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+          Double-check these. They are read out to customers as payment instructions.
+        </p>
       </Section>
 
       <div className="flex justify-end">
@@ -545,7 +564,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
         ) : (
           <div className="space-y-3">
             {members.map((m: any) => (
-              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:bg-slate-800/60 transition-all gap-4">
+              <div key={m.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white font-bold text-sm flex items-center justify-center flex-shrink-0">
                     {(m.fullName || m.email || 'U')[0].toUpperCase()}

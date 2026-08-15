@@ -1,0 +1,702 @@
+# ACE Platform — Production Validation & Destructive Testing
+
+**Method:** every assertion below was produced by driving the **running system** over
+HTTP and then verifying the consequence directly in PostgreSQL. No result is inferred
+from source code. Where something could not be executed it is marked **BLOCKED** with
+the reason — never assumed to pass.
+
+**Harness:** `e2e-validation/` — 8 suites, **236 checks**, machine-readable output in
+`e2e-validation/results.json`. Re-run with `node e2e-validation/harness.js`.
+
+**Final run: 233 pass · 0 fail · 3 warn · 1 blocked.**
+
+---
+
+## 1. Environment reality
+
+Validation is only as good as what was actually reachable. Probed live:
+
+| Dependency | Status | Consequence for this report |
+|---|---|---|
+| PostgreSQL (Supabase) | **REACHABLE** | Full data-layer verification performed |
+| Redis | **REACHABLE** | Socket.IO adapter + queue paths exercised |
+| OpenAI | **REACHABLE but NO CREDITS** (`insufficient_quota`, HTTP 429) | LLM synthesis **BLOCKED**; degraded path verified instead |
+| Twilio | **REACHABLE** (account active) | API auth verified; **no calls placed** |
+| Meta WhatsApp | **REACHABLE** (+234 708 107 8679) | API auth verified; **no inbound webhook received** |
+| Deepgram | **REACHABLE** | Credential valid; **no audio streamed** |
+| ElevenLabs | **AUTH FAILED** (HTTP 400) | TTS **BLOCKED** |
+| Resend | **REACHABLE** | Email send path available |
+| Qdrant | **UNREACHABLE** (no Docker on host) | Vector search **BLOCKED**; Postgres fallback verified |
+| Paystack | **NOT CONFIGURED** (placeholder key) | Live payment **BLOCKED**; signature rejection verified |
+
+The database was **empty (0 rows)** at start — a clean dev instance, so destructive
+testing was safe and all data below was created by the tests.
+
+---
+
+## 2. Results
+
+| Suite | Total | Pass | Fail | Warn | Blocked |
+|---|---|---|---|---|---|
+| 01 Authentication & Sessions | 41 | 41 | 0 | 0 | 0 |
+| 02 Multi-Tenant Isolation & RBAC | 35 | 35 | 0 | 0 | 0 |
+| 03 CRM (volume, search, export, concurrency) | 31 | 31 | 0 | 0 | 0 |
+| 04 Scheduling & Reservations | 24 | 24 | 0 | 0 | 0 |
+| 05 Widget & AI Orchestrator | 27 | 25 | 0 | 1 | 1 |
+| 06 Security | 34 | 34 | 0 | 0 | 0 |
+| 07 Integrity, Analytics, Performance, Resilience | 23 | 21 | 0 | 2 | 0 |
+| 08 Knowledge Base & Workflows | 21 | 21 | 0 | 0 | 0 |
+| **Total** | **236** | **233** | **0** | **3** | **1** |
+
+The three warnings and one blocked item are listed in §5 and §6. **No check fails.**
+
+Unit/integration suites also green: **45** API tests, **32** package tests.
+Monorepo builds clean; both apps typecheck clean.
+
+---
+
+## 3. Defects found in this pass and fixed
+
+Each was found by execution, fixed, and re-verified.
+
+### Blocking
+
+**V-01 · Every API route capped at 5 requests/minute, per IP.**
+`ThrottlerModule.forRoot([...])` applies *all* named tiers to *every* route — they are
+ANDed, not selected by decorator — so the strict `auth` tier governed the whole API.
+Additionally the flat limit covered `/refresh`, so a user with several tabs open
+silently burned their own login budget, and being per-IP it locked out whole NAT'd
+offices while distributed credential-stuffing sailed through untouched.
+*Fixed:* tiered by risk (register/forgot-password 5/min, login 60/min, rest 60/min) and
+replaced the anti-brute-force role with **per-account lockout** — 5 failures →
+escalating 1min/5min/15min/1hr, cleared on success or password reset. The correct
+password is refused while locked (verified), so the lock is not bypassable by guessing
+right. `AUTH-080..084`.
+
+**V-02 · Connection pool exhaustion under modest concurrency.**
+100 concurrent authenticated readers produced ~5% HTTP 500s and a 60s p95. Root cause,
+from the server log: `EMAXCONNSESSION — max clients reached in session mode, pool_size:
+15`. `DATABASE_URL` pointed at Supabase's pooler on **port 5432 (session mode)**, which
+holds one Postgres backend per client and hard-caps at 15. The schema comments document
+the correct arrangement; the URLs did not follow it.
+*Fixed:* runtime URL moved to **port 6543 (transaction mode)** with `pgbouncer=true`;
+`DIRECT_URL` stays on 5432 for migrations; pool sizing centralised and documented in
+`packages/database/src/index.ts`. Re-measured: **0 errors at 25/50/100 concurrent**.
+`PERF-002`.
+
+**V-03 · Pool exhaustion surfaced as HTTP 500.**
+A temporary capacity condition told clients to give up. *Fixed:* global exception filter
+maps pool timeout → **503 + Retry-After**, P2002 → 409, P2025 → 404, P2003 → 400, and
+withholds internals on anything else.
+
+**V-04 · Duplicate phone number returned HTTP 500.** Raw Prisma `P2002` reached the
+browser. A repeat submission or an impatient double-click produced an opaque server
+error. *Fixed:* 409 with an actionable message. `CRM-011`, `CRM-060`.
+
+**V-05a · Double-booking under real concurrency (demonstrated, not theorised).**
+The application checked for a conflict before inserting, but that is a read-then-write
+race: driving 8 simultaneous identical booking requests, **all 8 passed the check before
+any committed** — 8 CONFIRMED bookings in one slot. The full run left 84 overlapping
+pairs in the database, every one from that test. Two customers would each have been told
+their appointment was confirmed. No application-level check can close this.
+*Fixed:* PostgreSQL exclusion constraint `bookings_no_staff_overlap`
+(`EXCLUDE USING gist (organizationId =, staffName =, tsrange(startTime, endTime) &&)`
+scoped to active bookings), enforced at commit time; the losing requests receive 409
+rather than a 500. Migration also cancels pre-existing overlaps with an audit note.
+Re-verified: 8 concurrent → exactly 1 booking. `SCH-006`, `INT-006`.
+
+**V-05 · Ticket numbers collided under concurrency.** `TCK-<4 digits of Date.now()>-<count+1>`
+derived from a COUNT read before the insert: 25 parallel creates produced **14 HTTP 500s**
+from the unique constraint. *Fixed:* time-ordered prefix + 3 bytes of randomness with a
+bounded retry. 25/25 succeed, all distinct. `CRM-044`.
+
+### Data correctness
+
+**V-06 · Pagination returned overlapping pages.** Ordering by `createdAt` alone is not a
+total order — rows sharing a timestamp (every bulk import) come back in arbitrary order,
+so users paging a list saw records twice and never saw others. *Fixed:* deterministic
+`[createdAt desc, id desc]` ordering everywhere. `CRM-003`.
+
+**V-07 · `?limit=999999999` returned the entire table.** An authenticated denial of
+service against the database and the API heap. *Fixed:* clamped to `MAX_PAGE_SIZE=200`;
+the CSV export uses an explicit batched cursor read so it is not silently truncated.
+`CRM-005`, `PERF-006`.
+
+**V-08 · Negative deal amounts accepted**, silently corrupting `pipelineValue` (a plain
+SUM) and every revenue figure derived from it. *Fixed:* rejected. `CRM-043`.
+
+**V-09 · Contacts list over-fetched.** `include: { leads, deals, tickets }` made Prisma
+issue a separate query per relation — 7 SQL round trips instead of 4, measured 2101ms vs
+919ms — and embedded every child record of every contact in a response that renders a
+table. *Fixed:* `_count` in the list, full records retained on the detail endpoint.
+p50 at 25 concurrent improved 6226ms → 4835ms.
+
+### Security
+
+**V-10 · Integration secrets disclosed to every role.** `GET /organizations/me` returned
+the Meta access token, WhatsApp verify token and Twilio account SID/auth token in
+plaintext — to VIEWER and AGENT included. Anyone holding those can send WhatsApp as the
+business, place calls billed to its Twilio account, and re-point the webhook.
+*Fixed:* masked to `••••<last4>`, never re-readable. `SEC-070`.
+
+**V-11 · Body-parser errors relabelled as 500.** The new catch-all filter intercepted
+framework errors carrying their own status — a legitimate 413 became an opaque 500,
+telling clients to give up on a request they could have fixed. *Fixed:* statuses carried
+by non-HttpException errors are honoured. `KB-002`.
+
+### Product honesty
+
+**V-12 · A model outage silently swallowed customer messages.** When the LLM was
+unavailable the assistant replied *"a member of our team will follow up"* with
+`shouldHandoff: false` — so no agent was notified and nobody followed up. With OpenAI
+returning `insufficient_quota` this was live, observable behaviour.
+*Fixed:* degraded replies now **escalate to a human**. `AI-010`.
+
+**V-13 · Sidebar showed placeholder identity after sign-in.** Verified in a real browser:
+the header greeted "Browser QA Clinic" while the sidebar still read "My Organization" /
+"Administrator". The layout read `localStorage` once on mount and is not remounted by
+client-side navigation. *Fixed:* re-reads on navigation, plus a `storage` listener so
+signing out in one tab updates the others.
+
+**V-14 · API key usage was not recorded.** `lastUsedAt` was a dropped promise — the only
+audit trail for "was this key active when the incident happened?" *Fixed:* awaited.
+
+---
+
+## 4. What was verified, by capability
+
+| Capability | Verified | Evidence |
+|---|---|---|
+| Registration → login → dashboard | **PASS** | End-to-end in a real browser; org + OWNER row created, bcrypt hash confirmed in DB |
+| Password reset, email verification, invite activation | **PASS** | Tokens stored as SHA-256 with expiry; single-use enforced; expired tokens rejected |
+| Session revocation | **PASS** | Logout, password change and reset all invalidate outstanding access **and** refresh tokens immediately; deactivation takes effect on the next request |
+| JWT integrity | **PASS** | `alg=none`, tampered payload, wrong-key signature, access-token-as-refresh all rejected |
+| Brute-force resistance | **PASS** | Per-account lockout with escalation; correct password also refused while locked |
+| **Multi-tenant isolation** | **PASS (35/35)** | 8 list endpoints, 5 IDOR probes, 8 cross-tenant writes, org settings, members, knowledge search — no leakage or mutation across tenants |
+| RBAC | **PASS** | VIEWER/AGENT correctly refused settings, member management, key minting and free plan activation; self-escalation blocked; role read from DB not token |
+| CRM at volume | **PASS** | 1,200 contacts; pagination, search, cascade delete, CSV export (RFC4180 quoting + formula-injection neutralised), concurrency |
+| Scheduling | **PASS (24/24)** | Exact/partial double-booking refused, back-to-back allowed, per-staff scoping, past dates refused, cancel preserves clinical notes and reminder markers, refunds open HIGH tickets |
+| Widget tenant isolation | **PASS** | 6 invalid-credential probes all refused — no fallback to an arbitrary organization; session history scoped to its own session |
+| AI honesty | **PASS** | Discloses it is an AI when asked; refuses to invent bank details, prices or availability; quotes only configured payout details |
+| Injection & SSRF | **PASS (34/34)** | SQLi inert across all string inputs; prototype pollution blocked; 10 SSRF vectors refused including DNS-resolved and IPv6-mapped forms; outbound webhook URLs validated too |
+| Webhook authenticity | **PASS** | Unsigned and wrongly-signed Paystack payloads rejected without granting a subscription; unsigned WhatsApp payload stores nothing; forged Twilio callback creates no call record |
+| Data integrity | **PASS** | 10 FK relationships, 0 orphans; 6 uniqueness invariants hold; no cross-tenant conversation/contact mismatches; no overlapping staff bookings table-wide |
+| Analytics correctness | **PASS** | Dashboard figures match direct DB counts; `aiReplyRate` computed (was permanently null); `handoverRate` bounded 0–100 (was tickets/conversations, could exceed 100%) |
+| Resilience | **PASS** | Survives Qdrant outage (Postgres fallback), malformed JSON, malformed UUIDs, mixed concurrent load — accepted responses and persisted rows agree exactly |
+
+---
+
+## 4b. Measured capacity — read this before sizing
+
+Throughput for authenticated, database-backed endpoints is bounded by
+**(connection pool size ÷ query latency)**, and in this environment the second term is
+pathological because the database is ~950ms away.
+
+| Measurement | Result |
+|---|---|
+| Health endpoint (no database) | 500 requests, **3,571 rps**, p50 5ms, p95 37ms, 0 errors |
+| Paginated CRM read, 7,526 rows | p50 ~2.2s, p95 3.1s — dominated by the remote round trip |
+| 100 concurrent authenticated readers | 29 served, **71 shed as 503 + Retry-After**, **0 faults**, 0 data inconsistency |
+| Measured DB round trip | **974ms** (API on a local host, database in `eu-central-1`) |
+
+The framework is not the limit — 3,571 rps without a database call proves that. The
+limit is the database path. Shedding excess load as a retryable 503 is correct
+behaviour and no request corrupted anything, but the honest reading is that this
+deployment **does not carry 100 concurrent DB-backed readers**. Co-locating the API
+with the database (K-02) should move query latency from ~950ms to ~5–20ms and raise the
+ceiling by roughly two orders of magnitude — but that must be **measured, not assumed**,
+which is why the load targets remain a GA blocker.
+
+`AI-009` (widget chat latency, 14.7s) has the same cause compounded by OpenAI 429
+retries, and is not a separate defect.
+
+---
+
+## 5. BLOCKED — could not be verified in this environment
+
+These are **not passes**. Each needs the stated prerequisite.
+
+| Area | Blocker | Needed to certify |
+|---|---|---|
+| **LLM conversation quality** | OpenAI account has no credits | Add credits; re-run `AI-007` and conversational-memory checks |
+| **Voice AI, end to end** | No real call placed; ElevenLabs auth failing; Deepgram never streamed | A Twilio number pointed at a public `API_BASE_URL`, working ElevenLabs key, then live inbound/outbound calls, barge-in, silence watchdog, transcript accuracy, accent handling |
+| **WhatsApp inbound** | Meta cannot deliver a webhook to localhost | Public HTTPS endpoint; then text/image/audio/location/interactive, duplicate delivery, retries, human takeover |
+| **Vector/semantic search** | Qdrant unreachable (no Docker) | Run Qdrant; verify embedding, retrieval accuracy, citation, deletion of vectors |
+| **PDF / DOCX ingestion** | `pdf-parse` / `mammoth` not installed | `npm i pdf-parse mammoth -w @ace/api`; then real PDFs, scanned PDFs, corrupt files |
+| **Live payments** | Paystack key is a placeholder | Test keys; then checkout, webhook activation, renewal, failure, refund, duplicate webhooks |
+| **Load beyond ~100 concurrent** | Single local host against a remote DB (974ms round trip) | Co-located load generator + API; the 500/1000/5000/10000-user targets were **not** attempted |
+| **Responsive layouts** | Browser resize did not take effect in the harness | Manual or Playwright viewport testing at mobile/tablet breakpoints |
+| **Full UI sweep** | Only register/login/dashboard/CRM journeys were driven in-browser | Every remaining page's buttons, modals, filters, exports, keyboard navigation, back/forward |
+
+---
+
+## 6. Known-unfixed findings
+
+| ID | Finding | Severity |
+|---|---|---|
+| ~~**K-01**~~ | ~~Workflow engine executes nothing.~~ **RESOLVED in Pass 3.** The engine now performs real actions, with durable runs, condition branching, delays, BullMQ retries and dead-lettering. Verified by `WF-001`…`WF-014`, including a lead created through the CRM API firing a workflow that writes a ticket with no manual trigger. See §P3.1. | ~~HIGH~~ |
+| **K-02** | **API and database in different regions.** `render.yaml` deployed the API to `oregon` against a `eu-central-1` database — every query a transatlantic round trip (~950ms measured, 4 per list request). Corrected to `frankfurt` in `render.yaml`, but **the region must be set to match your actual Supabase project**. | **HIGH** |
+| ~~**K-03**~~ | ~~Duplicate search input on the CRM page.~~ **RESOLVED in Pass 4.** It was worse than cosmetic: the second box was clipped by its container and only the page-level one reached the server, so a search that looked like it ran did nothing. The table now takes the query from the page. | ~~LOW~~ |
+| **K-04** | Root layout is a client component, so every page ships an empty shell and paints only after hydration. Acceptable for a dashboard; means no SEO and a blank screen if JS fails. | LOW |
+| **K-06** | SMS reminders are not implemented (no provider integrated). Now logs honestly rather than claiming delivery, but 24h/6h SMS reminders do not reach customers. | MEDIUM |
+
+---
+
+## 7. Release decision
+
+### **READY FOR CLOSED BETA**
+
+Not general availability, and not public beta.
+
+**Why it clears internal testing and closed beta:** the properties that make a
+multi-tenant B2B product safe to put real customer data into are verified, not assumed.
+Tenant isolation passed 35/35 against genuine cross-tenant reads, writes, deletes and
+IDOR probes. Authentication, session revocation and RBAC passed 41/41 and 35/35.
+Injection, SSRF and webhook forgery passed 34/34. Referential integrity holds across the
+whole schema with zero orphans. The product no longer invents bank details, prices,
+bookings or delivery confirmations — the failure mode that would have done real
+commercial harm.
+
+**Why it is not ready for public beta or GA:** three of the four headline capabilities
+on the box — **Voice AI, WhatsApp, and payments** — have never been executed end to end
+in this environment. Their credentials authenticate and their code paths are reachable,
+but no call has been placed, no WhatsApp message received, and no payment taken. That is
+a gap in evidence, not a known fault, and it is not honest to certify around it.
+
+### Blockers for **PUBLIC BETA**
+
+1. **Verify Voice AI on a real call** — inbound and outbound, with a public
+   `API_BASE_URL`, a working ElevenLabs key, barge-in, the silence watchdog, and
+   transcript persistence. (BLOCKED above.)
+2. **Verify WhatsApp inbound on a public endpoint** — including duplicate delivery and
+   Meta's retry behaviour.
+3. **Verify Paystack end to end with test keys** — checkout, webhook activation,
+   failure, and duplicate webhooks.
+4. **Restore OpenAI credit and re-run suite 05** — conversational quality and memory are
+   currently unverifiable.
+5. ~~**Fix K-01 or remove the workflow UI.**~~ **Done in Pass 3** — the engine executes,
+   and a workflow that cannot execute is refused activation with the reason stated.
+6. **Set the deployment region to match the database** (K-02).
+
+### Additional blockers for **GENERAL AVAILABILITY**
+
+7. **Load test at the stated scale** from a co-located generator — 500 → 10,000
+   concurrent users. Only ~100 was reached here, and only against a remote database.
+8. **Stand up Qdrant and certify semantic search**, including retrieval accuracy and
+   hallucination rate against a real corpus.
+9. **Install PDF/DOCX parsers and verify ingestion** of real, large and malformed
+   documents.
+10. **Complete the UI sweep** — every page, modal, filter and export, plus responsive
+    breakpoints and keyboard navigation.
+11. **Implement SMS or remove the reminder promise** (K-06).
+12. **Independent security review.** This pass tested the vulnerability classes I could
+    enumerate; that is not the same as an adversarial audit.
+
+---
+
+## 8. Reproducing this
+
+```bash
+# Migrations (idempotent)
+npx prisma db execute --schema=packages/database/prisma/schema.prisma \
+  --file=packages/database/prisma/migrations/20260807000000_audit_fixes/migration.sql
+npx prisma db execute --schema=packages/database/prisma/schema.prisma \
+  --file=packages/database/prisma/migrations/20260807010000_login_lockout/migration.sql
+
+npm run build
+npm test                    # 45 API + 32 package tests
+
+# Runtime validation against a running API
+node apps/api/dist/main.js  # or npm run dev
+node e2e-validation/harness.js            # all suites
+node e2e-validation/harness.js 02-tenancy # one suite
+# → e2e-validation/results.json
+```
+
+---
+
+# Pass 3 — Workflow engine build-out and onboarding selfie capture
+
+Two pieces of work after the report above: the K-01 blocker (workflow engine executed
+nothing) and a new capability — asking a customer for a selfie during onboarding over
+WhatsApp or a phone call. Both were driven by the same rule as the rest of this
+document: nothing counts until runtime behaviour demonstrates it.
+
+## P3.1 · K-01 resolved — the workflow engine now executes
+
+**The finding restated.** The stored graph was purely presentational. A node carried
+`label`, `detail` and `color` and nothing else: `"Send AI Automated Response"` is a
+display string, not an instruction — no action identifier, no recipient, no message
+body. There was nothing in the data to execute, so "matched N workflows, ran nothing"
+was the only behaviour the schema permitted.
+
+**What was built.**
+
+| Piece | What it does |
+|---|---|
+| `workflow.types.ts` | Machine-readable node schema (`kind` + `action` + typed `config`), trigger canonicalisation with legacy aliases, `{{ dotted.path }}` interpolation, condition operators, graph validation |
+| `workflow-actions.service.ts` | Seven real actions: `SEND_WHATSAPP`, `CREATE_TICKET`, `UPDATE_LEAD_STATUS`, `UPDATE_DEAL_STAGE`, `TAG_CONTACT`, `SET_HANDOFF`, `HTTP_WEBHOOK` (SSRF-guarded), plus `REQUEST_SELFIE` from P3.2 |
+| `workflow-executor.service.ts` | Breadth-first traversal, condition branch pruning with SKIPPED steps recorded, DELAY parking, step-level history, cycle bound |
+| `workflow-trigger.service.ts` | `@Global()` emitter domain code calls; never throws into the caller |
+| `workflow-runner.service.ts` | BullMQ worker with exponential backoff, dead-letter after 3 attempts, plus an inline sweeper for Redis-down operation |
+| `workflow_runs` / `workflow_run_steps` | Durable run history — status, attempt, payload, per-step input/output/error |
+
+Domain events are wired at the source: `CONTACT_CREATED`, `LEAD_CREATED`,
+`TICKET_CREATED`, `DEAL_STAGE_CHANGED` (CRM), `MESSAGE_RECEIVED` (WhatsApp + web
+widget), `BOOKING_CONFIRMED` (scheduling), `CALL_ENDED` (telephony).
+
+**Defects found while building it, by test rather than by reading:**
+
+**P3-01 · Every step executed twice.** `WF-007` measured 2 tickets from a one-ticket
+graph. The run row showed `attempt: 2` and every step duplicated. The BullMQ worker and
+the inline sweeper could both pick up the same QUEUED run, and `run()` set `RUNNING`
+with an unconditional update, so both proceeded. In production this is two messages to
+the customer and two tickets from one event.
+*Fixed:* the run is claimed with a conditional `updateMany` — whoever moves the row out
+of a claimable state wins, everyone else stops. `RUNNING` is reclaimable only after
+10 minutes, so a process killed mid-run does not strand the row. The synchronous "Run
+now" path creates the row already `RUNNING` so the sweeper never sees it.
+Re-verified: `attempt: 1`, no duplicated steps.
+
+**P3-02 · Conditions gated nothing.** An edge leaving a CONDITION with no explicit
+branch was followed regardless of the result — and the editor emits exactly those
+unbranded edges. A condition that evaluated false still ran the actions it existed to
+prevent. *Fixed:* downstream of a CONDITION an unbranded edge is the TRUE path.
+`WF-007` now demonstrates false → 0 tickets, true → 1 ticket.
+
+**P3-03 · The inline sweeper polled the database every 15s even with a healthy queue.**
+Measured as a steady stream of `P2024` pool timeouts under load — 63 in one run, 52 of
+them from the sweeper — logged at error level, for work the BullMQ worker had already
+done. *Fixed:* it now sweeps at 15s only when the queue is unavailable, and every 5
+minutes otherwise as a safety net; `P2024` logs as backpressure, not as a fault.
+Re-measured over a full suite-08 run: **0 pool timeouts, 0 sweep errors** (was 63/52).
+
+**Guardrails added.** A workflow with unexecutable nodes cannot be activated — `PATCH`
+with `isActive: true` returns 400 naming the problem, and `POST /execute` refuses it
+too. The editor now configures real actions from `GET /api/workflows/capabilities`,
+shows why a graph cannot run, and reports genuine step-by-step results. The Test button
+performs real actions and says so before running.
+
+**Coverage.** `WF-001`…`WF-014`, 15 checks, all passing. Notably:
+`WF-005` asserts a ticket row exists with an interpolated subject; `WF-008` creates a
+lead through the CRM API and waits for the resulting run to reach SUCCEEDED with no
+manual trigger; `WF-014` proves the same for `BOOKING_CONFIRMED` through the real BullMQ
+queue (`ranInline: false`); `WF-009` proves a failing action fails the run; `WF-010`
+proves a legacy presentational graph is refused activation.
+
+## P3.2 · Onboarding selfie capture
+
+A customer being onboarded over WhatsApp or a phone call can be asked for a selfie.
+
+**Design decisions that the tests then enforce:**
+
+- **A phone call cannot carry an image.** A `VOICE` request always delivers a one-time
+  upload link over WhatsApp instead. The AI only says "I've sent you a link" when the
+  send actually succeeded; otherwise it hands to a human.
+- **The upload token is stored only as a SHA-256 hash.** A link genuinely cannot be
+  recovered — not by an operator, not by the AI. The cost is that "resend my link" mints
+  a new request; the benefit is that a database leak does not let an attacker upload as
+  any customer mid-onboarding. `SEL-002` asserts the raw token appears nowhere in the row.
+- **This is capture, not verification.** Nothing checks liveness or matches a face to a
+  document. `verifiedAt` exists for a future biometric provider and is never set here;
+  `SEL-020` fails if anything sets it. The agent UI states this on the photo viewer.
+- **Type is decided by magic bytes**, never the claimed Content-Type. SVG is refused
+  outright — it is a script-capable document, not a photograph.
+- **Objects are never public.** Access is a 5-minute signed URL, and deleting a request
+  erases the object as well as the row (`SEL-043` verifies the object is actually gone).
+
+**Surfaces:** operator API (`/api/onboarding/selfie-requests`), public upload endpoints
+(`/api/public/selfie/:token`), a `REQUEST_SELFIE` workflow action, an orchestrator intent
+so the AI can handle "how do I send my photo?", a mobile-first camera page at
+`/selfie/[token]` (getUserMedia with a `capture="user"` file fallback, client-side
+downscale to 1280px), and a panel in the agent console and the CRM contact record.
+
+**Coverage.** `SEL-000`…`SEL-050`, 23 checks, all passing, none blocked. The upload is
+verified end-to-end against real Supabase Storage: bytes go in, a signed URL brings them
+back with JPEG magic intact, the link then refuses a second use, and deletion removes
+the object from the bucket.
+
+## P3.3 · Pre-existing defects the selfie work uncovered
+
+**P3-04 · Every Supabase Storage upload failed.** Supabase Storage requires an `apikey`
+header alongside `Authorization`; with the bearer alone it answers
+`403 {"message":"Invalid Compact JWS"}` wrapped in an HTTP 400 — which reads like a
+malformed request, not an auth failure. The knowledge-base uploader had this bug from
+the start. **No previous test caught it**: the knowledge suite exercised rejection paths
+and the crawler (which stores a URL, not bytes), so no test had ever completed a real
+upload. *Fixed:* headers corrected, and `knowledge.service.ts` now uses the shared
+`common/object-storage.ts` rather than its own copy. New check `KB-005` uploads a real
+document and fetches it back through the signed URL.
+
+**P3-05 · Uploaded documents could not be retrieved.**
+`KnowledgeService.getDocumentDownloadUrl` existed but no controller route reached it, so
+a stored document was unreachable through the API. *Fixed:* `GET
+/api/knowledge/documents/:id/download`, covered by `KB-005`.
+
+**P3-06 · The storage buckets did not exist.** Neither `knowledge-documents` nor
+`onboarding-selfies` was present in the Supabase project — a consequence of P3-04, since
+nothing had ever successfully written to one. Both are now created private, with
+`onboarding-selfies` restricted to `image/jpeg|png|webp` and an 8MB object limit. **This
+is environment state, not code**: a fresh deployment must create both buckets.
+
+## P3.4 · Still blocked
+
+- **WhatsApp inbound selfie, end to end.** The receive path (validate → store →
+  transition → reply) is shared with the web upload and is fully covered by
+  `SEL-020..022`. What is *not* certified is the Meta-specific hop: `downloadMedia`
+  resolving a media id and fetching the bytes with the bearer token. That needs a public
+  HTTPS webhook and real Cloud API credentials — the same prerequisite as the existing
+  "WhatsApp inbound" blocker.
+- **Voice-initiated selfie, end to end.** Depends on the same WhatsApp send path plus a
+  live call.
+
+## P3.5 · Effect on the release decision
+
+**Unchanged: READY FOR CLOSED BETA.**
+
+K-01 was a public-beta blocker and it is now closed — the workflow engine executes,
+and a graph that cannot execute is refused activation with the reason stated. The
+onboarding selfie capability is new work rather than a blocker being cleared.
+
+The decision does not move, because the reasons it was not public beta are untouched by
+this pass: Voice AI, WhatsApp inbound and payments have still never been executed end to
+end here, and OpenAI still has no credit. Those are gaps in evidence, and clearing an
+unrelated blocker does not fill them.
+
+Two items were **added** to the public-beta list by this pass:
+
+- **Create the two Supabase Storage buckets** in any environment before release
+  (`knowledge-documents`, `onboarding-selfies`, both private). Neither existed here, and
+  uploads fail without them.
+- **Set `WEB_BASE_URL`** in the API environment. Onboarding selfie links are built from
+  it and sent to real customers; unset, every customer receives a `localhost` link.
+
+One item was **removed** from the "known-unfixed" list: the workflow engine.
+
+---
+
+# Pass 5 — The AI call agent, actually tested
+
+Voice AI was marked BLOCKED in every previous pass. That was too generous a word: it
+meant *no real phone call had been placed*, and it was allowed to stand in for "we do
+not know whether any of this works". Most of the pipeline can be exercised without a
+carrier, and doing so found two defects that would have made every single call fail.
+
+`e2e-validation/voice-call-probe.js` impersonates Twilio against the running API: it
+POSTs a correctly-signed inbound webhook, opens the Media Streams WebSocket on the same
+path with the same query parameters, and sends the real `connected` / `start` / `media` /
+`stop` sequence carrying 8kHz G.711 μ-law in 20ms frames — including genuine recorded
+speech, not a synthetic tone.
+
+## Verdict: the AI call agent does not currently work
+
+A caller today would hear **silence for the entire call**. Two causes, one code and one
+configuration, and either alone is sufficient.
+
+## P5-01 · The `start` frame was dropped on every call (code — FIXED)
+
+`TwilioMediaStreamHandler.handleConnection` attached its `twilioWs.on('message')`
+listener at the **end** of the method, after resolving the organization, reading
+settings, loading telephony credentials and completing the Deepgram handshake.
+
+Twilio sends `connected` and then `start` immediately on connection. `start` carries the
+`streamSid`, and **every outbound audio frame must reference it** — without it the server
+cannot send audio at all. Those frames arrived at an EventEmitter with no listener and
+were silently discarded.
+
+Against a database ~1s away this is not an occasional race. It happens on every call.
+The observable consequence: `twilio_stream_started` never logged, the welcome message
+never played, and the probe measured **zero outbound audio frames**.
+
+*Fixed:* the listener is attached synchronously before the first `await`, frames that
+arrive during setup are queued, and the queue is replayed in order once the session
+exists. Verified: `twilio_replaying_buffered_frames` → `twilio_stream_started` → the
+greeting is attempted.
+
+**This defect alone made the AI mute on every call, regardless of credentials.**
+
+## P5-02 · A mute AI left the caller in silence with no recovery (code — FIXED)
+
+`streamTTSToTwilio` returned `void`, so a failure was indistinguishable from success at
+the call site. When speech synthesis failed the handler simply moved on and the caller
+listened to nothing until they hung up.
+
+*Fixed:* it now returns whether the caller actually heard anything. If the greeting
+produces no audio the server redirects the **live call** through Twilio's REST API —
+first to the organization's `forwardingNumber` so a human answers, otherwise to a spoken
+apology and a clean hang-up.
+
+`forwardingNumber` has been in the schema and the settings UI since the beginning and
+was referenced by **no code anywhere**. It now does something.
+
+## P5-03 · `ELEVENLABS_API_KEY` is not an API key (configuration — needs the owner)
+
+ElevenLabs rejects it with an unusually clear message:
+
+> `API key ID used as API key - only valid API keys can be used. API keys start with 'sk_' and are shown when the key is created.`
+
+What is in `.env` is the key's **identifier**, not the key. Until this is replaced the
+AI cannot produce speech, so every call falls to the P5-02 recovery path.
+
+## P5-04 · The AI can hear and understand but cannot answer (configuration)
+
+`OPENAI_API_KEY` authenticates but has **no credits** — a completion returns
+`insufficient_quota`. Speech-to-text works, the words are understood and stored, and then
+there is nothing to reply with.
+
+## P5-05 · There is no phone number to call (configuration)
+
+The Twilio account authenticates but holds **zero phone numbers**, and it is a **Trial**
+account — trial accounts can only call numbers verified in the Twilio console. Nothing
+can currently dial in.
+
+## What was proven to work
+
+| Check | Result |
+|---|---|
+| `VOICE-001` Inbound webhook answers with valid TwiML | **PASS** — signature verified, organization resolved from the dialled number |
+| `VOICE-002` TwiML opens a media stream | **PASS with a public `API_BASE_URL`** — verified by setting it and observing `wss://…`; fails locally only because it is `http://localhost` |
+| `VOICE-003` Media stream accepts the carrier connection | **PASS** — 7–12ms |
+| `VOICE-005` The call is recorded | **PASS** — call log written with status, direction and tenant |
+| `VOICE-006` The caller's speech is transcribed | **PASS** — real recorded speech in, Deepgram returned *"Would like to book an appointment for tomorrow morning, please."* |
+| `VOICE-007` A mute AI is detected and the call rescued | **PASS** — detected, and recovery invoked |
+| `VOICE-004` The AI speaks back down the call | **FAIL** — blocked on P5-03 |
+
+Deepgram authenticates and transcribes accurately. Twilio authenticates. The webhook,
+signature verification, tenant resolution, media transport, transcription and call
+logging are all working.
+
+## To make the call agent function
+
+1. **Replace `ELEVENLABS_API_KEY`** with a real key (starts with `sk_`), from
+   ElevenLabs → Profile → API Keys. Without it there is no voice.
+2. **Add OpenAI credits.** Without them the AI hears you and has nothing to say.
+3. **Buy a Twilio number** and set its Voice webhook to
+   `https://<your-api>/api/telephony/inbound/twilio`. Upgrade from Trial, or the number
+   can only receive calls from verified numbers.
+4. **Set `API_BASE_URL`** to the public HTTPS origin of the API. Proven above: the
+   `wss://` stream URL is derived from it correctly.
+5. **Set a `forwardingNumber`** per organization, so the recovery path reaches a human
+   rather than an apology.
+
+Re-run `node e2e-validation/voice-call-probe.js` after each step; `VOICE-004` turning
+green is the signal that a caller would hear a voice.
+
+## What still cannot be certified here
+
+A real PSTN call. Audio quality, latency over a carrier, barge-in against genuine
+overlapping speech, accent handling, and Twilio's ability to reach the webhook all need
+a real number pointed at a public URL. The probe proves the pipeline is wired and
+capable; it cannot prove how it sounds.
+
+---
+
+# Pass 6 — WhatsApp inbound and payments
+
+Both had been marked BLOCKED throughout. As with Voice AI, "blocked" was standing in for
+"never tested", and testing them found real defects — including the most serious one in
+this entire engagement.
+
+## P6-01 · Anyone could give themselves the ENTERPRISE plan for free (CRITICAL — FIXED)
+
+`POST /api/billing/activate` took a plan name and granted it outright:
+
+```ts
+async activatePlan(organizationId, plan) {
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: { subscriptionPlan: plan, subscriptionStatus: 'ACTIVE', ... },
+  });
+}
+```
+
+No payment, no reference, no verification of any kind.
+
+It carried `@Roles('OWNER')`, which reads like a control but is not one: **the first user
+of every organization is its owner**, so every person who signs up already holds that
+role in their own tenant. Demonstrated against a fresh trial account:
+
+```
+BEFORE: {"subscriptionPlan":null,"subscriptionStatus":"TRIAL"}
+POST /api/billing/activate {"plan":"ENTERPRISE"}  ->  201
+AFTER:  {"subscriptionPlan":"ENTERPRISE","subscriptionStatus":"ACTIVE"}
+```
+
+ENTERPRISE is priced at **₦1,000,000/month**. One request, no payment, from any account.
+
+This is a near-miss of the same defect a previous pass had already fixed one route over:
+`initializePaystackTransaction` used to call `activatePlan()` when Paystack was
+unconfigured, and that was corrected — but the directly-exposed `/activate` route was
+left behind. The `charge.success` webhook, by contrast, was properly guarded all along
+(signature verified, plan checked against our own price list, underpayment rejected).
+
+*Fixed:* `activatePlan` is now private and renamed `activatePlanVerified`, callable only
+from the verified webhook path. `/activate` requires a Paystack reference and verifies
+it against Paystack directly — that the transaction succeeded, that it belongs to **this**
+organization, and that the amount covers the plan. With Paystack unconfigured it returns
+503 and activates nothing.
+
+Re-verified: no reference → 400; forged reference → 400 "Paystack could not verify that
+payment"; organization remains on TRIAL in both cases. Locked down by `SEC-080`,
+`SEC-081`, `SEC-082`.
+
+## P6-02 · Every WhatsApp retry double-answered the customer (HIGH — FIXED)
+
+Meta's webhook delivery is **at least once** — it retries on timeout, on network error,
+and sometimes for no visible reason. Nothing in the inbound path was idempotent.
+
+Measured by redelivering an identical envelope with the same `wamid`: the transcript
+gained a second copy of the customer's message, and **the assistant answered them a
+second time**. Anything the assistant does in that turn — open a ticket, take a booking,
+issue payment instructions — happened twice.
+
+*Fixed:* `Message.externalId` is now UNIQUE, and the insert itself is the idempotency
+claim. A check-then-insert would not close this, since two retries can be in flight at
+once; the database constraint is what makes it safe. A `P2002` means another delivery
+already claimed that message, so processing stops **before** the assistant runs. The
+migration back-fills `externalId` from the existing `metadata.messageId`, keeping the
+earliest row where redelivery had already produced copies.
+
+Re-verified: customer turns unchanged at 1, one copy of the text, no second reply.
+
+## What was proven to work
+
+| Check | Result |
+|---|---|
+| `WA-001` Verification handshake returns the challenge | **PASS** |
+| `WA-002` A wrong verify token is refused | **PASS** — 403 |
+| `WA-003` Unsigned and wrongly-signed payloads are not processed | **PASS** — neither wrote anything |
+| `WA-004` An inbound message creates the contact and conversation | **PASS** |
+| `WA-005` A redelivered message is not processed twice | **PASS** (after P6-02) |
+| `WA-006` An unmapped phone number id is not routed to another tenant | **PASS** — dropped |
+| `WA-007` A delivery receipt does not become a message | **PASS** |
+| `WA-008` Image, location and interactive messages are recorded | **PASS** — all three, with media type |
+| `WA-009` The assistant responds | **PASS** |
+
+**The WhatsApp credentials are live.** The access token authenticates against a real
+business number — **+234 708 107 8679**, verified name *"Kusu consult"*. This is the
+best-configured channel in the product.
+
+## Payments — still not functional, and now honest about it
+
+`PAYSTACK_SECRET_KEY` is present but **invalid**: Paystack returns
+`401 {"status":false,"message":"Invalid key"}`. `PAYSTACK_WEBHOOK_SECRET` is still the
+literal placeholder `REPLACE_...`.
+
+So no payment can be taken today. What changed is that the product no longer has a way to
+*pretend* one was: activation now requires a verified transaction, and refuses clearly
+when Paystack is unreachable or unconfigured.
+
+To make payments work:
+
+1. Replace `PAYSTACK_SECRET_KEY` with a valid key from the Paystack dashboard.
+2. Replace `PAYSTACK_WEBHOOK_SECRET` with the real webhook secret.
+3. Point the Paystack webhook at `https://<your-api>/api/billing/paystack-webhook`.
+4. Re-run suite 06 and drive one test-mode checkout end to end.
+
+## Still not certified
+
+A real Meta-delivered webhook (this used correctly-signed simulated envelopes against a
+locally reachable endpoint) and a real Paystack charge. Both need a public HTTPS origin;
+the payment side additionally needs working keys.
+

@@ -53,9 +53,22 @@ async function testWhatsAppSDK() {
   assert.strictEqual(parsed.fromNumber, '2348023456789');
   assert.strictEqual(parsed.textContent, 'Schedule appointment with doctor');
 
-  // Test 3: Synthetic Message Dispatch
-  const res = await client.sendTextMessage('2348023456789', 'Your appointment is confirmed!');
-  assert.ok(res.messages[0].id.includes('wamid.mock'), 'Should generate valid message ID response');
+  // Test 3: Delivery failures must surface — never a synthetic wamid.
+  //
+  // CONTRACT (updated): the placeholder-token "demo mode" that returned a
+  // mock `wamid.mock.*` id was removed on purpose. Callers treated that
+  // synthetic id as proof of delivery (reply_delivered logs, broadcast sent
+  // counts), so a misconfigured tenant saw a green dashboard while no
+  // customer ever received a message. Without real Meta credentials this
+  // call MUST reject (auth or network error) — resolving would mean the SDK
+  // fabricated a delivery.
+  let sendFailed = false;
+  try {
+    await client.sendTextMessage('2348023456789', 'Your appointment is confirmed!');
+  } catch (err) {
+    sendFailed = true;
+  }
+  assert.strictEqual(sendFailed, true, 'sendTextMessage without real credentials must throw, not return a mock wamid');
 
   console.log('✅ ALL WHATSAPP SDK TESTS PASSED SUCCESSFULLY!');
 }

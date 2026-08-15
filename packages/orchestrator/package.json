@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@ace/shared-types": "1.0.0",
-    "@ace/database": "1.0.0"
+    "@ace/database": "1.0.0",
+    "@ace/whatsapp-sdk": "1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

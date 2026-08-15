@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { API_URL } from '@/lib/api';
+import SelfieRequestPanel from '@/components/SelfieRequestPanel';
 import {
   MessageSquareText, Phone, User, Send, Bot,
   ToggleLeft, ToggleRight, Search, RefreshCw,
@@ -26,17 +27,22 @@ interface Conversation {
   messages?: Message[];
 }
 
-// NOTE: never put bank account numbers in these static snippets — the previous
-// version shipped a placeholder Providus account (9928374102) that agents could
-// send to real customers with one click. Payment details come from the org's
-// configured Settings via the AI's payment-guidance tool instead.
+/**
+ * Canned replies an agent can insert with one click.
+ *
+ * Deliberately free of any payment details. One of these used to read
+ * "Transfer to Providus Bank Acc: 9928374102" — an account no tenant on this platform
+ * owns — one click away from being sent to a paying customer. Payment instructions
+ * must come from the organization's own configured details
+ * (Settings → payout account), which the AI payment-guidance tool reads.
+ */
 const QUICK_REPLIES = [
   "Hello! 👋 How can I assist you with your request today?",
-  "💳 For payment, just reply \"how do I pay\" and our assistant will send you the verified payment details and reference.",
   "Thank you for contacting us. Could you please confirm your location?",
   "Our operational hours are Mon - Fri: 8:00 AM - 6:00 PM.",
   "I have updated your request in our system. An agent will get in touch shortly.",
   "You can book an appointment directly through our scheduling portal.",
+  "Let me check that for you — one moment please.",
 ];
 
 export default function AgentConsolePage() {
@@ -298,7 +304,7 @@ export default function AgentConsolePage() {
                   key={conv.id}
                   onClick={() => setActiveId(conv.id)}
                   className={`w-full text-left p-3 rounded-xl transition-all ${
-                    isActive ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20' : 'hover:bg-slate-50 dark:bg-slate-800/60 border border-transparent'
+                    isActive ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'
                   }`}
                 >
                   <div className="flex items-start gap-2.5">
@@ -501,6 +507,19 @@ export default function AgentConsolePage() {
                 }
               </div>
             </div>
+
+            {/* Onboarding selfie. Needs a real contact id — a conversation whose contact
+                was never resolved has nothing to attach a photo to. */}
+            {activeConv.contact?.id && (
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                <SelfieRequestPanel
+                  contactId={activeConv.contact.id}
+                  contactName={activeConv.contact.fullName || activeConv.contactName}
+                  conversationId={activeConv.id}
+                  channel={activeConv.channel === 'VOICE' ? 'VOICE' : 'WHATSAPP'}
+                />
+              </div>
+            )}
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
               <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last Message</p>

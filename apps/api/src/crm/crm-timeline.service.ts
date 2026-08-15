@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { AceLogger } from '../config/logger';
 
@@ -30,7 +30,7 @@ export class CrmTimelineService {
     });
 
     if (!contact) {
-      throw new Error('Contact not found');
+      throw new NotFoundException('Contact not found');
     }
 
     // Fetch related CallLogs
