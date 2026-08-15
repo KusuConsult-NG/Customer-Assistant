@@ -474,6 +474,71 @@ export class ConversationOrchestrator {
    * Every tool branch routes failures here: log the real error, reply
    * honestly, hand off to a human.
    */
+  /**
+   * Confident match of the visitor's question against the org's curated FAQ
+   * entries. Deliberately conservative: it answers ONLY when most of an FAQ
+   * question's content words appear in the visitor's message — a weak match
+   * falls through to RAG/LLM rather than risk answering the wrong question
+   * with high confidence. Never throws; any failure just means "no match".
+   */
+  private async tryFaqMatch(
+    organizationId: string,
+    input: string
+  ): Promise<{ answer: string; score: number } | null> {
+    const STOPWORDS = new Set([
+      'what', 'is', 'a', 'an', 'the', 'i', 'you', 'do', 'does', 'how', 'can',
+      'where', 'who', 'to', 'for', 'of', 'in', 'on', 'my', 'your', 'it', 'and',
+      'or', 'me', 'we', 'be', 'are', 'get', 'much', 'about', 'please',
+    ]);
+    const tokenize = (text: string) =>
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+
+    try {
+      const queryTokens = new Set(tokenize(input));
+      if (queryTokens.size === 0) return null;
+
+      const faqs = await prisma.faqEntry.findMany({
+        where: { organizationId, isActive: true },
+        select: { question: true, answer: true, sortOrder: true },
+        orderBy: { sortOrder: 'asc' },
+        take: 300,
+      });
+
+      let best: { answer: string; score: number; overlap: number } | null = null;
+      for (const faq of faqs) {
+        const questionTokens = tokenize(faq.question);
+        if (questionTokens.length === 0) continue;
+        const overlap = questionTokens.filter((t) => queryTokens.has(t)).length;
+        const score = overlap / questionTokens.length;
+        if (score < 0.6) continue;
+        // A single-content-word question ("What is GateKipa?" → {gatekipa})
+        // would otherwise win against EVERY message that mentions the brand.
+        // It only answers when the visitor's message adds nothing beyond that
+        // same word set — "who built gatekipa" must fall through, not get the
+        // what-is answer.
+        if (
+          questionTokens.length === 1 &&
+          ![...queryTokens].every((t) => questionTokens.includes(t))
+        ) {
+          continue;
+        }
+        // More shared content words beats a higher coverage ratio: the pricing
+        // question (2-word overlap) must outrank the brand question (1-word).
+        if (!best || overlap > best.overlap || (overlap === best.overlap && score > best.score)) {
+          best = { answer: faq.answer, score, overlap };
+        }
+      }
+      return best ? { answer: best.answer, score: best.score } : null;
+    } catch {
+      // FAQ lookup is an optimization, never a failure mode — fall through to RAG.
+      return null;
+    }
+  }
+
   private toolFailureReply(intent: string, err: any): OrchestrationResult {
     console.error(JSON.stringify({
       level: 'error',
@@ -765,6 +830,23 @@ export class ConversationOrchestrator {
       } catch (err) {
         return this.toolFailureReply('REQUEST_SELFIE', err);
       }
+    }
+
+    // ── 10.5 FAQ direct match ────────────────────────────────────────────────
+    // The dashboard's curated FAQ entries were previously dead knowledge: the
+    // RAG path only searches document chunks, so nothing the operator typed
+    // into the FAQ manager ever reached a customer. A confident keyword-overlap
+    // match on a curated Q→A pair beats LLM synthesis anyway — it is the
+    // operator's own wording, deterministic, free, and works with no OpenAI
+    // key configured (the exact state of a fresh demo tenant).
+    const faqMatch = await this.tryFaqMatch(context.organizationId, cleanInput);
+    if (faqMatch) {
+      return {
+        replyText: faqMatch.answer,
+        intentDetected: 'FAQ_MATCH',
+        confidenceScore: faqMatch.score,
+        shouldHandoff: false,
+      };
     }
 
     // ── 11. RAG Knowledge Search ──────────────────────────────────────────────
