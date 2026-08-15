@@ -85,6 +85,7 @@ interface CallSession {
   welcomeMessage: string;
   language:     string;
   startedAt:    Date;
+  twilioWs:     WebSocket;   // kept so teardown can actually hang up the call
 
   // Deepgram
   deepgramWs:       WebSocket | null;
@@ -138,57 +139,26 @@ export class TwilioMediaStreamHandler {
     const correlationId = generateCorrelationId();
     this.logger.info('twilio_media_stream_connected', { callSid, correlationId });
 
-    // ── FIX 6: Resolve organizationId from DB if missing ──────────────────
-    let resolvedOrgId = organizationId;
-    let resolvedFrom  = fromNumber;
-
-    if (!resolvedOrgId) {
-      try {
-        const callLog = await prisma.callLog.findFirst({
-          where:  { callSid },
-          select: { organizationId: true, fromNumber: true, toNumber: true },
-        });
-        if (callLog) {
-          resolvedOrgId = callLog.organizationId;
-          resolvedFrom  = callLog.fromNumber || fromNumber;
-          toNumber      = callLog.toNumber   || toNumber;
-        }
-      } catch (err) {
-        this.logger.error('Failed to resolve org from callSid — call continues with empty org', err as Error, { callSid });
-      }
-    }
-
-    // ── FIX 4: Fetch org welcome message and language ─────────────────────
-    let welcomeMessage = 'Hello! Thank you for calling. How can I help you today?';
-    let language       = 'en';
-
-    if (resolvedOrgId) {
-      try {
-        const org = await (prisma as any).organization?.findUnique?.({
-          where:  { id: resolvedOrgId },
-          select: { welcomeMessage: true },
-        });
-        if (org?.welcomeMessage) welcomeMessage = org.welcomeMessage;
-      } catch { /* welcomeMessage stays default */ }
-
-      try {
-        const settings = await (prisma as any).organizationSettings?.findFirst?.({
-          where:  { organizationId: resolvedOrgId },
-          select: { voiceLanguage: true },
-        });
-        if (settings?.voiceLanguage) language = settings.voiceLanguage;
-      } catch { /* language stays 'en' */ }
-    }
-
+    // ── ORDERING IS LOAD-BEARING ──────────────────────────────────────────
+    // Twilio sends 'connected' + 'start' the instant the upgrade completes.
+    // The previous version registered twilioWs.on('message') only AFTER
+    // several awaited DB queries — any 'start' event arriving during that
+    // window (typical: 10–100 ms of Prisma latency) was silently lost, so
+    // streamSid stayed '' and no audio could ever be sent back on the call.
+    // Now: create the session with safe defaults, register ALL socket
+    // handlers synchronously, and enrich the session from the DB afterwards
+    // (the welcome message plays 2 s after 'start' — by then enrichment has
+    // long finished; if not, callers get the generic greeting, not silence).
     const session: CallSession = {
       callSid,
       streamSid:           '',
-      organizationId:      resolvedOrgId,
-      fromNumber:          resolvedFrom,
+      organizationId,
+      fromNumber,
       toNumber,
-      welcomeMessage,
-      language,
+      welcomeMessage:      'Hello! Thank you for calling. How can I help you today?',
+      language:            'en',
       startedAt:           new Date(),
+      twilioWs,
       deepgramWs:          null,
       deepgramReady:       false,
       earlyAudioBuffer:    [],
@@ -204,10 +174,6 @@ export class TwilioMediaStreamHandler {
     };
     this.sessions.set(callSid, session);
 
-    // Start Deepgram — frames that arrive before it opens are buffered
-    session.deepgramWs = await this.voiceAiService.createDeepgramWsForOrg(resolvedOrgId);
-    this.wireDeepgramHandlers(session, twilioWs);
-
     twilioWs.on('message', (raw: WebSocket.Data) => {
       try {
         const msg = JSON.parse(raw.toString());
@@ -220,6 +186,49 @@ export class TwilioMediaStreamHandler {
       this.logger.error('Twilio WS error', err, { callSid });
       this.teardown(session, 'WEBSOCKET_ERROR');
     });
+
+    // ── FIX 6: Resolve organizationId from DB if missing ──────────────────
+    if (!session.organizationId) {
+      try {
+        const callLog = await prisma.callLog.findFirst({
+          where:  { callSid },
+          select: { organizationId: true, fromNumber: true, toNumber: true },
+        });
+        if (callLog) {
+          session.organizationId = callLog.organizationId;
+          session.fromNumber     = callLog.fromNumber || session.fromNumber;
+          session.toNumber       = callLog.toNumber   || session.toNumber;
+        }
+      } catch (err) {
+        this.logger.error('Failed to resolve org from callSid — call continues with empty org', err as Error, { callSid });
+      }
+    }
+
+    // ── FIX 4: Fetch org welcome message and language ─────────────────────
+    if (session.organizationId) {
+      try {
+        const org = await (prisma as any).organization?.findUnique?.({
+          where:  { id: session.organizationId },
+          select: { welcomeMessage: true },
+        });
+        if (org?.welcomeMessage) session.welcomeMessage = org.welcomeMessage;
+      } catch { /* welcomeMessage stays default */ }
+
+      try {
+        const settings = await (prisma as any).organizationSettings?.findFirst?.({
+          where:  { organizationId: session.organizationId },
+          select: { voiceLanguage: true },
+        });
+        if (settings?.voiceLanguage) session.language = settings.voiceLanguage;
+      } catch { /* language stays 'en' */ }
+    }
+
+    // Start Deepgram last — media frames arriving before it opens are already
+    // being buffered by the 'media' handler (earlyAudioBuffer, capped at 5 s).
+    if (!session.isEnded) {
+      session.deepgramWs = await this.voiceAiService.createDeepgramWsForOrg(session.organizationId);
+      this.wireDeepgramHandlers(session, twilioWs);
+    }
   }
 
   // ─── Twilio protocol message router ─────────────────────────────────────
@@ -511,6 +520,12 @@ export class TwilioMediaStreamHandler {
     if (session.ttsAbortController) session.ttsAbortController.abort();
 
     try { session.deepgramWs?.close(); } catch {}
+    // Actually hang up: the old teardown closed Deepgram and updated the DB
+    // but left the Twilio socket OPEN — after a silence hard-stop the caller
+    // sat in dead air on a still-billing call until THEY hung up.
+    try {
+      if (session.twilioWs.readyState === WebSocket.OPEN) session.twilioWs.close();
+    } catch {}
     this.sessions.delete(callSid);
 
     // ── FIX 9: Real call duration ─────────────────────────────────────────

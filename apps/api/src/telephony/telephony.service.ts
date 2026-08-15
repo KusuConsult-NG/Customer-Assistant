@@ -4,7 +4,7 @@ import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual, createPublicKey, verify as cryptoVerify } from 'crypto';
 
 const log = new AceLogger('TelephonyService');
 
@@ -37,6 +37,44 @@ function verifyTwilioSignature(
     const compBuf = Buffer.from(computed, 'utf8');
     if (sigBuf.length !== compBuf.length) return false;
     return timingSafeEqual(sigBuf, compBuf);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifies Telnyx's Ed25519 webhook signature.
+ *
+ * Telnyx signs `${timestamp}|${rawBody}` with Ed25519; the signature arrives
+ * base64-encoded in `telnyx-signature-ed25519` with the timestamp in
+ * `telnyx-timestamp`. The account's public key (base64, from the Telnyx
+ * portal) is provided via TELNYX_PUBLIC_KEY.
+ *
+ * Node's crypto verifies Ed25519 natively — the raw 32-byte key just needs
+ * wrapping in a SPKI DER envelope.
+ *
+ * Ref: https://developers.telnyx.com/docs/development/webhooks
+ */
+function verifyTelnyxSignature(
+  publicKeyBase64: string,
+  signatureBase64: string | undefined,
+  timestamp: string | undefined,
+  rawBody: Buffer
+): boolean {
+  if (!signatureBase64 || !timestamp || !publicKeyBase64) return false;
+  try {
+    // Reject stale timestamps (> 5 min skew) to block replay attacks
+    const ts = parseInt(timestamp, 10);
+    if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+
+    const rawKey = Buffer.from(publicKeyBase64, 'base64');
+    if (rawKey.length !== 32) return false;
+    // SPKI DER prefix for an Ed25519 public key (RFC 8410)
+    const spki = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), rawKey]);
+    const keyObject = createPublicKey({ key: spki, format: 'der', type: 'spki' });
+
+    const message = Buffer.concat([Buffer.from(`${timestamp}|`), rawBody]);
+    return cryptoVerify(null, message, keyObject, Buffer.from(signatureBase64, 'base64'));
   } catch {
     return false;
   }
@@ -149,19 +187,37 @@ export class TelephonyService {
     }
 
     if (providerType === TelephonyProviderType.TELNYX) {
-      const telnyxSig = headers['telnyx-signature-ed25519'] || headers['x-telnyx-signature'];
-      if (telnyxSig) {
-        log.info('telephony_telnyx_signature_received', { correlationId, callSid });
+      // Ed25519 verification — previously the signature header was only LOGGED
+      // ("signature_received"), never verified: any request was accepted.
+      const telnyxPublicKey = process.env.TELNYX_PUBLIC_KEY;
+      if (telnyxPublicKey) {
+        const telnyxSig = headers['telnyx-signature-ed25519'] as string | undefined;
+        const telnyxTs = headers['telnyx-timestamp'] as string | undefined;
+        const isValid = !!rawBody && verifyTelnyxSignature(telnyxPublicKey, telnyxSig, telnyxTs, rawBody);
+        if (!isValid) {
+          log.warn('telephony_telnyx_invalid_signature', {
+            correlationId,
+            callSid,
+            signatureProvided: !!telnyxSig,
+          });
+          return `<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>`;
+        }
+        log.info('telephony_telnyx_signature_verified', { correlationId, callSid });
+      } else {
+        log.warn('telephony_telnyx_signature_skipped', { correlationId, reason: 'TELNYX_PUBLIC_KEY_not_configured', callSid });
       }
     }
 
     if (providerType === TelephonyProviderType.AFRICAS_TALKING) {
       const apiKey = config?.apiKey ?? process.env.AT_API_KEY;
       const atSig = headers['x-africastalking-signature'] as string | undefined;
-      if (apiKey && atSig && rawBody) {
-        const isValid = verifyAfricasTalkingSignature(apiKey, atSig, rawBody);
+      if (apiKey) {
+        // Same bypass-hardening as Twilio: when a key IS configured, a missing
+        // signature header (or missing rawBody) is a rejection — omitting the
+        // header must not skip verification.
+        const isValid = !!atSig && !!rawBody && verifyAfricasTalkingSignature(apiKey, atSig, rawBody);
         if (!isValid) {
-          log.warn('telephony_at_invalid_signature', { correlationId, callSid });
+          log.warn('telephony_at_invalid_signature', { correlationId, callSid, signatureProvided: !!atSig });
           return `<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>`;
         }
       }

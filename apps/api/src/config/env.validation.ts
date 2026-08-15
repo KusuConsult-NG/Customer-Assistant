@@ -48,6 +48,7 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'ELEVENLABS_API_KEY', required: false, description: 'ElevenLabs TTS API key (required for voice synthesis)' },
   { key: 'TWILIO_ACCOUNT_SID', required: false, description: 'Twilio Account SID (required for Voice AI telephony)' },
   { key: 'TWILIO_AUTH_TOKEN', required: false, description: 'Twilio Auth Token (required for Voice AI telephony)' },
+  { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
   { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
   { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
   { key: 'RESEND_API_KEY', required: false, description: 'Resend API key (required for verification/reset/booking emails)' },

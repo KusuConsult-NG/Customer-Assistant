@@ -26,9 +26,13 @@ interface Conversation {
   messages?: Message[];
 }
 
+// NOTE: never put bank account numbers in these static snippets — the previous
+// version shipped a placeholder Providus account (9928374102) that agents could
+// send to real customers with one click. Payment details come from the org's
+// configured Settings via the AI's payment-guidance tool instead.
 const QUICK_REPLIES = [
   "Hello! 👋 How can I assist you with your request today?",
-  "💳 Payment Guidance: Transfer to Providus Bank Acc: 9928374102 or pay via online Paystack link. Reply PAID when done.",
+  "💳 For payment, just reply \"how do I pay\" and our assistant will send you the verified payment details and reference.",
   "Thank you for contacting us. Could you please confirm your location?",
   "Our operational hours are Mon - Fri: 8:00 AM - 6:00 PM.",
   "I have updated your request in our system. An agent will get in touch shortly.",

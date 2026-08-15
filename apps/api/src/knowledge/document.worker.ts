@@ -40,7 +40,6 @@
  */
 
 import { Worker, Job } from 'bullmq';
-import { createClient } from 'redis';
 
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
 const CHUNK_SIZE_CHARS = 1800; // ~450 tokens at ~4 chars/token
@@ -53,6 +52,75 @@ interface DocumentJob {
   storageUrl: string;
   mimeType: string;
   fileName: string;
+  useSupabaseStorage?: boolean;
+}
+
+/**
+ * Download the raw bytes of a stored document.
+ *
+ * Three source shapes:
+ *  - http(s) URL → fetched directly (website crawls, presigned URLs)
+ *  - Supabase storage PATH (e.g. "orgId/1712_file.pdf") → downloaded from the
+ *    Supabase Storage object endpoint with the service-role key. The old code
+ *    treated any non-http storageUrl as a LOCAL FILESYSTEM path, so every
+ *    Supabase-stored upload failed with ENOENT the moment the worker ran.
+ *  - anything else → local filesystem path (dev mode)
+ */
+async function downloadDocumentBytes(job: DocumentJob): Promise<Buffer> {
+  const { storageUrl, useSupabaseStorage } = job;
+
+  if (storageUrl.startsWith('http')) {
+    const res = await fetch(storageUrl);
+    if (!res.ok) throw new Error(`Failed to download document: HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (useSupabaseStorage || (supabaseUrl && supabaseKey)) {
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Document is in Supabase Storage but SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set.');
+    }
+    const res = await fetch(`${supabaseUrl}/storage/v1/object/knowledge-documents/${storageUrl}`, {
+      headers: { Authorization: `Bearer ${supabaseKey}` },
+    });
+    if (!res.ok) throw new Error(`Supabase Storage download failed: HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const fs = await import('fs/promises');
+  return Buffer.from(await fs.readFile(storageUrl));
+}
+
+/**
+ * Extract plain text from document bytes by mime type.
+ *
+ * The old code called .text()/readFile-utf8 on EVERYTHING — a PDF or DOCX
+ * became binary garbage that was chunked, embedded, and marked INDEXED,
+ * silently poisoning RAG answers. Real extraction:
+ *  - PDF  → pdf-parse
+ *  - DOCX → mammoth (raw text)
+ *  - text/markdown/json → UTF-8 decode
+ *  - anything else → explicit failure (honest FAILED status, not garbage)
+ */
+async function extractText(bytes: Buffer, mimeType: string, fileName: string): Promise<string> {
+  if (mimeType === 'application/pdf') {
+    const pdfParse = require('pdf-parse');
+    const parsed = await pdfParse(bytes);
+    return parsed.text ?? '';
+  }
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ buffer: bytes });
+    return result.value ?? '';
+  }
+  if (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'text/html') {
+    return bytes.toString('utf-8');
+  }
+  throw new Error(
+    `Unsupported mime type for text extraction: ${mimeType} (${fileName}). ` +
+    `Supported: PDF, DOCX, plain text, Markdown, JSON.`
+  );
 }
 
 /**
@@ -194,20 +262,9 @@ async function processDocumentJob(job: Job<DocumentJob>): Promise<void> {
   });
 
   try {
-    // ── Step 1: Fetch document content ──────────────────────────────────────
-    // In production: download from S3/GCS using presigned URL or service account
-    // For local dev: storageUrl is a local filesystem path
-    let rawText = '';
-    if (storageUrl.startsWith('http')) {
-      const fileResponse = await fetch(storageUrl);
-      if (!fileResponse.ok) throw new Error(`Failed to download document: HTTP ${fileResponse.status}`);
-      // For PDF: in production, use pdf-parse or AWS Textract
-      // For TXT/MD: read directly
-      rawText = await fileResponse.text();
-    } else {
-      const fs = await import('fs/promises');
-      rawText = await fs.readFile(storageUrl, 'utf8');
-    }
+    // ── Step 1: Download bytes + extract real text (PDF/DOCX/text) ──────────
+    const fileBytes = await downloadDocumentBytes(job.data);
+    const rawText = await extractText(fileBytes, mimeType, fileName);
 
     if (!rawText.trim()) {
       throw new Error(`Document ${documentId} produced empty text after extraction. Check file format.`);
