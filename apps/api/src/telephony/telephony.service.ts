@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
@@ -285,7 +285,11 @@ export class TelephonyService {
   async initiateOutboundCall(
     organizationId: string,
     toNumber: string,
-    providerType: TelephonyProviderType = TelephonyProviderType.NIGERIA_CARRIER_FORWARD
+    // Default TWILIO: it is the only provider that can actually ORIGINATE an
+    // outbound call. The old default (NIGERIA_CARRIER_FORWARD) is a passive
+    // forwarding setup — its SDK used to fabricate a QUEUED record for calls
+    // that never happened, and now honestly throws instead.
+    providerType: TelephonyProviderType = TelephonyProviderType.TWILIO
   ) {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
@@ -318,12 +322,26 @@ export class TelephonyService {
       });
     }
 
-    const record = await provider.initiateCall({
-      organizationId,
-      fromNumber,
-      toNumber,
-      provider: providerType,
-    });
+    let record;
+    try {
+      record = await provider.initiateCall({
+        organizationId,
+        fromNumber,
+        toNumber,
+        provider: providerType,
+      });
+    } catch (err: any) {
+      // Surface provider failures as a clear 400 with the real reason —
+      // previously the SDK swallowed failures and returned a fabricated
+      // QUEUED record, so the dashboard showed calls that never existed.
+      log.warn('telephony_outbound_call_failed', {
+        correlationId,
+        organizationId,
+        providerType,
+        error: err?.message,
+      });
+      throw new BadRequestException(err?.message ?? 'Outbound call could not be placed');
+    }
 
     const callLog = await prisma.callLog.create({
       data: {

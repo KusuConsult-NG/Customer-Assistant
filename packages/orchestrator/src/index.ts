@@ -306,6 +306,34 @@ export class ConversationOrchestrator {
     this.ragService = new QdrantRAGService();
   }
 
+  /**
+   * Uniform failure path for every DB-backed tool intent.
+   *
+   * Any tool can throw (database down, FK violation, missing contact). An
+   * uncaught throw bubbles to the channel's catch-all and the customer gets
+   * NO reply at all — silence is the worst possible outcome mid-conversation.
+   * Every tool branch routes failures here: log the real error, reply
+   * honestly, hand off to a human.
+   */
+  private toolFailureReply(intent: string, err: any): OrchestrationResult {
+    console.error(JSON.stringify({
+      level: 'error',
+      service: 'ConversationOrchestrator',
+      event: 'tool_execution_failed',
+      intent,
+      error: err?.message ?? String(err),
+    }));
+    return {
+      replyText:
+        `I ran into a technical problem completing that automatically. ` +
+        `Let me connect you with a team member who can help right away.`,
+      intentDetected: intent,
+      confidenceScore: 0.9,
+      shouldHandoff: true,
+      handoffReason: HandoffReason.TOOL_FAILURE,
+    };
+  }
+
   async processIncomingMessage(
     context: ConversationContext,
     userMessageText: string
@@ -385,14 +413,18 @@ export class ConversationOrchestrator {
     // ── 4. Tool: Reservation ─────────────────────────────────────────────────
     const RESERVATION_PHRASES = ['reservation', 'book room', 'book table', 'book a room', 'book a table', 'reserve a table', 'make a reservation'];
     if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p))) {
-      const toolResult = await this.executeManageReservation(context);
-      return {
-        replyText: `✅ Your reservation for *${toolResult.partySize} guest(s)* at *${toolResult.time}* is confirmed. We look forward to hosting you!`,
-        intentDetected: 'MANAGE_RESERVATION',
-        confidenceScore: 0.96,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'manage_reservation', result: toolResult }],
-      };
+      try {
+        const toolResult = await this.executeManageReservation(context);
+        return {
+          replyText: `✅ Your reservation for *${toolResult.partySize} guest(s)* at *${toolResult.time}* is confirmed. We look forward to hosting you!`,
+          intentDetected: 'MANAGE_RESERVATION',
+          confidenceScore: 0.96,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'manage_reservation', result: toolResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('MANAGE_RESERVATION', err);
+      }
     }
 
     // ── 5. Tool: Check Booking / Reservation Status ──────────────────────────
@@ -401,14 +433,18 @@ export class ConversationOrchestrator {
       'when is my appointment', 'booking status', 'reservation status', 'view my booking',
     ];
     if (CHECK_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeCheckBookingStatus(context);
-      return {
-        replyText: result.message,
-        intentDetected: 'CHECK_BOOKING_STATUS',
-        confidenceScore: 0.95,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'check_booking_status', result }],
-      };
+      try {
+        const result = await this.executeCheckBookingStatus(context);
+        return {
+          replyText: result.message,
+          intentDetected: 'CHECK_BOOKING_STATUS',
+          confidenceScore: 0.95,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'check_booking_status', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('CHECK_BOOKING_STATUS', err);
+      }
     }
 
     // ── 6. Tool: Cancel Booking / Reservation ─────────────────────────────────
@@ -418,14 +454,18 @@ export class ConversationOrchestrator {
       'please cancel', 'cancel booking',
     ];
     if (CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeCancelBookingOrReservation(context);
-      return {
-        replyText: result.message,
-        intentDetected: 'CANCEL_BOOKING',
-        confidenceScore: 0.97,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
-      };
+      try {
+        const result = await this.executeCancelBookingOrReservation(context);
+        return {
+          replyText: result.message,
+          intentDetected: 'CANCEL_BOOKING',
+          confidenceScore: 0.97,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('CANCEL_BOOKING', err);
+      }
     }
 
     // ── 7. Tool: Reschedule Booking / Reservation ─────────────────────────────
@@ -435,14 +475,18 @@ export class ConversationOrchestrator {
       'different time', 'another time', 'change the date',
     ];
     if (RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeRescheduleBookingOrReservation(context);
-      return {
-        replyText: result.message,
-        intentDetected: 'RESCHEDULE_BOOKING',
-        confidenceScore: 0.96,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
-      };
+      try {
+        const result = await this.executeRescheduleBookingOrReservation(context);
+        return {
+          replyText: result.message,
+          intentDetected: 'RESCHEDULE_BOOKING',
+          confidenceScore: 0.96,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('RESCHEDULE_BOOKING', err);
+      }
     }
 
     // ── 8. Tool: Request Refund ───────────────────────────────────────────────
@@ -452,39 +496,51 @@ export class ConversationOrchestrator {
       'return my money', 'reimburse', 'reimbursement',
     ];
     if (REFUND_PHRASES.some((p) => lowerInput.includes(p))) {
-      const result = await this.executeRequestRefund(context, cleanInput);
-      return {
-        replyText: result.message,
-        intentDetected: 'REQUEST_REFUND',
-        confidenceScore: 0.97,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'request_refund', result }],
-      };
+      try {
+        const result = await this.executeRequestRefund(context, cleanInput);
+        return {
+          replyText: result.message,
+          intentDetected: 'REQUEST_REFUND',
+          confidenceScore: 0.97,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'request_refund', result }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_REFUND', err);
+      }
     }
 
     const QUOTATION_PHRASES = ['quotation', 'price quote', 'how much for', 'billing breakdown', 'get a quote', 'cost of', 'pricing'];
     if (QUOTATION_PHRASES.some((p) => lowerInput.includes(p))) {
-      const quoteResult = await this.executeGenerateQuotation(context, cleanInput);
-      return {
-        replyText: quoteResult.summaryText,
-        intentDetected: 'REQUEST_QUOTATION',
-        confidenceScore: 0.96,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'request_quotation', result: quoteResult }],
-      };
+      try {
+        const quoteResult = await this.executeGenerateQuotation(context, cleanInput);
+        return {
+          replyText: quoteResult.summaryText,
+          intentDetected: 'REQUEST_QUOTATION',
+          confidenceScore: 0.96,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'request_quotation', result: quoteResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_QUOTATION', err);
+      }
     }
 
     // ── 10. Tool: Support Ticket ───────────────────────────────────────────────
     const TICKET_PHRASES = ['file a complaint', 'open ticket', 'issue with service', 'report problem', 'complaint', 'not working', 'broken'];
     if (TICKET_PHRASES.some((p) => lowerInput.includes(p))) {
-      const ticketResult = await this.executeCreateTicket(context, cleanInput);
-      return {
-        replyText: `I've opened support ticket *#${ticketResult.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
-        intentDetected: 'CREATE_TICKET',
-        confidenceScore: 0.95,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'create_support_ticket', result: ticketResult }],
-      };
+      try {
+        const ticketResult = await this.executeCreateTicket(context, cleanInput);
+        return {
+          replyText: `I've opened support ticket *#${ticketResult.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
+          intentDetected: 'CREATE_TICKET',
+          confidenceScore: 0.95,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'create_support_ticket', result: ticketResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('CREATE_TICKET', err);
+      }
     }
 
     // ── 11. Tool: AI Service Payment Guidance & Account Details ────────────────
@@ -494,14 +550,18 @@ export class ConversationOrchestrator {
       'transfer details', 'pay now', 'make payment', 'send payment details', 'how much to pay'
     ];
     if (PAYMENT_GUIDANCE_PHRASES.some((p) => lowerInput.includes(p))) {
-      const guidanceResult = await this.executeProvidePaymentGuidance(context);
-      return {
-        replyText: guidanceResult.replyText,
-        intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
-        confidenceScore: 0.98,
-        shouldHandoff: false,
-        toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
-      };
+      try {
+        const guidanceResult = await this.executeProvidePaymentGuidance(context);
+        return {
+          replyText: guidanceResult.replyText,
+          intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
+          confidenceScore: 0.98,
+          shouldHandoff: false,
+          toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result: guidanceResult }],
+        };
+      } catch (err) {
+        return this.toolFailureReply('PROVIDE_PAYMENT_GUIDANCE', err);
+      }
     }
 
     // ── 11. RAG Knowledge Search ──────────────────────────────────────────────
