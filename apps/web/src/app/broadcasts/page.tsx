@@ -65,8 +65,8 @@ export default function BroadcastsPage() {
   const [tplName, setTplName] = useState('');
   const [tplCategory, setTplCategory] = useState('MARKETING');
   const [tplLanguage, setTplLanguage] = useState('en_US');
-  const [tplBody, setTplBody] = useState('Hello {{1}}, thank you for choosing ACE Customer Care! We have an exclusive offer for you.');
-  const [tplFooter, setTplFooter] = useState('Customer Care Agent • Reply STOP to unsubscribe');
+  const [tplBody, setTplBody] = useState('Hello {{1}}, thank you for choosing us! We have an exclusive offer for you.');
+  const [tplFooter, setTplFooter] = useState('Reply STOP to unsubscribe');
   const [creatingTemplate, setCreatingTemplate] = useState(false);
 
   // Broadcast Form

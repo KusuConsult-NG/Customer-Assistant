@@ -85,7 +85,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md space-y-8">
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Welcome Back</h2>
-            <p className="text-slate-600 dark:text-slate-400">Sign in to your ACE account</p>
+            <p className="text-slate-600 dark:text-slate-400">Sign in to your account</p>
           </div>
 
           {error && (
