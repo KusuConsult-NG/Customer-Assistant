@@ -16,6 +16,8 @@
     "db:generate": "npm run --prefix packages/database generate",
     "db:push": "npm run --prefix packages/database push",
     "db:seed:gatekipa": "npm run --prefix packages/database seed:gatekipa",
+    "demo:readiness": "node scripts/demo-readiness.js",
+    "verify": "./scripts/verify-all.sh",
     "db:studio": "npm run --prefix packages/database studio",
     "test:packages": "npx jest --config jest.packages.config.js",
     "typecheck": "npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit"

@@ -6,6 +6,9 @@ import {
 } from '@ace/shared-types';
 import { createSelfieRequest, prisma, selfieUploadUrl } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
+import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
+
+export * from './llm';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,8 +40,11 @@ const RAG_TOP_K = 3;
  * These MUST match what document.worker.ts writes, or query vectors will not be
  * comparable with stored ones (Qdrant rejects a dimension mismatch outright).
  */
-const EMBEDDING_MODEL = 'text-embedding-3-small';
-const EMBEDDING_DIMENSIONS = 1536;
+// Read through llmConfig() so a free OpenAI-compatible provider can be used
+// without editing code (see llm.ts). Read per call, not captured at import:
+// tests and scripts set these after this module is loaded.
+const EMBEDDING_MODEL = () => llmConfig().embeddingModel;
+const EMBEDDING_DIMENSIONS = () => llmConfig().embeddingDimensions;
 
 /**
  * Appointment duration in minutes. Should come from organization config in a
@@ -208,18 +214,18 @@ export class QdrantRAGService {
   }
 
   /**
-   * Generate OpenAI text-embedding-3-small vector then query Qdrant.
+   * Generate an embedding vector on the configured provider, then query Qdrant.
    */
   private async vectorSearch(collectionName: string, query: string, topK: number): Promise<QdrantSearchResult[]> {
     // Step 1: Generate embedding
-    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+    const embeddingResponse = await fetch(embeddingsUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.openAiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: EMBEDDING_MODEL,
+        model: EMBEDDING_MODEL(),
         input: query,
       }),
     });
@@ -360,7 +366,7 @@ export class QdrantRAGService {
     const create = await fetch(`${this.qdrantUrl}/collections/${collectionName}`, {
       method: 'PUT',
       headers: this.qdrantHeaders(),
-      body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSIONS, distance: 'Cosine' } }),
+      body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSIONS(), distance: 'Cosine' } }),
     });
     if (!create.ok) {
       throw new Error(
@@ -370,17 +376,17 @@ export class QdrantRAGService {
   }
 
   private async embedBatch(inputs: string[]): Promise<number[][]> {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const res = await fetch(embeddingsUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.openAiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: inputs }),
+      body: JSON.stringify({ model: EMBEDDING_MODEL(), input: inputs }),
     });
 
     if (!res.ok) {
-      throw new Error(`OpenAI Embeddings API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`Embeddings API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
     }
 
     const data: any = await res.json();
@@ -950,14 +956,14 @@ export class ConversationOrchestrator {
             content: m.content,
           }));
 
-        const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        const gptResponse = await fetch(chatCompletionsUrl(), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${openAiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: llmConfig().chatModel,
             max_tokens: 400,
             temperature: 0.6,
             messages: [

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AceLogger } from '../config/logger';
 import { prisma } from '@ace/database';
+import { chatCompletionsUrl, llmConfig } from '@ace/orchestrator';
 import WebSocket from 'ws';
 
 // ─── ElevenLabs model constants ──────────────────────────────────────────────
@@ -286,14 +287,14 @@ export class VoiceAiService {
     if (!process.env.OPENAI_API_KEY || !transcript.trim()) return fallback;
 
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(chatCompletionsUrl(), {
         method:  'POST',
         headers: {
           Authorization:  `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model:           'gpt-4o-mini',
+          model:           llmConfig().chatModel,
           max_tokens:      200,
           response_format: { type: 'json_object' },
           messages: [

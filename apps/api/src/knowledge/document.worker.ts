@@ -40,6 +40,7 @@
  */
 
 import { Worker, Job } from 'bullmq';
+import { embeddingsUrl, llmConfig } from '@ace/orchestrator';
 
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
 const CHUNK_SIZE_CHARS = 1800; // ~450 tokens at ~4 chars/token
@@ -72,25 +73,26 @@ function chunkText(text: string, chunkSize: number = CHUNK_SIZE_CHARS): string[]
 }
 
 /**
- * Generate an embedding vector for a text string using OpenAI.
- * Returns a 1536-dimension float array (text-embedding-3-small output).
+ * Generate an embedding vector for a text string on the configured provider.
+ * Vector width is llmConfig().embeddingDimensions (1536 by default, matching
+ * text-embedding-3-small) and must equal the Qdrant collection's size.
  */
 async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
+  const response = await fetch(embeddingsUrl(), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'text-embedding-3-small',
+      model: llmConfig().embeddingModel,
       input: text.slice(0, 8000), // Max token safety clamp
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`OpenAI Embeddings error ${response.status}: ${errText}`);
+    throw new Error(`Embeddings error ${response.status}: ${errText}`);
   }
 
   const data: any = await response.json();
@@ -99,7 +101,7 @@ async function generateEmbedding(text: string): Promise<number[]> {
 
 /**
  * Ensure the Qdrant collection for an organization exists.
- * Vector dimensions must match the embedding model output (1536 for text-embedding-3-small).
+ * Vector dimensions must match the configured embedding model's output.
  */
 async function ensureQdrantCollection(organizationId: string): Promise<void> {
   const collectionName = `org_${organizationId}`;
@@ -116,7 +118,7 @@ async function ensureQdrantCollection(organizationId: string): Promise<void> {
       headers: qdrantHeaders,
       body: JSON.stringify({
         vectors: {
-          size: 1536,
+          size: llmConfig().embeddingDimensions,
           distance: 'Cosine',
         },
       }),
