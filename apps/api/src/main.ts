@@ -2,7 +2,9 @@
 // JwtStrategy) capture env values at import time, and validateEnvironment()
 // tells the operator to "fix your .env file" — which only works if something
 // actually loads it. Real environment variables always win over .env entries.
-import 'dotenv/config';
+// This resolves the file from the repo root rather than process.cwd(), which
+// is not the root under `turbo run dev`. Must stay the first import.
+import './config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
