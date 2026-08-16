@@ -120,7 +120,7 @@ export default function RegisterPage() {
         
         <div className="relative z-10">
           <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
-            Start Your Journey <br/><span className="text-blue-400">with ACE Today</span>
+            Start Your Journey <br/><span className="text-blue-400">with Customer Care Agent</span>
           </h2>
           <ul className="space-y-4 text-slate-300 text-lg">
             <li className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md space-y-6 py-6">
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Create Account</h2>
-            <p className="text-slate-600 dark:text-slate-400">Join thousands of businesses growing with ACE</p>
+            <p className="text-slate-600 dark:text-slate-400">Join thousands of businesses growing with Customer Care Agent</p>
           </div>
 
           {status === 'success' && (

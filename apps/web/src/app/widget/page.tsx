@@ -285,7 +285,7 @@ export default function WidgetPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#fff" }} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: "15px" }}>ACE Widget</div>
+                      <div style={{ fontWeight: 600, fontSize: "15px" }}>{config.companyName}</div>
                       <div style={{ fontSize: "11px", opacity: 0.8 }}>AI Assistant Online</div>
                     </div>
                   </div>
