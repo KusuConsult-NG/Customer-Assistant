@@ -196,6 +196,13 @@ export default function DashboardPage() {
   const maxVal = weeklyData.length
     ? Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)))
     : 1;
+  // A week of real-but-all-zero days is still nothing to look at. The API
+  // returns seven labelled days from the moment an account exists, so the
+  // "no activity" message never appeared — a new operator saw an axis with
+  // seven invisible bars and no explanation of why the chart looked broken.
+  const hasChartActivity = weeklyData.some(
+    (d: WeeklyDataPoint) => d.whatsapp > 0 || d.voice > 0 || d.web > 0
+  );
   // Use the value the API computes (resolved tickets / total tickets) rather than
   // deriving one from conversations minus open tickets — two unrelated populations,
   // which could produce a negative percentage when tickets outnumbered conversations.
@@ -322,12 +329,17 @@ export default function DashboardPage() {
 
           {/* Bar chart grid */}
           <div className="h-56 flex items-end justify-between gap-3 pt-6 px-2 border-b border-slate-200 dark:border-slate-800/60">
-            {weeklyData.length === 0 && (
-              <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 dark:text-slate-400">
-                No activity recorded in this period yet.
+            {!hasChartActivity && (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-center">
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  No conversations in this period yet
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs">
+                  Volume appears here once customers reach you on WhatsApp, the chat widget, or by phone.
+                </p>
               </div>
             )}
-            {weeklyData.map((d: any, idx: number) => (
+            {hasChartActivity && weeklyData.map((d: any, idx: number) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="w-full max-w-[36px] flex items-end justify-center gap-1 h-full">
                   <div

@@ -42,6 +42,7 @@
 }
 
 html, body {
+  /* No webfont is fetched from a CDN — see the note in layout.tsx. */
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
   transition: background-color 0.2s ease, color 0.2s ease;
