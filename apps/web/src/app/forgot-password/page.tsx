@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
             <Sparkles className="w-7 h-7 text-slate-900 dark:text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Forgot Password</h2>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Forgot Password</h1>
           <p className="text-slate-600 dark:text-slate-400 text-sm">Enter your email to receive a password reset link.</p>
         </div>
 

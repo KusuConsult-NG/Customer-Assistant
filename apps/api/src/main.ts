@@ -60,16 +60,43 @@ async function bootstrap() {
   }
 
   // ── 3. CORS configuration ──────────────────────────────────────────────────
-  // In production, replace '*' with your actual dashboard origin.
-  const allowedOrigin = process.env.CORS_ORIGIN || '*';
-  app.enableCors({
-    origin:         allowedOrigin,
-    credentials:    allowedOrigin !== '*',
-    methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Hub-Signature-256', 'X-Paystack-Signature'],
+  // Two CORS regimes, selected per request path:
+  //
+  //   /api/widget/* — open to EVERY origin, always. These are the public embed
+  //   endpoints: the widget script runs on customers' own websites (any domain),
+  //   and its tenant security is the API key + rate limit, not the Origin header.
+  //   Locking these to CORS_ORIGIN silently breaks the widget on every site the
+  //   moment CORS_ORIGIN is set for production — the exact configuration where
+  //   embeds are demoed. No credentials are ever allowed on this regime.
+  //
+  //   Everything else — locked to CORS_ORIGIN (the dashboard). Accepts a
+  //   comma-separated list so staging + production dashboards can share an API.
+  const allowedOrigins = (process.env.CORS_ORIGIN || '*')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  const dashboardOrigin: string | string[] =
+    allowedOrigins.includes('*') ? '*' : allowedOrigins;
+
+  app.enableCors((req: any, callback: (err: Error | null, options?: any) => void) => {
+    if ((req.url ?? '').startsWith('/api/widget')) {
+      callback(null, {
+        origin:         '*',
+        credentials:    false,
+        methods:        ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type'],
+      });
+      return;
+    }
+    callback(null, {
+      origin:         dashboardOrigin,
+      credentials:    dashboardOrigin !== '*',
+      methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Hub-Signature-256', 'X-Paystack-Signature'],
+    });
   });
 
-  if (allowedOrigin === '*') {
+  if (dashboardOrigin === '*') {
     logger.warn('CORS is open to all origins (CORS_ORIGIN=*). Set CORS_ORIGIN to your dashboard URL in production.');
   }
 
@@ -173,7 +200,7 @@ async function bootstrap() {
 
   logger.log(`🚀 ACE Platform API running at http://0.0.0.0:${port}`);
   logger.log(`📡 Environment: ${process.env.NODE_ENV ?? 'development'}`);
-  logger.log(`🔒 CORS Origin: ${allowedOrigin}`);
+  logger.log(`🔒 CORS Origin: ${Array.isArray(dashboardOrigin) ? dashboardOrigin.join(', ') : dashboardOrigin} (dashboard) · * (/api/widget embeds)`);
   logger.log(`📦 Raw body buffering: ENABLED (required for webhook signature verification) | JSON body limit: ${jsonBodyLimit}`);
   logger.log(`📞 Twilio Media Streams: listening on /telephony/stream/:callSid`);
 }

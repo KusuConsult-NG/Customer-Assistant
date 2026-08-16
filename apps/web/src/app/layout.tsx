@@ -193,9 +193,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <title>ACE Platform — AI-Powered Customer Experience</title>
         <meta name="description" content="Unify your CRM, Knowledge Base, and Omnichannel Communications" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+        {/*
+          No webfont is fetched from a CDN.
+
+          This used to load Inter from fonts.googleapis.com with a
+          render-blocking stylesheet link. That put a third-party request on
+          the critical path of every page: on a machine without internet — an
+          offline demo, a locked-down corporate network, a Nigerian office on a
+          dropped connection — the request hangs or resets and the page renders
+          in a fallback face anyway, just later. It is also a privacy leak, as
+          every visitor's IP reaches Google on every page load.
+
+          The declaration below is unchanged from when the link tag was here,
+          deliberately: it is what already rendered whenever the CDN was slow
+          or blocked, so removing the request changes no metrics. A wider
+          fallback chain was tried and rejected — it re-flowed the sidebar and
+          truncated labels like "WhatsApp Broadcasts". To ship Inter itself,
+          commit the woff2 files and load them with next/font/local —
+          self-hosted, still no CDN.
+        */}
       </head>
       <body className={`min-h-screen flex flex-col antialiased transition-colors duration-200 ${
         theme === 'dark' ? 'bg-[#0b0f19] text-slate-100' : 'bg-slate-50 text-slate-900'

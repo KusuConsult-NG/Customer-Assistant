@@ -6,6 +6,9 @@ import {
 } from '@ace/shared-types';
 import { createSelfieRequest, prisma, selfieUploadUrl } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
+import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
+
+export * from './llm';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,8 +40,11 @@ const RAG_TOP_K = 3;
  * These MUST match what document.worker.ts writes, or query vectors will not be
  * comparable with stored ones (Qdrant rejects a dimension mismatch outright).
  */
-const EMBEDDING_MODEL = 'text-embedding-3-small';
-const EMBEDDING_DIMENSIONS = 1536;
+// Read through llmConfig() so a free OpenAI-compatible provider can be used
+// without editing code (see llm.ts). Read per call, not captured at import:
+// tests and scripts set these after this module is loaded.
+const EMBEDDING_MODEL = () => llmConfig().embeddingModel;
+const EMBEDDING_DIMENSIONS = () => llmConfig().embeddingDimensions;
 
 /**
  * Appointment duration in minutes. Should come from organization config in a
@@ -208,18 +214,18 @@ export class QdrantRAGService {
   }
 
   /**
-   * Generate OpenAI text-embedding-3-small vector then query Qdrant.
+   * Generate an embedding vector on the configured provider, then query Qdrant.
    */
   private async vectorSearch(collectionName: string, query: string, topK: number): Promise<QdrantSearchResult[]> {
     // Step 1: Generate embedding
-    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+    const embeddingResponse = await fetch(embeddingsUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.openAiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: EMBEDDING_MODEL,
+        model: EMBEDDING_MODEL(),
         input: query,
       }),
     });
@@ -360,7 +366,7 @@ export class QdrantRAGService {
     const create = await fetch(`${this.qdrantUrl}/collections/${collectionName}`, {
       method: 'PUT',
       headers: this.qdrantHeaders(),
-      body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSIONS, distance: 'Cosine' } }),
+      body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSIONS(), distance: 'Cosine' } }),
     });
     if (!create.ok) {
       throw new Error(
@@ -370,17 +376,17 @@ export class QdrantRAGService {
   }
 
   private async embedBatch(inputs: string[]): Promise<number[][]> {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const res = await fetch(embeddingsUrl(), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.openAiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: inputs }),
+      body: JSON.stringify({ model: EMBEDDING_MODEL(), input: inputs }),
     });
 
     if (!res.ok) {
-      throw new Error(`OpenAI Embeddings API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`Embeddings API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
     }
 
     const data: any = await res.json();
@@ -474,6 +480,71 @@ export class ConversationOrchestrator {
    * Every tool branch routes failures here: log the real error, reply
    * honestly, hand off to a human.
    */
+  /**
+   * Confident match of the visitor's question against the org's curated FAQ
+   * entries. Deliberately conservative: it answers ONLY when most of an FAQ
+   * question's content words appear in the visitor's message — a weak match
+   * falls through to RAG/LLM rather than risk answering the wrong question
+   * with high confidence. Never throws; any failure just means "no match".
+   */
+  private async tryFaqMatch(
+    organizationId: string,
+    input: string
+  ): Promise<{ answer: string; score: number } | null> {
+    const STOPWORDS = new Set([
+      'what', 'is', 'a', 'an', 'the', 'i', 'you', 'do', 'does', 'how', 'can',
+      'where', 'who', 'to', 'for', 'of', 'in', 'on', 'my', 'your', 'it', 'and',
+      'or', 'me', 'we', 'be', 'are', 'get', 'much', 'about', 'please',
+    ]);
+    const tokenize = (text: string) =>
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+
+    try {
+      const queryTokens = new Set(tokenize(input));
+      if (queryTokens.size === 0) return null;
+
+      const faqs = await prisma.faqEntry.findMany({
+        where: { organizationId, isActive: true },
+        select: { question: true, answer: true, sortOrder: true },
+        orderBy: { sortOrder: 'asc' },
+        take: 300,
+      });
+
+      let best: { answer: string; score: number; overlap: number } | null = null;
+      for (const faq of faqs) {
+        const questionTokens = tokenize(faq.question);
+        if (questionTokens.length === 0) continue;
+        const overlap = questionTokens.filter((t) => queryTokens.has(t)).length;
+        const score = overlap / questionTokens.length;
+        if (score < 0.6) continue;
+        // A single-content-word question ("What is GateKipa?" → {gatekipa})
+        // would otherwise win against EVERY message that mentions the brand.
+        // It only answers when the visitor's message adds nothing beyond that
+        // same word set — "who built gatekipa" must fall through, not get the
+        // what-is answer.
+        if (
+          questionTokens.length === 1 &&
+          ![...queryTokens].every((t) => questionTokens.includes(t))
+        ) {
+          continue;
+        }
+        // More shared content words beats a higher coverage ratio: the pricing
+        // question (2-word overlap) must outrank the brand question (1-word).
+        if (!best || overlap > best.overlap || (overlap === best.overlap && score > best.score)) {
+          best = { answer: faq.answer, score, overlap };
+        }
+      }
+      return best ? { answer: best.answer, score: best.score } : null;
+    } catch {
+      // FAQ lookup is an optimization, never a failure mode — fall through to RAG.
+      return null;
+    }
+  }
+
   private toolFailureReply(intent: string, err: any): OrchestrationResult {
     console.error(JSON.stringify({
       level: 'error',
@@ -767,6 +838,23 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── 10.5 FAQ direct match ────────────────────────────────────────────────
+    // The dashboard's curated FAQ entries were previously dead knowledge: the
+    // RAG path only searches document chunks, so nothing the operator typed
+    // into the FAQ manager ever reached a customer. A confident keyword-overlap
+    // match on a curated Q→A pair beats LLM synthesis anyway — it is the
+    // operator's own wording, deterministic, free, and works with no OpenAI
+    // key configured (the exact state of a fresh demo tenant).
+    const faqMatch = await this.tryFaqMatch(context.organizationId, cleanInput);
+    if (faqMatch) {
+      return {
+        replyText: faqMatch.answer,
+        intentDetected: 'FAQ_MATCH',
+        confidenceScore: faqMatch.score,
+        shouldHandoff: false,
+      };
+    }
+
     // ── 11. RAG Knowledge Search ──────────────────────────────────────────────
     const searchResults = await this.ragService.searchKnowledgeBase(
       context.organizationId,
@@ -868,14 +956,14 @@ export class ConversationOrchestrator {
             content: m.content,
           }));
 
-        const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        const gptResponse = await fetch(chatCompletionsUrl(), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${openAiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: llmConfig().chatModel,
             max_tokens: 400,
             temperature: 0.6,
             messages: [

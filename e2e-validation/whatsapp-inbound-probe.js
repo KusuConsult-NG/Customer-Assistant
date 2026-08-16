@@ -29,8 +29,28 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split('\n'))
 
 const API = process.env.E2E_API_URL || 'http://localhost:4000';
 const { PrismaClient } = require(path.join(ROOT, 'node_modules/@prisma/client'));
+/**
+ * Own pool, deliberately small — the API process holds its own, and both draw
+ * on the same server's connection budget.
+ *
+ * Built with the URL parser rather than string concatenation: appending
+ * '&connection_limit=3' to a DATABASE_URL that has no query string produced
+ * `...&connection_limit=3` as part of the DATABASE NAME, and the probe died
+ * with `database "ace_test&connection_limit=3" does not exist` before running
+ * a single check.
+ */
+const probeDbUrl = (() => {
+  try {
+    const u = new URL(process.env.DATABASE_URL);
+    u.searchParams.set('connection_limit', '3');
+    return u.toString();
+  } catch {
+    return process.env.DATABASE_URL;
+  }
+})();
+
 const prisma = new PrismaClient({
-  datasources: { db: { url: (process.env.DATABASE_URL || '') + '&connection_limit=3' } },
+  datasources: { db: { url: probeDbUrl } },
 });
 
 const results = [];

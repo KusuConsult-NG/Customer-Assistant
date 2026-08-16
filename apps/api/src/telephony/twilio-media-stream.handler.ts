@@ -113,6 +113,8 @@ interface CallSession {
   // Barge-in (FIX 5)
   isTtsSpeaking:      boolean;
   ttsAbortController: AbortController | null;
+  /** Set once a handoff has been acted on, so a later utterance cannot re-trigger it. */
+  handoffAttempted:   boolean;
 }
 
 @Injectable()
@@ -252,6 +254,7 @@ export class TwilioMediaStreamHandler {
       isEnded:             false,
       isTtsSpeaking:       false,
       ttsAbortController:  null,
+      handoffAttempted:    false,
     };
     this.sessions.set(callSid, built);
 
@@ -493,6 +496,25 @@ export class TwilioMediaStreamHandler {
         text,
       );
 
+      // ── Human handoff on a live call ────────────────────────────────────
+      //
+      // The orchestrator's handoff reply says "Connecting you to a live human
+      // agent right away." On chat and WhatsApp that is true: the conversation
+      // is flagged and an agent takes over in the console. On a phone call
+      // nothing used to happen at all — the sentence was spoken and the AI
+      // carried on talking to a caller who had just asked for a person. The
+      // one promise this product must never break, broken on the one channel
+      // where the customer is waiting in real time.
+      //
+      // Act first, announce second. The transfer is attempted before anything
+      // is said, and what the caller hears depends on whether it worked, so a
+      // failed redirect can never leave them holding a promise.
+      if (result.shouldHandoff && !session.handoffAttempted) {
+        session.handoffAttempted = true;
+        await this.handOffCallToHuman(session, twilioWs, text);
+        return;
+      }
+
       if (!result.replyText) return;
 
       session.conversationHistory.push({
@@ -530,6 +552,133 @@ export class TwilioMediaStreamHandler {
   }
 
   // ─── Silence watchdog (FIX 8) ────────────────────────────────────────────
+
+  /**
+   * Puts a caller through to a person, or tells them honestly why it could not
+   * happen. Never both, and never neither.
+   *
+   * Three outcomes, all of them true when spoken:
+   *   TRANSFERRED — Twilio redirected the live call to the organization's
+   *     forwarding number. Twilio's own TwiML speaks the "connecting you"
+   *     line, so it is only ever heard after the redirect was accepted.
+   *   logged     — no forwarding number, or the redirect was refused. A ticket
+   *     is filed so the request reaches a human who can call back, and the
+   *     caller is told that is what happened.
+   *   neither    — even the ticket failed. The caller is told that too. An
+   *     apology the customer can act on beats a reassurance that is false.
+   */
+  private async handOffCallToHuman(
+    session: CallSession,
+    twilioWs: WebSocket,
+    lastUtterance: string
+  ): Promise<void> {
+    const forwardingNumber = session.carrier.forwardingNumber;
+
+    const outcome = forwardingNumber
+      ? await this.voiceAiService.transferCallToHuman(
+          session.callSid,
+          session.carrier,
+          forwardingNumber,
+          session.toNumber
+        )
+      : 'FAILED';
+
+    this.broadcast.emit(session.callSid, 'human_handoff', {
+      callSid: session.callSid,
+      transferred: outcome === 'TRANSFERRED',
+      reason: forwardingNumber ? undefined : 'no forwarding number configured',
+    });
+
+    if (outcome === 'TRANSFERRED') {
+      this.logger.info('voice_handoff_transferred', { callSid: session.callSid });
+      session.conversationHistory.push({
+        sender: MessageSender.AI,
+        content: '[Call transferred to a human agent]',
+        timestamp: new Date(),
+      });
+      // The call now belongs to Twilio's <Dial>. Stop speaking over it and let
+      // teardown record the transcript; Twilio closes the media stream itself.
+      if (session.ttsAbortController) session.ttsAbortController.abort();
+      return;
+    }
+
+    // Could not transfer. Leave a record a human will actually see, then say
+    // precisely what did happen.
+    let ticketNumber: string | null = null;
+    try {
+      const contact = await prisma.contact.upsert({
+        where: {
+          organizationId_phoneNumber: {
+            organizationId: session.organizationId,
+            phoneNumber: session.fromNumber,
+          },
+        },
+        update: {},
+        create: {
+          organizationId: session.organizationId,
+          phoneNumber: session.fromNumber,
+          fullName: `Caller ${session.fromNumber.slice(-4)}`,
+        },
+      });
+
+      const ticket = await prisma.ticket.create({
+        data: {
+          organizationId: session.organizationId,
+          contactId: contact.id,
+          ticketNumber: `TCK-${Date.now().toString().slice(-6)}`,
+          subject: 'Caller asked to speak to a human',
+          description:
+            `A caller on ${session.fromNumber} asked to be put through to a person, but the call ` +
+            `could not be transferred (${forwardingNumber ? 'the redirect was refused' : 'no forwarding number is configured'}). ` +
+            `They were told someone would call back.\n\nWhat they said: "${lastUtterance}"`,
+          status: 'OPEN',
+          priority: 'HIGH',
+        },
+      });
+      ticketNumber = ticket.ticketNumber;
+    } catch (err) {
+      this.logger.error('voice_handoff_ticket_failed', err as Error, { callSid: session.callSid });
+    }
+
+    const spoken = ticketNumber
+      ? `I'm sorry — I can't put you through to a colleague on this call. I've logged your request as ` +
+        `reference ${ticketNumber}, and someone will call you back on this number.`
+      : `I'm sorry — I can't put you through to a colleague on this call, and I wasn't able to log your ` +
+        `request either. Please call us back shortly and a member of the team will help you.`;
+
+    this.logger.warn('voice_handoff_not_transferred', {
+      callSid: session.callSid,
+      reason: forwardingNumber ? 'twilio_redirect_failed' : 'no_forwarding_number',
+      ticketNumber: ticketNumber ?? 'none',
+    });
+
+    session.conversationHistory.push({
+      sender: MessageSender.AI,
+      content: spoken,
+      timestamp: new Date(),
+    });
+
+    const ctrl = new AbortController();
+    session.ttsAbortController = ctrl;
+    session.isTtsSpeaking = true;
+    try {
+      await this.voiceAiService.streamTTSToTwilio(
+        spoken,
+        session.streamSid,
+        twilioWs,
+        ctrl.signal,
+        session.language
+      );
+    } finally {
+      session.isTtsSpeaking = false;
+      session.ttsAbortController = null;
+    }
+
+    this.broadcast.emit(session.callSid, 'ai_audio_response', {
+      callSid: session.callSid,
+      text: spoken,
+    });
+  }
 
   private resetSilenceWatchdog(session: CallSession, twilioWs: WebSocket): void {
     if (session.silenceTimer)  clearTimeout(session.silenceTimer);

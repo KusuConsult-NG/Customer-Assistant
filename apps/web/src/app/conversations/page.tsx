@@ -175,6 +175,8 @@ export default function ConversationsPage() {
 
   if (conversations.length === 0) {
     return (
+      <>
+      <h1 className="sr-only">Live Conversations</h1>
       <SharedEmptyState
         icon={MessageCircle}
         title="No conversations yet"
@@ -185,6 +187,7 @@ export default function ConversationsPage() {
           { label: 'Set up a phone number', href: '/telephony' },
         ]}
       />
+      </>
     );
   }
 
@@ -192,6 +195,13 @@ export default function ConversationsPage() {
 
   return (
     <div className="flex h-[calc(100vh-80px)] -m-6 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      {/*
+        This screen is a full-bleed split pane, so it has no room for a visible
+        page title — but it still needs one. Without it the only h1 in the
+        document is the app shell's "ACE Platform", so a screen reader announces
+        every route identically and landmark navigation has nothing to jump to.
+      */}
+      <h1 className="sr-only">Live Conversations</h1>
       {/* Left Panel - Conversation List */}
       <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-white dark:bg-slate-900 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">

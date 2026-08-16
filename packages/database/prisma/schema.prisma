@@ -153,6 +153,14 @@ model Organization {
   logoUrl              String?
   aiPersonaPrompt      String?      @db.Text
   welcomeMessage       String?      @db.Text
+  // ─── Embedded widget appearance ────────────────────────────────────────────
+  // The Widget Generator page offered colour and position controls that had
+  // nowhere to persist to — the API returned hardcoded values, so an operator
+  // could set their brand colour, get a "saved" toast, and see nothing change
+  // on their site. These columns are where those controls now land.
+  widgetPrimaryColor   String?
+  widgetSecondaryColor String?
+  widgetPosition       String?      @default("bottom-right")
   // ─── Subscription & Billing ────────────────────────────────────────────────
   // Updated by BillingService when Paystack fires charge.success webhook.
   // subscriptionPlan matches SubscriptionPlan enum values: STARTER | PROFESSIONAL | BUSINESS | ENTERPRISE

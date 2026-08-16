@@ -38,8 +38,28 @@ const LOG_PATH = process.env.API_LOG_PATH || '/tmp/api.log';
 const WS_BASE = API.replace(/^http/, 'ws');
 const { PrismaClient } = require(path.join(ROOT, 'node_modules/@prisma/client'));
 
+/**
+ * Own pool, deliberately small — the API process holds its own, and both draw
+ * on the same server's connection budget.
+ *
+ * Built with the URL parser rather than string concatenation: appending
+ * '&connection_limit=3' to a DATABASE_URL that has no query string produced
+ * `...&connection_limit=3` as part of the DATABASE NAME, and the probe died
+ * with `database "ace_test&connection_limit=3" does not exist` before running
+ * a single check.
+ */
+const probeDbUrl = (() => {
+  try {
+    const u = new URL(process.env.DATABASE_URL);
+    u.searchParams.set('connection_limit', '3');
+    return u.toString();
+  } catch {
+    return process.env.DATABASE_URL;
+  }
+})();
+
 const prisma = new PrismaClient({
-  datasources: { db: { url: (process.env.DATABASE_URL || '') + '&connection_limit=3' } },
+  datasources: { db: { url: probeDbUrl } },
 });
 
 const results = [];
@@ -107,6 +127,36 @@ function linearToUlaw(sample) {
 
 (async () => {
   console.log(`\n\x1b[1mVoice AI Call Probe\x1b[0m  target=${API}\n`);
+
+  // ── Preflight: can this environment certify voice at all? ─────────────────
+  //
+  // Every check below drives the real carrier pipeline, which needs real
+  // credentials: Twilio's auth token to sign the webhook exactly as Twilio
+  // does, and Deepgram + ElevenLabs for the call to produce any audio.
+  //
+  // Without them the probe used to report FAIL — "ZERO audio frames, a real
+  // caller would hear silence" — which reads as a defect in the product. It
+  // is not. It is an unconfigured environment, and the two must never look
+  // alike: a FAIL sends someone hunting a bug that does not exist, and it
+  // would also mask a real one the day it appears. Missing prerequisites
+  // BLOCK, exactly like the storage-dependent checks in the main harness.
+  const missing = [];
+  if (!process.env.TWILIO_AUTH_TOKEN) missing.push('TWILIO_AUTH_TOKEN (to sign the inbound webhook as Twilio does)');
+  if (!process.env.DEEPGRAM_API_KEY) missing.push('DEEPGRAM_API_KEY (speech-to-text)');
+  if (!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY (the voice the caller hears)');
+
+  if (missing.length) {
+    console.log('  \x1b[33mBLOCKED\x1b[0m — voice cannot be certified in this environment.\n');
+    for (const m of missing) console.log(`    · not set: ${m}`);
+    console.log('\n  Nothing here says the voice pipeline is broken. It says it was not exercised.');
+    console.log('  Set the variables above against a Twilio trial + free Deepgram/ElevenLabs tiers');
+    console.log('  and re-run to get a real verdict.\n');
+    console.log('═'.repeat(74));
+    console.log('VOICE PROBE  0 checks run   BLOCKED (prerequisites missing)');
+    console.log('═'.repeat(74) + '\n');
+    await prisma.$disconnect();
+    process.exit(0);
+  }
 
   // ── Fixture: an organization with a telephony config ──────────────────────
   let org, config, phoneNumber;
@@ -297,7 +347,20 @@ function linearToUlaw(sample) {
   // server should redirect the live call — to a human if a forwarding number is set,
   // otherwise to an apology and a hang-up.
   if (inbound.media === 0) {
-    const log = fs.readFileSync(LOG_PATH, 'utf8').slice(-40000);
+    // The rescue path is only observable in the API's own log. If the probe
+    // cannot read it, that is a missing input, not a missing rescue — say so
+    // instead of dying with an ENOENT stack trace mid-run.
+    let log = null;
+    try {
+      log = fs.readFileSync(LOG_PATH, 'utf8').slice(-40000);
+    } catch {
+      record('VOICE-007', 'A mute AI is detected and the call is rescued', {
+        blocked: `Cannot read the API log at ${LOG_PATH} — set API_LOG_PATH to the file the API writes to. The rescue path is only visible there.`,
+      });
+    }
+    if (log === null) {
+      // fall through to cleanup without asserting on evidence we do not have
+    } else {
     const detected = /voice_ai_mute/.test(log);
     const recovered = /call_recovered_without_ai/.test(log);
     const attempted = /call_recovery_failed|call_recovery_impossible/.test(log);
@@ -320,6 +383,7 @@ function linearToUlaw(sample) {
       record('VOICE-007', 'A mute AI is detected and the call is rescued', {
         expected: 'a recovery attempt', actual: 'detected but nothing was done about it',
       });
+    }
     }
   }
 
@@ -359,8 +423,9 @@ function linearToUlaw(sample) {
 
   const pass = results.filter((r) => r.status === 'PASS').length;
   const fail = results.filter((r) => r.status === 'FAIL').length;
+  const blocked = results.filter((r) => r.status === 'BLOCKED').length;
   console.log('\n' + '═'.repeat(74));
-  console.log(`VOICE PROBE  ${results.length} checks   PASS ${pass}   FAIL ${fail}`);
+  console.log(`VOICE PROBE  ${results.length} checks   PASS ${pass}   FAIL ${fail}   BLOCKED ${blocked}`);
   console.log('═'.repeat(74) + '\n');
 
   await prisma.$disconnect();

@@ -29,7 +29,14 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'JWT_REFRESH_SECRET', required: true, description: 'JWT refresh signing secret', rejectPlaceholder: true },
 
   // ─── AI Provider ─────────────────────────────────────────────────────────────
-  { key: 'OPENAI_API_KEY', required: true, description: 'OpenAI API key for LLM + Embeddings', rejectPlaceholder: true },
+  // The key authenticates whichever OpenAI-COMPATIBLE provider LLM_BASE_URL
+  // points at — OpenAI itself by default, or a free-tier provider serving the
+  // same wire format (Groq, Gemini's OpenAI-compat endpoint, OpenRouter).
+  { key: 'OPENAI_API_KEY', required: true, description: 'API key for the OpenAI-compatible LLM provider', rejectPlaceholder: true },
+  { key: 'LLM_BASE_URL', required: false, description: 'OpenAI-compatible API base URL (default https://api.openai.com/v1)' },
+  { key: 'LLM_CHAT_MODEL', required: false, description: 'Chat model id on that provider (default gpt-4o-mini)' },
+  { key: 'EMBEDDING_MODEL', required: false, description: 'Embedding model id (default text-embedding-3-small)' },
+  { key: 'EMBEDDING_DIMENSIONS', required: false, description: 'Embedding vector width; must match the Qdrant collection (default 1536)' },
 
   // ─── WhatsApp / Meta ─────────────────────────────────────────────────────────
   { key: 'WHATSAPP_APP_SECRET', required: true, description: 'Meta App Secret for X-Hub-Signature-256 verification', rejectPlaceholder: true },

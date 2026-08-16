@@ -85,9 +85,12 @@ export class WidgetService {
       organizationName: org.name,
       welcomeMessage: org.welcomeMessage || 'Hello! How can we assist you today?',
       logoUrl: org.logoUrl || null,
-      primaryColor: '#3b82f6',
-      secondaryColor: '#1e40af',
-      position: 'bottom-right',
+      // The organization's saved appearance, falling back to the platform
+      // default. These were hardcoded, which silently discarded whatever the
+      // operator configured on the Widget Generator page.
+      primaryColor: org.widgetPrimaryColor || '#3b82f6',
+      secondaryColor: org.widgetSecondaryColor || '#1e40af',
+      position: org.widgetPosition || 'bottom-right',
       enableChat: true,
       // Voice calling from the widget has no implementation behind it (there is no
       // WebRTC or click-to-call endpoint), so it is not advertised as available.

@@ -236,6 +236,13 @@ export default function AgentConsolePage() {
 
   return (
     <div className="flex h-[calc(100vh-8.5rem)] gap-4">
+      {/*
+        Full-height split pane with no room for a visible title, but it still
+        needs a page heading: without one the document's only h1 is the app
+        shell's "ACE Platform", so every route announces identically to a
+        screen reader.
+      */}
+      <h1 className="sr-only">Agent Console</h1>
       {/* Left: Conversation List */}
       <div className="w-80 flex-shrink-0 flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900/80 overflow-hidden">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
