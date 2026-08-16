@@ -14,8 +14,12 @@ export default function WidgetPage() {
     secondaryColor: "#1e40af",
     position: "bottom-right",
     enableChat: true,
-    companyName: "Kusu Consult",
+    // Empty until the org loads. This used to default to a real company's name,
+    // so whenever /organizations/me failed the page showed someone else's brand
+    // as if it were the tenant's own widget configuration.
+    companyName: "",
   });
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState(false);
   // Null until a key is generated. The previous default was the literal string
@@ -40,8 +44,17 @@ export default function WidgetPage() {
           ...(org?.widgetSecondaryColor && { secondaryColor: org.widgetSecondaryColor }),
           ...(org?.widgetPosition && { position: org.widgetPosition }),
         }));
-      } catch (e) {
+        setLoadError(null);
+      } catch (e: any) {
+        // Say so. Falling through silently leaves the defaults on screen looking
+        // like saved settings, and the operator copies an embed snippet for a
+        // configuration that was never loaded.
         console.error(e);
+        setLoadError(
+          e?.message === 'Failed to fetch'
+            ? 'Cannot reach the API. Your saved widget settings are not shown below.'
+            : `Could not load your widget settings: ${e?.message ?? 'unknown error'}`
+        );
       }
     }
     loadData();
@@ -124,6 +137,19 @@ export default function WidgetPage() {
           {saving ? "Saving..." : "Save Settings"}
         </button>
       </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          className="mx-6 mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <strong className="font-semibold">{loadError}</strong>
+          <span className="block mt-1 opacity-90">
+            The fields below are defaults, not your saved configuration. Saving now would
+            overwrite what is stored.
+          </span>
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
         {/* Left config */}
@@ -285,7 +311,9 @@ export default function WidgetPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#fff" }} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: "15px" }}>{config.companyName}</div>
+                      <div style={{ fontWeight: 600, fontSize: "15px" }}>
+                        {config.companyName || "Your business name"}
+                      </div>
                       <div style={{ fontSize: "11px", opacity: 0.8 }}>AI Assistant Online</div>
                     </div>
                   </div>
