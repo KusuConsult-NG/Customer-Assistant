@@ -143,7 +143,7 @@ export class OrganizationsService {
       try {
         const resend = new Resend(resendKey);
         await resend.emails.send({
-          from: 'Customer Care Agent <noreply@aceplatform.io>',
+          from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
           to: user.email,
           subject: `You've been invited to join ${org?.name || 'Customer Care Agent'}`,
           html: `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p><p><a href="${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account?token=${rawToken}&email=${encodeURIComponent(user.email)}">Click here to set up your account</a></p>`,

@@ -38,7 +38,7 @@ export class AuthService {
     }
     try {
       await new Resend(resendKey).emails.send({
-        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@aceplatform.io>',
+        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
         to,
         subject,
         html,
