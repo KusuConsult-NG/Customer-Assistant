@@ -22,6 +22,11 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split('\n'))
   process.env[t.slice(0, i).trim()] = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
 }
 
+const { assertLocalDatabase } = require('./../scripts/guard-production-db');
+
+// This harness registers real organizations through the real API.
+assertLocalDatabase('the E2E validation harness');
+
 const API = process.env.E2E_API_URL || 'http://localhost:4000';
 const { PrismaClient } = require(path.join(ROOT, 'node_modules/@prisma/client'));
 

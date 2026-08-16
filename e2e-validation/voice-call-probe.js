@@ -32,6 +32,10 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split('\n'))
   process.env[t.slice(0, i).trim()] = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
 }
 
+const { assertLocalDatabase } = require('./../scripts/guard-production-db');
+
+assertLocalDatabase('the voice call probe');
+
 const API = process.env.E2E_API_URL || 'http://localhost:4000';
 /** Where the API under test writes its log — the probe reads it to confirm recovery. */
 const LOG_PATH = process.env.API_LOG_PATH || '/tmp/api.log';

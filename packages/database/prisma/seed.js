@@ -6,6 +6,10 @@ const { PrismaClient } = require('@prisma/client');
 const { randomBytes } = require('crypto');
 const bcrypt = require('bcryptjs');
 
+const { assertLocalDatabase } = require('../../../scripts/guard-production-db');
+
+assertLocalDatabase('the full database seed');
+
 const prisma = new PrismaClient();
 
 function generateId() {

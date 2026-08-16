@@ -27,6 +27,12 @@ const { PrismaClient } = require('@prisma/client');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
+const { assertLocalDatabase } = require('../../../scripts/guard-production-db');
+
+// Seeding a demo tenant into production is a real thing to want, so this
+// asks rather than forbids: ALLOW_PRODUCTION_DB=1 lets it through.
+assertLocalDatabase('the GateKipa demo seed');
+
 const prisma = new PrismaClient();
 
 const DEMO_OWNER_EMAIL = 'demo@gatekipa.com';

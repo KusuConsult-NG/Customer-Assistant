@@ -29,6 +29,11 @@ if [ -f .env ]; then
   done < .env
 fi
 
+# Every layer below this line writes real rows: Jest, the harness and the
+# probes all register organizations through the real API. Stop before the
+# first one if that would land in a hosted database.
+node "$(dirname "$0")/guard-production-db.js" "the verification suite" || exit 1
+
 API_URL="${E2E_API_URL:-http://localhost:4000}"
 WEB_URL="${PLAYWRIGHT_TEST_BASE_URL:-http://localhost:3000}"
 

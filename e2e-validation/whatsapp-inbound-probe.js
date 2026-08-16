@@ -27,6 +27,10 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split('\n'))
   process.env[t.slice(0, i).trim()] = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
 }
 
+const { assertLocalDatabase } = require('./../scripts/guard-production-db');
+
+assertLocalDatabase('the WhatsApp inbound probe');
+
 const API = process.env.E2E_API_URL || 'http://localhost:4000';
 const { PrismaClient } = require(path.join(ROOT, 'node_modules/@prisma/client'));
 /**
