@@ -1,84 +1,93 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- Remove test-suite organizations by KEEPING a short list, not by matching a
--- pattern.
+-- Remove test-suite organizations, keeping a short list you name.
 --
--- Why this shape. There are ~100 fixture organizations and a handful of real
--- ones, so listing every id to delete is impractical and easy to get wrong.
--- Pattern matching is worse: tested against a database with a real tenant
--- named "E2E Logistics Ltd", a `slug LIKE 'e2e-%'` delete removed it and
--- cascaded away its customers. And a name-based guess is unreliable in the
--- other direction too — "AuthOrg …", "Ọlámidé 北京 🚀 Ltd", "LockDbg" and
--- "Automated Testing Org" all read as plausible businesses and are all
--- fixtures from the auth suite.
+-- Written for the Supabase SQL editor, which AUTOCOMMITS each statement. That
+-- rules out the obvious shape: a TEMP TABLE holding the keep list is dropped
+-- the moment its own CREATE commits, and every later statement then fails with
+-- `relation "keep" does not exist`. An explicit BEGIN/ROLLBACK is not honoured
+-- there either, so a "dry run" that relies on rolling back is not a dry run.
 --
--- So: you name what SURVIVES. Everything else goes. Reviewing three ids you
--- recognise is a judgement you can actually make; reviewing a hundred you
--- cannot.
+-- So each step below is a single self-contained statement, the keep list is
+-- repeated inline in each one, and STEP 1 is read-only. The safety checks live
+-- INSIDE the DELETE in STEP 2 rather than in separate guard statements, so
+-- they cannot be skipped or lost between statements.
 --
 -- Deleting an organization cascades to its users, contacts, bookings,
 -- conversations, messages, tickets, workflows, API keys and call logs.
---
--- HOW TO RUN
---   1. Take a Supabase snapshot. This is not reversible after COMMIT.
---   2. Put every organization you want to keep in the INSERT below.
---   3. Run the whole block. It ends in ROLLBACK, so nothing is destroyed —
---      read the two result tables it prints.
---   4. When the survivor list is exactly right, change ROLLBACK to COMMIT
---      and run it once more.
 -- ═══════════════════════════════════════════════════════════════════════════
 
-BEGIN;
 
-CREATE TEMP TABLE keep (id TEXT PRIMARY KEY) ON COMMIT DROP;
+-- ═══ STEP 1 · Preview. Read-only. Run this first. ══════════════════════════
+-- Edit the ARRAY to list every organization you want to KEEP.
 
--- ─── The organizations that SURVIVE. Everything not listed is deleted. ─────
-INSERT INTO keep (id) VALUES
-  ('c7d579918475b69f735af346')   -- Kusu Consult · created 2 Aug, 4 users, 9 contacts, 5 bookings
-  -- ,('...')                    -- add another id per line if you have more real tenants
-;
+WITH keep AS (
+  SELECT unnest(ARRAY[
+    'c7d579918475b69f735af346'    -- Kusu Consult
+    -- ,'paste-another-id-here'
+  ]::text[]) AS id
+)
+SELECT
+  CASE WHEN o.id IN (SELECT id FROM keep) THEN '✅ KEEP' ELSE '🗑 DELETE' END AS action,
+  count(*)                                                                    AS organizations,
+  COALESCE(sum((SELECT count(*) FROM contacts      c  WHERE c."organizationId"  = o.id)), 0) AS contacts,
+  COALESCE(sum((SELECT count(*) FROM bookings      b  WHERE b."organizationId"  = o.id)), 0) AS bookings,
+  COALESCE(sum((SELECT count(*) FROM conversations cv WHERE cv."organizationId" = o.id)), 0) AS conversations,
+  COALESCE(sum((SELECT count(*) FROM users         u  WHERE u."organizationId"  = o.id)), 0) AS users
+FROM organizations o
+GROUP BY 1
+ORDER BY 1;
 
--- ─── Guard: an empty keep list would delete every tenant you have. ─────────
-DO $$
-BEGIN
-  IF (SELECT count(*) FROM keep) = 0 THEN
-    RAISE EXCEPTION 'Keep list is empty — refusing to delete every organization.';
-  END IF;
-END $$;
 
--- ─── Guard: every id in the keep list must actually exist. A typo would ────
--- otherwise silently drop a real tenant into the delete set.
-DO $$
-DECLARE missing TEXT;
-BEGIN
-  SELECT string_agg(k.id, ', ') INTO missing
-  FROM keep k LEFT JOIN organizations o ON o.id = k.id
-  WHERE o.id IS NULL;
+-- ═══ STEP 1b · The organizations that will SURVIVE, listed individually. ═══
+-- This is the list that matters. If anything here is wrong, stop.
 
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'These keep-list ids do not exist (typo?): %', missing;
-  END IF;
-END $$;
-
--- ─── What survives. Check this list first — it is the whole point. ─────────
-SELECT 'SURVIVES' AS outcome, o.slug, o.name, o."createdAt"::date AS created,
-       (SELECT count(*) FROM contacts c WHERE c."organizationId" = o.id) AS contacts
+WITH keep AS (
+  SELECT unnest(ARRAY[
+    'c7d579918475b69f735af346'    -- Kusu Consult
+    -- ,'paste-another-id-here'
+  ]::text[]) AS id
+)
+SELECT
+  o.id, o.slug, o.name, o."createdAt"::date AS created,
+  (SELECT count(*) FROM users    u WHERE u."organizationId" = o.id) AS users,
+  (SELECT count(*) FROM contacts c WHERE c."organizationId" = o.id) AS contacts,
+  (SELECT count(*) FROM bookings b WHERE b."organizationId" = o.id) AS bookings
 FROM organizations o
 WHERE o.id IN (SELECT id FROM keep)
 ORDER BY o."createdAt";
 
--- ─── What goes, and how much of it. ────────────────────────────────────────
-SELECT 'DELETED' AS outcome,
-       count(*)                                                   AS organizations,
-       (SELECT count(*) FROM contacts      WHERE "organizationId" NOT IN (SELECT id FROM keep)) AS contacts,
-       (SELECT count(*) FROM bookings      WHERE "organizationId" NOT IN (SELECT id FROM keep)) AS bookings,
-       (SELECT count(*) FROM conversations WHERE "organizationId" NOT IN (SELECT id FROM keep)) AS conversations,
-       (SELECT count(*) FROM users         WHERE "organizationId" NOT IN (SELECT id FROM keep)) AS users
-FROM organizations
-WHERE id NOT IN (SELECT id FROM keep);
 
-DELETE FROM organizations WHERE id NOT IN (SELECT id FROM keep);
+-- ═══ STEP 2 · Delete. DESTRUCTIVE, and there is no rollback here. ══════════
+--
+-- Take a Supabase snapshot before running this.
+--
+-- The two guards are part of the statement:
+--   · every id in the list must exist — if one is a typo the counts will not
+--     match, the condition is false for every row, and NOTHING is deleted
+--     rather than a real tenant being swept in alongside the fixtures;
+--   · an empty list makes array_length NULL, so the condition is NULL, and
+--     again nothing is deleted rather than everything.
+--
+-- Use the SAME array as STEP 1. If you edited it there, edit it here too.
 
--- ─── The database as it will be. ───────────────────────────────────────────
-SELECT 'REMAINING' AS state, slug, name FROM organizations ORDER BY "createdAt";
+-- DELETE FROM organizations
+-- WHERE id <> ALL (ARRAY[
+--         'c7d579918475b69f735af346'    -- Kusu Consult
+--         -- ,'paste-another-id-here'
+--       ]::text[])
+--   AND (
+--         SELECT count(*) FROM organizations
+--         WHERE id = ANY (ARRAY[
+--           'c7d579918475b69f735af346'
+--           -- ,'paste-another-id-here'
+--         ]::text[])
+--       ) = array_length(ARRAY[
+--           'c7d579918475b69f735af346'
+--           -- ,'paste-another-id-here'
+--         ]::text[], 1);
 
-ROLLBACK;   -- ← change to COMMIT when the lists above are exactly right
+
+-- ═══ STEP 3 · Confirm. Read-only. Run after STEP 2. ════════════════════════
+-- SELECT id, slug, name, "createdAt"::date AS created
+-- FROM organizations
+-- ORDER BY "createdAt";
