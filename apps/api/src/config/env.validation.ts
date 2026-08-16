@@ -100,7 +100,7 @@ export function validateEnvironment(): void {
   if (errors.length > 0) {
     logger.error(
       `\n╔═══════════════════════════════════════════════════════════════╗\n` +
-      `║         ACE Platform: STARTUP CONFIGURATION ERRORS            ║\n` +
+      `║   Customer Care Agent: STARTUP CONFIGURATION ERRORS           ║\n` +
       `╠═══════════════════════════════════════════════════════════════╣\n` +
       `${errors.join('\n')}\n` +
       `╚═══════════════════════════════════════════════════════════════╝\n` +

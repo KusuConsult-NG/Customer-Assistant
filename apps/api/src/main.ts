@@ -198,7 +198,7 @@ async function bootstrap() {
     });
   });
 
-  logger.log(`🚀 ACE Platform API running at http://0.0.0.0:${port}`);
+  logger.log(`🚀 Customer Care Agent API running at http://0.0.0.0:${port}`);
   logger.log(`📡 Environment: ${process.env.NODE_ENV ?? 'development'}`);
   logger.log(`🔒 CORS Origin: ${Array.isArray(dashboardOrigin) ? dashboardOrigin.join(', ') : dashboardOrigin} (dashboard) · * (/api/widget embeds)`);
   logger.log(`📦 Raw body buffering: ENABLED (required for webhook signature verification) | JSON body limit: ${jsonBodyLimit}`);
@@ -206,6 +206,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error('Fatal: ACE Platform failed to start:', err);
+  console.error('Fatal: Customer Care Agent failed to start:', err);
   process.exit(1);
 });

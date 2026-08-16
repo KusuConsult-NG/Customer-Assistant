@@ -114,7 +114,7 @@ export default function RegisterPage() {
             <Sparkles className="w-7 h-7 text-white" />
           </div>
           <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
-            ACE Platform
+            Customer Care Agent
           </h1>
         </div>
         
@@ -139,7 +139,7 @@ export default function RegisterPage() {
         </div>
         
         <div className="relative z-10 text-sm text-slate-400">
-          © 2026 ACE Platform. All rights reserved.
+          © 2026 Customer Care Agent. All rights reserved.
         </div>
       </div>
       

@@ -52,13 +52,13 @@ export default function LoginPage() {
             <Sparkles className="w-7 h-7 text-white" />
           </div>
           <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
-            ACE Platform
+            Customer Care Agent
           </h1>
         </div>
         
         <div className="relative z-10">
           <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
-            AI-Powered Customer Experience <br/><span className="text-blue-400">for Nigerian Businesses</span>
+            AI-Powered Customer Experience <br/><span className="text-blue-400">for Nigerian Businesses and Government MDAs</span>
           </h2>
           <p className="text-slate-300 text-lg max-w-md">
             Unify your CRM, Knowledge Base, and Omnichannel Communications in one premium dashboard.
@@ -76,7 +76,7 @@ export default function LoginPage() {
         </div>
         
         <div className="relative z-10 text-sm text-slate-400">
-          © 2026 ACE Platform. All rights reserved.
+          © 2026 Customer Care Agent. All rights reserved.
         </div>
       </div>
       
