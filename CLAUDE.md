@@ -42,7 +42,11 @@ npx turbo run build
 
 # PostgreSQL 16 must run as a non-root user; Redis is optional but enables
 # BullMQ ingestion, cross-pod Socket.IO, and Redis-backed rate limiting.
-set -a; . ./.env; set +a
+#
+# Do NOT export .env into your shell with `set -a; . ./.env; set +a`. That
+# executes the file, so a password containing ( ) * ! or a space is a syntax
+# error — all legal in a .env, and dotenv reads them fine. Prisma and the API
+# both read the file themselves; `scripts/dev-setup.sh` parses it as text.
 npx prisma db push --schema=packages/database/prisma/schema.prisma
 
 # `db push` CANNOT create the booking EXCLUDE constraint (Prisma cannot express

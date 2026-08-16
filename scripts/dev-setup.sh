@@ -48,8 +48,37 @@ else
   ok ".env already exists (left untouched)"
 fi
 
-set -a; . ./.env; set +a
+# Read .env WITHOUT sourcing it. `. ./.env` executes the file as shell, so a
+# password containing ( ) * ! $ or a space is a syntax error — and those are
+# perfectly legal in a .env, which dotenv reads without complaint. Sourcing
+# also runs anything in the file, which a credentials file has no business
+# doing. Take each line as literal text instead.
+read_env() {
+  # usage: read_env KEY  → prints the value, or nothing
+  sed -n "s/^[[:space:]]*\(export[[:space:]]\+\)\?$1=//p" .env \
+    | tail -1 \
+    | sed -e 's/\r$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+DATABASE_URL=$(read_env DATABASE_URL)
+DIRECT_URL=$(read_env DIRECT_URL)
+REDIS_URL=$(read_env REDIS_URL)
+export DATABASE_URL DIRECT_URL REDIS_URL
+
 [ -n "${DATABASE_URL:-}" ] || die "DATABASE_URL is not set in .env"
+
+# Loud, because this script runs `prisma db push`. The test harness and probes
+# create real organizations through the real API — pointed at production once,
+# they left 358 test organizations and ~13,900 contacts in the live CRM.
+case "$DATABASE_URL" in
+  *supabase.com*|*rds.amazonaws.com*|*neon.tech*|*render.com*)
+    printf "${RED}  ✗${OFF} %s\n" "DATABASE_URL points at a hosted database:"
+    printf "      %s\n" "$(printf '%s' "$DATABASE_URL" | sed 's|://[^@]*@|://***@|')"
+    printf "      %s\n" "This script runs 'prisma db push'. Point .env at a LOCAL database first."
+    printf "      %s\n" "Move the hosted one aside: mv .env .env.production.backup && cp .env.example .env"
+    exit 1
+    ;;
+esac
 # Prisma reads both: pooled for the app, direct for migrations. Locally they
 # point at the same database, but neither may be missing.
 [ -n "${DIRECT_URL:-}" ] || die "DIRECT_URL is not set in .env — Prisma needs it alongside DATABASE_URL (point both at the same database locally)"
@@ -109,11 +138,17 @@ cat <<EOF
 
 ${BOLD}Setup complete. Start the two servers in separate terminals:${OFF}
 
-  ${DIM}# terminal 1 — API on :4000${OFF}
-  set -a; . ./.env; set +a; node apps/api/dist/main.js
+  npm run dev
 
-  ${DIM}# terminal 2 — dashboard on :3000${OFF}
-  cd apps/web && npx next start -p 3000
+${DIM}That runs both: the API on :4000 and the dashboard on :3000, each
+reloading on change. The API finds .env by itself — do not export it
+into your shell first, a password containing ( ) * or ! will not
+survive the round trip.
+
+To run the production build instead of the dev servers:
+
+  node apps/api/dist/main.js
+  cd apps/web && npx next start -p 3000${OFF}
 
 ${BOLD}Then:${OFF}
 
@@ -122,8 +157,11 @@ ${BOLD}Then:${OFF}
   npm run demo:readiness              ${DIM}# what works right now, per capability${OFF}
   npm run verify                      ${DIM}# every test layer${OFF}
 
-${YELLOW}Remember:${OFF} restart ${BOLD}next start${OFF} after any rebuild — it serves the build
-that existed when it booted, and stale chunks 404 in a way that looks
-exactly like a real regression.
+${YELLOW}Remember:${OFF} do not run ${BOLD}npx turbo run build${OFF} while a web server is up.
+${BOLD}next start${OFF} serves the build it booted with, and ${BOLD}next dev${OFF} shares the same
+.next directory — either way the running server starts handing out chunk
+URLs that 404, the page renders blank, and every test fails with
+"element(s) not found" that reads exactly like a real regression.
+Restart the web server after any build.
 
 EOF
