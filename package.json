@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "setup": "./scripts/dev-setup.sh",
     "build": "npx turbo run build",
     "dev": "npx turbo run dev",
     "start": "npx turbo run start",
@@ -27,7 +28,7 @@
     "typescript": "^5.7.3"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "npm": ">=9.0.0"
   },
   "packageManager": "npm@10.8.2"
