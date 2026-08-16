@@ -360,7 +360,7 @@
   function appendMessage(text, sender) {
     const body = document.getElementById('ace-widget-body');
     const msg = document.createElement('div');
-    msg.className = \`ace-widget-message \${sender}\`;
+    msg.className = `ace-widget-message ${sender}`;
     msg.textContent = text;
     body.appendChild(msg);
     body.scrollTop = body.scrollHeight;
@@ -384,8 +384,8 @@
   async function loadHistory() {
     if (!contactData) return;
     try {
-      const qs = apiKey ? \`apiKey=\${apiKey}&sessionId=\${sessionId}\` : \`orgId=\${orgId}&sessionId=\${sessionId}\`;
-      const res = await fetch(\`\${apiUrl}/api/widget/history?\${qs}\`);
+      const qs = apiKey ? `apiKey=${apiKey}&sessionId=${sessionId}` : `orgId=${orgId}&sessionId=${sessionId}`;
+      const res = await fetch(`${apiUrl}/api/widget/history?${qs}`);
       if (res.ok) {
         const history = await res.json();
         const body = document.getElementById('ace-widget-body');
@@ -405,7 +405,7 @@
 
   function renderLeadForm() {
     const body = document.getElementById('ace-widget-body');
-    body.innerHTML = \`
+    body.innerHTML = `
       <div style="margin-bottom:16px; font-size:14px; color:#333;">Please introduce yourself to start chatting:</div>
       <div class="ace-widget-form">
         <input type="text" id="ace-form-name" placeholder="Full Name" />
@@ -413,7 +413,7 @@
         <input type="text" id="ace-form-phone" placeholder="Phone Number" />
         <button id="ace-form-submit">Start Chat</button>
       </div>
-    \`;
+    `;
     document.getElementById('ace-widget-footer').style.display = 'none';
 
     document.getElementById('ace-form-submit').addEventListener('click', () => {
@@ -440,7 +440,7 @@
     showTyping();
 
     try {
-      const res = await fetch(\`\${apiUrl}/api/widget/chat\`, {
+      const res = await fetch(`${apiUrl}/api/widget/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
