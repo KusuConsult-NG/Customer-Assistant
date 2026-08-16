@@ -332,6 +332,80 @@ export class VoiceAiService {
    * silence until they gave up. Note that `forwardingNumber` has been in the schema
    * and the settings UI from the start and was referenced by no code at all.
    */
+  /**
+   * Hands a live call to a human, because the caller asked for one.
+   *
+   * Deliberately separate from recoverCallWithoutAI below. That one rescues a
+   * call whose AI is broken and, with no forwarding number, apologises that
+   * "our automated assistant is unavailable" — the wrong thing to tell someone
+   * who simply asked for a person, and it would be spoken at the one moment
+   * they are least willing to hear it.
+   *
+   * This method requires a forwarding number: without somewhere to send the
+   * call there is no transfer to perform, and the caller must be told the
+   * truth rather than left listening to a promise. The caller ID is the
+   * business's own number so the colleague sees who is calling.
+   */
+  async transferCallToHuman(
+    callSid: string,
+    creds: { accountSid?: string | null; authToken?: string | null },
+    forwardingNumber: string,
+    businessNumber?: string
+  ): Promise<'TRANSFERRED' | 'FAILED'> {
+    const accountSid = creds.accountSid || process.env.TWILIO_ACCOUNT_SID;
+    const authToken = creds.authToken || process.env.TWILIO_AUTH_TOKEN;
+
+    if (!accountSid || !authToken || !forwardingNumber) {
+      this.logger.warn('voice_handoff_impossible', {
+        callSid,
+        reason: !forwardingNumber ? 'no forwarding number configured' : 'no Twilio credentials',
+      });
+      return 'FAILED';
+    }
+
+    const escape = (t: string) =>
+      t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    // The <Say> bridges the seconds of silence while Twilio dials out, and it
+    // is spoken only once the redirect has been accepted — so the caller never
+    // hears "connecting you" for a connection that did not happen.
+    const twiml =
+      `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+      `<Say voice="Polly.Joanna">Connecting you to a member of our team now. One moment please.</Say>` +
+      `<Dial${businessNumber ? ` callerId="${escape(businessNumber)}"` : ''}>${escape(forwardingNumber)}</Dial>` +
+      `</Response>`;
+
+    try {
+      const res = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls/${encodeURIComponent(callSid)}.json`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ Twiml: twiml }).toString(),
+          signal: AbortSignal.timeout(10_000),
+        }
+      );
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => res.statusText);
+        this.logger.error(
+          'voice_handoff_failed',
+          new Error(`Twilio redirect returned ${res.status}: ${body.slice(0, 200)}`)
+        );
+        return 'FAILED';
+      }
+
+      this.logger.warn('voice_handoff_transferred', { callSid, forwardingNumber: 'set' });
+      return 'TRANSFERRED';
+    } catch (e: any) {
+      this.logger.error('voice_handoff_failed', e as Error);
+      return 'FAILED';
+    }
+  }
+
   async recoverCallWithoutAI(
     callSid: string,
     creds: { accountSid?: string | null; authToken?: string | null },

@@ -93,9 +93,14 @@ features return a 503 that names the missing configuration.
 - Inbound voice calls answered by the AI in one consistent voice
 
 A Twilio trial can only call **verified** numbers — verify the phone you will
-demo from, first. Note the known gap: on a voice call, "let me speak to a
-human" is spoken but the call is not yet transferred (chat and WhatsApp hand
-off correctly). Either avoid that phrase in a voice demo or say what happens.
+demo from, first.
+
+Asking for a human on a call transfers it: the live call is redirected to the
+organization's **forwarding number** (Telephony settings), so set one before
+demoing that. With no forwarding number the AI does not claim a transfer — it
+says it cannot put you through, files a HIGH-priority ticket against the
+caller's number, and tells them the reference so the callback actually
+happens. Either way, what the caller hears matches what happened.
 
 ### + Meta WhatsApp test number (free)
 
