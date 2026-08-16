@@ -15,6 +15,10 @@ function maskSecret(value: string | null | undefined): string | null {
   return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
 }
 
+/** Widget appearance values reach a customer's page — accept only known-safe shapes. */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const WIDGET_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
+
 @Injectable()
 export class OrganizationsService {
   /**
@@ -75,6 +79,9 @@ export class OrganizationsService {
       payoutAccountName?: string;
       payoutAccountNumber?: string;
       payoutUssdCode?: string;
+      widgetPrimaryColor?: string;
+      widgetSecondaryColor?: string;
+      widgetPosition?: string;
     }
   ) {
     return prisma.organization.update({
@@ -91,6 +98,18 @@ export class OrganizationsService {
         ...(data.payoutAccountName !== undefined && { payoutAccountName: data.payoutAccountName || null }),
         ...(data.payoutAccountNumber !== undefined && { payoutAccountNumber: data.payoutAccountNumber || null }),
         ...(data.payoutUssdCode !== undefined && { payoutUssdCode: data.payoutUssdCode || null }),
+        // Validated, not trusted: these are echoed into the widget's inline
+        // styles on the customer's own site, so a stray value must not be able
+        // to carry anything but a colour or a known position.
+        ...(data.widgetPrimaryColor !== undefined && {
+          widgetPrimaryColor: HEX_COLOR.test(data.widgetPrimaryColor) ? data.widgetPrimaryColor : null,
+        }),
+        ...(data.widgetSecondaryColor !== undefined && {
+          widgetSecondaryColor: HEX_COLOR.test(data.widgetSecondaryColor) ? data.widgetSecondaryColor : null,
+        }),
+        ...(data.widgetPosition !== undefined && {
+          widgetPosition: WIDGET_POSITIONS.includes(data.widgetPosition) ? data.widgetPosition : null,
+        }),
       },
     });
   }

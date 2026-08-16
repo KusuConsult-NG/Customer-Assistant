@@ -25,6 +25,7 @@ export class OrganizationsController {
       name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string;
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
+      widgetPrimaryColor?: string; widgetSecondaryColor?: string; widgetPosition?: string;
     }
   ) {
     return this.orgsService.updateSettings(req.user.organizationId, body);

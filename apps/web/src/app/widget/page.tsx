@@ -14,7 +14,6 @@ export default function WidgetPage() {
     secondaryColor: "#1e40af",
     position: "bottom-right",
     enableChat: true,
-    enableVoiceCall: true,
     companyName: "Kusu Consult",
   });
 
@@ -31,8 +30,16 @@ export default function WidgetPage() {
     async function loadData() {
       try {
         const org: any = await api.organizations.getMe();
-        if (org?.name) setConfig(prev => ({ ...prev, companyName: org.name }));
-        if (org?.welcomeMessage) setConfig(prev => ({ ...prev, welcomeMessage: org.welcomeMessage }));
+        // Load what is actually stored, so the panel shows the live widget's
+        // configuration rather than defaults that mask it.
+        setConfig(prev => ({
+          ...prev,
+          ...(org?.name && { companyName: org.name }),
+          ...(org?.welcomeMessage && { welcomeMessage: org.welcomeMessage }),
+          ...(org?.widgetPrimaryColor && { primaryColor: org.widgetPrimaryColor }),
+          ...(org?.widgetSecondaryColor && { secondaryColor: org.widgetSecondaryColor }),
+          ...(org?.widgetPosition && { position: org.widgetPosition }),
+        }));
       } catch (e) {
         console.error(e);
       }
@@ -60,8 +67,15 @@ export default function WidgetPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Every control on this panel is sent. Previously only welcomeMessage
+      // was, while the toast still said "Widget settings saved" — an operator
+      // could set their brand colour and position, be told it saved, and see
+      // the default blue bottom-right widget on their site forever.
       await api.organizations.updateSettings({
         welcomeMessage: config.welcomeMessage,
+        widgetPrimaryColor: config.primaryColor,
+        widgetSecondaryColor: config.secondaryColor,
+        widgetPosition: config.position,
       });
       toast.success("Widget settings saved.");
     } catch (e) {
@@ -176,15 +190,13 @@ export default function WidgetPage() {
               />
             </label>
 
-            <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:bg-slate-800/60 transition">
-              <span className="text-sm font-medium">Enable Voice Calling</span>
-              <input
-                type="checkbox"
-                checked={config.enableVoiceCall}
-                onChange={e => setConfig({...config, enableVoiceCall: e.target.checked})}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-              />
-            </label>
+            {/*
+              No "Enable Voice Calling" toggle. There is no click-to-call or
+              WebRTC path behind the embedded widget, and the API deliberately
+              reports enableVoiceCall: false. A switch that cannot turn anything
+              on is a promise to the operator that their visitors can ring them
+              from the website — they cannot.
+            */}
           </div>
 
           <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
@@ -278,7 +290,6 @@ export default function WidgetPage() {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: "8px" }}>
-                    {config.enableVoiceCall && <span style={{ cursor: "pointer", padding: "4px" }}>📞</span>}
                     <span style={{ cursor: "pointer", padding: "4px" }}>✖</span>
                   </div>
                 </div>

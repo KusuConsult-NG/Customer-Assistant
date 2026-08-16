@@ -124,7 +124,13 @@ test.describe('ACE Platform Customer Journey E2E Tests', () => {
     const page = await context.newPage();
     await page.goto('/crm');
     await page.waitForURL(/\/login/);
-    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
+    // The guard redirects with a client-side router.replace, so the URL changes
+    // as soon as navigation starts — before the login route's payload has been
+    // fetched and rendered. Waiting only for the URL raced that fetch against
+    // the default 5s assertion timeout and failed intermittently under load.
+    // The assertion itself is unchanged: the sign-in form must appear.
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 15_000 });
     await context.close();
   });
 });
