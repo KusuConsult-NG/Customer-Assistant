@@ -169,6 +169,88 @@ async function main() {
     }
   }
 
+  // ── 3b. Voice and WhatsApp channels ─────────────────────────────────────────
+  //
+  // Created ONLY when real credentials are present. A config row is what makes
+  // the dashboard show a channel as connected and what the webhook handlers
+  // resolve a tenant from — writing one with placeholder values would light up
+  // "Voice: connected" for a number that rings nowhere, which is the failure
+  // this codebase exists to not repeat. No credentials means no row, and the
+  // channel honestly reports itself as unconfigured.
+
+  // Voice. TWILIO_PHONE_NUMBER is the number customers dial.
+  // GATEKIPA_FORWARDING_NUMBER is where "let me speak to a human" transfers
+  // the live call — without it the AI does not claim a transfer, it files a
+  // ticket and says someone will call back.
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioNumber = process.env.TWILIO_PHONE_NUMBER;
+  const forwardingNumber = process.env.GATEKIPA_FORWARDING_NUMBER || null;
+
+  if (twilioSid && twilioToken && twilioNumber) {
+    const existing = await prisma.telephonyConfig.findFirst({
+      where: { organizationId: org.id, phoneNumber: twilioNumber },
+    });
+    if (existing) {
+      await prisma.telephonyConfig.update({
+        where: { id: existing.id },
+        data: { accountSid: twilioSid, authToken: twilioToken, forwardingNumber },
+      });
+      console.log(`  ~ Voice updated: ${twilioNumber}${forwardingNumber ? ` → human on ${forwardingNumber}` : ''}`);
+    } else {
+      await prisma.telephonyConfig.create({
+        data: {
+          organizationId: org.id,
+          provider: 'TWILIO',
+          accountSid: twilioSid,
+          authToken: twilioToken,
+          phoneNumber: twilioNumber,
+          forwardingNumber,
+          isDefault: true,
+        },
+      });
+      console.log(`  + Voice connected: ${twilioNumber}${forwardingNumber ? ` → human on ${forwardingNumber}` : ''}`);
+    }
+    if (!forwardingNumber) {
+      console.log('    ⚠ No GATEKIPA_FORWARDING_NUMBER — a caller asking for a human gets a ticket and a callback promise, not a transfer.');
+    }
+  } else {
+    console.log('  . Voice not configured (needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)');
+  }
+
+  // WhatsApp. The verify token must match what is entered in the Meta
+  // Developer Console, and the app secret the API validates signatures with
+  // is WHATSAPP_APP_SECRET in the API's own environment, not stored here.
+  const waPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const waToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  const waBusinessId = process.env.WHATSAPP_BUSINESS_ID;
+  const waDisplay = process.env.WHATSAPP_DISPLAY_NUMBER || twilioNumber || '';
+  const waVerify = process.env.WHATSAPP_VERIFY_TOKEN;
+
+  if (waPhoneId && waToken && waBusinessId && waVerify) {
+    const existing = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId: org.id, phoneNumberId: waPhoneId },
+    });
+    const data = {
+      accessToken: waToken,
+      whatsappBusinessId: waBusinessId,
+      displayPhoneNumber: waDisplay,
+      webhookVerifyToken: waVerify,
+      isActive: true,
+    };
+    if (existing) {
+      await prisma.whatsAppConfig.update({ where: { id: existing.id }, data });
+      console.log(`  ~ WhatsApp updated: phone_number_id ${waPhoneId}`);
+    } else {
+      await prisma.whatsAppConfig.create({
+        data: { organizationId: org.id, phoneNumberId: waPhoneId, ...data },
+      });
+      console.log(`  + WhatsApp connected: phone_number_id ${waPhoneId}`);
+    }
+  } else {
+    console.log('  . WhatsApp not configured (needs WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ID, WHATSAPP_VERIFY_TOKEN)');
+  }
+
   // ── 4. Widget API key ───────────────────────────────────────────────────────
   // Same format the dashboard mints (organizations.service.regenerateApiKey):
   // raw `ace_live_pk_<32 hex>`, stored as sha256, prefix kept for display.
@@ -213,6 +295,31 @@ async function main() {
     console.log('⚠  The key above is shown ONCE. Store it now — only its hash is kept.');
   }
   console.log(`Dashboard login: ${DEMO_OWNER_EMAIL} (password printed on first run)`);
+
+  // ── 6. The webhook URLs the providers need ──────────────────────────────────
+  // A config row alone routes nothing: the provider has to be told where to
+  // send traffic. These are the exact values to paste into each console.
+  console.log('\n────────────────────────────────────────────────────────────');
+  console.log('Provider webhooks — set these in each console:');
+  console.log('────────────────────────────────────────────────────────────');
+  if (twilioSid && twilioToken && twilioNumber) {
+    console.log(`Twilio → Phone Numbers → ${twilioNumber} → "A call comes in":`);
+    console.log(`  ${apiUrl}/api/telephony/inbound/twilio    (HTTP POST)`);
+    console.log(`Twilio → same number → "Call status changes":`);
+    console.log(`  ${apiUrl}/api/telephony/status/twilio     (HTTP POST)`);
+  } else {
+    console.log('Twilio: skipped — voice is not configured.');
+  }
+  if (waPhoneId && waToken && waBusinessId && waVerify) {
+    console.log(`Meta → WhatsApp → Configuration → Callback URL:`);
+    console.log(`  ${apiUrl}/api/whatsapp/webhook`);
+    console.log(`  Verify token: the value of WHATSAPP_VERIFY_TOKEN (it must match exactly)`);
+    console.log(`  Subscribe to the "messages" field.`);
+  } else {
+    console.log('Meta WhatsApp: skipped — WhatsApp is not configured.');
+  }
+  console.log('\nThe API must be publicly reachable at the URL above — a provider');
+  console.log('cannot reach localhost. Set ACE_API_URL to the deployed API.');
 }
 
 main()
