@@ -109,6 +109,44 @@ happens. Either way, what the caller hears matches what happened.
 
 ---
 
+## Running all three channels 24/7
+
+One assistant, one knowledge base, one CRM, reachable three ways: the chat
+widget on the customer's own website, their existing phone number, and
+WhatsApp. All three land in the same conversation list and hand off to the
+same agent console, because they all run through the same orchestrator.
+
+**Read this before promising round-the-clock cover.** On Render's `starter`
+plan a web service spins down after roughly fifteen minutes with no traffic
+and takes 30–60 seconds to wake. That is not a uniform inconvenience — it
+breaks the channels unevenly, and worst where it is most visible:
+
+| Channel | What a 3am contact actually gets |
+|---|---|
+| **Voice** | **The call fails.** Twilio gives the webhook about 15 seconds to return TwiML; a cold start overruns it, so the caller hears a carrier error, not the assistant. There is no retry — the customer is simply gone. |
+| **WhatsApp** | Delayed, then delivered. Meta's first webhook times out, but Meta retries, and the `externalId` unique index means the retry cannot double-post or send a second reply. The customer waits a minute. |
+| **Web chat** | The visitor watches a spinner for 30–60 seconds on their first message. Most leave. |
+
+Two things also stop entirely while the process is asleep, because both are
+`setInterval` timers inside the API: appointment reminders
+(`appointment-reminder.service.ts`) and the inline workflow sweeper
+(`workflow-runner.service.ts`). A reminder due at 6am on a sleeping service is
+not sent late — it is skipped until something wakes the process.
+
+So: **`plan: standard` on `ace-api` is the requirement for genuine 24/7**, not
+an optimisation. The web dashboard can stay on `starter` — staff waking it is
+an annoyance, not a lost customer. If cost rules that out, be precise about
+what is on offer: the widget and WhatsApp degrade honestly, voice does not,
+and a phone number that fails at night is worse than one that was never
+advertised.
+
+Keeping the API warm with an external uptime pinger against `/api/health` is
+the usual workaround. It works, and it is worth knowing why it is not the same
+thing: it reduces how often you are cold, it does not guarantee you are warm
+at the moment a customer calls.
+
+---
+
 ## Testing everything
 
 ```bash

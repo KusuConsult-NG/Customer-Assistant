@@ -496,27 +496,54 @@ export class ConversationOrchestrator {
       'where', 'who', 'to', 'for', 'of', 'in', 'on', 'my', 'your', 'it', 'and',
       'or', 'me', 'we', 'be', 'are', 'get', 'much', 'about', 'please',
     ]);
+    // Crude singularisation, deliberately: without it "does it work for my
+    // business" misses an FAQ titled "…work for businesses?" — a plural is not
+    // a different question. Only trailing -es/-s on words long enough that the
+    // suffix is unlikely to be part of the stem.
+    const singular = (t: string) =>
+      t.length > 4 && t.endsWith('es') ? t.slice(0, -2)
+      : t.length > 3 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1)
+      : t;
+
     const tokenize = (text: string) =>
       text
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
-        .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+        .filter((t) => t.length > 1 && !STOPWORDS.has(t))
+        .map(singular);
 
     try {
       const queryTokens = new Set(tokenize(input));
       if (queryTokens.size === 0) return null;
 
-      const faqs = await prisma.faqEntry.findMany({
-        where: { organizationId, isActive: true },
-        select: { question: true, answer: true, sortOrder: true },
-        orderBy: { sortOrder: 'asc' },
-        take: 300,
-      });
+      const [faqs, org] = await Promise.all([
+        prisma.faqEntry.findMany({
+          where: { organizationId, isActive: true },
+          select: { question: true, answer: true, sortOrder: true },
+          orderBy: { sortOrder: 'asc' },
+          take: 300,
+        }),
+        prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { name: true },
+        }),
+      ]);
+
+      // The organization's own name is implicit context, not a keyword the
+      // customer has to supply. Someone on GateKipa's website asking "how much
+      // does it cost?" means GateKipa; requiring them to say the brand made an
+      // FAQ titled "How much does GateKipa cost?" unreachable, and the
+      // assistant handed off a question it had a curated answer for.
+      const brandTokens = new Set(tokenize(org?.name ?? ''));
 
       let best: { answer: string; score: number; overlap: number } | null = null;
       for (const faq of faqs) {
-        const questionTokens = tokenize(faq.question);
+        const allTokens = tokenize(faq.question);
+        // Score against the question WITHOUT the brand, falling back to the
+        // full set when an FAQ is nothing but the brand name.
+        const stripped = allTokens.filter((t) => !brandTokens.has(t));
+        const questionTokens = stripped.length > 0 ? stripped : allTokens;
         if (questionTokens.length === 0) continue;
         const overlap = questionTokens.filter((t) => queryTokens.has(t)).length;
         const score = overlap / questionTokens.length;

@@ -12,7 +12,22 @@ services:
     name: ace-api
     env: node
     region: frankfurt
-    plan: starter          # upgrade to standard for 24/7 uptime (no spin-down)
+    # NOT an optimisation — a correctness requirement for the voice channel.
+    #
+    # `starter` spins down after ~15 minutes idle and takes 30-60s to wake.
+    # Twilio allows roughly 15 SECONDS for the inbound-call webhook to return
+    # TwiML, so a cold start overruns it and the caller hears a carrier error
+    # instead of the assistant. There is no retry: that customer is gone, at
+    # the exact hour a 24/7 line is supposed to be the whole point.
+    #
+    # Two schedulers inside this process also stop while it sleeps —
+    # appointment reminders and the inline workflow sweeper are setInterval
+    # timers, so a reminder due on a sleeping service is skipped, not delayed.
+    #
+    # WhatsApp survives a cold start (Meta retries, and messages.externalId
+    # stops the retry double-posting); web chat just makes the visitor wait.
+    # Voice is the one that fails outright.
+    plan: standard
     rootDir: .
     buildCommand: >
       npm install --include=dev &&
@@ -118,6 +133,20 @@ services:
     name: ace-web
     env: node
     region: frankfurt
+    # `starter` is a COST DECISION with a customer-facing consequence — read
+    # this before assuming the dashboard is internal-only.
+    #
+    # This service also serves /widget.js, which every visitor to an embedding
+    # customer's website fetches. If it is cold, the chat bubble does not
+    # appear on their site until this wakes. Staff waiting on a cold dashboard
+    # is an annoyance; a widget missing from the customer's homepage is not.
+    #
+    # Three ways out, cheapest first:
+    #   1. Put /widget.js behind a CDN or object storage, so the embed does not
+    #      depend on this service being awake at all.
+    #   2. Serve /widget.js from ace-api, which is already `standard`.
+    #   3. Move this service to `standard` too.
+    # Until one of those is done, the widget's availability is this plan's.
     plan: starter
     rootDir: .
     buildCommand: >
