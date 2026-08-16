@@ -115,6 +115,34 @@ else
 fi
 
 echo
+echo "── 6. Channel probes (WhatsApp, Voice) ───────────────────────────"
+# These impersonate Meta and Twilio against the running API. They live outside
+# the main harness and were, for a while, simply never run — which is exactly
+# how the two headline channels end up being the least-verified part of the
+# product. They are part of the standard run now.
+if ! curl -sf -o /dev/null "$API_URL/api/health" 2>/dev/null; then
+  skip "channel probes" "no API at $API_URL"
+else
+  if node e2e-validation/whatsapp-inbound-probe.js > /tmp/ace-verify-wa.log 2>&1; then
+    pass "whatsapp probe — $(grep -oE 'PASS [0-9]+ +FAIL [0-9]+' /tmp/ace-verify-wa.log | head -1)"
+  else
+    fail "whatsapp probe — $(grep -oE 'WHATSAPP PROBE.*' /tmp/ace-verify-wa.log | head -1)"
+  fi
+
+  # The voice probe exits 0 when it blocks on missing carrier credentials, so a
+  # zero exit is not by itself proof that voice was exercised — read the log.
+  node e2e-validation/voice-call-probe.js > /tmp/ace-verify-voice.log 2>&1
+  voice_status=$?
+  if grep -q 'BLOCKED (prerequisites missing)' /tmp/ace-verify-voice.log; then
+    skip "voice probe" "TWILIO_AUTH_TOKEN / DEEPGRAM_API_KEY / ELEVENLABS_API_KEY not set"
+  elif [ "$voice_status" -eq 0 ]; then
+    pass "voice probe — $(grep -oE 'VOICE PROBE.*' /tmp/ace-verify-voice.log | head -1)"
+  else
+    fail "voice probe — $(grep -oE 'VOICE PROBE.*' /tmp/ace-verify-voice.log | head -1)"
+  fi
+fi
+
+echo
 echo "══════════════════════════════════════════════════════════════════"
 printf '\033[1m%d passed · %d failed · %d skipped\033[0m\n' "${#PASS[@]}" "${#FAIL[@]}" "${#SKIP[@]}"
 if [ "${#SKIP[@]}" -gt 0 ]; then
