@@ -207,7 +207,7 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
 
     try {
       await this.resend!.emails.send({
-        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
+        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
         to: email,
         subject: `Upcoming Appointment Reminder (${timeUntil} before) — ${booking.organization.name}`,
         html: `
@@ -271,7 +271,7 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
 
     try {
       await this.resend!.emails.send({
-        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@kusuconsult.com>',
+        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
         to: booking.contact.email,
         subject: `Booking Confirmation #${bookingRef} — ${booking.organization.name}`,
         html: `

@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
- * ACE Platform Customer Journey E2E Tests
+ * Customer Care Agent — Customer Journey E2E Tests
  *
  * These run against the REAL stack: Next.js app + NestJS API + PostgreSQL.
  *
@@ -14,7 +14,7 @@ import { test, expect, Page } from '@playwright/test';
  * A real org is registered through the API once per run, and the issued JWT is
  * injected into localStorage BEFORE each page load via addInitScript.
  *
- * Locator note: the app shell renders its own <h1>ACE Platform</h1> brand next
+ * Locator note: the app shell renders its own <h1>Customer Care Agent</h1> brand next
  * to each page's <h1>, so a bare locator('h1') is ambiguous (strict-mode
  * violation). Assertions filter by expected text instead.
  */
@@ -66,18 +66,18 @@ async function authedPage(page: Page): Promise<void> {
 }
 
 function pageHeading(page: Page, pattern: RegExp) {
-  // Filter avoids the shell's own <h1>ACE Platform</h1> (strict-mode safe)
+  // Filter avoids the shell's own <h1>Customer Care Agent</h1> (strict-mode safe)
   return page.locator('h1').filter({ hasText: pattern }).first();
 }
 
-test.describe('ACE Platform Customer Journey E2E Tests', () => {
+test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
     await authedPage(page);
   });
 
   test('J1 & J9: Widget Generator & Embeddable Web Chat', async ({ page }) => {
     await page.goto('/widget');
-    await expect(page).toHaveTitle(/ACE/i);
+    await expect(page).toHaveTitle(/Customer Care Agent/i);
     await expect(pageHeading(page, /Widget/i)).toBeVisible();
   });
 

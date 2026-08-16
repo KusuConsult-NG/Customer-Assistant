@@ -234,7 +234,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Use this key in the <code className="text-blue-600 dark:text-blue-400">Authorization: Bearer sk-ace-...</code> header to call the ACE Platform REST API.
+                  Use this key in the <code className="text-blue-600 dark:text-blue-400">Authorization: Bearer sk-ace-...</code> header to call the Customer Care Agent REST API.
                 </p>
               </div>
             </div>

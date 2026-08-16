@@ -37,15 +37,31 @@ cd apps/web && npx playwright test
 Local full-stack recipe (no Docker needed if postgres/redis binaries exist):
 
 ```bash
+cp .env.example .env          # every required var, with the traps annotated
+npx turbo run build
+
 # PostgreSQL 16 must run as a non-root user; Redis is optional but enables
 # BullMQ ingestion, cross-pod Socket.IO, and Redis-backed rate limiting.
-DATABASE_URL=postgresql://ace@127.0.0.1:5433/ace_test DIRECT_URL=$DATABASE_URL \
-  npx prisma db push --schema=packages/database/prisma/schema.prisma
-# Boot API: needs JWT_SECRET (≥32 chars), JWT_REFRESH_SECRET, OPENAI_API_KEY,
-# WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN (validated at startup — boot FAILS without them)
+set -a; . ./.env; set +a
+npx prisma db push --schema=packages/database/prisma/schema.prisma
+
+# `db push` CANNOT create the booking EXCLUDE constraint (Prisma cannot express
+# EXCLUDE), so apply it separately or concurrent double-booking stays possible.
+psql "$DIRECT_URL" -f packages/database/prisma/migrations/20260807020000_booking_overlap_constraint/migration.sql
+
 node apps/api/dist/main.js
 cd apps/web && npx next start -p 3000
+
+npm run db:seed:gatekipa      # optional: a demo tenant with FAQs + a widget key
+npm run demo:readiness        # what actually works right now, per capability
+npm run verify                # every test layer; missing prerequisites SKIP, never pass
 ```
+
+Three things that cost real debugging time:
+
+- **Startup validation rejects any value containing "placeholder"**, deliberately. Use a real-looking dummy.
+- **Restart `next start` after a rebuild.** It serves the build that existed when it booted; after a rebuild it hands out chunk URLs that 404, React never hydrates, and every browser test fails with "element(s) not found" that reads exactly like a real regression. `scripts/verify-all.sh` detects this and skips rather than reporting a false failure.
+- **Never point `DATABASE_URL` at production.** The harness and probes create real organizations through the real API — that is why they catch bugs mocks do not. Pointed at production once, they left 358 test organizations and ~13,900 contacts in the live CRM.
 
 The Playwright suite registers its own org through the real API and injects the JWT into localStorage before each page load — every dashboard page is behind the layout auth guard, so tests cannot simply `goto()` a page. The app shell renders its own `<h1>ACE Platform</h1>`, so bare `h1` locators are strict-mode ambiguous; filter by text.
 

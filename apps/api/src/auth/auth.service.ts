@@ -38,7 +38,7 @@ export class AuthService {
     }
     try {
       await new Resend(resendKey).emails.send({
-        from: process.env.EMAIL_FROM || 'ACE Platform <noreply@aceplatform.io>',
+        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
         to,
         subject,
         html,
@@ -99,7 +99,7 @@ export class AuthService {
     const verifyUrl = `${process.env.WEB_BASE_URL || 'http://localhost:3000'}/verify-email?token=${rawToken}`;
     const emailSent = await this.sendEmail(
       user.email,
-      'Verify your email for ACE Platform',
+      'Verify your email for Customer Care Agent',
       `<p>Hi ${user.fullName},</p>
        <p>Please confirm your email address by clicking <a href="${verifyUrl}">this link</a>. It expires in 24 hours.</p>`
     );
@@ -314,7 +314,7 @@ export class AuthService {
     const verifyUrl = `${process.env.WEB_BASE_URL || 'http://localhost:3000'}/verify-email?token=${rawToken}`;
     await this.sendEmail(
       user.email,
-      'Verify your email for ACE Platform',
+      'Verify your email for Customer Care Agent',
       `<p>Hi ${user.fullName},</p>
        <p>Please confirm your email address by clicking <a href="${verifyUrl}">this link</a>. It expires in 24 hours.</p>`
     );
@@ -384,12 +384,12 @@ export class AuthService {
 
     const sent = await this.sendEmail(
       user.email,
-      'Reset your ACE Platform password',
+      'Reset your Customer Care Agent password',
       `
         <div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:32px;">
           <h2 style="color:#3b82f6;">Reset your password</h2>
           <p>Hi ${user.fullName},</p>
-          <p>We received a request to reset your ACE Platform password. Click the button below to set a new password. This link expires in <strong>30 minutes</strong>.</p>
+          <p>We received a request to reset your Customer Care Agent password. Click the button below to set a new password. This link expires in <strong>30 minutes</strong>.</p>
           <a href="${resetUrl}"
              style="display:inline-block;background:#3b82f6;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">
             Reset Password

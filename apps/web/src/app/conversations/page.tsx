@@ -198,7 +198,7 @@ export default function ConversationsPage() {
       {/*
         This screen is a full-bleed split pane, so it has no room for a visible
         page title — but it still needs one. Without it the only h1 in the
-        document is the app shell's "ACE Platform", so a screen reader announces
+        document is the app shell's "Customer Care Agent", so a screen reader announces
         every route identically and landmark navigation has nothing to jump to.
       */}
       <h1 className="sr-only">Live Conversations</h1>

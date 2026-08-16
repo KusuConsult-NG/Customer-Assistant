@@ -191,7 +191,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={theme}>
       <head>
-        <title>ACE Platform — AI-Powered Customer Experience</title>
+        <title>Customer Care Agent — AI-Powered Customer Experience</title>
         <meta name="description" content="Unify your CRM, Knowledge Base, and Omnichannel Communications" />
         {/*
           No webfont is fetched from a CDN.
@@ -265,7 +265,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <Sparkles className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h1 className={`font-bold text-lg tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>ACE Platform</h1>
+                    {/* leading-tight because the name wraps to two lines in the
+                        sidebar's width; without it the two lines sit far apart
+                        and the lockup reads as two separate labels. */}
+                    <h1 className={`font-bold text-lg tracking-tight leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Customer Care Agent</h1>
                     <p className="text-[11px] font-medium text-indigo-500 dark:text-indigo-400">Enterprise AI Experience</p>
                   </div>
                 </div>
@@ -345,7 +348,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <Menu className="w-5 h-5" />
                   </button>
                   {/* Breadcrumb */}
-                  <span className="font-semibold text-indigo-500">ACE</span>
+                  <span className="font-semibold text-indigo-500">Care Agent</span>
                   <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                   <span className={`font-semibold capitalize ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     {pathname === '/' ? 'Executive Dashboard' : pathname.slice(1).replace(/-/g, ' ')}

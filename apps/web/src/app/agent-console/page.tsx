@@ -239,7 +239,7 @@ export default function AgentConsolePage() {
       {/*
         Full-height split pane with no room for a visible title, but it still
         needs a page heading: without one the document's only h1 is the app
-        shell's "ACE Platform", so every route announces identically to a
+        shell's "Customer Care Agent", so every route announces identically to a
         screen reader.
       */}
       <h1 className="sr-only">Agent Console</h1>
