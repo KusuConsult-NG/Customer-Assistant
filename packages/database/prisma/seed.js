@@ -1,5 +1,5 @@
 /**
- * ACE Platform — Comprehensive Database Seed Script
+ * Customer Care Agent — Comprehensive Database Seed Script
  */
 
 const { PrismaClient } = require('@prisma/client');
@@ -13,7 +13,7 @@ function generateId() {
 }
 
 async function main() {
-  console.log('🌱 Seeding entire ACE Platform database with rich enterprise data...\n');
+  console.log('🌱 Seeding entire Customer Care Agent database with rich enterprise data...\n');
 
   // ── 1. Create or Find Organization ──────────────────────────────────────────
   let org = await prisma.organization.findFirst({ where: { slug: 'ace-demo' } });

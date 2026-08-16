@@ -1,5 +1,5 @@
 /**
- * ACE Platform — Enterprise E2E Validation Harness
+ * Customer Care Agent — Enterprise E2E Validation Harness
  *
  * Drives the RUNNING system over HTTP exactly as a client would, then verifies the
  * observable consequences in PostgreSQL. No source imports, no mocks: every
@@ -213,7 +213,7 @@ module.exports = { api, prisma, check, suite, record, results, state, uniq, regi
 // ─── runner ──────────────────────────────────────────────────────────────────
 if (require.main === module) {
   (async () => {
-    console.log(`\n\x1b[1mACE Platform E2E Validation\x1b[0m  run=${RUN_ID}  target=${API}\n`);
+    console.log(`\n\x1b[1mCustomer Care Agent E2E Validation\x1b[0m  run=${RUN_ID}  target=${API}\n`);
 
     // Preflight: is the API actually up?
     try {

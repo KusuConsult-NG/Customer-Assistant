@@ -1,5 +1,5 @@
 /**
- * ACE Platform — Structured JSON Logger
+ * Customer Care Agent — Structured JSON Logger
  *
  * A production-grade logger that emits structured JSON logs with:
  *  - correlationId: traces a single request across all services

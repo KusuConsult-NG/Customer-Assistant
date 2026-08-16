@@ -270,7 +270,7 @@ async function probeApi() {
 // ─── Report ──────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`\n${C.b}ACE Platform — demo readiness${C.x}`);
+  console.log(`\n${C.b}Customer Care Agent — demo readiness${C.x}`);
   console.log(`${C.d}Every configured service is contacted; nothing is assumed from env vars alone.${C.x}\n`);
 
   await probeApi();

@@ -16,7 +16,7 @@ import { prisma } from '@ace/database';
  * of the suite and every test still went green. Each assertion below now has exactly
  * one acceptable outcome.
  */
-describe('ACE Platform API Integration Tests', () => {
+describe('Customer Care Agent API Integration Tests', () => {
   let app: INestApplication;
 
   jest.setTimeout(30000);

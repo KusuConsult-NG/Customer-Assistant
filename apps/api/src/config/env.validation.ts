@@ -1,5 +1,5 @@
 /**
- * ACE Platform — Startup Environment Validation
+ * Customer Care Agent — Startup Environment Validation
  *
  * Validates all required environment variables at bootstrap time.
  * The application will refuse to start (process.exit(1)) if any
