@@ -95,20 +95,35 @@ if ! curl -sf -o /dev/null "$WEB_URL" 2>/dev/null; then
 elif ! curl -sf -o /dev/null "$API_URL/api/health" 2>/dev/null; then
   skip "playwright" "no API at $API_URL"
 elif
-  # `next start` serves the build that existed when it booted. Step 1 rebuilt
-  # the app, so a server started earlier now hands out chunk URLs that 404 —
-  # the page shell loads, React never hydrates, and every test fails with
-  # "element(s) not found" that looks exactly like a real regression.
-  # Catch it here instead of paying for that debugging twice.
-  chunk=$(curl -s "$WEB_URL/login" | grep -oE '/_next/static/chunks/[a-zA-Z0-9._-]+\.js' | head -1)
-  [ -n "$chunk" ] && ! curl -sf -o /dev/null "$WEB_URL$chunk"
+  # The web server can be serving chunk URLs that 404 — the page shell loads,
+  # React never hydrates, and every test fails with "element(s) not found"
+  # that looks exactly like a real regression. Two ways in, both real:
+  #   - `next start` serves the build that existed when it booted, and step 1
+  #     above rebuilt the app underneath it.
+  #   - `next dev` shares the same .next directory, so step 1's production
+  #     build clobbers what the running dev server is serving.
+  # Check EVERY referenced chunk, not just the first: webpack.js resolves in
+  # both cases, so testing only head -1 silently misses the second one.
+  bad_chunk=""
+  for chunk in $(curl -s "$WEB_URL/login" \
+                 | grep -oE '/_next/static/chunks/[a-zA-Z0-9._/-]+\.js' | sort -u); do
+    curl -sf -o /dev/null "$WEB_URL$chunk" || { bad_chunk="$chunk"; break; }
+  done
+  [ -n "$bad_chunk" ]
 then
-  skip "playwright" "web server is serving a stale build — restart 'next start' after the rebuild"
+  skip "playwright" "web server is serving a build that no longer matches disk ($bad_chunk is 404) — restart the web server after the rebuild"
 else
   PW_CONFIG=""
   [ -f apps/web/playwright.sandbox.config.ts ] && PW_CONFIG="--config=playwright.sandbox.config.ts"
   if (cd apps/web && npx playwright test $PW_CONFIG) > /tmp/ace-verify-pw.log 2>&1; then
     pass "playwright — $(grep -oE '[0-9]+ passed' /tmp/ace-verify-pw.log | tail -1)"
+  elif grep -q "Executable doesn't exist" /tmp/ace-verify-pw.log; then
+    # Every test fails at browser launch, so nothing was actually exercised.
+    # @playwright/test is an unpinned range: npm install can move it to a
+    # version whose required browser build is not the one installed here.
+    # That is a missing prerequisite, not a regression — reporting it as a
+    # failure is the same false alarm the stale-build check above prevents.
+    skip "playwright" "browser binary missing for @playwright/test $(node -p "require('./node_modules/@playwright/test/package.json').version" 2>/dev/null) — run 'npx playwright install chromium'"
   else
     fail "playwright — see /tmp/ace-verify-pw.log"
   fi
