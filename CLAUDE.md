@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ACE Platform — a multi-tenant AI customer-experience platform (WhatsApp, voice telephony, web-chat widget) for Nigerian SMEs. npm-workspaces monorepo driven by Turbo: `apps/api` (NestJS 10), `apps/web` (Next.js 15 App Router), and `packages/*` (Prisma database client, conversation orchestrator, provider SDKs).
+Customer Care Agent — a multi-tenant AI customer-experience platform (WhatsApp, voice telephony, web-chat widget) for Nigerian businesses and government MDAs. Internal identifiers still use the original `ace` prefix on purpose (`@ace/*` package names, the `ace_token` localStorage key, the `ace_live_pk_` widget key prefix): those are functional, not display strings, and renaming them would invalidate issued keys and stored sessions. npm-workspaces monorepo driven by Turbo: `apps/api` (NestJS 10), `apps/web` (Next.js 15 App Router), and `packages/*` (Prisma database client, conversation orchestrator, provider SDKs).
 
 ## Commands
 
@@ -63,7 +63,7 @@ Three things that cost real debugging time:
 - **Restart `next start` after a rebuild.** It serves the build that existed when it booted; after a rebuild it hands out chunk URLs that 404, React never hydrates, and every browser test fails with "element(s) not found" that reads exactly like a real regression. `scripts/verify-all.sh` detects this and skips rather than reporting a false failure.
 - **Never point `DATABASE_URL` at production.** The harness and probes create real organizations through the real API — that is why they catch bugs mocks do not. Pointed at production once, they left 358 test organizations and ~13,900 contacts in the live CRM.
 
-The Playwright suite registers its own org through the real API and injects the JWT into localStorage before each page load — every dashboard page is behind the layout auth guard, so tests cannot simply `goto()` a page. The app shell renders its own `<h1>ACE Platform</h1>`, so bare `h1` locators are strict-mode ambiguous; filter by text.
+The Playwright suite registers its own org through the real API and injects the JWT into localStorage before each page load — every dashboard page is behind the layout auth guard, so tests cannot simply `goto()` a page. The app shell renders its own `<h1>Customer Care Agent</h1>`, so bare `h1` locators are strict-mode ambiguous; filter by text.
 
 ## Architecture
 

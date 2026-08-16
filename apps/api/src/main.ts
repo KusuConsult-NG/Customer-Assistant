@@ -23,7 +23,7 @@ async function bootstrap() {
   // This ensures the server never starts in a misconfigured state.
   validateEnvironment();
 
-  const logger = new Logger('ACE_Platform');
+  const logger = new Logger('CustomerCareAgent');
 
   // ── 2. Create NestJS app with rawBody enabled ──────────────────────────────
   // rawBody: true is REQUIRED for:

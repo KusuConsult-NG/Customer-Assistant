@@ -1,5 +1,5 @@
 /**
- * ACE Platform — Socket.IO Redis Adapter (NestJS IoAdapter subclass)
+ * Customer Care Agent — Socket.IO Redis Adapter (NestJS IoAdapter subclass)
  *
  * WHY this is critical:
  *   Socket.IO rooms are in-memory by default. With more than one API pod

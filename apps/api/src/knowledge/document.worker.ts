@@ -1,5 +1,5 @@
 /**
- * ACE Platform — BullMQ Document Ingestion Worker
+ * Customer Care Agent — BullMQ Document Ingestion Worker
  *
  * WHY this exists:
  *   Without a background queue, document uploads are processed synchronously

@@ -2,7 +2,7 @@
   "name": "ace-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "Enterprise AI Customer Experience Platform (ACE Platform) for Nigeria & Global Businesses",
+  "description": "Customer Care Agent — AI-Powered Customer Experience for Nigerian Businesses and Government MDAs",
   "workspaces": [
     "apps/*",
     "packages/*"

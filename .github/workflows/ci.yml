@@ -1,4 +1,4 @@
-# ACE Platform CI
+# Customer Care Agent CI
 #
 # Mirrors the verification pipeline that was proven locally: full monorepo
 # build, all seven package unit suites, the Jest API integration suite
