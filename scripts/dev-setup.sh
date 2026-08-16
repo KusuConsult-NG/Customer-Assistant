@@ -102,6 +102,16 @@ printf "\n${DIM}  installing dependencies (first run takes a few minutes)…${OF
 npm install --silent >/dev/null 2>&1 || die "npm install failed — run it directly to see why"
 ok "dependencies installed"
 
+# Generate the Prisma Client BEFORE building: apps/api imports the generated
+# types, so a fresh clone cannot compile without it. Nothing else guarantees
+# it runs — no package.json declares a `prisma` key, so @prisma/client's own
+# postinstall cannot find this schema, and turbo may serve `build` from cache
+# while node_modules holds no client at all. Cheap, so run it unconditionally.
+printf "${DIM}  generating Prisma client…${OFF}\n"
+npx prisma generate --schema=packages/database/prisma/schema.prisma >/dev/null 2>&1 \
+  || die "prisma generate failed — run it directly to see why"
+ok "Prisma client generated"
+
 printf "${DIM}  building…${OFF}\n"
 BUILD_LOG=$(mktemp -t cca-build.XXXXXX.log)
 npx turbo run build >"$BUILD_LOG" 2>&1 || die "build failed — see $BUILD_LOG"
