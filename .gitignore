@@ -14,6 +14,9 @@ tsconfig.tsbuildinfo
 # Environment variables — NEVER commit these
 .env
 .env.*
+# ...but the template must be committed — it is the only place the local
+# setup gotchas are written down, and `.env.*` above would swallow it.
+!.env.example
 *.env
 apps/*/.env
 
