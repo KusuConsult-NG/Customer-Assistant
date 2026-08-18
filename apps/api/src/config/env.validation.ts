@@ -54,6 +54,8 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'DEEPGRAM_API_KEY', required: false, description: 'Deepgram STT API key (required for voice calls)' },
   { key: 'ELEVENLABS_API_KEY', required: false, description: 'ElevenLabs API key — TTS, and the fallback for hosted-agent outbound calls' },
   { key: 'ELEVENLABS_BASE_URL', required: false, description: 'ElevenLabs host; set to a residency endpoint (api.eu.residency.elevenlabs.io) to keep data in-jurisdiction' },
+  { key: 'ELEVENLABS_WEBHOOK_SECRET', required: false, description: 'Signing secret for post-call webhooks — unset, /api/webhooks/elevenlabs returns 500 and every transcript is retried rather than trusted' },
+  { key: 'ELEVENLABS_SIGNATURE_HEADER', required: false, description: 'Override the post-call signature header name (default ElevenLabs-Signature)' },
   { key: 'TWILIO_ACCOUNT_SID', required: false, description: 'Twilio Account SID (required for Voice AI telephony)' },
   { key: 'TWILIO_AUTH_TOKEN', required: false, description: 'Twilio Auth Token (required for Voice AI telephony)' },
   { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
