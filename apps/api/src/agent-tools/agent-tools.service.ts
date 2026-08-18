@@ -24,7 +24,7 @@
  * Tenant scoping comes from the agent key (see agent-key.guard.ts) and is passed
  * in as organizationId — never read from the request body.
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { prisma, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
@@ -40,6 +40,30 @@ export interface ToolResult {
   data?: Record<string, unknown>;
   /** True when a human needs to take over. */
   handoff?: boolean;
+}
+
+/**
+ * Was this "that time is taken", or something actually broken?
+ *
+ * It used to be decided by regexing the exception's English message for
+ * /conflict|already booked|overlap|not available/. SchedulingService throws
+ * "That slot is already taken by …" and "That slot was just taken by another
+ * booking" — none of which contain any of those four words. So every ordinary
+ * slot clash was reported to the customer as "I could not complete that just
+ * now. Let me put you through to a member of our team", and escalated to a
+ * human, which is precisely the opposite of what the branch was written to do.
+ *
+ * Reproduced: booking the same slot twice through the tool handed the second
+ * caller the failure reply and a handoff.
+ *
+ * Matching on the HTTP status instead. SchedulingService raises
+ * ConflictException — and only for a slot conflict — in both the
+ * application-level check and the translation of the database EXCLUDE
+ * constraint, so 409 covers both without depending on wording that has already
+ * changed once.
+ */
+function isSlotClash(err: unknown): boolean {
+  return err instanceof HttpException && err.getStatus() === HttpStatus.CONFLICT;
 }
 
 @Injectable()
@@ -153,8 +177,7 @@ export class AgentToolsService {
     } catch (e: any) {
       // A slot clash is a legitimate answer, not a malfunction — say so and let
       // the conversation continue rather than escalating to a human.
-      const msg = String(e?.message ?? '');
-      if (/conflict|already booked|overlap|not available/i.test(msg)) {
+      if (isSlotClash(e)) {
         return {
           ok: false,
           speak: 'That time has just been taken. Could we find another time that works for you?',
@@ -251,7 +274,7 @@ export class AgentToolsService {
         data: { bookingId: updated.id, startTime: updated.startTime },
       };
     } catch (e: any) {
-      if (/conflict|already booked|overlap|not available/i.test(String(e?.message ?? ''))) {
+      if (isSlotClash(e)) {
         return {
           ok: false,
           speak: 'That new time is not available. Could we try another?',

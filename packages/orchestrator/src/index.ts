@@ -179,6 +179,31 @@ export const RESCHEDULE_PHRASES = [
   'different time', 'another time', 'change the date',
 ];
 
+/**
+ * NEXT_UPCOMING — how every "my booking" lookup in this file is scoped.
+ *
+ * Two rules, applied together at each site:
+ *
+ *   `<time>: { gte: new Date() }` + `orderBy: <time> asc`
+ *       The NEXT one, not the latest. These ordered descending with no lower
+ *       bound, so a customer with an appointment this Friday and another next
+ *       month was told about next month — and "cancel my appointment" cancelled
+ *       next month while Friday silently stayed. Past bookings were in scope
+ *       too, offered as though they were still to come, while the empty-result
+ *       wording said "I can't find an upcoming appointment".
+ *
+ *   `contact: { phoneNumber: { in: phoneNumberVariants(phone) } }`
+ *       Every stored shape, not an exact match. The same person arrives as
+ *       "+234…" on a call and "234…" on WhatsApp, so an exact match made a
+ *       booking taken on one channel invisible from the other. That is the bug
+ *       phoneNumberVariants exists to remove; these sites filter through the
+ *       relation rather than the contact, which is why the original sweep
+ *       missed them.
+ *
+ * The refund lookup deliberately does NOT follow this: it wants the most recent
+ * PAST booking to refund, so it keeps `desc` and no lower bound.
+ */
+
 /** True when the customer is talking about a booking they already have. */
 export function isAboutExistingBooking(lowerInput: string): boolean {
   return [...CHECK_BOOKING_PHRASES, ...CANCEL_BOOKING_PHRASES, ...RESCHEDULE_PHRASES].some((p) =>
@@ -1207,22 +1232,12 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        // Every stored shape, not an exact match. The same customer arrives as
-        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
-        // booking made on one channel was invisible from the other — the bug
-        // phoneNumberVariants exists to remove, in the sites it did not reach
-        // because they filter through the relation rather than the contact.
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
         startTime: { gte: new Date() },
       },
       include: { contact: true },
-      // The NEXT one, not the latest. This ordered by startTime desc with no
-      // lower bound, so a customer with an appointment this Friday and another
-      // next month was told about next month — and "cancel my appointment"
-      // cancelled next month while Friday silently stayed. Past bookings were
-      // in scope too, reported as though they were still to come.
-      orderBy: { startTime: 'asc' },
+      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (booking) {
@@ -1244,22 +1259,12 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        // Every stored shape, not an exact match. The same customer arrives as
-        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
-        // booking made on one channel was invisible from the other — the bug
-        // phoneNumberVariants exists to remove, in the sites it did not reach
-        // because they filter through the relation rather than the contact.
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
         reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      // The NEXT one, not the latest. This ordered by startTime desc with no
-      // lower bound, so a customer with an appointment this Friday and another
-      // next month was told about next month — and "cancel my appointment"
-      // cancelled next month while Friday silently stayed. Past bookings were
-      // in scope too, reported as though they were still to come.
-      orderBy: { reservationTime: 'asc' },
+      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (reservation) {
@@ -1299,22 +1304,12 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        // Every stored shape, not an exact match. The same customer arrives as
-        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
-        // booking made on one channel was invisible from the other — the bug
-        // phoneNumberVariants exists to remove, in the sites it did not reach
-        // because they filter through the relation rather than the contact.
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
         startTime: { gte: new Date() },
       },
       include: { contact: true },
-      // The NEXT one, not the latest. This ordered by startTime desc with no
-      // lower bound, so a customer with an appointment this Friday and another
-      // next month was told about next month — and "cancel my appointment"
-      // cancelled next month while Friday silently stayed. Past bookings were
-      // in scope too, reported as though they were still to come.
-      orderBy: { startTime: 'asc' },
+      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (booking) {
@@ -1335,22 +1330,12 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        // Every stored shape, not an exact match. The same customer arrives as
-        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
-        // booking made on one channel was invisible from the other — the bug
-        // phoneNumberVariants exists to remove, in the sites it did not reach
-        // because they filter through the relation rather than the contact.
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
         reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      // The NEXT one, not the latest. This ordered by startTime desc with no
-      // lower bound, so a customer with an appointment this Friday and another
-      // next month was told about next month — and "cancel my appointment"
-      // cancelled next month while Friday silently stayed. Past bookings were
-      // in scope too, reported as though they were still to come.
-      orderBy: { reservationTime: 'asc' },
+      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (reservation) {
@@ -1396,22 +1381,12 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        // Every stored shape, not an exact match. The same customer arrives as
-        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
-        // booking made on one channel was invisible from the other — the bug
-        // phoneNumberVariants exists to remove, in the sites it did not reach
-        // because they filter through the relation rather than the contact.
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
         startTime: { gte: new Date() },
       },
       include: { contact: true },
-      // The NEXT one, not the latest. This ordered by startTime desc with no
-      // lower bound, so a customer with an appointment this Friday and another
-      // next month was told about next month — and "cancel my appointment"
-      // cancelled next month while Friday silently stayed. Past bookings were
-      // in scope too, reported as though they were still to come.
-      orderBy: { startTime: 'asc' },
+      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (booking) {
@@ -1436,22 +1411,12 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        // Every stored shape, not an exact match. The same customer arrives as
-        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
-        // booking made on one channel was invisible from the other — the bug
-        // phoneNumberVariants exists to remove, in the sites it did not reach
-        // because they filter through the relation rather than the contact.
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
         reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      // The NEXT one, not the latest. This ordered by startTime desc with no
-      // lower bound, so a customer with an appointment this Friday and another
-      // next month was told about next month — and "cancel my appointment"
-      // cancelled next month while Friday silently stayed. Past bookings were
-      // in scope too, reported as though they were still to come.
-      orderBy: { reservationTime: 'asc' },
+      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (reservation) {

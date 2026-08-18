@@ -215,6 +215,91 @@ describe('Agent tools', () => {
       });
     });
 
+    /**
+     * A taken slot is an ordinary answer, not a malfunction.
+     *
+     * The branch that says so decided by regexing the exception's English
+     * message for /conflict|already booked|overlap|not available/.
+     * SchedulingService throws "That slot is already taken by …" — none of
+     * those four words. So every slot clash reached the customer as "I could
+     * not complete that just now. Let me put you through to a member of our
+     * team" and escalated to a human, which is the opposite of what the branch
+     * exists to do. It now matches the HTTP status, which cannot drift with the
+     * wording.
+     */
+    describe('a slot that is already taken', () => {
+      const slotFor = (days: number) => {
+        const when = new Date(Date.now() + days * 24 * 3600 * 1000);
+        when.setUTCHours(9, 0, 0, 0);
+        return when.toISOString();
+      };
+
+      it('is reported as unavailable, not as a broken tool', async () => {
+        const startTime = slotFor(40);
+        const first = await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501001',
+          serviceName: 'Consultation',
+          startTime,
+          staffName: 'Dr Clash',
+        }).expect(201);
+        expect(first.body.ok).toBe(true);
+
+        const clash = await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501002',
+          serviceName: 'Consultation',
+          startTime,
+          staffName: 'Dr Clash',
+        }).expect(201);
+
+        expect(clash.body.data.reason).toBe('slot_unavailable');
+        expect(clash.body.speak).toMatch(/taken|available/i);
+        // The customer should be offered another time, not a human.
+        expect(clash.body.handoff).toBeFalsy();
+        expect(clash.body.speak).not.toMatch(/could not complete|put you through/i);
+      });
+
+      it('does not swallow a genuine failure as a taken slot', async () => {
+        // The mirror of the bug above, and it survived the first mutation run:
+        // a check that answered "clash" to everything would tell a customer
+        // their time was taken when the truth is the tool broke. An unparseable
+        // date is a 400, not a 409, and must still degrade honestly.
+        const res = await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501009',
+          serviceName: 'Consultation',
+          startTime: 'the 45th of Neveruary',
+        }).expect(201);
+
+        expect(res.body.data.reason).not.toBe('slot_unavailable');
+        expect(res.body.speak).not.toMatch(/taken|another time/i);
+        expect(res.body.handoff).toBe(true);
+      });
+
+      it('is reported as unavailable when rescheduling onto it too', async () => {
+        const taken = slotFor(41);
+        await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501003',
+          serviceName: 'Consultation',
+          startTime: taken,
+          staffName: 'Dr Clash2',
+        }).expect(201);
+        await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501004',
+          serviceName: 'Checkup',
+          startTime: slotFor(42),
+          staffName: 'Dr Clash2',
+        }).expect(201);
+
+        const clash = await post('reschedule-booking', keyA, {
+          phoneNumber: '+2348055501004',
+          newStartTime: taken,
+        }).expect(201);
+
+        expect(clash.body.data.reason).toBe('slot_unavailable');
+        expect(clash.body.handoff).toBeFalsy();
+        expect(clash.body.speak).not.toMatch(/could not complete|put you through/i);
+      });
+    });
+
     it('says it does not know rather than inventing an answer', async () => {
       const res = await post('search-knowledge', keyA, {
         query: 'what is the airspeed velocity of an unladen swallow',
