@@ -1,12 +1,11 @@
 /**
- * GateKipa demo seed — sets up the demo tenant whose widget is embedded on
+ * GateKipa demo seed — sets up the demo tenant used for demos and probes on
  * https://gatekipa.com.
  *
  * Creates (idempotently, keyed on slug `gatekipa`):
  *   - the GateKipa organization with a grounded persona + welcome message
  *   - a dashboard owner login for the demo
  *   - FAQ entries answering the questions a gatekipa.com visitor actually asks
- *   - a live widget API key (printed ONCE, on creation only — it is stored
  *     as a SHA-256 hash and can never be recovered; re-running the seed
  *     mints a NEW key instead)
  *   - the ready-to-paste embed snippet for gatekipa.com
@@ -19,7 +18,6 @@
  * Usage:
  *   DATABASE_URL=... DIRECT_URL=... node prisma/seed-gatekipa.js
  * Optional env for the printed snippet:
- *   ACE_WEB_URL   e.g. https://ace-web.onrender.com   (serves widget.js)
  *   ACE_API_URL   e.g. https://ace-api.onrender.com   (the API base)
  */
 
@@ -257,50 +255,26 @@ async function main() {
     console.log('  . WhatsApp not configured (needs WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN, WHATSAPP_BUSINESS_ID, WHATSAPP_VERIFY_TOKEN)');
   }
 
-  // ── 4. Widget API key ───────────────────────────────────────────────────────
-  // Same format the dashboard mints (organizations.service.regenerateApiKey):
-  // raw `ace_live_pk_<32 hex>`, stored as sha256, prefix kept for display.
-  const KEY_NAME = 'gatekipa.com widget embed';
-  const existingKey = await prisma.apiKey.findFirst({
-    where: { organizationId: org.id, keyName: KEY_NAME },
+  // ── 4. Web chat widget: RETIRED ─────────────────────────────────────────────
+  //
+  // This seed used to mint an `ace_live_pk_` key and print a <script> snippet
+  // for gatekipa.com. The channel is gone — customers reach this platform on
+  // WhatsApp and by phone — so nothing is minted and no snippet is printed.
+  //
+  // Any key minted by an earlier run is LEFT IN PLACE rather than deleted. It
+  // no longer opens anything (every /api/widget route answers 410), and
+  // removing rows a previous seed created is not this script's business.
+  const legacyWidgetKey = await prisma.apiKey.findFirst({
+    where: { organizationId: org.id, keyName: 'gatekipa.com widget embed' },
   });
-
-  let rawKey = null;
-  if (!existingKey) {
-    rawKey = `ace_live_pk_${crypto.randomBytes(16).toString('hex')}`;
-    await prisma.apiKey.create({
-      data: {
-        organizationId: org.id,
-        keyName: KEY_NAME,
-        keyHash: crypto.createHash('sha256').update(rawKey).digest('hex'),
-        keyPrefix: rawKey.slice(0, 16),
-      },
-    });
-    console.log(`  + Widget API key minted (${rawKey.slice(0, 16)}…)`);
-  } else {
+  if (legacyWidgetKey) {
     console.log(
-      `  . Widget key already exists (${existingKey.keyPrefix}…). The raw key is only shown at creation — ` +
-        'delete the ApiKey row and re-run this seed to mint a fresh one.'
+      `  ! A widget key from before the retirement is still on this org (${legacyWidgetKey.keyPrefix}…).\n` +
+        '    It authenticates nothing now. Delete the ApiKey row when convenient, and\n' +
+        '    remove the widget <script> tag from gatekipa.com — it renders nothing but\n' +
+        '    still loads on every page view.'
     );
   }
-
-  // ── 5. Embed snippet ────────────────────────────────────────────────────────
-  const webUrl = (process.env.ACE_WEB_URL || 'https://<your-ace-dashboard-domain>').replace(/\/+$/, '');
-  const apiUrl = (process.env.ACE_API_URL || 'https://<your-ace-api-domain>').replace(/\/+$/, '');
-
-  console.log('\n────────────────────────────────────────────────────────────');
-  console.log('Paste this before </body> on gatekipa.com:');
-  console.log('────────────────────────────────────────────────────────────');
-  console.log(`<script
-  src="${webUrl}/widget.js"
-  data-api-key="${rawKey || '<key shown when first minted>'}"
-  data-api-url="${apiUrl}"
-  async></script>`);
-  console.log('────────────────────────────────────────────────────────────');
-  if (rawKey) {
-    console.log('⚠  The key above is shown ONCE. Store it now — only its hash is kept.');
-  }
-  console.log(`Dashboard login: ${DEMO_OWNER_EMAIL} (password printed on first run)`);
 
   // ── 6. The webhook URLs the providers need ──────────────────────────────────
   // A config row alone routes nothing: the provider has to be told where to

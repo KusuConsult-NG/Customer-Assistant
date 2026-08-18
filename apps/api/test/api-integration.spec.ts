@@ -59,28 +59,41 @@ describe('Customer Care Agent API Integration Tests', () => {
     });
   });
 
-  describe('2. Widget tenant isolation', () => {
-    it('rejects a request with no API key instead of serving an arbitrary organization', async () => {
-      await request(app.getHttpServer()).get('/api/widget/config').expect(401);
+  describe('2. The retired web chat channel', () => {
+    /**
+     * The widget endpoints answer 410 rather than being deleted, because the
+     * embed snippet lives on tenants' own sites and will keep calling this URL
+     * long after the decision was made. A 404 would read as an outage; 410 says
+     * "gone, permanently" and the body says what to do instead.
+     *
+     * These replace three tenant-isolation tests. Those guarded a real bug — an
+     * unresolved key used to fall through to `findFirst()` and hand over the
+     * first organization in the table. That whole class of bug is now
+     * unreachable: there is no lookup left to get wrong.
+     */
+    it.each([
+      ['config', () => request(app.getHttpServer()).get('/api/widget/config')],
+      ['config with a key', () =>
+        request(app.getHttpServer()).get('/api/widget/config?apiKey=ace_live_pk_not_a_real_key')],
+      ['chat', () =>
+        request(app.getHttpServer())
+          .post('/api/widget/chat')
+          .send({ sessionId: 'sess_test', message: 'hello' })],
+      ['history', () =>
+        request(app.getHttpServer()).get('/api/widget/history?apiKey=x&sessionId=y')],
+    ])('answers 410 Gone for %s', async (_label, call) => {
+      const res = await call();
+      expect(res.status).toBe(410);
+      expect(res.body.retired).toBe(true);
     });
 
-    it('rejects a malformed API key', async () => {
-      // Regression guard: getWidgetConfig used to fall back to
-      // `prisma.organization.findFirst()` when the key did not resolve, handing the
-      // first organization in the table to any caller.
-      await request(app.getHttpServer())
-        .get('/api/widget/config?apiKey=ace_live_pk_not_a_real_key')
-        .expect((res) => {
-          // 401 with a database; 500 when the DB is unreachable in CI. Never 200.
-          expect(res.status).not.toBe(200);
-        });
-    });
-
-    it('rejects a chat message with no API key', async () => {
-      await request(app.getHttpServer())
-        .post('/api/widget/chat')
-        .send({ sessionId: 'sess_test', message: 'hello' })
-        .expect(401);
+    it('never serves an organization to an unauthenticated caller', async () => {
+      // The property the deleted tests existed to hold, restated against the
+      // retirement: whatever comes back, it is not tenant data.
+      const res = await request(app.getHttpServer())
+        .get('/api/widget/config?apiKey=ace_live_pk_not_a_real_key');
+      expect(res.status).not.toBe(200);
+      expect(JSON.stringify(res.body)).not.toMatch(/organizationId|welcomeMessage/i);
     });
   });
 

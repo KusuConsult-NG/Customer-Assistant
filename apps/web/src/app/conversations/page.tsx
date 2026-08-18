@@ -180,10 +180,9 @@ export default function ConversationsPage() {
       <SharedEmptyState
         icon={MessageCircle}
         title="No conversations yet"
-        description="Messages land here from WhatsApp, the web chat widget, and phone calls. Connect a channel and the first one will appear automatically."
+        description="Messages land here from WhatsApp and phone calls. Connect a channel and the first one will appear automatically."
         actions={[
           { label: 'Connect WhatsApp', primary: true, href: '/settings' },
-          { label: 'Install the chat widget', href: '/widget' },
           { label: 'Set up a phone number', href: '/telephony' },
         ]}
       />

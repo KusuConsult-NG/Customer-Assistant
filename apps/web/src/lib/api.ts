@@ -332,27 +332,4 @@ export const api = {
     },
   },
 
-  widget: {
-    getConfig: async (apiKey: string, orgId?: string) => {
-      const qs = apiKey
-        ? `apiKey=${encodeURIComponent(apiKey)}`
-        : `orgId=${encodeURIComponent(orgId || '')}`;
-      const res = await fetch(`${API_URL}/api/widget/config?${qs}`);
-      return handleResponse(res);
-    },
-    sendChatMessage: async (data: { apiKey?: string; orgId?: string; sessionId: string; message: string; customerName?: string; customerEmail?: string; customerPhone?: string }) => {
-      const res = await fetch(`${API_URL}/api/widget/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      return handleResponse(res);
-    },
-    getHistory: async (apiKey: string, sessionId: string) => {
-      const res = await fetch(
-        `${API_URL}/api/widget/history?apiKey=${encodeURIComponent(apiKey)}&sessionId=${encodeURIComponent(sessionId)}`
-      );
-      return handleResponse(res);
-    },
-  },
 };

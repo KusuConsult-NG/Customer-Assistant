@@ -19,7 +19,6 @@ import {
   Bell,
   Menu,
   X,
-  Code,
   GitFork,
   Sun,
   Moon
@@ -37,9 +36,8 @@ import { ToastProvider } from '@/components/ui/Toast';
  * missing from both — so anyone following a password reset link was bounced to
  * /login before they could set a password.
  *
- * /widget is excluded from the dashboard chrome but is not listed here: it is an
- * authenticated settings page, and treating it as public let it render without a
- * session and then fail on every API call.
+ * /widget is gone entirely — the embedded chat channel was retired. Customers
+ * reach this platform on WhatsApp and by phone; this app is the staff dashboard.
  */
 const PUBLIC_ROUTES = [
   '/login',
@@ -302,7 +300,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Bookings & Calendar" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/widget" icon={<Code className="w-4 h-4" />} label="Embeddable Widget" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Settings & Plans</p>
                   <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing & Subscriptions" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />

@@ -75,10 +75,18 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
     await authedPage(page);
   });
 
-  test('J1 & J9: Widget Generator & Embeddable Web Chat', async ({ page }) => {
-    await page.goto('/widget');
-    await expect(page).toHaveTitle(/Customer Care Agent/i);
-    await expect(pageHeading(page, /Widget/i)).toBeVisible();
+  test('J1 & J9: the web chat widget is retired, and the dashboard does not offer it', async ({ page }) => {
+    // The channel is gone: customers reach this platform on WhatsApp and by
+    // phone. A nav entry or a reachable generator page would send an operator
+    // off to configure something that no longer answers anyone.
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: /embeddable widget/i })).toHaveCount(0);
+
+    // Still served, and inert. A 404 here is a network error in a tenant's own
+    // browser console that reads like an outage on our side.
+    const script = await page.request.get('/widget.js');
+    expect(script.status()).toBe(200);
+    expect(await script.text()).toMatch(/retired/i);
   });
 
   test('J2: Telephony Dashboard & Voice Simulator', async ({ page }) => {

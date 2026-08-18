@@ -163,7 +163,7 @@ To run the production build instead of the dev servers:
 ${BOLD}Then:${OFF}
 
   open http://localhost:3000          ${DIM}# register an account and sign in${OFF}
-  npm run db:seed:gatekipa            ${DIM}# optional: demo tenant + widget key${OFF}
+  npm run db:seed:gatekipa            ${DIM}# optional: demo tenant${OFF}
   npm run demo:readiness              ${DIM}# what works right now, per capability${OFF}
   npm run verify                      ${DIM}# every test layer${OFF}
 

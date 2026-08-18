@@ -335,7 +335,7 @@ export default function DashboardPage() {
                   No conversations in this period yet
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs">
-                  Volume appears here once customers reach you on WhatsApp, the chat widget, or by phone.
+                  Volume appears here once customers reach you on WhatsApp or by phone.
                 </p>
               </div>
             )}
