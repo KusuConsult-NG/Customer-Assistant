@@ -169,7 +169,13 @@ describe('Agent tool catalogue', () => {
     // will argue with the customer first.
     expect(SYSTEM_PROMPT).toMatch(/never invent/i);
     expect(SYSTEM_PROMPT).toMatch(/never claim to be human|you are an AI/i);
-    expect(SYSTEM_PROMPT).toMatch(/handoff tool.*canTransfer|canTransfer.*true/is);
+    // The handoff tool now PERFORMS the transfer rather than reporting whether
+    // one is possible, so the prompt's job changed with it: the model must say
+    // what the reply says happened, not decide from a flag whether to announce.
+    expect(SYSTEM_PROMPT).toMatch(/never say you are transferring someone before calling the handoff tool/i);
+    // \s+ rather than literal spaces: the prompt is a wrapped template literal,
+    // so any phrase long enough to be worth asserting on straddles a newline.
+    expect(SYSTEM_PROMPT).toMatch(/say\s+what\s+its\s+reply\s+says\s+happened/i);
     expect(SYSTEM_PROMPT).toMatch(/say it as written|do not paraphrase/i);
   });
 

@@ -167,13 +167,52 @@ describe('Agent tools', () => {
       expect(res.body.speak).toContain('Agent Tools Ltd');
     });
 
-    it('does not promise a transfer when there is no forwarding number', async () => {
-      const res = await post('handoff', keyA).expect(201);
+    /**
+     * The tool used to check whether a forwarding number was CONFIGURED and, if
+     * one was, say "Connecting you to a member of our team now" — having
+     * attempted nothing. The call was never moved. It also said "I will log
+     * this so a member of our team calls you back" and logged nothing.
+     *
+     * Both are the same failure: a sentence that describes an action nobody
+     * performed. On the orchestrator path a caller hearing "connecting you"
+     * really is being transferred, because TwilioMediaStreamHandler redirects
+     * first and picks the words from what Twilio did. Here the sentence WAS the
+     * action — and after a cutover that handler is not in the path at all.
+     */
+    describe('handoff', () => {
+      it('does not promise a transfer when there is no call to move', async () => {
+        const res = await post('handoff', keyA, { phoneNumber: '+2348055500011' }).expect(201);
 
-      expect(res.body.data.canTransfer).toBe(false);
-      expect(res.body.speak).toMatch(/cannot transfer|call you back/i);
-      // The bug this guards: announcing a connection that never happens.
-      expect(res.body.speak).not.toMatch(/connecting you/i);
+        expect(res.body.data.transferred).toBe(false);
+        // The bug this guards: announcing a connection that never happens.
+        expect(res.body.speak).not.toMatch(/connecting you|putting you through/i);
+      });
+
+      it('actually files the callback it promises, and quotes its reference', async () => {
+        const phone = `+23480555${Date.now().toString().slice(-5)}`;
+        const res = await post('handoff', keyA, { phoneNumber: phone, reason: 'a billing query' })
+          .expect(201);
+
+        // A promise of a record that does not exist is not a degradation — the
+        // customer hangs up and waits for a callback nobody will make.
+        expect(res.body.data.ticketId).toBeTruthy();
+        expect(res.body.speak).toContain(res.body.data.ticketId.slice(0, 8));
+
+        const ticket = await prisma.ticket.findUnique({ where: { id: res.body.data.ticketId } });
+        expect(ticket).not.toBeNull();
+        expect(ticket!.priority).toBe('HIGH');
+        expect(ticket!.organizationId).toBe(orgA);
+      });
+
+      it('claims nothing at all when it cannot even log a callback', async () => {
+        // No phone number: there is nobody to attach a ticket to, and inventing
+        // a contact to hold one would be a record of a customer who does not
+        // exist.
+        const res = await post('handoff', keyA, {}).expect(201);
+
+        expect(res.body.data.ticketId).toBeNull();
+        expect(res.body.speak).not.toMatch(/connecting you|logged this|reference/i);
+      });
     });
 
     it('says it does not know rather than inventing an answer', async () => {

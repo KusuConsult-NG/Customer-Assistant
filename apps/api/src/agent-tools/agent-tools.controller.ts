@@ -107,8 +107,16 @@ export class AgentToolsController {
     return this.tools.searchKnowledge(this.org(req), body?.query ?? '');
   }
 
+  /**
+   * Every field is optional and the tool is correct without any of them. The
+   * conversation id is what lets the transfer actually be attempted; absent, a
+   * callback ticket is filed and nothing is promised. See handoffTarget.
+   */
   @Post('handoff')
-  handoff(@Req() req: AgentRequest): Promise<ToolResult> {
-    return this.tools.handoffTarget(this.org(req));
+  handoff(
+    @Req() req: AgentRequest,
+    @Body() body: { phoneNumber?: string; conversationId?: string; reason?: string } = {}
+  ): Promise<ToolResult> {
+    return this.tools.handoffTarget(this.org(req), body ?? {});
   }
 }

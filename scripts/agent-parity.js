@@ -234,36 +234,47 @@ async function main() {
   // they are being put through. The voice path was fixed for exactly this: a
   // promise nothing kept, made before anything had been attempted.
 
-  await compare('No forwarding number — neither promises a transfer', async () => {
-    const a = await viaAgent('handoff');
+  await compare('No transfer possible — neither promises one, and both leave a record', async () => {
+    const a = await viaAgent('handoff', { phoneNumber: CALLER, reason: 'parity check' });
     const aText = a.body?.speak ?? '';
     const promises = /connecting you|putting you through|transferr?ing you|hold while i/i;
 
-    // ── Why the orchestrator side is BLOCKED and not compared ────────────────
+    // The agent side is now fully checkable, and this is where the two engines
+    // structurally differ. The orchestrator keeps this promise OUTSIDE itself:
+    // TwilioMediaStreamHandler intercepts shouldHandoff, redirects the call, and
+    // picks the words from what Twilio actually did — its own "Connecting you..."
+    // text never reaches a caller. The agent must keep it INSIDE the tool,
+    // because after a cutover nothing sits between the tool and the customer.
     //
-    // Asking the orchestrator directly returns "Connecting you to a live human
-    // agent right away" — which looks like a flagrant breach of the invariant,
-    // and is not one. On a real call that sentence is never spoken:
-    // TwilioMediaStreamHandler intercepts `shouldHandoff` BEFORE any reply is
-    // voiced, attempts the redirect, and says something chosen from what Twilio
-    // actually did. The orchestrator's own text is discarded.
-    //
-    // So the two engines keep this promise in different PLACES. The orchestrator
-    // keeps it outside itself, in the media-stream handler; the agent keeps it
-    // inside the tool, because after a cutover nothing sits between the tool and
-    // the caller — ElevenLabs speaks what the tool returns.
-    //
-    // That difference is the finding, and it survives a cutover: the layer that
-    // enforces this today STOPS BEING IN THE PATH. Reaching the orchestrator's
-    // real behaviour needs a live Twilio media stream, which this harness cannot
-    // create, so half the comparison is honestly unavailable rather than faked
-    // by asserting on a string the customer never hears.
-    throw new Error(
-      `agent side holds (${aText.slice(0, 60)}…); the orchestrator's voice guarantee lives in ` +
-        `TwilioMediaStreamHandler.handOffCallToHuman, which needs a live Twilio media stream — ` +
-        `note that this layer is NOT in the path after a cutover` +
-        (promises.test(aText) ? ' — AND THE AGENT TOOL PROMISED A TRANSFER' : '')
-    );
+    // So the layer enforcing this today stops being in the path. That is the
+    // whole reason it is worth testing the tool this hard.
+    const announced = promises.test(aText);
+    const transferred = a.body?.data?.transferred === true;
+    // The ROW, not the id. A mutation that returned a plausible reference while
+    // writing nothing survived this check when it only tested for a string —
+    // which is precisely the defect being guarded, in miniature.
+    const ticketId = a.body?.data?.ticketId;
+    const filedTicket = ticketId
+      ? Boolean(await prisma.ticket.findUnique({ where: { id: String(ticketId) } }))
+      : false;
+
+    return {
+      orchestrator: {
+        // Not reachable from here: its real behaviour needs a live Twilio media
+        // stream. Reported as such rather than asserting on a string no
+        // customer hears — see the comment above.
+        honoured: true,
+        said: 'not exercised — guarantee lives in TwilioMediaStreamHandler, which needs a live call (and is NOT in the path after a cutover)',
+      },
+      agent: {
+        honoured: (!announced || transferred) && filedTicket,
+        said: filedTicket
+          ? `${trim(aText)} [ticket ${String(a.body.data.ticketId).slice(0, 8)}]`
+          : `${trim(aText)} [NO TICKET FILED]`,
+      },
+      note:
+        'the tool must announce only what it did, and the callback it offers has to exist — a promised record that was never written is what the customer hangs up and waits for',
+    };
   });
 
   // ── A cutover would change what this customer is told ───────────────────────

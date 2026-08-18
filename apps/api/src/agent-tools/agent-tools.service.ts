@@ -30,6 +30,7 @@ import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
 
 export interface ToolResult {
   ok: boolean;
@@ -48,7 +49,10 @@ export class AgentToolsService {
   constructor(
     private scheduling: SchedulingService,
     private crm: CrmService,
-    private knowledge: KnowledgeService
+    private knowledge: KnowledgeService,
+    // One implementation of "move the call", shared with the console's takeover
+    // button. A second would be a second thing that can silently stop moving it.
+    private takeover: ElevenLabsTakeoverService
   ) {}
 
   /**
@@ -370,33 +374,140 @@ export class AgentToolsService {
 
   // ── Handoff ────────────────────────────────────────────────────────────────
   /**
-   * Reports whether a transfer is actually possible. The agent must not promise
-   * a transfer this returns false for — announcing one that cannot happen is
-   * exactly the bug the voice path was fixed for.
+   * Put the caller through to a person, or say honestly why that did not
+   * happen — and leave a record either way.
+   *
+   * ── What this used to do, and why it was the same bug twice ────────────────
+   *
+   * It checked whether a forwarding number was CONFIGURED and, if one was, told
+   * the agent to say "Connecting you to a member of our team now." Nothing was
+   * attempted. The call was never moved. On the orchestrator path a customer
+   * hearing that sentence really is being transferred, because
+   * TwilioMediaStreamHandler redirects the call BEFORE anything is spoken and
+   * chooses the words from what Twilio actually did. Here the sentence was the
+   * whole action — the exact bug the voice path was fixed for, reintroduced on
+   * the path meant to replace it.
+   *
+   * Worse, the other branch said "I will log this so a member of our team calls
+   * you back" and logged nothing. A promise of a record that does not exist is
+   * not a degradation, it is a lie the customer acts on by hanging up and
+   * waiting.
+   *
+   * ── Act, then announce ─────────────────────────────────────────────────────
+   *
+   * With a conversation id the transfer is ATTEMPTED first, through the same
+   * ElevenLabsTakeoverService the console uses — one implementation of "move the
+   * call", because a second one is a second thing that can silently stop moving
+   * it — and the sentence is chosen from the outcome.
+   *
+   * Without one, or when the carrier refuses, NOTHING IS CLAIMED. A HIGH
+   * priority ticket is filed against the caller's number and the reference is
+   * read back, which is exactly what the orchestrator's voice path does when it
+   * cannot transfer.
+   *
+   * ── The conversation id may not arrive, and that is survivable ─────────────
+   *
+   * It is bound to a provider dynamic variable whose name is documented but has
+   * never been confirmed against a live call from this environment — the same
+   * caveat as the webhook signature header. So the absent case is not a
+   * degraded path bolted on for safety; it is the path that runs until a real
+   * call proves otherwise, and it is correct on its own. What arrives is logged
+   * so the first real call settles it.
    */
-  async handoffTarget(organizationId: string): Promise<ToolResult> {
+  async handoffTarget(
+    organizationId: string,
+    input: { phoneNumber?: string; conversationId?: string; reason?: string } = {}
+  ): Promise<ToolResult> {
     try {
-      // The forwarding number lives on TelephonyConfig, not Organization — a
-      // tenant can exist with no telephony configured at all.
-      const telephony = await prisma.telephonyConfig.findFirst({
-        where: { organizationId },
-        select: { forwardingNumber: true },
-      });
-      if (!telephony?.forwardingNumber) {
-        return {
-          ok: false,
-          speak:
-            'I cannot transfer you right now, but I will log this so a member of our team calls you back on this number.',
-          data: { canTransfer: false },
-        };
+      const conversationId = input.conversationId?.trim();
+      this.log.log(
+        `handoff_requested org=${organizationId} conversation=${conversationId ?? '(none supplied)'}`
+      );
+
+      if (conversationId) {
+        // Act. Throws are caught below and fall through to the ticket, so a
+        // provider failure never becomes a promise either.
+        const outcome = await this.takeover
+          .takeOverConversation(organizationId, conversationId)
+          .catch((err) => {
+            this.log.warn(`handoff_transfer_error org=${organizationId} error=${String(err?.message ?? err)}`);
+            return { taken: false as const, reason: 'the transfer could not be attempted' };
+          });
+
+        if (outcome.taken) {
+          // Announce, and only now. The call really has moved.
+          return {
+            ok: true,
+            speak: 'You are being connected to a member of our team now.',
+            data: { transferred: true, conversationId },
+          };
+        }
+        this.log.warn(
+          `handoff_not_transferred org=${organizationId} conversation=${conversationId} reason=${outcome.reason}`
+        );
       }
-      return {
-        ok: true,
-        speak: 'Connecting you to a member of our team now. One moment please.',
-        data: { canTransfer: true, forwardingNumber: telephony.forwardingNumber },
-      };
+
+      // Could not transfer — either no call to move, or the carrier refused.
+      // Leave the record the wording promises, then say precisely what happened.
+      return this.handoffFallback(organizationId, input, conversationId);
     } catch (e) {
       return this.failed('handoff_target', e);
+    }
+  }
+
+  /**
+   * No transfer happened. File the callback the customer is about to be
+   * promised, and read back its reference so they have something to quote.
+   *
+   * With no phone number there is nobody to attach a ticket to, and inventing a
+   * contact to hold it would be a record of a customer who does not exist — so
+   * that case says plainly that it could not log anything rather than claiming
+   * it did.
+   */
+  private async handoffFallback(
+    organizationId: string,
+    input: { phoneNumber?: string; reason?: string },
+    conversationId?: string
+  ): Promise<ToolResult> {
+    const phoneNumber = input.phoneNumber?.trim();
+    if (!phoneNumber) {
+      return {
+        ok: false,
+        speak:
+          'I am not able to put you through myself. Please hold the line and I will stay with you, or call back and ask for a member of the team.',
+        handoff: true,
+        data: { transferred: false, ticketId: null, reason: 'no caller number to log against' },
+      };
+    }
+
+    try {
+      const contact = await this.contactFor(organizationId, phoneNumber);
+      const ticket = await this.crm.createTicket(organizationId, {
+        contactId: contact.id,
+        subject: 'Caller asked to speak to a person',
+        description:
+          `The agent could not transfer this caller.` +
+          (input.reason ? ` They asked about: ${input.reason}.` : '') +
+          (conversationId ? ` ElevenLabs conversation ${conversationId}.` : ''),
+        priority: TicketPriority.HIGH,
+      });
+      return {
+        ok: true,
+        speak: `I cannot put you through myself, but I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will call you back on this number.`,
+        handoff: true,
+        data: { transferred: false, ticketId: ticket.id },
+      };
+    } catch (e) {
+      // The ticket is what makes the sentence true, so if it could not be
+      // written the sentence must not be said.
+      this.log.error(`handoff_ticket_failed org=${organizationId} error=${String((e as any)?.message ?? e)}`);
+      return {
+        ok: false,
+        speak:
+          'I am not able to put you through, and I could not log a callback either. Please call back and ask for a member of the team — I am sorry.',
+        handoff: true,
+        data: { transferred: false, ticketId: null },
+      };
     }
   }
 }

@@ -361,9 +361,14 @@ async function main() {
   });
 
   await check('The agent does not promise a transfer it cannot perform', async () => {
-    const res = await tool('handoff');
-    assert(res.body?.data?.canTransfer === false, 'claimed a transfer with no forwarding number');
-    assert(!/connecting you/i.test(res.body?.speak ?? ''), 'announced a connection that cannot happen');
+    // A caller number, so the tool can file the callback it offers. The claim
+    // being tested is that it announces only what it actually did — the tool
+    // now ATTEMPTS the transfer rather than reporting whether one is possible.
+    const res = await tool('handoff', { phoneNumber: `+23480${Date.now().toString().slice(-8)}` });
+    assert(res.body?.data?.transferred === false, 'claimed a transfer with no call to move');
+    assert(!/connecting you|putting you through/i.test(res.body?.speak ?? ''), 'announced a connection that cannot happen');
+    // The sentence offers a callback; the ticket is what makes it true.
+    assert(res.body?.data?.ticketId, 'promised a callback without filing one');
   });
 
   await check('The agent says it does not know rather than inventing an answer', async () => {
