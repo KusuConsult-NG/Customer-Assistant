@@ -119,6 +119,12 @@ services:
       # Voice AI.
       - key: DEEPGRAM_API_KEY
         sync: false
+      # TTS, and the SHARED hosted-agent workspace. Deliberately NOT paired here
+      # with ELEVENLABS_ALLOW_SHARED_WORKSPACE: an ElevenLabs workspace has no
+      # tenancy of its own, so on a multi-tenant deployment every tenant needs
+      # its own key (POST /api/agent-provisioning/credentials) and hosted-agent
+      # calls are refused until they have one. Setting the opt-in here would put
+      # every tenant's numbers, WhatsApp lines and transcripts in one bucket.
       - key: ELEVENLABS_API_KEY
         sync: false
       - key: ELEVENLABS_VOICE_ID

@@ -47,6 +47,11 @@ import {
   type ToolName,
 } from './agent-tool-catalog';
 import { fromSecret } from './elevenlabs-contracts';
+import {
+  sharedWorkspaceAllowed,
+  tenantWebhookUrl,
+  type WorkspaceMode,
+} from './elevenlabs-workspace';
 
 /** One thing a sync did, in the order it did it. */
 export interface SyncStep {
@@ -348,30 +353,96 @@ export class ElevenLabsAgentService {
   }
 
   /**
-   * Whether a tenant key is set, and enough of it to tell two apart.
+   * Store the signing secret for this organization's OWN workspace webhook.
    *
-   * Never returns the credential. There is no read-back-the-secret endpoint at
-   * all — an operator who has lost the key gets a new one from ElevenLabs.
+   * A workspace signs its post-call deliveries with a secret of its own, so a
+   * platform with one ELEVENLABS_WEBHOOK_SECRET can only verify deliveries from
+   * one workspace. Moving a tenant into its own workspace without this leaves
+   * every one of its transcripts arriving with a signature nothing can check —
+   * and the only honest response to a signature we cannot check is to reject it,
+   * so the transcripts are simply lost.
+   *
+   * The URL to paste into the ElevenLabs dashboard comes back with it, because
+   * the per-tenant path is the other half of the same configuration step and an
+   * operator who sets one without the other is no better off.
+   */
+  async setWebhookSecret(
+    organizationId: string,
+    webhookSecret: string
+  ): Promise<{ configured: true; fingerprint: string; webhookUrl: string }> {
+    const secret = webhookSecret?.trim();
+    if (!secret) throw new BadRequestException('An ElevenLabs webhook signing secret is required.');
+
+    const sealed = encryptSecret(secret);
+
+    await prisma.hostedAgentConfig.upsert({
+      where: { organizationId },
+      create: { organizationId, webhookSecret: sealed },
+      update: { webhookSecret: sealed },
+    });
+
+    this.log.log(`workspace_webhook_secret_stored org=${organizationId}`);
+    return {
+      configured: true,
+      fingerprint: secretFingerprint(secret),
+      webhookUrl: tenantWebhookUrl(organizationId),
+    };
+  }
+
+  /**
+   * Which workspace this tenant is operating in, and what is still missing.
+   *
+   * Never returns a credential — only a fingerprint, which is enough to tell two
+   * keys apart and useless to anyone who steals it. There is no
+   * read-back-the-secret endpoint at all; an operator who has lost the key gets
+   * a new one from ElevenLabs.
+   *
+   * `warnings` exists because "configured" is not the same as "working". A
+   * tenant with its own API key but no webhook secret looks fully set up in
+   * every listing and silently drops every transcript, and that half-migrated
+   * state is the one this whole change makes possible.
    */
   async getWorkspaceKeyStatus(organizationId: string): Promise<{
+    mode: WorkspaceMode;
     configured: boolean;
     fingerprint: string | null;
     encryptedAtRest: boolean;
     usingSharedWorkspace: boolean;
+    sharedWorkspaceAllowed: boolean;
+    webhookSecretConfigured: boolean;
+    webhookUrl: string;
+    warnings: string[];
   }> {
     const config = await prisma.hostedAgentConfig.findUnique({
       where: { organizationId },
-      select: { apiKey: true },
+      select: { apiKey: true, webhookSecret: true },
     });
 
+    const sharedAllowed = sharedWorkspaceAllowed();
+    const webhookSecretConfigured = Boolean(config?.webhookSecret);
+    const webhookUrl = tenantWebhookUrl(organizationId);
+    const warnings: string[] = [];
+
     if (!config?.apiKey) {
+      // Stated plainly: with no tenant key, this organization shares a
+      // workspace with every other tenant — or, when sharing is not permitted,
+      // cannot act at all.
+      const sharedKeyPresent = Boolean(process.env.ELEVENLABS_API_KEY);
+      warnings.push(
+        sharedKeyPresent && sharedAllowed
+          ? 'This organization has no ElevenLabs key of its own and is running in the shared workspace, alongside every other tenant’s numbers, WhatsApp lines and transcripts.'
+          : 'This organization has no ElevenLabs key of its own, so agent provisioning, numbers and live conversations will all be refused until one is set.'
+      );
       return {
+        mode: 'shared',
         configured: false,
         fingerprint: null,
         encryptedAtRest: false,
-        // Stated plainly: with no tenant key, this organization shares a
-        // workspace with every other tenant.
-        usingSharedWorkspace: Boolean(process.env.ELEVENLABS_API_KEY),
+        usingSharedWorkspace: sharedKeyPresent && sharedAllowed,
+        sharedWorkspaceAllowed: sharedAllowed,
+        webhookSecretConfigured,
+        webhookUrl,
+        warnings,
       };
     }
 
@@ -385,9 +456,28 @@ export class ElevenLabsAgentService {
       // An unreadable key is still worth reporting as configured — silently
       // saying "not configured" would send someone to store a second one.
       fingerprint = null;
+      warnings.push(
+        'The stored key cannot be decrypted with the current ENCRYPTION_KEY. Every ElevenLabs call for this organization will fail until the right key is restored or a new workspace key is stored.'
+      );
     }
 
-    return { configured: true, fingerprint, encryptedAtRest, usingSharedWorkspace: false };
+    if (!webhookSecretConfigured) {
+      warnings.push(
+        `This organization has its own workspace but no webhook signing secret, so its post-call transcripts cannot be verified and will be rejected. Set one, and point the workspace's post-call webhook at ${webhookUrl}.`
+      );
+    }
+
+    return {
+      mode: 'dedicated',
+      configured: true,
+      fingerprint,
+      encryptedAtRest,
+      usingSharedWorkspace: false,
+      sharedWorkspaceAllowed: sharedAllowed,
+      webhookSecretConfigured,
+      webhookUrl,
+      warnings,
+    };
   }
 
   // ── Sync ───────────────────────────────────────────────────────────────────

@@ -93,11 +93,23 @@ export class ElevenLabsWebhookService {
   /**
    * Persist one delivery.
    *
+   * `verifiedFor` names the workspace whose secret actually verified this
+   * request: an organization id for a per-tenant workspace, or null for the
+   * shared one signed by ELEVENLABS_WEBHOOK_SECRET. It is checked against the
+   * tenant the payload resolves to, because a valid signature only proves WHO
+   * SENT the delivery, never who it may be filed against — and this whole file
+   * writes transcripts and phone numbers into a CRM on the strength of an
+   * `agent_id` in the body.
+   *
    * Never throws for a payload we cannot use — an unknown agent or an event
    * type we do not handle is a reported non-outcome, not an error, because the
    * caller has already ACKed and an exception would only be logged twice.
    */
-  async ingest(payload: PostCallPayload, correlationId: string): Promise<IngestOutcome> {
+  async ingest(
+    payload: PostCallPayload,
+    correlationId: string,
+    verifiedFor: string | null = null
+  ): Promise<IngestOutcome> {
     const type = payload?.type ?? 'unknown';
     const data = payload?.data;
 
@@ -125,7 +137,7 @@ export class ElevenLabsWebhookService {
     // delivery is dropped and shouted about instead.
     const configs = await prisma.hostedAgentConfig.findMany({
       where: { agentId },
-      select: { organizationId: true },
+      select: { organizationId: true, apiKey: true },
       take: 2,
     });
     if (configs.length === 0) {
@@ -145,6 +157,45 @@ export class ElevenLabsWebhookService {
     }
 
     const organizationId = configs[0].organizationId;
+
+    // ── The signature says who sent this; it does not say who it is about ─────
+    //
+    // Two ways those come apart, both of which would file one tenant's call
+    // transcript and the caller's phone number into another tenant's CRM:
+    //
+    //   1. A per-tenant delivery naming somebody else's agent. The URL selected
+    //      whose secret to check, so the signature is genuinely valid — for the
+    //      wrong tenant.
+    //   2. A shared-workspace delivery naming an agent that belongs to a tenant
+    //      who has since moved into a workspace of their own. Its transcripts
+    //      are no longer the shared workspace's to send.
+    //
+    // Neither is a rejection at the HTTP layer, because the sender is who they
+    // claim to be. It is a refusal to attribute, which is a different thing.
+    const attributedTo = verifiedFor ?? null;
+    if (attributedTo && attributedTo !== organizationId) {
+      log.error(
+        'elevenlabs_webhook_cross_tenant_attribution',
+        new Error('A workspace delivered a conversation belonging to another organization'),
+        { correlationId, agentId, conversationId, verifiedFor: attributedTo, organizationId }
+      );
+      return {
+        handled: false,
+        reason: `agent ${agentId} belongs to a different organization than the workspace that signed this delivery`,
+      };
+    }
+    if (!attributedTo && configs[0].apiKey) {
+      log.error(
+        'elevenlabs_webhook_shared_secret_for_dedicated_tenant',
+        new Error('The shared workspace secret verified a delivery for a tenant that has its own'),
+        { correlationId, agentId, conversationId, organizationId }
+      );
+      return {
+        handled: false,
+        reason: `agent ${agentId} belongs to an organization with its own workspace — its deliveries must arrive on that organization's own webhook URL`,
+      };
+    }
+
     const meta = data?.metadata ?? {};
 
     if (meta.phone_call) {

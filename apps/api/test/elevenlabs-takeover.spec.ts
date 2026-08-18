@@ -33,6 +33,7 @@ describe('ElevenLabs takeover', () => {
   const realFetch = global.fetch;
   const realBase = process.env.ELEVENLABS_BASE_URL;
   const realKey = process.env.ELEVENLABS_API_KEY;
+  const realSharedFlag = process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE;
 
   const voiceStub = {
     transferCallToHuman: async (
@@ -60,6 +61,12 @@ describe('ElevenLabs takeover', () => {
     process.env.ENCRYPTION_KEY = Buffer.alloc(32, 11).toString('base64');
     process.env.ELEVENLABS_BASE_URL = 'https://elevenlabs.test';
     process.env.ELEVENLABS_API_KEY = 'xi-test-key';
+    // These tenants deliberately have no workspace key of their own, so every
+    // call here runs through the shared-workspace fallback. That fallback is
+    // refused unless a deployment has opted in — see elevenlabs-workspace.ts —
+    // so the opt-in is set here rather than the tests quietly proving that a
+    // security refusal does not fire.
+    process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE = '1';
 
     const org = await prisma.organization.create({
       data: {
@@ -85,6 +92,8 @@ describe('ElevenLabs takeover', () => {
     global.fetch = realFetch;
     if (realBase === undefined) delete process.env.ELEVENLABS_BASE_URL;
     else process.env.ELEVENLABS_BASE_URL = realBase;
+    if (realSharedFlag === undefined) delete process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE;
+    else process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE = realSharedFlag;
     if (realKey === undefined) delete process.env.ELEVENLABS_API_KEY;
     else process.env.ELEVENLABS_API_KEY = realKey;
   });

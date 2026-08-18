@@ -17,6 +17,11 @@ import {
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { ElevenLabsError } from '@elevenlabs/elevenlabs-js/errors';
 import { decryptSecret } from '@ace/database';
+import {
+  sharedWorkspaceAllowed,
+  sharedWorkspaceRefusal,
+  type WorkspaceResolution,
+} from './elevenlabs-workspace';
 
 @Injectable()
 export class ElevenLabsApi {
@@ -30,19 +35,42 @@ export class ElevenLabsApi {
    * ciphertext to the SDK and get an authentication failure that looks like a
    * revoked key rather than a decryption problem.
    *
-   * Falling back to ELEVENLABS_API_KEY means the shared workspace, which has no
-   * tenancy boundary of its own. That is a real limitation, documented in
-   * ElevenLabsNumbersService — not something to hide behind a default.
+   * A tenant with no key of its own is REFUSED unless the deployment has opted
+   * into sharing. See elevenlabs-workspace.ts: an ElevenLabs workspace has no
+   * tenancy of its own, so sharing one puts every tenant's numbers, WhatsApp
+   * lines and conversation transcripts in a single bucket kept apart only by
+   * our own filtering being right every time.
    */
   keyFor(organizationId: string, stored: string | null | undefined): string {
-    if (stored) return decryptSecret(stored, `HostedAgentConfig.apiKey org=${organizationId}`);
+    return this.workspaceFor(organizationId, stored).apiKey;
+  }
+
+  /** The key, and whether it is this tenant's own or the shared one. */
+  workspaceFor(
+    organizationId: string,
+    stored: string | null | undefined
+  ): WorkspaceResolution {
+    if (stored) {
+      return {
+        apiKey: decryptSecret(stored, `HostedAgentConfig.apiKey org=${organizationId}`),
+        mode: 'dedicated',
+      };
+    }
 
     const shared = process.env.ELEVENLABS_API_KEY;
-    if (shared) return shared;
+    if (!shared) {
+      throw new BadRequestException(
+        `No ElevenLabs API key is configured for this organization, and ELEVENLABS_API_KEY is unset. Organization: ${organizationId}.`
+      );
+    }
+    if (!sharedWorkspaceAllowed()) throw sharedWorkspaceRefusal(organizationId);
 
-    throw new BadRequestException(
-      'No ElevenLabs API key is configured for this organization, and ELEVENLABS_API_KEY is unset.'
+    // Allowed, but never silent: an operator reading logs should be able to see
+    // that a tenant is running in the shared workspace without going looking.
+    this.log.warn(
+      `shared_workspace org=${organizationId} — no per-tenant key; running in the shared ElevenLabs workspace`
     );
+    return { apiKey: shared, mode: 'shared' };
   }
 
   /**
