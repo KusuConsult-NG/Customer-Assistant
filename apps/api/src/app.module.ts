@@ -14,6 +14,7 @@ import { BillingModule } from './billing/billing.module';
 import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
+import { AgentToolsModule } from './agent-tools/agent-tools.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { RedisThrottlerStorage } from './config/redis-throttler-storage';
 import { WorkflowTriggerModule } from './workflows/workflow-trigger.module';
@@ -56,6 +57,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     EventsModule,
     WebhooksModule,
     WidgetModule,
+    AgentToolsModule,
     WorkflowsModule,
   ],
   controllers: [AppController],

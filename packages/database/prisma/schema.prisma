@@ -173,6 +173,7 @@ model Organization {
   users                User[]
   apiKeys              ApiKey[]
   telephonyConfigs     TelephonyConfig[]
+  hostedAgentConfig    HostedAgentConfig?
   whatsAppConfigs      WhatsAppConfig[]
   contacts             Contact[]
   companies            Company[]
@@ -839,4 +840,37 @@ model SelfieRequest {
   @@index([contactId, status])
   @@index([status, expiresAt])
   @@map("selfie_requests")
+}
+
+/// Per-tenant configuration for a hosted conversational agent (ElevenLabs
+/// Agents). The agent runs the conversation; this platform runs the business
+/// logic and is called back through /api/agent-tools.
+///
+/// One row per organization per channel target. The API key is stored because
+/// outbound calls and messages are initiated BY US on the tenant's behalf —
+/// inbound needs no key, since the agent authenticates to us with its own
+/// agent key instead.
+model HostedAgentConfig {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// ElevenLabs agent id (agent_...). Identifies which configured agent runs.
+  agentId String
+
+  /// Workspace API key used for outbound initiation (xi-api-key).
+  apiKey String? @db.Text
+
+  /// ElevenLabs-side WhatsApp number id — NOT the Meta phone_number_id.
+  whatsappPhoneNumberId String?
+
+  /// Template used to request call permission before an outbound WhatsApp call.
+  /// WhatsApp requires an approved template; without one the call cannot be placed.
+  callPermissionTemplateName     String?
+  callPermissionTemplateLanguage String? @default("en")
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hosted_agent_configs")
 }
