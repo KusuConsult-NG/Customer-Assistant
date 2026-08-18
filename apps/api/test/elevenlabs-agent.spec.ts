@@ -31,6 +31,8 @@ interface Captured {
   url: string;
   method: string;
   body: any;
+  /** The credential actually presented to ElevenLabs. */
+  apiKey?: string;
 }
 
 describe('ElevenLabs agent provisioning', () => {
@@ -98,7 +100,13 @@ describe('ElevenLabs agent provisioning', () => {
       const url = typeof input === 'string' ? input : input.url;
       const method = (init?.method ?? 'GET').toUpperCase();
       const body = init?.body ? JSON.parse(init.body) : undefined;
-      const req: Captured = { url, method, body };
+      const headers = new Headers(init?.headers ?? {});
+      const req: Captured = {
+        url,
+        method,
+        body,
+        apiKey: headers.get('xi-api-key') ?? undefined,
+      };
       sent.push(req);
 
       const override = overrides(req);
@@ -365,6 +373,80 @@ describe('ElevenLabs agent provisioning', () => {
 
     it('refuses updateAgent before anything is provisioned', async () => {
       await expect(service.updateAgent(orgId)).rejects.toThrow(/no provisioned agent/i);
+    });
+  });
+
+  // ── The tenant's own workspace credentials ─────────────────────────────────
+
+  describe('the workspace key', () => {
+    const KEY = 'sk_tenant_workspace_key_abcd';
+    const realEncryptionKey = process.env.ENCRYPTION_KEY;
+
+    beforeEach(() => {
+      process.env.ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64');
+    });
+
+    afterAll(() => {
+      if (realEncryptionKey === undefined) delete process.env.ENCRYPTION_KEY;
+      else process.env.ENCRYPTION_KEY = realEncryptionKey;
+    });
+
+    it('never stores the key in a form the database reveals', async () => {
+      await service.setWorkspaceKey(orgId, KEY);
+
+      const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId: orgId } });
+      // A database backup, a leaked read replica, or any SQL read must not hand
+      // over a credential that can read every transcript in the workspace.
+      expect(config!.apiKey).not.toContain(KEY);
+      expect(config!.apiKey!.startsWith('v1.')).toBe(true);
+    });
+
+    it('presents the decrypted key to ElevenLabs, not the ciphertext', async () => {
+      await service.setWorkspaceKey(orgId, KEY);
+      stubWorkspace();
+
+      await service.syncAgent(orgId);
+
+      // The ciphertext reaching the xi-api-key header would look like a revoked
+      // credential rather than a decryption bug, and cost hours.
+      const authenticated = sent.filter((r) => r.apiKey);
+      expect(authenticated.length).toBeGreaterThan(0);
+      for (const req of authenticated) expect(req.apiKey).toBe(KEY);
+    });
+
+    it('refuses to store anything when no encryption key is configured', async () => {
+      delete process.env.ENCRYPTION_KEY;
+
+      await expect(service.setWorkspaceKey(orgId, KEY)).rejects.toThrow(/ENCRYPTION_KEY is not set/);
+
+      const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId: orgId } });
+      // Storing it in the clear "for now" is how a system reports encryption at
+      // rest while having none.
+      expect(config?.apiKey ?? null).toBeNull();
+    });
+
+    it('reports the key without returning it', async () => {
+      await service.setWorkspaceKey(orgId, KEY);
+
+      const status = await service.getWorkspaceKeyStatus(orgId);
+      expect(status).toMatchObject({ configured: true, encryptedAtRest: true });
+      expect(status.fingerprint).toBe('••••abcd');
+      expect(JSON.stringify(status)).not.toContain(KEY);
+    });
+
+    it('says plainly when a tenant is still sharing the workspace', async () => {
+      const status = await service.getWorkspaceKeyStatus(orgId);
+      expect(status).toMatchObject({ configured: false, usingSharedWorkspace: true });
+    });
+
+    it('still reports a key it cannot decrypt as configured', async () => {
+      await service.setWorkspaceKey(orgId, KEY);
+      process.env.ENCRYPTION_KEY = Buffer.alloc(32, 4).toString('base64');
+
+      const status = await service.getWorkspaceKeyStatus(orgId);
+      // Reporting "not configured" would send an operator to store a second
+      // key, on top of one that the right ENCRYPTION_KEY could still read.
+      expect(status).toMatchObject({ configured: true, fingerprint: null });
     });
   });
 

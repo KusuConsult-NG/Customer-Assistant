@@ -75,12 +75,8 @@ export class ElevenLabsNumbersService {
    */
   private async tenant(organizationId: string) {
     const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId } });
-    const apiKey = config?.apiKey || process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new BadRequestException(
-        'No ElevenLabs API key is configured for this organization, and ELEVENLABS_API_KEY is unset.'
-      );
-    }
+    // Decrypts the tenant's stored key, or falls back to the shared one.
+    const apiKey = this.api.keyFor(organizationId, config?.apiKey);
     if (!config?.agentId) {
       throw new BadRequestException(
         'This organization has no provisioned agent yet. Sync one first — a number pointed at no agent rings and answers with nothing.'

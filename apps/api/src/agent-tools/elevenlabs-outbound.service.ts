@@ -22,6 +22,7 @@
  */
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { ElevenLabsApi } from './elevenlabs-client';
 
 const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
 
@@ -44,6 +45,8 @@ export interface OutboundCallResult {
 @Injectable()
 export class ElevenLabsOutboundService {
   private readonly log = new Logger('ElevenLabsOutbound');
+
+  constructor(private readonly api: ElevenLabsApi) {}
 
   private baseUrl(): string {
     // Data-residency deployments use a different host (api.eu.residency…,
@@ -73,12 +76,10 @@ export class ElevenLabsOutboundService {
         'This organization has no provisioned ElevenLabs agent yet — sync it before placing calls.'
       );
     }
-    const apiKey = config.apiKey || process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new BadRequestException(
-        'No ElevenLabs API key is configured — outbound requires one (inbound does not).'
-      );
-    }
+    // Decrypts the tenant's stored key, or falls back to the shared one. The
+    // ciphertext reaching the xi-api-key header would look like a revoked key
+    // rather than a decryption problem, so it is resolved in exactly one place.
+    const apiKey = this.api.keyFor(organizationId, config.apiKey);
     return { ...config, apiKey };
   }
 

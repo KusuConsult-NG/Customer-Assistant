@@ -16,6 +16,7 @@ import { Test } from '@nestjs/testing';
 import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { ElevenLabsOutboundService } from '../src/agent-tools/elevenlabs-outbound.service';
+import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
 
 describe('ElevenLabs outbound', () => {
   let service: ElevenLabsOutboundService;
@@ -25,7 +26,7 @@ describe('ElevenLabs outbound', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      providers: [ElevenLabsOutboundService],
+      providers: [ElevenLabsOutboundService, ElevenLabsApi],
     }).compile();
     service = moduleRef.get(ElevenLabsOutboundService);
 
