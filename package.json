@@ -22,7 +22,8 @@
     "db:studio": "npm run --prefix packages/database studio",
     "test:packages": "npx jest --config jest.packages.config.js",
     "typecheck": "npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit",
-    "certify": "node scripts/certify-mvp.js"
+    "certify": "node scripts/certify-mvp.js",
+    "secrets:encrypt": "node scripts/encrypt-secrets.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",

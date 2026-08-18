@@ -36,6 +36,7 @@ import { createHash, randomBytes } from 'crypto';
 import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { prisma } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
+import { encryptSecret, isEncrypted, secretFingerprint } from '../common/secret-box';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import {
   agentDefinitionFor,
@@ -158,12 +159,9 @@ export class ElevenLabsAgentService {
     if (!org) throw new NotFoundException('Organization not found.');
 
     const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId } });
-    const apiKey = config?.apiKey || process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new BadRequestException(
-        'No ElevenLabs API key is configured for this organization, and ELEVENLABS_API_KEY is unset. Provisioning cannot proceed without one.'
-      );
-    }
+    // Decrypts the tenant's stored key, or falls back to the shared one. See
+    // ElevenLabsApi.keyFor — the ciphertext must never reach the SDK.
+    const apiKey = this.api.keyFor(organizationId, config?.apiKey);
 
     return { org: org as AgentOrganization & { id: string }, config, apiKey };
   }
@@ -314,6 +312,83 @@ export class ElevenLabsAgentService {
     this.log.log(`agent_key_rotated org=${organizationId} revoked=${revoked.count}`);
 
     return { agentKey: key };
+  }
+
+  // ── The tenant's own workspace credentials ─────────────────────────────────
+
+  /**
+   * Store this organization's ElevenLabs workspace key, encrypted.
+   *
+   * Until a tenant has one, everything here runs against the shared
+   * ELEVENLABS_API_KEY workspace, which holds every other tenant's numbers and
+   * WhatsApp lines. Setting a per-tenant key is what turns that shared space
+   * into a real boundary, so this is a security control rather than a
+   * convenience — which is also why there was no way to set it before: it could
+   * only be written by hand in SQL, and a credential nobody can rotate without
+   * a database console does not get rotated.
+   */
+  async setWorkspaceKey(
+    organizationId: string,
+    apiKey: string
+  ): Promise<{ configured: true; fingerprint: string }> {
+    const key = apiKey?.trim();
+    if (!key) throw new BadRequestException('An ElevenLabs API key is required.');
+
+    // Throws when ENCRYPTION_KEY is unset rather than storing plaintext. The
+    // caller gets told to set it; nothing is written in the clear.
+    const sealed = encryptSecret(key);
+
+    await prisma.hostedAgentConfig.upsert({
+      where: { organizationId },
+      create: { organizationId, apiKey: sealed },
+      update: { apiKey: sealed },
+    });
+
+    this.log.log(`workspace_key_stored org=${organizationId}`);
+    return { configured: true, fingerprint: secretFingerprint(key) };
+  }
+
+  /**
+   * Whether a tenant key is set, and enough of it to tell two apart.
+   *
+   * Never returns the credential. There is no read-back-the-secret endpoint at
+   * all — an operator who has lost the key gets a new one from ElevenLabs.
+   */
+  async getWorkspaceKeyStatus(organizationId: string): Promise<{
+    configured: boolean;
+    fingerprint: string | null;
+    encryptedAtRest: boolean;
+    usingSharedWorkspace: boolean;
+  }> {
+    const config = await prisma.hostedAgentConfig.findUnique({
+      where: { organizationId },
+      select: { apiKey: true },
+    });
+
+    if (!config?.apiKey) {
+      return {
+        configured: false,
+        fingerprint: null,
+        encryptedAtRest: false,
+        // Stated plainly: with no tenant key, this organization shares a
+        // workspace with every other tenant.
+        usingSharedWorkspace: Boolean(process.env.ELEVENLABS_API_KEY),
+      };
+    }
+
+    const encryptedAtRest = isEncrypted(config.apiKey);
+    let fingerprint: string | null = null;
+    try {
+      fingerprint = secretFingerprint(
+        this.api.keyFor(organizationId, config.apiKey)
+      );
+    } catch {
+      // An unreadable key is still worth reporting as configured — silently
+      // saying "not configured" would send someone to store a second one.
+      fingerprint = null;
+    }
+
+    return { configured: true, fingerprint, encryptedAtRest, usingSharedWorkspace: false };
   }
 
   // ── Sync ───────────────────────────────────────────────────────────────────

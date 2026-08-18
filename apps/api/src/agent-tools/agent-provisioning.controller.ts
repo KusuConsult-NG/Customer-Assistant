@@ -43,6 +43,30 @@ export class AgentProvisioningController {
     return this.agents.getAgentStatus(req.user.organizationId);
   }
 
+  // ── Workspace credentials ──────────────────────────────────────────────────
+
+  /**
+   * Whether this organization has its own ElevenLabs workspace key, and whether
+   * it is encrypted at rest. Never returns the key itself.
+   */
+  @Get('credentials')
+  credentials(@Req() req: { user: AuthUser }) {
+    return this.agents.getWorkspaceKeyStatus(req.user.organizationId);
+  }
+
+  /**
+   * Store this organization's own workspace key.
+   *
+   * Without one, the tenant runs in the shared ELEVENLABS_API_KEY workspace
+   * alongside everyone else's numbers and WhatsApp lines. Setting it is the
+   * only thing that makes that boundary real.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('credentials')
+  setCredentials(@Req() req: { user: AuthUser }, @Body() body: { apiKey: string }) {
+    return this.agents.setWorkspaceKey(req.user.organizationId, body?.apiKey ?? '');
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Post('sync')
   sync(@Req() req: { user: AuthUser }): Promise<SyncReport> {
