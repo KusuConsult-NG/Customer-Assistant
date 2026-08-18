@@ -880,7 +880,14 @@ model HostedAgentConfig {
   agentKeySecretId String?
 
   /// ElevenLabs-side WhatsApp number id — NOT the Meta phone_number_id.
+  /// Set by attaching an account that was connected in the ElevenLabs dashboard;
+  /// there is no API to create the connection itself (Meta's signup needs a human).
   whatsappPhoneNumberId String?
+
+  /// ElevenLabs phone-number id for the imported Twilio number.
+  /// Present means ElevenLabs answers that number, not TwilioMediaStreamHandler —
+  /// so this field is the record of whether a tenant's voice has been cut over.
+  phoneNumberId String?
 
   /// Template used to request call permission before an outbound WhatsApp call.
   /// WhatsApp requires an approved template; without one the call cannot be placed.

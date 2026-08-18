@@ -111,6 +111,13 @@ Cutting a tenant over means: `POST /api/agent-provisioning/sync` (OWNER/ADMIN), 
 
 `syncAgent` is idempotent, persists each tool id as it is created (so a half-finished run is resumable rather than duplicating), and refuses outright when `API_BASE_URL` is localhost or a private range — an agent that answers calls and fails every tool call is worse than none, because it looks provisioned. `getAgentStatus` is read-only on purpose: repairing drift silently also destroys the evidence of how it happened.
 
+**Connecting a number is not symmetrical between the two channels** (`ElevenLabsNumbersService`):
+
+- **A Twilio number CAN be imported over the API** (`POST /api/agent-provisioning/numbers/import`), because we hold the tenant's `accountSid`/`authToken` in `TelephonyConfig` and ElevenLabs takes both. **This import IS the voice cutover** — ElevenLabs answers the number from then on, not `TwilioMediaStreamHandler` — so `confirmVoiceCutover: true` is required and never defaulted, and `numbers/release` exists so the decision is reversible (releasing still leaves re-pointing the Twilio voice webhook to the operator). `enableSms` defaults to **false**, against the upstream default: this platform consumes no inbound SMS, so taking that route would change a tenant's Twilio config for nothing.
+- **A WhatsApp account CANNOT.** The SDK has get/list/update/delete and no create — the line is connected through the ElevenLabs dashboard via Meta's embedded signup, which needs a human. `whatsapp/attach` only assigns our agent to an already-connected line and records its id; it refuses a line whose Meta token has expired (assigning it would report success and then answer nothing).
+
+**The ElevenLabs workspace has no tenancy boundary of its own.** With a per-tenant `HostedAgentConfig.apiKey` the workspace is that tenant's; falling back to the shared `ELEVENLABS_API_KEY` means one workspace holds everyone's numbers and WhatsApp lines. Every listing is therefore filtered to the caller's own agent (plus unclaimed WhatsApp lines), and attaching a line already assigned to another agent is refused — it would move another tenant's conversations onto this agent with nothing in either system looking wrong. Per-tenant workspace keys are the real fix.
+
 **Webhook security — verify BEFORE ACK, using the raw body**:
 - `main.ts` creates the app with `rawBody: true, bodyParser: false` and registers exactly one JSON parser via `app.useBodyParser('json', ...)`. **Never add another `express.json()`** — a second parser consumes the request without the rawBody hook and silently breaks every signature check.
 - Meta WhatsApp: HMAC-SHA256 of rawBody (`X-Hub-Signature-256`); invalid → 403, server misconfig → 500 (so Meta retries), then ACK 200 and process async.

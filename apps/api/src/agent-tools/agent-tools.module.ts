@@ -6,6 +6,8 @@ import { AgentToolsController } from './agent-tools.controller';
 import { AgentToolsService } from './agent-tools.service';
 import { AgentProvisioningController } from './agent-provisioning.controller';
 import { ElevenLabsAgentService } from './elevenlabs-agent.service';
+import { ElevenLabsApi } from './elevenlabs-client';
+import { ElevenLabsNumbersService } from './elevenlabs-numbers.service';
 import { ElevenLabsOutboundService } from './elevenlabs-outbound.service';
 
 /**
@@ -30,7 +32,18 @@ import { ElevenLabsOutboundService } from './elevenlabs-outbound.service';
 @Module({
   imports: [SchedulingModule, CrmModule, KnowledgeModule],
   controllers: [AgentToolsController, AgentProvisioningController],
-  providers: [AgentToolsService, ElevenLabsAgentService, ElevenLabsOutboundService],
-  exports: [AgentToolsService, ElevenLabsAgentService, ElevenLabsOutboundService],
+  providers: [
+    AgentToolsService,
+    ElevenLabsApi,
+    ElevenLabsAgentService,
+    ElevenLabsNumbersService,
+    ElevenLabsOutboundService,
+  ],
+  exports: [
+    AgentToolsService,
+    ElevenLabsAgentService,
+    ElevenLabsNumbersService,
+    ElevenLabsOutboundService,
+  ],
 })
 export class AgentToolsModule {}

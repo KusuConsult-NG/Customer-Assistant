@@ -25,6 +25,7 @@ import { prisma } from '@ace/database';
 import { ElevenLabsAgentService } from '../src/agent-tools/elevenlabs-agent.service';
 import { TOOL_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import { AGENT_KEY_PREFIX } from '../src/agent-tools/agent-key.guard';
+import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
 
 interface Captured {
   url: string;
@@ -48,7 +49,7 @@ describe('ElevenLabs agent provisioning', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      providers: [ElevenLabsAgentService],
+      providers: [ElevenLabsAgentService, ElevenLabsApi],
     }).compile();
     service = moduleRef.get(ElevenLabsAgentService);
 

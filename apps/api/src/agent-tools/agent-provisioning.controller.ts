@@ -10,18 +10,26 @@
  * The organization always comes from the token, never from the body — an
  * operator can only ever provision their own tenant's agent.
  */
-import { Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { AgentStatus, ElevenLabsAgentService, SyncReport } from './elevenlabs-agent.service';
+import {
+  ElevenLabsNumbersService,
+  ImportedNumber,
+  WhatsAppAccount,
+} from './elevenlabs-numbers.service';
 
 // RolesGuard must follow JwtAuthGuard — it reads request.user.
 @Controller('api/agent-provisioning')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AgentProvisioningController {
-  constructor(private readonly agents: ElevenLabsAgentService) {}
+  constructor(
+    private readonly agents: ElevenLabsAgentService,
+    private readonly numbers: ElevenLabsNumbersService
+  ) {}
 
   /**
    * What the agent customers reach actually looks like, compared to this repo.
@@ -57,5 +65,66 @@ export class AgentProvisioningController {
   @Post('rotate-key')
   rotateKey(@Req() req: { user: AuthUser }): Promise<{ agentKey: string }> {
     return this.agents.rotateAgentKey(req.user.organizationId);
+  }
+
+  // ── Phone numbers ──────────────────────────────────────────────────────────
+
+  @Get('numbers')
+  numbersList(@Req() req: { user: AuthUser }): Promise<ImportedNumber[]> {
+    return this.numbers.listNumbers(req.user.organizationId);
+  }
+
+  /**
+   * Hand the tenant's Twilio number to ElevenLabs.
+   *
+   * `confirmVoiceCutover` is required and deliberately not defaulted: after
+   * this, the agent answers the number instead of the orchestrator. That is a
+   * change in who talks to customers.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('numbers/import')
+  importNumber(
+    @Req() req: { user: AuthUser },
+    @Body() body: { confirmVoiceCutover?: boolean; enableSms?: boolean; label?: string }
+  ): Promise<ImportedNumber> {
+    return this.numbers.importTwilioNumber(req.user.organizationId, {
+      confirmVoiceCutover: body?.confirmVoiceCutover === true,
+      enableSms: body?.enableSms,
+      label: body?.label,
+    });
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Post('numbers/release')
+  releaseNumber(@Req() req: { user: AuthUser }): Promise<{ released: boolean; note: string }> {
+    return this.numbers.releaseNumber(req.user.organizationId);
+  }
+
+  // ── WhatsApp ───────────────────────────────────────────────────────────────
+
+  @Get('whatsapp')
+  whatsappList(@Req() req: { user: AuthUser }): Promise<WhatsAppAccount[]> {
+    return this.numbers.listWhatsAppAccounts(req.user.organizationId);
+  }
+
+  /**
+   * Point an already-connected WhatsApp line at this organization's agent.
+   *
+   * Connecting the line itself happens in the ElevenLabs dashboard — Meta's
+   * embedded signup needs a human, so there is no endpoint that can do it.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('whatsapp/attach')
+  attachWhatsApp(
+    @Req() req: { user: AuthUser },
+    @Body() body: { phoneNumberId: string }
+  ): Promise<WhatsAppAccount> {
+    return this.numbers.attachWhatsAppAccount(req.user.organizationId, body?.phoneNumberId ?? '');
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Post('whatsapp/detach')
+  detachWhatsApp(@Req() req: { user: AuthUser }): Promise<{ detached: boolean }> {
+    return this.numbers.detachWhatsAppAccount(req.user.organizationId);
   }
 }

@@ -31,17 +31,11 @@
  * serves every channel; see CLAUDE.md, "TWO conversation engines exist right
  * now, and only one is live."
  */
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { ElevenLabsError } from '@elevenlabs/elevenlabs-js/errors';
+import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { prisma } from '@ace/database';
+import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import {
   agentDefinitionFor,
@@ -87,6 +81,8 @@ type ToolIdMap = Partial<Record<ToolName, string>>;
 @Injectable()
 export class ElevenLabsAgentService {
   private readonly log = new Logger('ElevenLabsAgent');
+
+  constructor(private readonly api: ElevenLabsApi) {}
 
   // ── Environment ────────────────────────────────────────────────────────────
 
@@ -134,28 +130,15 @@ export class ElevenLabsAgentService {
   }
 
   private client(apiKey: string): ElevenLabsClient {
-    // Data-residency deployments use a different host. Configurable so a tenant
-    // bound to a jurisdiction is not silently provisioned in the default region.
-    const baseUrl = process.env.ELEVENLABS_BASE_URL?.replace(/\/+$/, '');
-    return new ElevenLabsClient({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
+    return this.api.for(apiKey);
   }
 
-  /** Turn a provider failure into something that names the provider and reason. */
   private fail(what: string, err: unknown): never {
-    if (err instanceof ElevenLabsError) {
-      const body = typeof err.body === 'string' ? err.body : JSON.stringify(err.body ?? {});
-      this.log.error(`elevenlabs_error ${what} status=${err.statusCode} body=${body.slice(0, 400)}`);
-      throw new ServiceUnavailableException(
-        `ElevenLabs rejected ${what} (HTTP ${err.statusCode ?? '?'}): ${body.slice(0, 300)}`
-      );
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    this.log.error(`elevenlabs_unreachable ${what} error=${message}`);
-    throw new ServiceUnavailableException(`Could not reach ElevenLabs for ${what}: ${message}`);
+    return this.api.fail(what, err);
   }
 
   private isNotFound(err: unknown): boolean {
-    return err instanceof ElevenLabsError && err.statusCode === 404;
+    return this.api.isNotFound(err);
   }
 
   // ── Tenant state ───────────────────────────────────────────────────────────
