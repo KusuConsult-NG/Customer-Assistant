@@ -258,6 +258,55 @@ describe('Agent tools', () => {
         expect(clash.body.speak).not.toMatch(/could not complete|put you through/i);
       });
 
+      /**
+       * The read-then-write race, closed at the database.
+       *
+       * The application check passes for every request in flight before any of
+       * them commits, so only an EXCLUDE constraint can settle it. The original
+       * constraint carried `WHERE "staffName" IS NOT NULL` — because `= `never
+       * matches two NULLs — and the agent's book-appointment tool DOES NOT
+       * EXPOSE staffName at all. So every booking an agent makes was covered by
+       * nothing: eight simultaneous requests produced eight CONFIRMED bookings
+       * in one slot, each caller told their appointment was made.
+       *
+       * Needs the SQL-only migrations applied (CI does this); without them the
+       * assertion below fails loudly rather than passing on the racy check.
+       */
+      it.each([
+        ['with a named staff member', 'Dr Concurrent'],
+        ['with no staff assigned — what the agent always sends', undefined],
+      ])('gives one caller the slot when eight ask at once, %s', async (_label, staffName) => {
+        const startTime = slotFor(60 + (staffName ? 0 : 1));
+
+        const results = await Promise.all(
+          Array.from({ length: 8 }, (_, i) =>
+            post('book-appointment', keyA, {
+              phoneNumber: `+23480555200${i}`,
+              serviceName: 'Consultation',
+              startTime,
+              ...(staffName ? { staffName } : {}),
+            })
+          )
+        );
+
+        const confirmed = results.filter((r) => r.body.ok === true);
+        expect(confirmed).toHaveLength(1);
+
+        // And the seven who lost are told the truth, not that the tool broke.
+        const refused = results.filter((r) => r.body.data?.reason === 'slot_unavailable');
+        expect(refused).toHaveLength(7);
+        for (const r of refused) expect(r.body.handoff).toBeFalsy();
+
+        const rows = await prisma.booking.count({
+          where: {
+            organizationId: orgA,
+            startTime: new Date(startTime),
+            status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+          },
+        });
+        expect(rows).toBe(1);
+      });
+
       it('does not swallow a genuine failure as a taken slot', async () => {
         // The mirror of the bug above, and it survived the first mutation run:
         // a check that answered "clash" to everything would tell a customer

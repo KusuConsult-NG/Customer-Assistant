@@ -74,10 +74,17 @@ jobs:
       - name: Push Prisma schema to CI database
         run: npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
 
-      - name: Apply SQL-only constraints (EXCLUDE cannot be expressed in schema.prisma)
+      # EXCLUDE cannot be expressed in schema.prisma, so `db push` never creates
+      # these. Applied in order, and every one of them must be listed: a
+      # migration that exists but is not applied here is a guarantee CI reports
+      # as holding while the database does not enforce it.
+      - name: Apply SQL-only constraints
         run: |
-          PGPASSWORD=ace psql -h localhost -U ace -d ace_ci \
-            -f packages/database/prisma/migrations/20260807020000_booking_overlap_constraint/migration.sql
+          set -e
+          for m in packages/database/prisma/migrations/*/migration.sql; do
+            echo "── $m"
+            PGPASSWORD=ace psql -h localhost -U ace -d ace_ci -v ON_ERROR_STOP=1 -f "$m"
+          done
 
       - name: Build all workspaces
         run: npx turbo run build
