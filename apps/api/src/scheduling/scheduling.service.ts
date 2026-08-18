@@ -49,9 +49,15 @@ export class SchedulingService {
         organizationId,
         contactId: contact.id,
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { startTime: 'asc' },
     });
   }
 
@@ -67,9 +73,15 @@ export class SchedulingService {
         organizationId,
         contactId: contact.id,
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { reservationTime: 'asc' },
     });
   }
 

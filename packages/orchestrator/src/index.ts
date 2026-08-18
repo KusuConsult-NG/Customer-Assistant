@@ -144,6 +144,70 @@ function extractPartySize(text: string): number | null {
 }
 
 /**
+ * Phrases that mean "do something to the booking I already have".
+ *
+ * ── Why these are module constants and not inline ────────────────────────────
+ *
+ * They were declared inside their own branches, several sections below the
+ * branch that CREATES a booking — and that branch triggered on the bare word
+ * "appointment". So it matched first, every time:
+ *
+ *     "cancel my appointment"      → created a second appointment
+ *     "when is my appointment"     → created an appointment
+ *     "reschedule my appointment"  → created an appointment
+ *
+ * A customer trying to cancel was told "I've put you down for..." and left with
+ * two bookings and nothing cancelled. Hoisting them here is what lets the
+ * create branches ask "is this actually about an existing booking?" before
+ * acting, which is the only ordering that cannot silently break again when
+ * somebody adds a phrase.
+ */
+export const CHECK_BOOKING_PHRASES = [
+  'my booking', 'my appointment', 'my reservation', 'check my booking',
+  'when is my appointment', 'booking status', 'reservation status', 'view my booking',
+];
+
+export const CANCEL_BOOKING_PHRASES = [
+  'cancel my booking', 'cancel my appointment', 'cancel appointment',
+  'cancel my reservation', 'cancel reservation', 'i want to cancel',
+  'please cancel', 'cancel booking',
+];
+
+export const RESCHEDULE_PHRASES = [
+  'reschedule', 'change my appointment', 'move my booking', 'postpone',
+  'change my booking', 'change my reservation', 'move my reservation',
+  'different time', 'another time', 'change the date',
+];
+
+/** True when the customer is talking about a booking they already have. */
+export function isAboutExistingBooking(lowerInput: string): boolean {
+  return [...CHECK_BOOKING_PHRASES, ...CANCEL_BOOKING_PHRASES, ...RESCHEDULE_PHRASES].some((p) =>
+    lowerInput.includes(p)
+  );
+}
+
+export const wantsToCancel = (lowerInput: string): boolean =>
+  CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p));
+
+export const wantsToReschedule = (lowerInput: string): boolean =>
+  RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p));
+
+/**
+ * Precedence, most specific first: cancel and reschedule beat "check", and all
+ * three beat "book".
+ *
+ * Without this, guarding only the create branches moved the bug instead of
+ * fixing it — "cancel my appointment" contains "my appointment", so the status
+ * branch answered with the booking's details and cancelled nothing. Less
+ * destructive than creating a second appointment, and still the wrong answer to
+ * the question asked.
+ */
+export const wantsStatusOnly = (lowerInput: string): boolean =>
+  CHECK_BOOKING_PHRASES.some((p) => lowerInput.includes(p)) &&
+  !wantsToCancel(lowerInput) &&
+  !wantsToReschedule(lowerInput);
+
+/**
  * Words that are never a service, however they are arranged.
  *
  * A denylist rather than a language model because the cost of a wrong answer is
@@ -732,8 +796,12 @@ export class ConversationOrchestrator {
     // of what the customer asked for, whether the business is open then, or whether
     // that slot was already taken. Customers were told a time nobody was expecting
     // them, and staff got silently double-booked.
+    // The bare word "appointment" is in here, so this branch matches almost any
+    // sentence about one. It sits ABOVE check, cancel and reschedule, so before
+    // the guard "cancel my appointment" created a second appointment and
+    // cancelled nothing — the customer was told "I've put you down for...".
     const APPOINTMENT_PHRASES = ['appointment', 'schedule consultation', 'book a doctor', 'reserve slot', 'book an appointment', 'book appointment'];
-    if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p))) {
+    if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p)) && !isAboutExistingBooking(lowerInput)) {
       try {
         const toolResult = await this.executeBookAppointment(context, cleanInput);
         return {
@@ -750,8 +818,9 @@ export class ConversationOrchestrator {
     }
 
     // ── 4. Tool: Reservation ─────────────────────────────────────────────────
+    // Same shape, same guard: "cancel my reservation" contains "reservation".
     const RESERVATION_PHRASES = ['reservation', 'book room', 'book table', 'book a room', 'book a table', 'reserve a table', 'make a reservation'];
-    if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p))) {
+    if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p)) && !isAboutExistingBooking(lowerInput)) {
       try {
         const toolResult = await this.executeManageReservation(context, cleanInput);
         return {
@@ -768,11 +837,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 5. Tool: Check Booking / Reservation Status ──────────────────────────
-    const CHECK_BOOKING_PHRASES = [
-      'my booking', 'my appointment', 'my reservation', 'check my booking',
-      'when is my appointment', 'booking status', 'reservation status', 'view my booking',
-    ];
-    if (CHECK_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
+    if (wantsStatusOnly(lowerInput)) {
       try {
         const result = await this.executeCheckBookingStatus(context);
         return {
@@ -788,11 +853,6 @@ export class ConversationOrchestrator {
     }
 
     // ── 6. Tool: Cancel Booking / Reservation ─────────────────────────────────
-    const CANCEL_BOOKING_PHRASES = [
-      'cancel my booking', 'cancel my appointment', 'cancel appointment',
-      'cancel my reservation', 'cancel reservation', 'i want to cancel',
-      'please cancel', 'cancel booking',
-    ];
     if (CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
         const result = await this.executeCancelBookingOrReservation(context);
@@ -809,11 +869,6 @@ export class ConversationOrchestrator {
     }
 
     // ── 7. Tool: Reschedule Booking / Reservation ─────────────────────────────
-    const RESCHEDULE_PHRASES = [
-      'reschedule', 'change my appointment', 'move my booking', 'postpone',
-      'change my booking', 'change my reservation', 'move my reservation',
-      'different time', 'another time', 'change the date',
-    ];
     if (RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
         const result = await this.executeRescheduleBookingOrReservation(context);
@@ -1152,11 +1207,22 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        // Every stored shape, not an exact match. The same customer arrives as
+        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
+        // booking made on one channel was invisible from the other — the bug
+        // phoneNumberVariants exists to remove, in the sites it did not reach
+        // because they filter through the relation rather than the contact.
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { startTime: 'asc' },
     });
 
     if (booking) {
@@ -1178,11 +1244,22 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        // Every stored shape, not an exact match. The same customer arrives as
+        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
+        // booking made on one channel was invisible from the other — the bug
+        // phoneNumberVariants exists to remove, in the sites it did not reach
+        // because they filter through the relation rather than the contact.
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { reservationTime: 'asc' },
     });
 
     if (reservation) {
@@ -1222,11 +1299,22 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        // Every stored shape, not an exact match. The same customer arrives as
+        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
+        // booking made on one channel was invisible from the other — the bug
+        // phoneNumberVariants exists to remove, in the sites it did not reach
+        // because they filter through the relation rather than the contact.
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { startTime: 'asc' },
     });
 
     if (booking) {
@@ -1247,11 +1335,22 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        // Every stored shape, not an exact match. The same customer arrives as
+        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
+        // booking made on one channel was invisible from the other — the bug
+        // phoneNumberVariants exists to remove, in the sites it did not reach
+        // because they filter through the relation rather than the contact.
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { reservationTime: 'asc' },
     });
 
     if (reservation) {
@@ -1297,11 +1396,22 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        // Every stored shape, not an exact match. The same customer arrives as
+        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
+        // booking made on one channel was invisible from the other — the bug
+        // phoneNumberVariants exists to remove, in the sites it did not reach
+        // because they filter through the relation rather than the contact.
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { startTime: 'asc' },
     });
 
     if (booking) {
@@ -1326,11 +1436,22 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        // Every stored shape, not an exact match. The same customer arrives as
+        // "+234…" on a call and "234…" on WhatsApp, so an exact match meant a
+        // booking made on one channel was invisible from the other — the bug
+        // phoneNumberVariants exists to remove, in the sites it did not reach
+        // because they filter through the relation rather than the contact.
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      // The NEXT one, not the latest. This ordered by startTime desc with no
+      // lower bound, so a customer with an appointment this Friday and another
+      // next month was told about next month — and "cancel my appointment"
+      // cancelled next month while Friday silently stayed. Past bookings were
+      // in scope too, reported as though they were still to come.
+      orderBy: { reservationTime: 'asc' },
     });
 
     if (reservation) {

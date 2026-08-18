@@ -194,6 +194,117 @@ describe('ConversationOrchestrator', () => {
     });
   });
 
+  /**
+   * Which intent a sentence about an existing booking reaches.
+   *
+   * The branch that CREATES a booking triggered on the bare word "appointment"
+   * and sat above check, cancel and reschedule. So it matched first, every
+   * time, and a customer trying to cancel was told "I've put you down for..."
+   * — left with two bookings and nothing cancelled.
+   *
+   * Guarding only the create branches moved the bug rather than fixing it:
+   * "cancel my appointment" contains "my appointment", so the STATUS branch
+   * then answered with the booking's details and still cancelled nothing. Both
+   * failures are pinned here.
+   */
+  describe('Which booking intent a sentence reaches', () => {
+    const intentOf = async (message: string) => {
+      const result = await orchestrator.processIncomingMessage(baseContext(), message);
+      return result.intentDetected;
+    };
+
+    it.each([
+      'cancel my appointment',
+      'cancel my booking',
+      'i want to cancel',
+      'cancel my reservation',
+    ])('routes %j to cancelling, never to creating', async (message) => {
+      const intent = await intentOf(message);
+      expect(intent).toBe('CANCEL_BOOKING');
+      // The bug as the customer met it: a second appointment, and nothing cancelled.
+      expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'i want to reschedule my appointment',
+      'change my appointment',
+      'move my booking',
+      'postpone my appointment',
+    ])('routes %j to rescheduling, never to creating', async (message) => {
+      expect(await intentOf(message)).toBe('RESCHEDULE_BOOKING');
+      expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'when is my appointment',
+      'my appointment',
+      'check my booking',
+      'booking status',
+    ])('routes %j to the status check, never to creating', async (message) => {
+      expect(await intentOf(message)).toBe('CHECK_BOOKING_STATUS');
+      expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'i want to book an appointment',
+      'book an appointment',
+      'schedule consultation',
+    ])('still routes %j to creating one', async (message) => {
+      // The guard must not swallow the intent it is guarding.
+      expect(await intentOf(message)).toBe('BOOK_APPOINTMENT');
+    });
+  });
+
+  /**
+   * WHICH booking a request about "my appointment" resolves to.
+   *
+   * Prisma is mocked here, so the query itself is the observable behaviour —
+   * and it is the right thing to assert, because both defects below were in the
+   * where/orderBy rather than in anything the reply said.
+   *
+   *   - it ordered by startTime DESC with no lower bound, so it took the LATEST
+   *     booking rather than the NEXT. A customer with an appointment this
+   *     Friday and another next month was told about next month, and "cancel my
+   *     appointment" cancelled next month while Friday silently stayed. Past
+   *     bookings were in scope too, reported as though still to come.
+   *
+   *   - it matched the phone number EXACTLY through the relation, so a booking
+   *     made on WhatsApp ("234…") was invisible to the same person calling in
+   *     ("+234…"). That is the bug phoneNumberVariants exists to remove; these
+   *     six sites filter through `contact: {…}` and were missed by it.
+   */
+  describe('Finding the booking a customer means', () => {
+    const queryFor = async (message: string) => {
+      await orchestrator.processIncomingMessage(baseContext(), message);
+      expect(mockPrisma.booking.findFirst).toHaveBeenCalled();
+      return mockPrisma.booking.findFirst.mock.calls[0][0];
+    };
+
+    it.each(['when is my appointment', 'cancel my appointment', 'reschedule'])(
+      'asks for the NEXT upcoming booking, not the latest, for %j',
+      async (message) => {
+        const query = await queryFor(message);
+
+        expect(query.orderBy).toEqual({ startTime: 'asc' });
+        // A lower bound, so a finished appointment is never offered as upcoming.
+        expect(query.where.startTime?.gte).toBeInstanceOf(Date);
+      }
+    );
+
+    it.each(['when is my appointment', 'cancel my appointment', 'reschedule'])(
+      'matches every stored phone shape for %j',
+      async (message) => {
+        const query = await queryFor(message);
+
+        const shapes = query.where.contact?.phoneNumber?.in;
+        expect(Array.isArray(shapes)).toBe(true);
+        // The caller in baseContext() is +2348031234567; a contact written by
+        // Meta would be 2348031234567, and one typed by staff 08031234567.
+        expect(shapes).toEqual(expect.arrayContaining(['+2348031234567', '2348031234567']));
+      }
+    );
+  });
+
   describe('Appointment booking', () => {
     it('books a real free slot inside business hours and reports the time it took', async () => {
       mockPrisma.booking.create.mockImplementation(({ data }: any) =>
