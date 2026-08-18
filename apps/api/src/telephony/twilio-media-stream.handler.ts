@@ -66,7 +66,7 @@ import { VoiceAiService } from './voice-ai.service';
 import { CallBroadcastService } from './call-broadcast.service';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
-import { prisma } from '@ace/database';
+import { prisma, withTelephonyCredentials } from '@ace/database';
 
 // Early-audio buffer cap: 250 frames × 20 ms = 5 seconds maximum
 const MAX_EARLY_BUFFER_FRAMES = 250;
@@ -223,10 +223,15 @@ export class TwilioMediaStreamHandler {
       } catch { /* language stays 'en' */ }
 
       try {
-        const cfg = await prisma.telephonyConfig.findFirst({
-          where:  { organizationId: resolvedOrgId, phoneNumber: toNumber },
-          select: { accountSid: true, authToken: true, forwardingNumber: true },
-        });
+        // Decrypted: authToken is what a mid-call transfer authenticates with,
+        // and a ciphertext would fail the redirect at exactly the moment a
+        // caller is asking for a person.
+        const cfg = withTelephonyCredentials(
+          await prisma.telephonyConfig.findFirst({
+            where: { organizationId: resolvedOrgId, phoneNumber: toNumber },
+            select: { accountSid: true, authToken: true, forwardingNumber: true },
+          })
+        );
         if (cfg) carrier = cfg;
       } catch { /* recovery falls back to the process-level Twilio credentials */ }
     }

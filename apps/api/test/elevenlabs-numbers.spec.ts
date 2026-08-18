@@ -20,6 +20,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { ElevenLabsNumbersService } from '../src/agent-tools/elevenlabs-numbers.service';
 import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
+import { encryptSecret } from '@ace/database';
 
 interface Captured {
   url: string;
@@ -54,6 +55,9 @@ describe('ElevenLabs numbers and WhatsApp', () => {
     });
     orgId = org.id;
 
+    // Credentials are encrypted at rest, so these suites need a key to store
+    // one with. Fixed rather than random: a failure should be reproducible.
+    process.env.ENCRYPTION_KEY = Buffer.alloc(32, 11).toString('base64');
     process.env.ELEVENLABS_BASE_URL = 'https://elevenlabs.test';
     process.env.ELEVENLABS_API_KEY = 'xi-test-key';
   }, 60_000);
@@ -85,7 +89,8 @@ describe('ElevenLabs numbers and WhatsApp', () => {
         provider: 'TWILIO',
         phoneNumber: '+2348000000001',
         accountSid: 'AC_test',
-        authToken: 'tok_test',
+        // Encrypted at rest, as the application stores it.
+        authToken: encryptSecret('tok_test'),
         ...extra,
       },
     });
@@ -212,7 +217,11 @@ describe('ElevenLabs numbers and WhatsApp', () => {
       expect(post!.body.provider).toBe('twilio');
       expect(post!.body.phone_number).toBe('+2348000000001');
       expect(post!.body.sid).toBe('AC_test');
+      // Decrypted on the way out. A ciphertext here would be rejected by
+      // ElevenLabs as a bad Twilio token, pointing the operator at the wrong
+      // system entirely.
       expect(post!.body.token).toBe('tok_test');
+      expect(post!.body.token).not.toMatch(/^v1\./);
       expect(post!.body.agent_id).toBe(OUR_AGENT);
       expect(result.phoneNumberId).toBe('phnum_new');
 

@@ -1,0 +1,125 @@
+/**
+ * Reading and writing the third-party credentials this platform holds.
+ *
+ * Every provider credential in this database is encrypted at rest (see
+ * secret-box.ts). That is only true if every read decrypts and every write
+ * encrypts — and there are a dozen read sites across the API, the orchestrator
+ * and the media-stream handler. A missed one does not fail loudly: it hands a
+ * `v1.…` ciphertext to Twilio or Meta, which rejects it as a bad credential,
+ * and the tenant's phone line or WhatsApp simply stops working with an
+ * authentication error that points at the wrong thing entirely.
+ *
+ * So the resolvers below exist to make each of those sites one greppable line,
+ * and to keep the decision about WHICH fields are secret in exactly one place
+ * rather than repeated at every query.
+ *
+ * ── What counts as a secret here ────────────────────────────────────────────
+ *
+ * Credentials, not identifiers. `accountSid`, `phoneNumberId` and
+ * `whatsappBusinessId` name things; `authToken`, `apiSecret` and `accessToken`
+ * open them. Encrypting an identifier buys nothing and makes debugging worse,
+ * because you can no longer read it in a database console to check which
+ * account a row belongs to.
+ *
+ * `webhookVerifyToken` is included even though it is only ever compared, not
+ * presented: it is a shared secret, and anyone holding it can complete Meta's
+ * verification handshake against a webhook they control.
+ *
+ * ── Legacy plaintext ────────────────────────────────────────────────────────
+ *
+ * Rows written before this existed still read back, and warn on every read
+ * naming the row. Turning encryption on must not break a tenant's live phone
+ * line; `npm run secrets:encrypt -- --apply` ends the warnings.
+ */
+import { decryptSecret, encryptSecret } from './secret-box';
+
+/** Decrypt one optional column, tolerating both null and legacy plaintext. */
+function open(value: string | null | undefined, label: string): string | null {
+  if (value === null || value === undefined || value === '') return value ?? null;
+  return decryptSecret(value, label);
+}
+
+/** Encrypt one optional column. Null and empty stay as they are. */
+function seal(value: string | null | undefined): string | null | undefined {
+  if (value === null || value === undefined || value === '') return value;
+  return encryptSecret(value);
+}
+
+// ── Telephony ────────────────────────────────────────────────────────────────
+
+/**
+ * The credential fields on TelephonyConfig.
+ *
+ * `accountSid` is deliberately absent — it identifies a Twilio account, it does
+ * not open one, and being able to read it in a database console is worth more
+ * than hiding it.
+ */
+export const TELEPHONY_SECRET_FIELDS = ['authToken', 'apiKey', 'apiSecret'] as const;
+
+export interface TelephonyCredentials {
+  id?: string;
+  organizationId?: string;
+  authToken?: string | null;
+  apiKey?: string | null;
+  apiSecret?: string | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Return a TelephonyConfig with its credentials readable.
+ *
+ * Pass the row straight from Prisma; the result is the same object shape with
+ * the three credential fields decrypted. Null in, null out — a tenant with no
+ * Twilio credentials configured is the common case, not an error.
+ */
+export function withTelephonyCredentials<T extends TelephonyCredentials | null>(config: T): T {
+  if (!config) return config;
+  const label = `TelephonyConfig ${config.id ?? config.organizationId ?? '?'}`;
+  return {
+    ...config,
+    authToken: open(config.authToken, `${label}.authToken`),
+    apiKey: open(config.apiKey, `${label}.apiKey`),
+    apiSecret: open(config.apiSecret, `${label}.apiSecret`),
+  };
+}
+
+/** Encrypt whichever telephony credentials are present in an update payload. */
+export function sealTelephonyCredentials<T extends Record<string, unknown>>(data: T): T {
+  const out: Record<string, unknown> = { ...data };
+  for (const field of TELEPHONY_SECRET_FIELDS) {
+    if (field in out) out[field] = seal(out[field] as string | null | undefined);
+  }
+  return out as T;
+}
+
+// ── WhatsApp ─────────────────────────────────────────────────────────────────
+
+export const WHATSAPP_SECRET_FIELDS = ['accessToken', 'webhookVerifyToken'] as const;
+
+export interface WhatsAppCredentials {
+  id?: string;
+  organizationId?: string;
+  accessToken?: string | null;
+  webhookVerifyToken?: string | null;
+  [key: string]: unknown;
+}
+
+/** Return a WhatsAppConfig with its access token and verify token readable. */
+export function withWhatsAppCredentials<T extends WhatsAppCredentials | null>(config: T): T {
+  if (!config) return config;
+  const label = `WhatsAppConfig ${config.id ?? config.organizationId ?? '?'}`;
+  return {
+    ...config,
+    accessToken: open(config.accessToken, `${label}.accessToken`),
+    webhookVerifyToken: open(config.webhookVerifyToken, `${label}.webhookVerifyToken`),
+  };
+}
+
+/** Encrypt whichever WhatsApp credentials are present in an update payload. */
+export function sealWhatsAppCredentials<T extends Record<string, unknown>>(data: T): T {
+  const out: Record<string, unknown> = { ...data };
+  for (const field of WHATSAPP_SECRET_FIELDS) {
+    if (field in out) out[field] = seal(out[field] as string | null | undefined);
+  }
+  return out as T;
+}

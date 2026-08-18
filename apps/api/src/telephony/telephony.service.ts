@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, withTelephonyCredentials } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
@@ -146,19 +146,26 @@ export class TelephonyService {
     // calls we placed ourselves.
     const orgIdHint = typeof query?.orgId === 'string' ? query.orgId : undefined;
 
-    let config = await prisma.telephonyConfig.findFirst({
-      where: {
-        phoneNumber: toNumber,
-        ...(orgIdHint ? { organizationId: orgIdHint } : {}),
-      },
-      include: { organization: true },
-    });
+    // withTelephonyCredentials on every read: the carrier credentials are
+    // encrypted at rest, and handing Twilio a `v1.…` ciphertext looks like a
+    // revoked auth token rather than a decryption bug.
+    let config = withTelephonyCredentials(
+      await prisma.telephonyConfig.findFirst({
+        where: {
+          phoneNumber: toNumber,
+          ...(orgIdHint ? { organizationId: orgIdHint } : {}),
+        },
+        include: { organization: true },
+      })
+    );
 
     if (!config && orgIdHint) {
-      config = await prisma.telephonyConfig.findFirst({
-        where: { organizationId: orgIdHint },
-        include: { organization: true },
-      });
+      config = withTelephonyCredentials(
+        await prisma.telephonyConfig.findFirst({
+          where: { organizationId: orgIdHint },
+          include: { organization: true },
+        })
+      );
     }
 
     if (!config) {
@@ -320,9 +327,13 @@ export class TelephonyService {
     // isDefault-only lookup returned null for every org configured through the
     // dashboard and outbound calls were placed from the placeholder number
     // +2348030000000 — which no carrier would accept as a verified caller ID.
-    const config =
+    const config = withTelephonyCredentials(
       (await prisma.telephonyConfig.findFirst({ where: { organizationId, isDefault: true } })) ??
-      (await prisma.telephonyConfig.findFirst({ where: { organizationId }, orderBy: { createdAt: 'asc' } }));
+        (await prisma.telephonyConfig.findFirst({
+          where: { organizationId },
+          orderBy: { createdAt: 'asc' },
+        }))
+    );
 
     if (!config?.phoneNumber) {
       throw new BadRequestException(

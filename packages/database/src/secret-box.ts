@@ -1,11 +1,17 @@
 /**
  * Encryption for third-party credentials held in our database.
  *
- * The credential this exists for is `HostedAgentConfig.apiKey` — an ElevenLabs
- * workspace key. Anyone holding it can read every conversation transcript in
- * that workspace, place outbound calls the tenant is billed for, and delete the
- * agent answering their phone. A database backup, a leaked read replica, or a
- * SQL-injection read anywhere in the app hands all of that over in plaintext.
+ * What this protects: every third-party credential this platform stores on a
+ * tenant's behalf — the ElevenLabs workspace key, Twilio auth tokens and API
+ * secrets, WhatsApp access tokens. Between them they can read every call
+ * transcript, place calls the tenant is billed for, and send messages as the
+ * business. A database backup, a leaked read replica, or a SQL-injection read
+ * anywhere in the app hands all of that over in plaintext.
+ *
+ * It lives in @ace/database rather than in the API because the columns it
+ * guards live here, and because the orchestrator package reads some of them
+ * too — a helper the API alone could import would leave that path decrypting
+ * nothing.
  *
  * ── The shape on disk ───────────────────────────────────────────────────────
  *
@@ -34,9 +40,6 @@
  *    short passphrase into a key makes a weak secret look like a strong one.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-import { Logger } from '@nestjs/common';
-
-const log = new Logger('SecretBox');
 
 const VERSION = 'v1';
 const ALGORITHM = 'aes-256-gcm';
@@ -134,8 +137,11 @@ export function encryptSecret(plaintext: string): string {
 export function decryptSecret(stored: string, label: string): string {
   if (!isEncrypted(stored)) {
     // Legacy plaintext. Allowed, and said out loud every time: see refusal 2.
-    log.warn(
-      `unencrypted_secret_at_rest label=${label} — stored in the clear. Run scripts/encrypt-secrets.js to fix this permanently.`
+    // console, not a framework logger: this module lives in @ace/database so
+    // that the API, the orchestrator and the worker can all reach it, and it
+    // must not drag a web framework into a package that only talks to Postgres.
+    console.warn(
+      `[SecretBox] unencrypted_secret_at_rest label=${label} — stored in the clear. Run \`npm run secrets:encrypt -- --apply\` to fix this permanently.`
     );
     return stored;
   }

@@ -34,9 +34,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { prisma } from '@ace/database';
+import { encryptSecret, isEncrypted, prisma, secretFingerprint } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
-import { encryptSecret, isEncrypted, secretFingerprint } from '../common/secret-box';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import {
   agentDefinitionFor,

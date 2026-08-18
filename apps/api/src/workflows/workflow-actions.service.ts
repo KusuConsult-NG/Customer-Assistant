@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, withWhatsAppCredentials } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { randomBytes } from 'crypto';
 import { AceLogger } from '../config/logger';
@@ -59,9 +59,11 @@ export class WorkflowActionsService {
     if (!to) throw new Error('SEND_WHATSAPP: no recipient. Set config.to or trigger with a payload containing contact.phoneNumber.');
     if (!message) throw new Error('SEND_WHATSAPP: config.message is empty.');
 
-    const waConfig = await prisma.whatsAppConfig.findFirst({
-      where: { organizationId: ctx.organizationId, isActive: true },
-    });
+    const waConfig = withWhatsAppCredentials(
+      await prisma.whatsAppConfig.findFirst({
+        where: { organizationId: ctx.organizationId, isActive: true },
+      })
+    );
     if (!waConfig?.phoneNumberId || !waConfig?.accessToken) {
       throw new Error(
         'SEND_WHATSAPP: WhatsApp is not connected for this organization. ' +

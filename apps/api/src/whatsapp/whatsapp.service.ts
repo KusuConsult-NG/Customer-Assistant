@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, withWhatsAppCredentials } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
@@ -150,9 +150,14 @@ export class WhatsappService {
       // record and the transcript — into an unrelated organization whenever the
       // number id was unmapped, and answered them with that org's AI persona and
       // knowledge base.
-      const config = await prisma.whatsAppConfig.findFirst({
-        where: { phoneNumberId, isActive: true },
-      });
+      // withWhatsAppCredentials on every read: the access token is encrypted
+      // at rest, and Meta rejects a `v1.…` ciphertext as an invalid token —
+      // which reads as an expired Meta credential, not a decryption bug.
+      const config = withWhatsAppCredentials(
+        await prisma.whatsAppConfig.findFirst({
+          where: { phoneNumberId, isActive: true },
+        })
+      );
 
       if (!config) {
         log.warn('whatsapp_no_config_found', {
@@ -651,9 +656,11 @@ export class WhatsappService {
       );
     }
 
-    const config = await prisma.whatsAppConfig.findFirst({
-      where: { organizationId, isActive: true },
-    });
+    const config = withWhatsAppCredentials(
+      await prisma.whatsAppConfig.findFirst({
+        where: { organizationId, isActive: true },
+      })
+    );
 
     const campaign = await prisma.broadcastCampaign.create({
       data: {

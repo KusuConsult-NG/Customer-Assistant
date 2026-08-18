@@ -34,7 +34,7 @@
  * failure is returned to them rather than spoken to the customer.
  */
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, withTelephonyCredentials } from '@ace/database';
 import { VoiceAiService } from '../telephony/voice-ai.service';
 import { ElevenLabsApi } from './elevenlabs-client';
 
@@ -131,10 +131,13 @@ export class ElevenLabsTakeoverService {
     // unreachable code that reads like a safety net.
     const callSid = phone.callSid ?? phone.call_sid;
 
-    const telephony = await prisma.telephonyConfig.findFirst({
-      where: { organizationId, provider: 'TWILIO' },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-    });
+    // Decrypted: the redirect below authenticates to Twilio with these.
+    const telephony = withTelephonyCredentials(
+      await prisma.telephonyConfig.findFirst({
+        where: { organizationId, provider: 'TWILIO' },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      })
+    );
     const forwardingNumber = telephony?.forwardingNumber;
     if (!forwardingNumber) {
       // Refused with the fix, not with "failed". The caller is still talking to
