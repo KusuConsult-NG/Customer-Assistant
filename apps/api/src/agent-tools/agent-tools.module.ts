@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { CrmModule } from '../crm/crm.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { TelephonyModule } from '../telephony/telephony.module';
 import { AgentToolsController } from './agent-tools.controller';
 import { AgentToolsService } from './agent-tools.service';
 import { AgentProvisioningController } from './agent-provisioning.controller';
@@ -10,6 +11,7 @@ import { ElevenLabsApi } from './elevenlabs-client';
 import { ElevenLabsLiveService } from './elevenlabs-live.service';
 import { ElevenLabsNumbersService } from './elevenlabs-numbers.service';
 import { ElevenLabsOutboundService } from './elevenlabs-outbound.service';
+import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
 import { ElevenLabsWebhookController } from './elevenlabs-webhook.controller';
 import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
 
@@ -34,7 +36,9 @@ import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
  * conversation engines exist right now, and only one is live."
  */
 @Module({
-  imports: [SchedulingModule, CrmModule, KnowledgeModule],
+  // TelephonyModule exports VoiceAiService, whose transferCallToHuman is what
+  // actually moves a live call — the same one the orchestrator path uses.
+  imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule],
   controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController],
   providers: [
     AgentToolsService,
@@ -43,6 +47,7 @@ import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
     ElevenLabsLiveService,
     ElevenLabsNumbersService,
     ElevenLabsOutboundService,
+    ElevenLabsTakeoverService,
     ElevenLabsWebhookService,
   ],
   exports: [
@@ -51,6 +56,7 @@ import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
     ElevenLabsLiveService,
     ElevenLabsNumbersService,
     ElevenLabsOutboundService,
+    ElevenLabsTakeoverService,
     ElevenLabsWebhookService,
   ],
 })
