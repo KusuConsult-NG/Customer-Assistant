@@ -275,11 +275,20 @@ export class WhatsappService {
       }
 
       // ── 6. Fetch conversation history (last 10 messages) ─────────────────────
-      const historyMessages = await prisma.message.findMany({
-        where: { conversationId: conversation.id },
-        take: 10,
-        orderBy: { sentAt: 'asc' },
-      });
+      //
+      // Genuinely the last 10 (invariant 5). This took the FIRST 10 — asc +
+      // take — so once a thread grew past ten messages the AI's context window
+      // froze at the conversation's opening, permanently. Every later message
+      // was answered with the customer's greeting as context and none of what
+      // they actually just said. Desc takes the newest ten; the reverse keeps
+      // the history chronological for the orchestrator.
+      const historyMessages = (
+        await prisma.message.findMany({
+          where: { conversationId: conversation.id },
+          take: 10,
+          orderBy: { sentAt: 'desc' },
+        })
+      ).reverse();
 
       // ── 7. Orchestrate AI response ────────────────────────────────────────────
       const orchTimer = log.startTimer();
