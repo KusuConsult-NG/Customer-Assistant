@@ -75,13 +75,25 @@ jobs:
         run: npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
 
       # EXCLUDE cannot be expressed in schema.prisma, so `db push` never creates
-      # these. Applied in order, and every one of them must be listed: a
-      # migration that exists but is not applied here is a guarantee CI reports
-      # as holding while the database does not enforce it.
+      # it and it has to be applied by hand. Selected by CONTENT rather than by
+      # name, so a future EXCLUDE migration is picked up without anyone
+      # remembering to edit this file — the previous version named one file, and
+      # a second constraint would have sat in the repo unapplied while CI
+      # reported the guarantee as holding.
+      #
+      # NOT the whole migrations directory. The rest are hand-written schema
+      # changes for databases that predate them; on a fresh CI database `db push`
+      # has already created all of it, so re-running them collides outright
+      # (`type "SelfieRequestStatus" already exists`).
+      #
+      # A future SQL-only constraint that is not an EXCLUDE — a trigger, a
+      # partial index, a CHECK — will not match this and must be added here.
       - name: Apply SQL-only constraints
         run: |
           set -e
-          for m in packages/database/prisma/migrations/*/migration.sql; do
+          found=$(grep -l 'EXCLUDE USING' packages/database/prisma/migrations/*/migration.sql | sort)
+          test -n "$found" || { echo "no EXCLUDE migrations found — did they move?"; exit 1; }
+          for m in $found; do
             echo "── $m"
             PGPASSWORD=ace psql -h localhost -U ace -d ace_ci -v ON_ERROR_STOP=1 -f "$m"
           done
