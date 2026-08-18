@@ -100,7 +100,16 @@ Both paths must keep the same guarantees, and they enforce them the same way:
 - a transfer is never announced before it is known to be possible
 - the AI admits to being an AI when asked
 
-Cutting a tenant over means: mint an agent key (`scripts/mint-agent-key.js`), generate the agent config (`scripts/generate-agent-config.js`), register it with ElevenLabs, point one number at it, and compare against the orchestrator path. Delete `TwilioMediaStreamHandler` and the Deepgram wiring only after a real call proves the replacement — the voice path has never completed a real call under either engine.
+Cutting a tenant over means: `POST /api/agent-provisioning/sync` (OWNER/ADMIN), point one number at the agent it created, and compare against the orchestrator path. Delete `TwilioMediaStreamHandler` and the Deepgram wiring only after a real call proves the replacement — the voice path has never completed a real call under either engine.
+
+**Agent provisioning is generated, never hand-maintained.** `apps/api/src/agent-tools/agent-tool-catalog.ts` is the single source for the nine webhook tools and the system prompt; `ElevenLabsAgentService` pushes it and records the ids, and `scripts/generate-agent-config.js` prints the same payloads as a dry run without pushing. Four things about that path are load-bearing:
+
+- **Tools are separate resources.** `prompt.tools` is deprecated (the SDK says so outright) — each tool is created on its own and the agent holds `prompt.toolIds`. `agentDefinition()` refuses to emit both.
+- **`prompt.timezone` is required.** Unset, the agent does not know what day it is, and `book-appointment` asks it to resolve "next Tuesday" into an ISO timestamp — an invented date written into a real calendar. `agentDefinition()` throws rather than defaulting.
+- **The SDK is camelCase and converts to snake_case itself.** Hand-written snake_case passed to the SDK is silently dropped, taking `dynamicVariable` — the binding that stops the model supplying the caller's phone number — with it. Never bypass the SDK for these payloads.
+- **The agent key is a workspace secret, not a literal header.** Tools reference it by `secretId`; our own copy is a SHA-256 hash. Rotation (`POST /api/agent-provisioning/rotate-key`) updates the secret *before* revoking the old key, so a call in progress keeps working. `scripts/mint-agent-key.js` still exists for a hand-configured agent.
+
+`syncAgent` is idempotent, persists each tool id as it is created (so a half-finished run is resumable rather than duplicating), and refuses outright when `API_BASE_URL` is localhost or a private range — an agent that answers calls and fails every tool call is worse than none, because it looks provisioned. `getAgentStatus` is read-only on purpose: repairing drift silently also destroys the evidence of how it happened.
 
 **Webhook security — verify BEFORE ACK, using the raw body**:
 - `main.ts` creates the app with `rawBody: true, bodyParser: false` and registers exactly one JSON parser via `app.useBodyParser('json', ...)`. **Never add another `express.json()`** — a second parser consumes the request without the rawBody hook and silently breaks every signature check.

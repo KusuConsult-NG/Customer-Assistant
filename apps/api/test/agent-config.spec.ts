@@ -1,7 +1,7 @@
 /**
- * The generated ElevenLabs agent configuration.
+ * The agent tool catalogue.
  *
- * This tests a config file, which is unusual, but the properties here are the
+ * This tests configuration, which is unusual, but the properties here are the
  * ones that decide whether the agent can hurt a customer:
  *
  *  - The caller's phone number must be injected by the platform, never
@@ -12,26 +12,53 @@
  *    mutually exclusive, so "bound" and "model-supplied" is a one-word
  *    difference in a JSON file that nobody re-reads.
  *
- *  - Every tool must carry the tenant's key, because that is the only thing
- *    telling the platform which organization it is acting for.
+ *  - Every tool must carry the tenant's credential, because that is the only
+ *    thing telling the platform which organization it is acting for.
  *
  *  - The prompt must keep the honesty rules the platform enforces server-side.
  *    They are belt and braces: the tools refuse to fabricate, and the prompt
  *    tells the agent not to try.
+ *
+ * These used to test scripts/generate-agent-config.js, which held its own copy
+ * of the definitions. Both the script and the live sync now read this module,
+ * so testing it covers both.
  */
 
-const { tools, CALLER_VARIABLE, SYSTEM_PROMPT } = require('../../../scripts/generate-agent-config');
+import {
+  agentDefinitionFor,
+  agentToolCatalog,
+  CALLER_VARIABLE,
+  remoteToolName,
+  SYSTEM_PROMPT,
+  TOOL_NAMES,
+  type AgentOrganization,
+} from '../src/agent-tools/agent-tool-catalog';
+import { fromSecret } from '../src/agent-tools/elevenlabs-contracts';
 
 const BASE = 'https://api.example.test';
-const KEY = 'ace_agent_sk_testkey';
+const SECRET = 'secret_abc123';
 
-describe('Generated agent configuration', () => {
-  const all = tools(BASE, KEY);
+const ORG: AgentOrganization = {
+  name: 'Test Clinic',
+  slug: 'test-clinic',
+  timezone: 'Africa/Lagos',
+  welcomeMessage: null,
+  aiPersonaPrompt: null,
+};
 
-  const props = (tool: any) => tool.api_schema.request_body_schema.properties ?? {};
+describe('Agent tool catalogue', () => {
+  const catalog = agentToolCatalog({
+    baseUrl: BASE,
+    authorization: fromSecret(SECRET),
+    namePrefix: ORG.slug,
+  });
+  const all = TOOL_NAMES.map((name) => catalog[name]);
+
+  const cfg = (tool: any) => tool.toolConfig;
+  const props = (tool: any) => cfg(tool).apiSchema.requestBodySchema?.properties ?? {};
 
   it('defines every tool the platform exposes', () => {
-    expect(all.map((t: any) => t.name).sort()).toEqual(
+    expect([...TOOL_NAMES].sort()).toEqual(
       [
         'book-appointment',
         'cancel-booking',
@@ -48,14 +75,14 @@ describe('Generated agent configuration', () => {
 
   it('never lets the model supply the caller phone number', () => {
     for (const tool of all) {
-      const phone = props(tool).phoneNumber;
+      const phone: any = props(tool).phoneNumber;
       if (!phone) continue;
 
-      expect(phone.dynamic_variable).toBe(CALLER_VARIABLE);
+      expect(phone.dynamicVariable).toBe(CALLER_VARIABLE);
       // The schema fields are mutually exclusive. `description` present means
       // the LLM fills it in — which is exactly what must not happen here.
       expect(phone.description).toBeUndefined();
-      expect(phone.constant_value).toBeUndefined();
+      expect(phone.constantValue).toBeUndefined();
     }
   });
 
@@ -69,21 +96,26 @@ describe('Generated agent configuration', () => {
       'reschedule-booking',
       'cancel-booking',
       'create-ticket',
-    ]) {
-      const tool = all.find((t: any) => t.name === name);
-      expect(props(tool).phoneNumber?.dynamic_variable).toBe(CALLER_VARIABLE);
+    ] as const) {
+      expect((props(catalog[name]).phoneNumber as any)?.dynamicVariable).toBe(CALLER_VARIABLE);
     }
   });
 
   it('sets exactly one value-source per parameter', () => {
-    const sources = ['description', 'dynamic_variable', 'constant_value', 'is_system_provided', 'is_omitted'];
+    const sources = [
+      'description',
+      'dynamicVariable',
+      'constantValue',
+      'isSystemProvided',
+      'isOmitted',
+    ];
     for (const tool of all) {
       for (const [name, schema] of Object.entries<any>(props(tool))) {
         const set = sources.filter((s) => schema[s] !== undefined);
         // Reported as an object so a failure names the offending parameter
         // rather than just "expected 2 to be 1".
-        expect({ tool: tool.name, param: name, sources: set }).toEqual({
-          tool: tool.name,
+        expect({ tool: cfg(tool).name, param: name, sources: set }).toEqual({
+          tool: cfg(tool).name,
           param: name,
           sources: [expect.any(String)],
         });
@@ -91,17 +123,43 @@ describe('Generated agent configuration', () => {
     }
   });
 
-  it('authenticates every tool with the tenant key', () => {
-    for (const tool of all) {
-      expect(tool.api_schema.request_headers.Authorization).toBe(`Bearer ${KEY}`);
-      expect(tool.api_schema.method).toBe('POST');
-      expect(tool.api_schema.url).toBe(`${BASE}/api/agent-tools/${tool.name}`);
+  it('authenticates every tool with the tenant credential and posts to its own path', () => {
+    for (const name of TOOL_NAMES) {
+      const schema = cfg(catalog[name]).apiSchema;
+      expect(schema.requestHeaders.Authorization).toEqual({ secretId: SECRET });
+      expect(schema.method).toBe('POST');
+      expect(schema.url).toBe(`${BASE}/api/agent-tools/${name}`);
     }
   });
 
-  it('never takes an organizationId — the tenant comes from the key alone', () => {
+  it('accepts a literal bearer credential for a hand-configured agent', () => {
+    const literal = agentToolCatalog({ baseUrl: BASE, authorization: 'Bearer ace_agent_sk_x' });
+    expect(cfg(literal.handoff).apiSchema.requestHeaders.Authorization).toBe(
+      'Bearer ace_agent_sk_x'
+    );
+  });
+
+  it('never takes an organizationId — the tenant comes from the credential alone', () => {
     for (const tool of all) {
       expect(Object.keys(props(tool))).not.toContain('organizationId');
+    }
+  });
+
+  it('distinguishes one tenant from another in a shared workspace', () => {
+    // Tools are workspace-scoped. Two tenants with identically named tools is
+    // how the wrong one gets attached to an agent — which is one tenant's agent
+    // writing to another tenant's calendar.
+    const a = agentToolCatalog({ baseUrl: BASE, authorization: fromSecret('s1'), namePrefix: 'aa' });
+    const b = agentToolCatalog({ baseUrl: BASE, authorization: fromSecret('s2'), namePrefix: 'bb' });
+    expect(cfg(a['check-booking']).name).not.toBe(cfg(b['check-booking']).name);
+    expect(cfg(a['check-booking']).name).toBe(remoteToolName('check-booking', 'aa'));
+  });
+
+  it('keeps the tool name and its URL path the same string', () => {
+    // They are the same identifier by construction. If they ever diverge, a
+    // tool posts to a path that does not exist and the failure is mid-call.
+    for (const name of TOOL_NAMES) {
+      expect(cfg(catalog[name]).apiSchema.url.endsWith(`/${name}`)).toBe(true);
     }
   });
 
@@ -117,7 +175,38 @@ describe('Generated agent configuration', () => {
 
   it('gives each tool a description an LLM can route on', () => {
     for (const tool of all) {
-      expect(tool.description.length).toBeGreaterThan(40);
+      expect(cfg(tool).description.length).toBeGreaterThan(40);
     }
+  });
+});
+
+describe('Agent definition', () => {
+  it("carries the organization's timezone, so relative dates resolve", () => {
+    const def = agentDefinitionFor(ORG, ['t1', 't2']);
+    expect(def.conversationConfig.agent.prompt.timezone).toBe('Africa/Lagos');
+    expect(def.conversationConfig.agent.prompt.toolIds).toEqual(['t1', 't2']);
+  });
+
+  it('refuses to build an agent for an organization with no timezone', () => {
+    expect(() => agentDefinitionFor({ ...ORG, timezone: '' }, ['t1'])).toThrow(/timezone/i);
+  });
+
+  it("appends the business's own persona rather than replacing the rules", () => {
+    const def = agentDefinitionFor({ ...ORG, aiPersonaPrompt: 'We are formal.' }, ['t1']);
+    const prompt = def.conversationConfig.agent.prompt.prompt;
+    expect(prompt).toContain('We are formal.');
+    expect(prompt).toMatch(/never claim to be human/i);
+    // The persona comes after, so it cannot pre-empt the honesty rules.
+    expect(prompt.indexOf('We are formal.')).toBeGreaterThan(prompt.indexOf('Never claim'));
+  });
+
+  it('greets with the configured welcome message when there is one', () => {
+    expect(
+      agentDefinitionFor({ ...ORG, welcomeMessage: 'Kedu!' }, ['t1']).conversationConfig.agent
+        .firstMessage
+    ).toBe('Kedu!');
+    expect(agentDefinitionFor(ORG, ['t1']).conversationConfig.agent.firstMessage).toContain(
+      ORG.name
+    );
   });
 });

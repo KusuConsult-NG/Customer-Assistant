@@ -855,10 +855,29 @@ model HostedAgentConfig {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   /// ElevenLabs agent id (agent_...). Identifies which configured agent runs.
-  agentId String
+  /// Null until the agent has actually been provisioned — a row exists from the
+  /// moment a tenant is configured, and provisioning is a later step that can
+  /// fail. Callers must refuse to place a call rather than send a null agent id.
+  agentId String?
 
-  /// Workspace API key used for outbound initiation (xi-api-key).
+  /// Workspace API key used for outbound initiation (xi-api-key), and for
+  /// provisioning the agent and its tools.
   apiKey String? @db.Text
+
+  /// ElevenLabs tool ids, keyed by our local tool name ("check-booking" → "tool_...").
+  /// Tools are first-class resources — `prompt.tools` is deprecated — so a sync
+  /// updates each one in place by id and the agent only holds the ids.
+  toolIds Json?
+
+  /// Id of the ElevenLabs workspace secret holding this tenant's agent key.
+  ///
+  /// The tool definitions reference the secret rather than embedding the key,
+  /// for two reasons: an embedded key is visible in the ElevenLabs dashboard to
+  /// everyone with workspace access, and rotating an embedded key means
+  /// rewriting all nine tools, which is nine chances to leave one on the old
+  /// credential. Our own copy of the key is a SHA-256 hash and unrecoverable,
+  /// so this is also the only place the live value survives.
+  agentKeySecretId String?
 
   /// ElevenLabs-side WhatsApp number id — NOT the Meta phone_number_id.
   whatsappPhoneNumberId String?

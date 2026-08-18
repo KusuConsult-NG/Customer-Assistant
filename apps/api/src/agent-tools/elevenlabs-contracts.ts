@@ -69,11 +69,29 @@ export const askedOf = (
   description: string
 ): ToolParameter => ({ type, description });
 
+/**
+ * A header value on a webhook tool. It may be a literal string, or a reference
+ * to a workspace secret.
+ *
+ * Prefer the secret reference for anything credential-shaped. A literal is
+ * stored in the tool definition and shown in the ElevenLabs dashboard to
+ * everyone with workspace access; a secret reference is resolved at call time
+ * and can be rotated without touching a single tool.
+ */
+export type HeaderValue =
+  | string
+  | ElevenLabs.ConvAiSecretLocator
+  | ElevenLabs.ConvAiDynamicVariable
+  | ElevenLabs.ConvAiEnvVarLocator;
+
+/** Reference a workspace secret (`conversationalAi.secrets`) by id. */
+export const fromSecret = (secretId: string): ElevenLabs.ConvAiSecretLocator => ({ secretId });
+
 export interface WebhookToolSpec {
   name: string;
   description: string;
   url: string;
-  headers: Record<string, string>;
+  headers: Record<string, HeaderValue>;
   parameters: Record<string, ToolParameter>;
   required?: string[];
   /** 5–300 inclusive. */
