@@ -332,4 +332,44 @@ export const api = {
     },
   },
 
+  /**
+   * The tenant's own ElevenLabs workspace.
+   *
+   * An ElevenLabs workspace has no tenancy of its own — everything in one
+   * belongs to whoever holds the key — so each tenant needs its own, and until
+   * it has one every hosted-agent operation is refused. These two endpoints are
+   * how that gets configured; before this there was no way short of SQL, and a
+   * credential nobody can rotate without a database console does not get
+   * rotated.
+   */
+  agentProvisioning: {
+    /**
+     * Reports `mode`, a fingerprint, `webhookUrl` and `warnings[]`. Never
+     * returns a credential — there is no read-back endpoint at all, by design.
+     */
+    getCredentials: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/credentials`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    /**
+     * Either half, or both. A dedicated workspace needs each: the key to act in
+     * it, and its own webhook signing secret to verify what it sends back.
+     * Returns the full status, so a caller that set one half is told
+     * immediately that the other is still missing.
+     */
+    setCredentials: async (data: { apiKey?: string; webhookSecret?: string }) => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/credentials`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data),
+      });
+      return handleResponse(res);
+    },
+    /** Read-only comparison of the remote agent against this repo. Writes nothing. */
+    getStatus: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/status`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+  },
+
 };

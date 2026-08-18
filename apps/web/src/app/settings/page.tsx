@@ -4,11 +4,11 @@ import { api, API_URL } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
   Settings, Building2, Bot, Phone, MessageSquare, Users, User,
-  Save, CheckCircle2, AlertCircle, Eye, EyeOff, Copy, Plus,
-  Globe, Zap, Shield, X, Loader2, ChevronDown
+  Save, CheckCircle2, AlertCircle, AlertTriangle, Eye, EyeOff, Copy, Plus,
+  Globe, Zap, Shield, X, Loader2, ChevronDown, KeyRound
 } from 'lucide-react';
 
-type Tab = 'profile' | 'general' | 'whatsapp' | 'voice' | 'team';
+type Tab = 'profile' | 'general' | 'whatsapp' | 'voice' | 'agent' | 'team';
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
 const selectCls = `${inputCls} appearance-none cursor-pointer`;
@@ -67,6 +67,7 @@ export default function SettingsPage() {
     { id: 'general' as Tab, label: 'General', icon: <Building2 className="w-4 h-4" /> },
     { id: 'whatsapp' as Tab, label: 'WhatsApp', icon: <MessageSquare className="w-4 h-4" /> },
     { id: 'voice' as Tab, label: 'Voice / Telephony', icon: <Phone className="w-4 h-4" /> },
+    { id: 'agent' as Tab, label: 'Hosted Agent', icon: <Bot className="w-4 h-4" /> },
     { id: 'team' as Tab, label: 'Team Members', icon: <Users className="w-4 h-4" /> },
   ];
 
@@ -105,6 +106,7 @@ export default function SettingsPage() {
           {tab === 'general' && <GeneralTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'whatsapp' && <WhatsAppTab org={org} authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} />}
+          {tab === 'agent' && <HostedAgentTab showToast={showToast} />}
           {tab === 'team' && <TeamTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
         </>
       )}
@@ -471,6 +473,271 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
         </button>
       </div>
     </form>
+  );
+}
+
+// ─────────────────────── Hosted Agent Tab ───────────────────────
+/**
+ * The tenant's own ElevenLabs workspace.
+ *
+ * An ElevenLabs workspace has no tenancy of its own: the agents in it, the phone
+ * numbers, the WhatsApp lines and every conversation transcript belong to
+ * whoever holds the key. So each tenant needs its own, and until it has one the
+ * API refuses every hosted-agent operation rather than quietly putting this
+ * business's customers in a bucket with everyone else's.
+ *
+ * That refusal has been live with no way to clear it from the dashboard — the
+ * key could only be written by hand in SQL, and a credential nobody can rotate
+ * without a database console does not get rotated. This tab is that way.
+ *
+ * Three rules it follows, all of them the opposite of what the older tabs do:
+ *
+ *   NOTHING IS PRE-FILLED. The API returns fingerprints, never credentials, and
+ *   there is no read-back endpoint at all. An empty box next to "••••abcd" is
+ *   honest about that; a box pre-filled with a masked value invites someone to
+ *   save the mask as the new secret.
+ *
+ *   THE SERVER'S WARNINGS ARE SHOWN VERBATIM. They name the exact gap and the
+ *   exact URL to fix it. Re-wording them here means two descriptions of one
+ *   state, and the friendlier one is always the one that drifts out of date.
+ *
+ *   A REFUSAL IS RENDERED, NOT SWALLOWED. Reading the agent status throws for a
+ *   tenant with no key — and that exception text IS the instruction. Showing it
+ *   beats a panel that sits empty for a reason the operator cannot see.
+ */
+function HostedAgentTab({ showToast }: any) {
+  const [status, setStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [showSecrets, setShowSecrets] = useState(false);
+
+  const [agent, setAgent] = useState<any>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentLoading, setAgentLoading] = useState(true);
+
+  const role = (() => {
+    try { return JSON.parse(localStorage.getItem('ace_user') || '{}').role; } catch { return undefined; }
+  })();
+  const canEdit = role === 'OWNER' || role === 'ADMIN';
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setStatus(await api.agentProvisioning.getCredentials()); }
+    catch (err: any) { showToast(err.message || 'Could not read workspace status', 'error'); }
+    finally { setLoading(false); }
+  }, []);
+
+  const loadAgent = useCallback(async () => {
+    setAgentLoading(true);
+    setAgentError(null);
+    try { setAgent(await api.agentProvisioning.getStatus()); }
+    catch (err: any) {
+      // Expected whenever no key is set — the message is the instruction.
+      setAgent(null);
+      setAgentError(err.message || 'Could not read the agent status');
+    }
+    finally { setAgentLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); loadAgent(); }, [load, loadAgent]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiKey.trim() && !webhookSecret.trim()) {
+      showToast('Enter an API key, a webhook secret, or both', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const next = await api.agentProvisioning.setCredentials({
+        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        ...(webhookSecret.trim() ? { webhookSecret: webhookSecret.trim() } : {}),
+      });
+      // The POST already returns the full status, so there is nothing to re-fetch
+      // and no window in which the screen shows the state from before the save.
+      setStatus(next);
+      setApiKey('');
+      setWebhookSecret('');
+      showToast('Workspace credentials saved');
+      loadAgent();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" /></div>;
+  }
+
+  const dedicated = status?.mode === 'dedicated';
+
+  return (
+    <div className="space-y-5">
+      <Section
+        title="ElevenLabs Workspace"
+        description="Everything inside an ElevenLabs workspace — agents, phone numbers, WhatsApp lines and every call transcript — belongs to whoever holds the key. This organization needs its own."
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`text-[11px] px-2.5 py-1 rounded-lg font-bold border ${
+            dedicated
+              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+              : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
+          }`}>
+            {dedicated ? 'OWN WORKSPACE' : 'NO KEY OF ITS OWN'}
+          </span>
+          {status?.fingerprint && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              API key <code className="font-mono text-slate-700 dark:text-slate-300">{status.fingerprint}</code>
+            </span>
+          )}
+          {dedicated && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              Webhook secret {status?.webhookSecretConfigured
+                ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold">set</span>
+                : <span className="text-amber-600 dark:text-amber-400 font-semibold">not set</span>}
+            </span>
+          )}
+        </div>
+
+        {/* Verbatim. The server names the exact gap and the exact URL. */}
+        {(status?.warnings ?? []).map((w: string, i: number) => (
+          <div key={i} className="flex gap-2.5 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{w}</p>
+          </div>
+        ))}
+
+        {status?.webhookUrl && (
+          <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
+            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
+              📌 Post-call webhook URL — paste this into your ElevenLabs workspace webhook settings
+            </p>
+            <p className="text-[11px] text-blue-600 dark:text-blue-400/80 mb-2">
+              This organization is in the path because the signature has to be checked before the body is read, so the delivery itself cannot say whose secret to use.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs font-mono bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-200 px-3 py-2 rounded-lg truncate">{status.webhookUrl}</code>
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await copyToClipboard(status.webhookUrl);
+                  showToast(ok ? 'Copied to clipboard!' : 'Failed to copy', ok ? 'success' : 'error');
+                }}
+                className="px-3 py-2 rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 hover:bg-blue-500/30 transition-all font-semibold flex items-center gap-1.5 text-xs"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copy
+              </button>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title="Workspace Credentials"
+        description="Both halves are needed: the API key to act in the workspace, and its own signing secret to verify the transcripts it sends back. Set either now and the other later — the status above says what is still missing."
+      >
+        {!canEdit ? (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Only an OWNER or ADMIN can change workspace credentials. You are signed in as {role || 'a member'}.
+          </p>
+        ) : (
+          <form onSubmit={save} className="space-y-4">
+            <div>
+              <label className={labelCls}>ElevenLabs API Key</label>
+              <div className="relative">
+                <input
+                  type={showSecrets ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  className={`${inputCls} pr-12`}
+                  placeholder={status?.fingerprint ? `Replace the current key (${status.fingerprint})` : 'sk_...'}
+                  autoComplete="off"
+                />
+                <button type="button" onClick={() => setShowSecrets(!showSecrets)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
+                  {showSecrets ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                From your own ElevenLabs workspace, under Profile → API Keys. Stored encrypted; it is never shown again after this.
+              </p>
+            </div>
+
+            <div>
+              <label className={labelCls}>Post-call Webhook Signing Secret</label>
+              <div className="relative">
+                <input
+                  type={showSecrets ? 'text' : 'password'}
+                  value={webhookSecret}
+                  onChange={e => setWebhookSecret(e.target.value)}
+                  className={`${inputCls} pr-12`}
+                  placeholder={status?.webhookSecretConfigured ? 'Replace the current secret' : 'wsec_...'}
+                  autoComplete="off"
+                />
+                <button type="button" onClick={() => setShowSecrets(!showSecrets)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
+                  {showSecrets ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                From the same workspace's webhook settings. Without it, this organization's call transcripts arrive with a signature nothing can check — and an unverifiable delivery is rejected, so they are lost.
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                {saving ? 'Saving...' : 'Save Credentials'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Section>
+
+      <Section
+        title="Agent Status"
+        description="What the agent your customers reach actually looks like, compared to this platform. Read-only — repairing drift silently would also destroy the evidence of how it happened."
+      >
+        {agentLoading ? (
+          <div className="py-6 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" /> Checking the agent...
+          </div>
+        ) : agentError ? (
+          <div className="flex gap-2.5 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{agentError}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-400">
+              {agent?.agentId
+                ? <>Agent <code className="font-mono text-slate-700 dark:text-slate-300">{agent.agentId}</code></>
+                : <span>No agent has been provisioned yet.</span>}
+              {agent?.configured && (
+                <span>{agent.toolCount} of {agent.expectedToolCount} tools attached</span>
+              )}
+            </div>
+            {(agent?.drift ?? []).length === 0 ? (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> The remote agent matches this platform.
+              </p>
+            ) : (
+              agent.drift.map((d: string, i: number) => (
+                <div key={i} className="flex gap-2.5 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{d}</p>
+                </div>
+              ))
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400 pt-1">
+              Provisioning the agent, importing a phone number and attaching a WhatsApp line are not on this screen yet — importing a number changes who answers your customers, so it needs its own confirmation rather than a button here. Use <code className="font-mono">POST /api/agent-provisioning/sync</code> for now.
+            </p>
+          </div>
+        )}
+      </Section>
+    </div>
   );
 }
 

@@ -480,17 +480,39 @@ async function main() {
    * key set, no per-tenant keys and no opt-in looks fully configured and refuses
    * every hosted-agent operation at runtime — which is the shape of gap this
    * script exists to name before a demo does.
+   *
+   * ── What counts as a DEFECT here, and what does not ─────────────────────────
+   *
+   * A tenant with no ElevenLabs key of its own cannot use the hosted agent. That
+   * is only a defect if it HAS a hosted agent — a provisioned agent with no key
+   * to act with answers calls and fails every tool call, which is the exact
+   * looks-provisioned-but-isn't state this file exists to catch.
+   *
+   * A tenant with neither is not broken, it is not set up, and grading it FAIL
+   * would put "NOT MVP-COMPLETE — 1 defect" on the summary of a system whose
+   * only real problem is that nobody has provisioned anything yet. The line
+   * below already reports that, as BLOCKED. Reporting one state twice, once at
+   * the wrong severity, is how a harness stops being believed.
+   *
+   * (This graded everything short of full coverage as FAIL when first written,
+   * and said NOT MVP-COMPLETE for a system with no defect. That is the bug.)
    */
   await check('Each tenant has its own ElevenLabs workspace', async () => {
     const shared = (process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE ?? '').trim().toLowerCase();
     const sharing = shared === '1' || shared === 'true' || shared === 'yes';
 
-    let withOwnKey = 0;
     let total = 0;
+    let withOwnKey = 0;
+    let provisioned = 0;
+    let provisionedWithoutKey = 0;
     try {
       const { prisma } = require('@ace/database');
       total = await prisma.organization.count();
       withOwnKey = await prisma.hostedAgentConfig.count({ where: { NOT: { apiKey: null } } });
+      provisioned = await prisma.hostedAgentConfig.count({ where: { NOT: { agentId: null } } });
+      provisionedWithoutKey = await prisma.hostedAgentConfig.count({
+        where: { NOT: { agentId: null }, apiKey: null },
+      });
     } catch (err) {
       return `cannot read the database to check (${err.message?.slice(0, 80)})`;
     }
@@ -500,13 +522,23 @@ async function main() {
         ? `ELEVENLABS_ALLOW_SHARED_WORKSPACE is set with ${total} organizations — they share one workspace, so one key reads every tenant's numbers, WhatsApp lines and transcripts`
         : 'ELEVENLABS_ALLOW_SHARED_WORKSPACE is set; correct for a single-tenant deployment, and must come off before a second tenant is added';
     }
-    if (withOwnKey === 0) {
-      return `no organization has its own ElevenLabs key, and sharing is not enabled — every provisioning, number and live-conversation call will be refused (POST /api/agent-provisioning/credentials, or set ELEVENLABS_ALLOW_SHARED_WORKSPACE=1 for a single-tenant deployment)`;
-    }
+
+    // The one genuine defect: an agent exists and has nothing to act with. It
+    // will answer a customer and fail every tool call it makes.
     assert(
-      withOwnKey === total,
-      `${total - withOwnKey} of ${total} organizations have no ElevenLabs key of their own; sharing is off, so hosted-agent calls for those tenants are refused`
+      provisionedWithoutKey === 0,
+      `${provisionedWithoutKey} organization(s) have a provisioned agent but no ElevenLabs key of their own — those agents answer customers and every tool call is refused`
     );
+
+    if (provisioned === 0) {
+      return `no organization has a provisioned agent yet; ${total - withOwnKey} of ${total} also have no ElevenLabs key of their own (POST /api/agent-provisioning/credentials, or set ELEVENLABS_ALLOW_SHARED_WORKSPACE=1 for a single-tenant deployment)`;
+    }
+    if (withOwnKey < total) {
+      // A partial rollout, which is what a careful migration looks like. Worth
+      // naming; not a defect, because the tenants without a key have no agent
+      // either and so are not being failed at.
+      return `${provisioned} of ${total} organizations are on the hosted agent; the remaining ${total - withOwnKey} have no ElevenLabs key of their own and cannot be until they do`;
+    }
   });
 
   blocked('An ElevenLabs agent answers and calls back into the tools', 'no agent has been registered against these endpoints');
