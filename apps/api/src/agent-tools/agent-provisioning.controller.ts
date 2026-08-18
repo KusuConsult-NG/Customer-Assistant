@@ -10,7 +10,16 @@
  * The organization always comes from the token, never from the body — an
  * operator can only ever provision their own tenant's agent.
  */
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -50,8 +59,8 @@ export class AgentProvisioningController {
   // ── Workspace credentials ──────────────────────────────────────────────────
 
   /**
-   * Whether this organization has its own ElevenLabs workspace key, and whether
-   * it is encrypted at rest. Never returns the key itself.
+   * Which ElevenLabs workspace this organization is in, and what is still
+   * missing from it. Never returns a credential — only fingerprints.
    */
   @Get('credentials')
   credentials(@Req() req: { user: AuthUser }) {
@@ -59,16 +68,38 @@ export class AgentProvisioningController {
   }
 
   /**
-   * Store this organization's own workspace key.
+   * Store this organization's own workspace credentials.
    *
-   * Without one, the tenant runs in the shared ELEVENLABS_API_KEY workspace
-   * alongside everyone else's numbers and WhatsApp lines. Setting it is the
-   * only thing that makes that boundary real.
+   * A dedicated workspace needs BOTH halves, and they can be set in either
+   * order or together: the API key is what makes the tenancy boundary real
+   * (without it the tenant shares a workspace with everyone else's numbers and
+   * WhatsApp lines), and the webhook secret is what lets that workspace's
+   * post-call transcripts be verified once it does. Setting only the key leaves
+   * a tenant whose calls are private and whose transcripts are dropped, which is
+   * why the status endpoint warns about exactly that.
    */
   @Roles('OWNER', 'ADMIN')
   @Post('credentials')
-  setCredentials(@Req() req: { user: AuthUser }, @Body() body: { apiKey: string }) {
-    return this.agents.setWorkspaceKey(req.user.organizationId, body?.apiKey ?? '');
+  async setCredentials(
+    @Req() req: { user: AuthUser },
+    @Body() body: { apiKey?: string; webhookSecret?: string }
+  ) {
+    const organizationId = req.user.organizationId;
+    const apiKey = body?.apiKey?.trim();
+    const webhookSecret = body?.webhookSecret?.trim();
+
+    if (!apiKey && !webhookSecret) {
+      throw new BadRequestException(
+        'Provide an apiKey, a webhookSecret, or both. A dedicated ElevenLabs workspace needs each: the key to act in it, the secret to verify what it sends back.'
+      );
+    }
+
+    if (apiKey) await this.agents.setWorkspaceKey(organizationId, apiKey);
+    if (webhookSecret) await this.agents.setWebhookSecret(organizationId, webhookSecret);
+
+    // The full status rather than a bare acknowledgement, so a caller that set
+    // one half is told immediately that the other is still missing.
+    return this.agents.getWorkspaceKeyStatus(organizationId);
   }
 
   @Roles('OWNER', 'ADMIN')

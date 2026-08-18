@@ -36,6 +36,7 @@ describe('ElevenLabs numbers and WhatsApp', () => {
   const realFetch = global.fetch;
   const realElevenBase = process.env.ELEVENLABS_BASE_URL;
   const realElevenKey = process.env.ELEVENLABS_API_KEY;
+  const realSharedFlag = process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE;
 
   const OUR_AGENT = 'agent_ours';
   const THEIR_AGENT = 'agent_theirs';
@@ -60,6 +61,12 @@ describe('ElevenLabs numbers and WhatsApp', () => {
     process.env.ENCRYPTION_KEY = Buffer.alloc(32, 11).toString('base64');
     process.env.ELEVENLABS_BASE_URL = 'https://elevenlabs.test';
     process.env.ELEVENLABS_API_KEY = 'xi-test-key';
+    // These tenants deliberately have no workspace key of their own, so every
+    // call here runs through the shared-workspace fallback. That fallback is
+    // refused unless a deployment has opted in — see elevenlabs-workspace.ts —
+    // so the opt-in is set here rather than the tests quietly proving that a
+    // security refusal does not fire.
+    process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE = '1';
   }, 60_000);
 
   afterAll(async () => {
@@ -67,6 +74,8 @@ describe('ElevenLabs numbers and WhatsApp', () => {
     global.fetch = realFetch;
     if (realElevenBase === undefined) delete process.env.ELEVENLABS_BASE_URL;
     else process.env.ELEVENLABS_BASE_URL = realElevenBase;
+    if (realSharedFlag === undefined) delete process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE;
+    else process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE = realSharedFlag;
     if (realElevenKey === undefined) delete process.env.ELEVENLABS_API_KEY;
     else process.env.ELEVENLABS_API_KEY = realElevenKey;
   });

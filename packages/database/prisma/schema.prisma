@@ -875,7 +875,22 @@ model HostedAgentConfig {
 
   /// Workspace API key used for outbound initiation (xi-api-key), and for
   /// provisioning the agent and its tools.
+  ///
+  /// SET means this tenant has its OWN ElevenLabs workspace, which is the only
+  /// thing that makes the boundary real: unset, everything falls back to the
+  /// shared ELEVENLABS_API_KEY and one workspace holds every tenant's numbers,
+  /// WhatsApp lines and conversation transcripts. Encrypted at rest.
   apiKey String? @db.Text
+
+  /// Signing secret for THIS tenant's workspace webhook.
+  ///
+  /// A per-tenant workspace has its own webhook with its own secret, so one
+  /// environment variable cannot verify them all. Deliveries for a tenant with
+  /// this set arrive on /api/webhooks/elevenlabs/:organizationId — the tenant is
+  /// in the path because the signature must be checked BEFORE the body is
+  /// parsed, so the payload cannot be what tells us whose secret to use.
+  /// Encrypted at rest.
+  webhookSecret String? @db.Text
 
   /// ElevenLabs tool ids, keyed by our local tool name ("check-booking" → "tool_...").
   /// Tools are first-class resources — `prompt.tools` is deprecated — so a sync

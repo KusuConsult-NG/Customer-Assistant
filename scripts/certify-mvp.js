@@ -475,6 +475,40 @@ async function main() {
     assert(res.ok, `ElevenLabs returned ${res.status}`);
   });
 
+  /**
+   * The posture question, not the reachability one. A deployment with a shared
+   * key set, no per-tenant keys and no opt-in looks fully configured and refuses
+   * every hosted-agent operation at runtime — which is the shape of gap this
+   * script exists to name before a demo does.
+   */
+  await check('Each tenant has its own ElevenLabs workspace', async () => {
+    const shared = (process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE ?? '').trim().toLowerCase();
+    const sharing = shared === '1' || shared === 'true' || shared === 'yes';
+
+    let withOwnKey = 0;
+    let total = 0;
+    try {
+      const { prisma } = require('@ace/database');
+      total = await prisma.organization.count();
+      withOwnKey = await prisma.hostedAgentConfig.count({ where: { NOT: { apiKey: null } } });
+    } catch (err) {
+      return `cannot read the database to check (${err.message?.slice(0, 80)})`;
+    }
+
+    if (sharing) {
+      return total > 1
+        ? `ELEVENLABS_ALLOW_SHARED_WORKSPACE is set with ${total} organizations — they share one workspace, so one key reads every tenant's numbers, WhatsApp lines and transcripts`
+        : 'ELEVENLABS_ALLOW_SHARED_WORKSPACE is set; correct for a single-tenant deployment, and must come off before a second tenant is added';
+    }
+    if (withOwnKey === 0) {
+      return `no organization has its own ElevenLabs key, and sharing is not enabled — every provisioning, number and live-conversation call will be refused (POST /api/agent-provisioning/credentials, or set ELEVENLABS_ALLOW_SHARED_WORKSPACE=1 for a single-tenant deployment)`;
+    }
+    assert(
+      withOwnKey === total,
+      `${total - withOwnKey} of ${total} organizations have no ElevenLabs key of their own; sharing is off, so hosted-agent calls for those tenants are refused`
+    );
+  });
+
   blocked('An ElevenLabs agent answers and calls back into the tools', 'no agent has been registered against these endpoints');
 
   // ── Summary ────────────────────────────────────────────────────────────────

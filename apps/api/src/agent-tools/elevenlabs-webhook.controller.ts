@@ -18,12 +18,13 @@
  * storm — and the data is not gone, because the same conversation can be
  * re-fetched from the conversations API by the id this logs on failure.
  */
-import { Controller, Headers, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Controller, Headers, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { SkipThrottle } from '@nestjs/throttler';
 import { AceLogger, generateCorrelationId } from '../config/logger';
 import { signatureHeaderName, verifyElevenLabsSignature } from './elevenlabs-signature';
 import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
+import { prisma, decryptSecret } from '@ace/database';
 
 const log = new AceLogger('ElevenLabsWebhookController');
 
@@ -44,15 +45,71 @@ export class ElevenLabsWebhookController {
     @Headers() headers: Record<string, string>,
     @Res() res: Response
   ): Promise<void> {
+    return this.verifyAndIngest(req, headers, res, null);
+  }
+
+  /**
+   * The same webhook, for a tenant with its OWN ElevenLabs workspace.
+   *
+   * The organization is in the PATH because it has to be. A per-tenant
+   * workspace signs with its own secret, so we must know whose secret to check
+   * before we check it — and the signature has to be verified before the body
+   * is parsed, which rules out reading the tenant out of the payload. The URL
+   * is the only part of the request that is trustworthy before verification,
+   * and even then only as a hint: naming an organization here proves nothing,
+   * it just selects which secret must match.
+   */
+  @SkipThrottle()
+  @Post('elevenlabs/:organizationId')
+  @HttpCode(200)
+  async handleForTenant(
+    @Req() req: Request & { rawBody?: Buffer },
+    @Headers() headers: Record<string, string>,
+    @Param('organizationId') organizationId: string,
+    @Res() res: Response
+  ): Promise<void> {
+    return this.verifyAndIngest(req, headers, res, organizationId);
+  }
+
+  /**
+   * Resolve the signing secret for this delivery.
+   *
+   * A path-scoped delivery uses that tenant's own secret and NOTHING ELSE — no
+   * falling back to the environment one. A fallback would mean a tenant whose
+   * secret was never configured is verified against the shared workspace's
+   * secret, which is exactly the cross-workspace confusion per-tenant
+   * workspaces exist to remove.
+   */
+  private async secretFor(organizationId: string | null): Promise<string | null> {
+    if (!organizationId) return process.env.ELEVENLABS_WEBHOOK_SECRET ?? null;
+
+    const config = await prisma.hostedAgentConfig.findUnique({
+      where: { organizationId },
+      select: { webhookSecret: true },
+    });
+    if (!config?.webhookSecret) return null;
+    return decryptSecret(config.webhookSecret, `HostedAgentConfig.webhookSecret org=${organizationId}`);
+  }
+
+  private async verifyAndIngest(
+    req: Request & { rawBody?: Buffer },
+    headers: Record<string, string>,
+    res: Response,
+    organizationId: string | null
+  ): Promise<void> {
     const correlationId = generateCorrelationId();
 
-    const secret = process.env.ELEVENLABS_WEBHOOK_SECRET;
+    const secret = await this.secretFor(organizationId).catch(() => null);
     if (!secret) {
       log.error(
-        'ELEVENLABS_WEBHOOK_SECRET is not set — the delivery cannot be verified',
-        new Error('Missing env var'),
-        { correlationId }
+        organizationId
+          ? `No webhook secret is configured for organization ${organizationId} — the delivery cannot be verified`
+          : 'ELEVENLABS_WEBHOOK_SECRET is not set — the delivery cannot be verified',
+        new Error('Missing webhook secret'),
+        { correlationId, organizationId: organizationId ?? undefined }
       );
+      // 500, not 403: this is our configuration gap, and a 500 makes ElevenLabs
+      // retry rather than treating the transcript as permanently rejected.
       res.status(500).send('Server misconfiguration');
       return;
     }
@@ -101,7 +158,9 @@ export class ElevenLabsWebhookController {
     res.status(200).send('OK');
 
     this.webhook
-      .ingest(payload as any, correlationId)
+      // The organization from the PATH, not from the body: it is the one whose
+      // secret this signature was actually checked against.
+      .ingest(payload as any, correlationId, organizationId)
       .then((outcome) => {
         if (!outcome.handled) {
           log.info('elevenlabs_webhook_not_stored', { correlationId, reason: outcome.reason });
