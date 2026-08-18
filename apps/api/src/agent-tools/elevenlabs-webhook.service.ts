@@ -32,7 +32,7 @@
  * at once and both would pass the check.
  */
 import { Injectable } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
 
@@ -326,20 +326,22 @@ export class ElevenLabsWebhookService {
 
   /** Find or create the customer's contact. Mirrors AgentToolsService.contactFor. */
   private async contactFor(organizationId: string, phoneNumber: string) {
-    const existing = await prisma.contact.findFirst({ where: { organizationId, phoneNumber } });
+    const existing = await prisma.contact.findFirst({
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
+    });
     if (existing) return existing;
     try {
       return await prisma.contact.create({
         data: {
           organizationId,
-          phoneNumber,
+          phoneNumber: normalizePhoneNumber(phoneNumber),
           fullName: `Caller (···${phoneNumber.slice(-4)})`,
         },
       });
     } catch (err: any) {
       if (err?.code === 'P2002') {
         const contact = await prisma.contact.findFirst({
-          where: { organizationId, phoneNumber },
+          where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
         });
         if (contact) return contact;
       }

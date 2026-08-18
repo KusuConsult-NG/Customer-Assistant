@@ -23,7 +23,8 @@
     "test:packages": "npx jest --config jest.packages.config.js",
     "typecheck": "npx tsc -p apps/api/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit",
     "certify": "node scripts/certify-mvp.js",
-    "secrets:encrypt": "node scripts/encrypt-secrets.js"
+    "secrets:encrypt": "node scripts/encrypt-secrets.js",
+    "contacts:dedupe": "node scripts/merge-duplicate-contacts.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",

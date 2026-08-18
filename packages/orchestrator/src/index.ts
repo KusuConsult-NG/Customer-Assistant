@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -1301,7 +1301,10 @@ export class ConversationOrchestrator {
     }
 
     const contact = await prisma.contact.findFirst({
-      where: { organizationId: context.organizationId, phoneNumber: phone },
+      where: {
+        organizationId: context.organizationId,
+        phoneNumber: { in: phoneNumberVariants(phone) },
+      },
     });
 
     if (!contact) {
@@ -1788,15 +1791,21 @@ export class ConversationOrchestrator {
 
     // Race-safe upsert: catch unique constraint violation and re-query
     try {
+      // Every shape on the way in, the canonical one on the way out: the same
+      // customer reaching this platform by phone and by WhatsApp must land on
+      // one contact, not two.
       const existing = await prisma.contact.findFirst({
-        where: { organizationId: context.organizationId, phoneNumber: phone },
+        where: {
+          organizationId: context.organizationId,
+          phoneNumber: { in: phoneNumberVariants(phone) },
+        },
       });
       if (existing) return existing;
 
       return await prisma.contact.create({
         data: {
           organizationId: context.organizationId,
-          phoneNumber: phone,
+          phoneNumber: normalizePhoneNumber(phone),
           fullName: `Valued Customer (···${phone.slice(-4)})`,
         },
       });
@@ -1804,7 +1813,10 @@ export class ConversationOrchestrator {
       if (err.code === 'P2002') {
         // Another concurrent request created this contact first
         const contact = await prisma.contact.findFirst({
-          where: { organizationId: context.organizationId, phoneNumber: phone },
+          where: {
+            organizationId: context.organizationId,
+            phoneNumber: { in: phoneNumberVariants(phone) },
+          },
         });
         if (contact) return contact;
       }

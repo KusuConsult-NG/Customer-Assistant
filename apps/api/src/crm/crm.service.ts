@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { prisma } from '@ace/database';
+import { prisma, normalizePhoneNumber } from '@ace/database';
 import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -42,7 +42,11 @@ export class CrmService {
         data: {
           organizationId,
           fullName: data.fullName,
-          phoneNumber: data.phoneNumber,
+          // Stored canonical, so a number typed as 08012345678 is the same
+          // record as the +234… one a call creates. The unique constraint on
+          // [organizationId, phoneNumber] then catches the duplicate that used
+          // to slip through as a differently-formatted string.
+          phoneNumber: normalizePhoneNumber(data.phoneNumber),
           email: data.email,
           tags: data.tags || [],
           // address/city/state existed in the schema from day one but were
