@@ -67,14 +67,27 @@ export class ConversationsController {
   ) {
     const conv = await this.requireConversation(id, req.user.organizationId);
 
-    return prisma.message.findMany({
+    // The LAST page, not the first (invariant 5). This queried asc + take, so a
+    // thread longer than the page size showed only its BEGINNING — an operator
+    // opening a 250-message conversation saw messages 1..200, and everything the
+    // customer said recently was unreachable from the dashboard. The page size
+    // being 200 is what kept this invisible: short threads fit, so the ordering
+    // never mattered until a thread grew past it.
+    //
+    // Query desc to take the newest N, then reverse so the client still renders
+    // oldest→newest. The `before` cursor composes correctly with desc too:
+    // "the newest N older than this" is backward pagination, which is what a
+    // scroll-up-for-history UI wants. With asc it meant "the OLDEST N older
+    // than this" — forward pagination from the start of time.
+    const page = await prisma.message.findMany({
       where: {
         conversationId: conv.id,
         ...(before ? { sentAt: { lt: new Date(before) } } : {}),
       },
-      orderBy: { sentAt: 'asc' },
+      orderBy: { sentAt: 'desc' },
       take: MESSAGE_PAGE_SIZE,
     });
+    return page.reverse();
   }
 
   /**
