@@ -76,6 +76,8 @@ export default function AgentConsolePage() {
   const [live, setLive] = useState<LiveConversation[]>([]);
   const [livePolledAt, setLivePolledAt] = useState<string | null>(null);
   const [liveId, setLiveId] = useState<string | null>(null);
+  const [takingOver, setTakingOver] = useState(false);
+  const [takeoverNote, setTakeoverNote] = useState<{ ok: boolean; text: string } | null>(null);
   // Re-renders the "updated Ns ago" label as it ages, so a stalled feed looks
   // stalled instead of looking current.
   const [, setClockTick] = useState(0);
@@ -277,8 +279,51 @@ export default function AgentConsolePage() {
   const activeLive = live.find(c => c.conversationId === liveId) ?? null;
 
   /** Selecting one clears the other — they are different panes, not one list. */
-  const selectStored = (id: string) => { setLiveId(null); setActiveId(id); };
-  const selectLive = (id: string) => { setActiveId(null); setLiveId(id); };
+  const selectStored = (id: string) => { setLiveId(null); setActiveId(id); setTakeoverNote(null); };
+  const selectLive = (id: string) => { setActiveId(null); setLiveId(id); setTakeoverNote(null); };
+
+  /**
+   * Hand a live call to a person.
+   *
+   * The server redirects the carrier call and reports what actually happened,
+   * so whatever comes back is shown verbatim — including a refusal. Inventing a
+   * cheerier message here would put an operator back at their desk believing a
+   * customer was rescued when they are still talking to the agent.
+   */
+  const handleTakeover = async () => {
+    if (!liveId || takingOver) return;
+    setTakingOver(true);
+    setTakeoverNote(null);
+    try {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/live/${liveId}/takeover`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setTakeoverNote({
+          ok: false,
+          text: data?.message || 'The transfer could not be attempted. The caller is still with the agent.',
+        });
+        return;
+      }
+      setTakeoverNote(
+        data?.taken
+          ? { ok: true, text: data.message }
+          : { ok: false, text: data?.reason || 'The call could not be transferred.' }
+      );
+      if (data?.taken) fetchLive();
+    } catch {
+      // A failed request is not a failed transfer — we genuinely do not know
+      // which. Say that rather than guessing either way.
+      setTakeoverNote({
+        ok: false,
+        text: 'Could not reach the server, so the transfer may or may not have happened. Check the call before trying again.',
+      });
+    } finally {
+      setTakingOver(false);
+    }
+  };
 
   // A call that ended while it was open: keep the operator informed rather than
   // silently emptying the pane.
@@ -581,15 +626,55 @@ export default function AgentConsolePage() {
             </div>
 
             {!selectedLiveEnded && (
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
-                <div className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2">
-                  <Bot className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>
-                    Read-only. This conversation is running on the hosted agent, and the
-                    transcript below is refreshed every few seconds — taking over is not
-                    available yet.
-                  </span>
-                </div>
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0 space-y-2">
+                {takeoverNote && (
+                  <div
+                    role="status"
+                    className={`px-3 py-2 rounded-lg text-xs border flex items-start gap-2 ${
+                      takeoverNote.ok
+                        ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
+                        : 'bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-500/30'
+                    }`}
+                  >
+                    <span>{takeoverNote.text}</span>
+                  </div>
+                )}
+
+                {activeLive?.channel === 'voice' ? (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleTakeover}
+                      disabled={takingOver}
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-2 transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      {takingOver ? 'Transferring…' : 'Transfer to a person'}
+                    </button>
+                    {/*
+                      Says where the call is going and what happens to the AI,
+                      because "take over" on its own reads like joining the call.
+                      It does not: the call leaves the agent entirely.
+                    */}
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      Sends this call to your forwarding number. The AI drops off.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                    <Bot className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    {/*
+                      No button at all for WhatsApp, and the reason stated. The
+                      only lever ElevenLabs offers silences the agent for every
+                      customer on the number — that is an outage, not a handoff,
+                      and it lives in settings under its own name.
+                    */}
+                    <span>
+                      Read-only. A WhatsApp conversation cannot be taken over one at a time —
+                      the hosted agent answers the whole line, and the only way to stop it
+                      affects every customer messaging that number.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </>

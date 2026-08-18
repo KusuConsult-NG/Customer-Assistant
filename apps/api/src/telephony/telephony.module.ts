@@ -33,6 +33,11 @@ import { AuthModule } from '../auth/auth.module';
     TelephonyService,
     TwilioMediaStreamHandler,  // Exported so main.ts can retrieve it via app.get()
     CallBroadcastService,
+
+    // Exported for the hosted-agent takeover path. Both engines must redirect a
+    // live call the same way — a second implementation of "move the call" is a
+    // second thing that can silently stop moving it.
+    VoiceAiService,
   ],
 })
 export class TelephonyModule {}

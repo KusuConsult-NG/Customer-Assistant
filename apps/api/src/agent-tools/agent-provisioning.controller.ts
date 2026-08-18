@@ -10,7 +10,7 @@
  * The organization always comes from the token, never from the body — an
  * operator can only ever provision their own tenant's agent.
  */
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -22,6 +22,7 @@ import {
   WhatsAppAccount,
 } from './elevenlabs-numbers.service';
 import { ElevenLabsLiveService, LiveConversation } from './elevenlabs-live.service';
+import { ElevenLabsTakeoverService, TakeoverOutcome } from './elevenlabs-takeover.service';
 
 // RolesGuard must follow JwtAuthGuard — it reads request.user.
 @Controller('api/agent-provisioning')
@@ -30,7 +31,8 @@ export class AgentProvisioningController {
   constructor(
     private readonly agents: ElevenLabsAgentService,
     private readonly numbers: ElevenLabsNumbersService,
-    private readonly liveConversations: ElevenLabsLiveService
+    private readonly liveConversations: ElevenLabsLiveService,
+    private readonly takeover: ElevenLabsTakeoverService
   ) {}
 
   /**
@@ -106,6 +108,44 @@ export class AgentProvisioningController {
   @Get('live')
   live(@Req() req: { user: AuthUser }): Promise<LiveConversation[]> {
     return this.liveConversations.fetchLive(req.user.organizationId);
+  }
+
+  /**
+   * Take a live call away from the agent and put it through to a person.
+   *
+   * Any signed-in user, not just an admin: the people watching the console are
+   * the ones who need to rescue a call going wrong, and requiring an admin
+   * means the customer waits for one.
+   *
+   * Returns `{ taken: false, reason }` for the cases a working system still
+   * hits — a call that ended while the operator was reaching for the button, a
+   * WhatsApp thread that cannot be taken over. Those are answers, not errors.
+   */
+  @Post('live/:conversationId/takeover')
+  takeOver(
+    @Req() req: { user: AuthUser },
+    @Param('conversationId') conversationId: string
+  ): Promise<TakeoverOutcome> {
+    return this.takeover.takeOverConversation(req.user.organizationId, conversationId);
+  }
+
+  /**
+   * Stop the agent answering the whole WhatsApp line.
+   *
+   * Not a takeover, and named so it cannot be mistaken for one — it silences
+   * the agent for every customer on that number.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('whatsapp/pause')
+  pauseWhatsApp(
+    @Req() req: { user: AuthUser },
+    @Body() body: { paused?: boolean; confirmAffectsEveryConversation?: boolean }
+  ): Promise<{ paused: boolean; note: string }> {
+    return this.takeover.setWhatsAppLinePaused(
+      req.user.organizationId,
+      body?.paused !== false,
+      body?.confirmAffectsEveryConversation === true
+    );
   }
 
   // ── Phone numbers ──────────────────────────────────────────────────────────

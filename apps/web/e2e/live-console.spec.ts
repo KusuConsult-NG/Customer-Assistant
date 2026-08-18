@@ -128,8 +128,64 @@ test.describe('Agent console — live calls', () => {
     // saved nowhere and spoken to nobody, so there must be no input at all —
     // not a disabled one an operator can type into and wonder about.
     await expect(page.getByPlaceholder(/type your message/i)).toHaveCount(0);
-    await expect(page.getByText(/read-only/i)).toBeVisible();
     await expect(page.getByText('AI is handling this')).toBeVisible();
+  });
+
+  test('offers a transfer, and says where the call goes', async ({ page }) => {
+    await consoleWithLiveCall(page);
+    await page.getByText('+2348111111111').first().click();
+
+    // "Take over" alone reads like joining the call. It is not — the call
+    // leaves the agent entirely and lands on the forwarding number.
+    await expect(page.getByRole('button', { name: /transfer to a person/i })).toBeVisible();
+    await expect(page.getByText(/sends this call to your forwarding number/i)).toBeVisible();
+  });
+
+  test('shows the server refusal verbatim rather than a cheerier version', async ({ page }) => {
+    await consoleWithLiveCall(page);
+    await page.route('**/api/agent-provisioning/live/*/takeover', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ taken: false, reason: 'No forwarding number is configured.' }),
+      })
+    );
+
+    await page.getByText('+2348111111111').first().click();
+    await page.getByRole('button', { name: /transfer to a person/i }).click();
+
+    // An operator who is told "transferred" when nothing was transferred goes
+    // back to their desk believing a customer was rescued.
+    await expect(page.getByText('No forwarding number is configured.')).toBeVisible();
+  });
+
+  test('confirms only what actually happened', async ({ page }) => {
+    await consoleWithLiveCall(page);
+    await page.route('**/api/agent-provisioning/live/*/takeover', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ taken: true, channel: 'voice', message: 'The call has been transferred.' }),
+      })
+    );
+
+    await page.getByText('+2348111111111').first().click();
+    await page.getByRole('button', { name: /transfer to a person/i }).click();
+
+    await expect(page.getByText('The call has been transferred.')).toBeVisible();
+  });
+
+  test('offers no transfer button for a WhatsApp conversation', async ({ page }) => {
+    await consoleWithLiveCall(page, [
+      { ...LIVE_CALL, channel: 'whatsapp', customerNumber: '2348111111111', durationSecs: 0 },
+    ]);
+    await page.getByText('2348111111111').first().click();
+
+    // A WhatsApp thread cannot be taken over one at a time. A button that
+    // silently did nothing — or silenced the whole line — would be worse than
+    // no button.
+    await expect(page.getByRole('button', { name: /transfer to a person/i })).toHaveCount(0);
+    await expect(page.getByText(/cannot be taken over one at a time/i)).toBeVisible();
   });
 
   test('says how stale the view is rather than claiming to be live', async ({ page }) => {
