@@ -7,6 +7,7 @@ import { AgentToolsService } from './agent-tools.service';
 import { AgentProvisioningController } from './agent-provisioning.controller';
 import { ElevenLabsAgentService } from './elevenlabs-agent.service';
 import { ElevenLabsApi } from './elevenlabs-client';
+import { ElevenLabsLiveService } from './elevenlabs-live.service';
 import { ElevenLabsNumbersService } from './elevenlabs-numbers.service';
 import { ElevenLabsOutboundService } from './elevenlabs-outbound.service';
 import { ElevenLabsWebhookController } from './elevenlabs-webhook.controller';
@@ -39,6 +40,7 @@ import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
     AgentToolsService,
     ElevenLabsApi,
     ElevenLabsAgentService,
+    ElevenLabsLiveService,
     ElevenLabsNumbersService,
     ElevenLabsOutboundService,
     ElevenLabsWebhookService,
@@ -46,6 +48,7 @@ import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
   exports: [
     AgentToolsService,
     ElevenLabsAgentService,
+    ElevenLabsLiveService,
     ElevenLabsNumbersService,
     ElevenLabsOutboundService,
     ElevenLabsWebhookService,

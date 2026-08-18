@@ -21,6 +21,7 @@ import {
   ImportedNumber,
   WhatsAppAccount,
 } from './elevenlabs-numbers.service';
+import { ElevenLabsLiveService, LiveConversation } from './elevenlabs-live.service';
 
 // RolesGuard must follow JwtAuthGuard — it reads request.user.
 @Controller('api/agent-provisioning')
@@ -28,7 +29,8 @@ import {
 export class AgentProvisioningController {
   constructor(
     private readonly agents: ElevenLabsAgentService,
-    private readonly numbers: ElevenLabsNumbersService
+    private readonly numbers: ElevenLabsNumbersService,
+    private readonly liveConversations: ElevenLabsLiveService
   ) {}
 
   /**
@@ -89,6 +91,21 @@ export class AgentProvisioningController {
   @Post('rotate-key')
   rotateKey(@Req() req: { user: AuthUser }): Promise<{ agentKey: string }> {
     return this.agents.rotateAgentKey(req.user.organizationId);
+  }
+
+  // ── Live conversations ─────────────────────────────────────────────────────
+
+  /**
+   * What the agent is saying right now.
+   *
+   * The console also receives these over the `/events` socket every few
+   * seconds, but a page that has just loaded should not sit blank for a poll
+   * interval. Readable by any signed-in user: watching live conversations is
+   * the console's whole purpose, not a privileged action.
+   */
+  @Get('live')
+  live(@Req() req: { user: AuthUser }): Promise<LiveConversation[]> {
+    return this.liveConversations.fetchLive(req.user.organizationId);
   }
 
   // ── Phone numbers ──────────────────────────────────────────────────────────
