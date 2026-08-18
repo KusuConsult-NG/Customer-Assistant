@@ -28,7 +28,7 @@ async function main() {
         id: generateId(),
         name: 'Apex Care Services',
         slug: 'ace-demo',
-        industry: 'Healthcare & Enterprise Services',
+        industry: 'CLINIC',
         country: 'Nigeria',
         timezone: 'Africa/Lagos',
         phone: '+234 1 700 8000',
@@ -188,7 +188,7 @@ async function main() {
           id: generateId(),
           organizationId: org.id,
           contactId: t.contactId,
-          ticketNumber: `TICK-100${i + 1}`,
+          ticketNumber: `TICK-${generateId().slice(0, 8).toUpperCase()}`,
           subject: t.subject,
           description: t.description,
           priority: t.priority,
@@ -361,9 +361,9 @@ async function main() {
 
   // ── 10. Create Call Logs ────────────────────────────────────────────────────
   const callLogsData = [
-    { fromNumber: '+2348031234567', toNumber: '+23417008000', direction: 'INBOUND', durationSeconds: 145, status: 'COMPLETED' },
-    { fromNumber: '+23417008000', toNumber: '+2348029876543', direction: 'OUTBOUND', durationSeconds: 98, status: 'COMPLETED' },
-    { fromNumber: '+2348145550192', toNumber: '+23417008000', direction: 'INBOUND', durationSeconds: 210, status: 'COMPLETED' },
+    { fromNumber: '+2348031234567', toNumber: '+17372212163', direction: 'INBOUND', durationSeconds: 145, status: 'COMPLETED' },
+    { fromNumber: '+17372212163', toNumber: '+2348029876543', direction: 'OUTBOUND', durationSeconds: 98, status: 'COMPLETED' },
+    { fromNumber: '+2348145550192', toNumber: '+17372212163', direction: 'INBOUND', durationSeconds: 210, status: 'COMPLETED' },
   ];
 
   for (const call of callLogsData) {
@@ -388,6 +388,30 @@ async function main() {
     } else {
       console.log(`  . Call log already exists: ${call.fromNumber}`);
     }
+  }
+
+  // ── 11. Create Telephony Config (Twilio) ────────────────────────────────────
+  const existingTelephony = await prisma.telephonyConfig.findFirst({
+    where: { organizationId: org.id, phoneNumber: '+17372212163' },
+  });
+  if (!existingTelephony) {
+    await prisma.telephonyConfig.create({
+      data: {
+        id: generateId(),
+        organizationId: org.id,
+        provider: 'TWILIO',
+        phoneNumber: '+17372212163',
+        accountSid: process.env.TWILIO_ACCOUNT_SID || '',
+        authToken:  process.env.TWILIO_AUTH_TOKEN  || '',
+        apiKey:     process.env.TWILIO_API_KEY      || null,
+        isDefault:  true,
+        isActive:   true,
+        updatedAt:  new Date(),
+      },
+    });
+    console.log('  + Created TelephonyConfig: +17372212163 (Twilio)');
+  } else {
+    console.log('  . TelephonyConfig already exists: +17372212163');
   }
 
   console.log('\n════════════════════════════════════════════════════════════');
