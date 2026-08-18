@@ -858,6 +858,19 @@ model HostedAgentConfig {
   /// Null until the agent has actually been provisioned — a row exists from the
   /// moment a tenant is configured, and provisioning is a later step that can
   /// fail. Callers must refuse to place a call rather than send a null agent id.
+  ///
+  /// MUST BE UNIQUE ACROSS ORGANIZATIONS, and is enforced in code rather than
+  /// by a constraint. The post-call webhook identifies the tenant by nothing
+  /// but this id, so two organizations sharing one agent makes a finished
+  /// conversation unattributable — and the tempting resolution, taking the
+  /// first match, files one tenant's call transcript under another's account.
+  /// ElevenLabsWebhookService therefore refuses to attribute an ambiguous
+  /// delivery instead of guessing.
+  ///
+  /// Not a database constraint because adding a unique index to an existing
+  /// table makes `prisma db push` demand --accept-data-loss, and carrying that
+  /// flag in CI and the production deploy path would silence the warning for
+  /// every future schema change too. A tested refusal beats a blanket flag.
   agentId String?
 
   /// Workspace API key used for outbound initiation (xi-api-key), and for
