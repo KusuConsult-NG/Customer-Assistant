@@ -51,7 +51,11 @@ npx prisma db push --schema=packages/database/prisma/schema.prisma
 
 # `db push` CANNOT create the booking EXCLUDE constraint (Prisma cannot express
 # EXCLUDE), so apply it separately or concurrent double-booking stays possible.
-psql "$DIRECT_URL" -f packages/database/prisma/migrations/20260807020000_booking_overlap_constraint/migration.sql
+# Only the EXCLUDE ones: db push already created everything the other
+# migrations describe, so re-running them collides.
+for m in $(grep -l 'EXCLUDE USING' packages/database/prisma/migrations/*/migration.sql | sort); do
+  psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f "$m"
+done
 
 node apps/api/dist/main.js
 cd apps/web && npx next start -p 3000
@@ -187,7 +191,9 @@ Contacts are matched across phone formats — see the phone-number note below.
 
 **Document ingestion**: uploads go to Supabase Storage (path, not URL, stored in `storageUrl`), then a BullMQ job on Redis; `DocumentWorkerHost` runs the worker inside the API process when `REDIS_URL` is set. Extraction is mime-typed (pdf-parse / mammoth / UTF-8) — binary types must never be decoded as UTF-8 and indexed. Without Redis, only plain-text types are inline-indexed; binary uploads are honestly marked FAILED. Deleting a document must also delete its Qdrant points, or the deleted knowledge keeps answering in RAG.
 
-**Booking integrity** is enforced by a PostgreSQL `EXCLUDE USING gist` constraint (`bookings_no_staff_overlap`, requires `btree_gist`) that lives ONLY in `packages/database/prisma/migrations/…booking_overlap_constraint/migration.sql` — `db push` cannot create it (Prisma cannot express EXCLUDE), so any fresh database needs that SQL applied after push (CI does this). Application-level conflict checks are a UX nicety; the constraint is the guarantee.
+**Booking integrity** is enforced by a PostgreSQL `EXCLUDE USING gist` constraint (`bookings_no_staff_overlap`, requires `btree_gist`) that lives ONLY in `packages/database/prisma/migrations/*/migration.sql` — `db push` cannot create it (Prisma cannot express EXCLUDE), so a fresh database needs every file **containing `EXCLUDE USING`** applied after push, in order (CI selects them by content, not by name, so a new one cannot be forgotten). The other files in that directory are hand-written schema changes for databases that predate them — `db push` already creates all of that, and re-running them on a fresh database collides. Application-level conflict checks are a UX nicety and a read-then-write race; the constraint is the guarantee.
+
+It keys on `COALESCE("staffName", '')`, so bookings with NO staff assigned exclude against each other too. The original predicate was `staffName IS NOT NULL` — `=` never matches two NULLs, so unstaffed rows could not conflict and had to be left out — and the agent's `book-appointment` tool does not expose `staffName` at all, so **every booking a hosted agent makes was covered by nothing**. Eight simultaneous requests produced eight CONFIRMED bookings in one slot, each caller told their appointment was made. Adding a staff parameter would not have fixed it; only the database can settle a race.
 
 **The workflow engine is real** (`workflow-executor/runner/actions/trigger` services): typed nodes (`kind`+`action`+config), durable `workflow_runs`/`workflow_run_steps`, BullMQ worker with an inline sweeper fallback, and domain events fired from CRM/WhatsApp/scheduling/telephony via `WorkflowTriggerService.emitAsync`. Runs are claimed with a conditional `updateMany` — keep it, or the worker and sweeper double-execute every step.
 
