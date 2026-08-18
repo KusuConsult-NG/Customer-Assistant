@@ -239,7 +239,7 @@ async function probeWhatsApp() {
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!token || !phoneId) {
     return record('WhatsApp', 'DEGRADED', 'WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID not set',
-      'Skip the WhatsApp demo. The web-chat widget covers the same assistant.');
+      'Skip the WhatsApp demo and show the voice path instead — the web-chat widget that used to cover for it has been retired.');
   }
   try {
     const res = await timed(() => fetch(`https://graph.facebook.com/v21.0/${phoneId}`, {

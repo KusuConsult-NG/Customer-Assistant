@@ -111,8 +111,9 @@ export class ConversationsController {
       return message;
     }
 
-    // WEBCHAT and other channels are pull-based: the widget polls /api/widget/history,
-    // so persisting the message *is* delivery for them.
+    // WEBCHAT threads are historical — that channel was retired — and the
+    // remaining channels here have no push path, so persisting the message *is*
+    // delivery for them.
     const message = await prisma.message.create({
       data: {
         conversationId: conv.id,

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Customer Care Agent — a multi-tenant AI customer-experience platform (WhatsApp, voice telephony, web-chat widget) for Nigerian businesses and government MDAs. Internal identifiers still use the original `ace` prefix on purpose (`@ace/*` package names, the `ace_token` localStorage key, the `ace_live_pk_` widget key prefix): those are functional, not display strings, and renaming them would invalidate issued keys and stored sessions. npm-workspaces monorepo driven by Turbo: `apps/api` (NestJS 10), `apps/web` (Next.js 15 App Router), and `packages/*` (Prisma database client, conversation orchestrator, provider SDKs).
+Customer Care Agent — a multi-tenant AI customer-experience platform for Nigerian businesses and government MDAs. **Customers reach it on WhatsApp and by phone; the web app is the staff dashboard.** (The embedded web-chat widget was a third customer channel and has been RETIRED — see below.) Internal identifiers still use the original `ace` prefix on purpose (`@ace/*` package names, the `ace_token` localStorage key, the `ace_live_pk_` key prefix): those are functional, not display strings, and renaming them would invalidate issued keys and stored sessions. npm-workspaces monorepo driven by Turbo: `apps/api` (NestJS 10), `apps/web` (Next.js 15 App Router), and `packages/*` (Prisma database client, conversation orchestrator, provider SDKs).
 
 ## Commands
 
@@ -28,7 +28,7 @@ cd packages/<name> && node test/run-test.js     # orchestrator needs DATABASE_UR
 
 # 2. API integration tests (Jest + supertest; needs a live PostgreSQL)
 cd apps/api && npx jest --forceExit
-cd apps/api && npx jest --forceExit -t "Widget"          # single test by name
+cd apps/api && npx jest --forceExit -t "retired"          # single test by name
 
 # 3. Browser e2e (Playwright; needs the FULL stack running: API on :4000, web on :3000)
 cd apps/web && npx playwright test
@@ -56,7 +56,7 @@ psql "$DIRECT_URL" -f packages/database/prisma/migrations/20260807020000_booking
 node apps/api/dist/main.js
 cd apps/web && npx next start -p 3000
 
-npm run db:seed:gatekipa      # optional: a demo tenant with FAQs + a widget key
+npm run db:seed:gatekipa      # optional: a demo tenant with FAQs
 npm run demo:readiness        # what actually works right now, per capability
 npm run verify                # every test layer; missing prerequisites SKIP, never pass
 ```
@@ -71,15 +71,24 @@ The Playwright suite registers its own org through the real API and injects the 
 
 ## Architecture
 
-**Request flow**: Next.js pages call the API directly via `fetch` (`apps/web/src/lib/api.ts` builds the base URL; JWT from `localStorage.ace_token`). The NestJS API is a modular monolith — one module per domain (auth, organizations, crm, whatsapp, telephony, knowledge, scheduling, billing, widget, workflows, analytics, events).
+**Request flow**: Next.js pages call the API directly via `fetch` (`apps/web/src/lib/api.ts` builds the base URL; JWT from `localStorage.ace_token`). The NestJS API is a modular monolith — one module per domain (auth, organizations, crm, whatsapp, telephony, knowledge, scheduling, billing, workflows, analytics, events; `widget` is a retirement stub).
 
 **Database access**: a single shared `PrismaClient` exported from `@ace/database` (`import { prisma } from '@ace/database'`) — NOT injected via Nest DI. Services import it directly; so do the orchestrator and worker packages.
 
-**Multi-tenancy** is by `organizationId` scoping on every query — there is no automatic tenant filter. Every service method takes `organizationId` from the JWT (`req.user.organizationId`) and must include it in `where` clauses. The widget resolves its tenant from an explicit `apiKey`/org-id query param; a request with no key falls back to the FIRST org in the DB (single-tenant demo convenience — production embeds must always pass the key).
+**Multi-tenancy** is by `organizationId` scoping on every query — there is no automatic tenant filter. Every service method takes `organizationId` from the JWT (`req.user.organizationId`) and must include it in `where` clauses.
+
+**The embedded web-chat widget is RETIRED**, and the way it was retired is deliberate. Customers reach this platform on WhatsApp and by phone; a third customer-facing channel was a third place for the AI to say something wrong, with its own tenant-resolution rules and its own unauthenticated model-billing endpoint. What remains:
+- `/api/widget/*` answers **410 Gone** for everything, with a body naming the replacement. Not deleted, because the embed snippet is a `<script>` tag on tenants' own sites that we cannot reach in and remove — a 404 also describes an outage, a bad URL or a broken proxy, and somebody would go hunting for a fault that is not there.
+- **The `/api/widget/*` CORS carve-out (`main.ts`) must stay.** Without it a tenant's browser blocks the 410 as a cross-origin violation, and the site owner sees a CORS error instead of the message explaining what happened.
+- `apps/web/public/widget.js` is still served and is **inert** — it renders nothing and logs one `console.info` saying the widget was retired. An old embed leaves the page exactly as it was before the tag was added.
+- `ChannelType.WEBCHAT` and existing WEBCHAT conversations/messages are **kept**. They are the record of what the business told its customers; retiring a channel is not a reason to destroy it, and the dashboard still renders those threads.
+- `Organization.widgetPrimaryColor/widgetSecondaryColor/widgetPosition` still exist but are **no longer writable** — a settings form that saves and changes nothing is worse than no form. Columns kept because dropping them needs `db push --accept-data-loss`, which does not belong in this deploy path for three dead colour fields.
+
+All of it is safe to delete once no tenant site carries the snippet. Until then these are the things telling site owners why it stopped.
 
 **Auth**: `JwtStrategy.validate` re-checks the user in the DB on every request — deactivation and role changes take effect on the next request, not at token expiry. Do not remove this in favor of trusting token claims. JWT secrets are read from env with NO fallback anywhere (module factory throws if unset) — tests and local boots must set `JWT_SECRET`/`JWT_REFRESH_SECRET`. `tokenVersion` on User is embedded in every token and checked per request: bump it to revoke all outstanding sessions (logout/password change already do). `RolesGuard` is registered globally and reads `@Roles(...)` metadata.
 
-**The orchestrator** (`packages/orchestrator`) is a keyword-matching intent engine, channel-agnostic, called by the WhatsApp service, widget service, and voice media-stream handler. It is the LIVE conversation engine — see the note below on the second one. Its contract: **tool intents never throw to the caller** — every DB-backed tool routes failures through `toolFailureReply()` (honest reply + `shouldHandoff: true`/`TOOL_FAILURE`), because an uncaught throw means the customer receives no reply at all. Unmatched input goes to RAG (Qdrant vector search with a Postgres ILIKE fallback) and then GPT-4o-mini synthesis with the org's persona prompt.
+**The orchestrator** (`packages/orchestrator`) is a keyword-matching intent engine, channel-agnostic, called by the WhatsApp service and the voice media-stream handler. It is the LIVE conversation engine — see the note below on the second one. Its contract: **tool intents never throw to the caller** — every DB-backed tool routes failures through `toolFailureReply()` (honest reply + `shouldHandoff: true`/`TOOL_FAILURE`), because an uncaught throw means the customer receives no reply at all. Unmatched input goes to RAG (Qdrant vector search with a Postgres ILIKE fallback) and then GPT-4o-mini synthesis with the org's persona prompt.
 
 **TWO conversation engines exist right now, and only one is live.** This is the single most confusing thing in the repo, so read this before changing either.
 
@@ -88,7 +97,7 @@ The Playwright suite registers its own org through the real API and injects the 
 | Status | **LIVE** — serves every channel today | Built and tested, **not yet serving anyone** |
 | Who runs the conversation | We do: keyword intents → RAG → GPT-4o-mini | ElevenLabs Agents does |
 | Who runs the business logic | We do | We do — same services, over HTTP |
-| Channels | WhatsApp, widget, voice | Intended: WhatsApp + voice, once cut over |
+| Channels | WhatsApp, voice | Intended: WhatsApp + voice, once cut over |
 
 Nothing has been migrated. A customer message today goes through the orchestrator, exactly as before; the agent-tools endpoints have never been called by a real agent. Do not read the ElevenLabs work as a replacement that already happened.
 
@@ -164,7 +173,7 @@ Known gap: voice contacts keep the carrier's `+234…` while WhatsApp contacts u
 
 **Booking integrity** is enforced by a PostgreSQL `EXCLUDE USING gist` constraint (`bookings_no_staff_overlap`, requires `btree_gist`) that lives ONLY in `packages/database/prisma/migrations/…booking_overlap_constraint/migration.sql` — `db push` cannot create it (Prisma cannot express EXCLUDE), so any fresh database needs that SQL applied after push (CI does this). Application-level conflict checks are a UX nicety; the constraint is the guarantee.
 
-**The workflow engine is real** (`workflow-executor/runner/actions/trigger` services): typed nodes (`kind`+`action`+config), durable `workflow_runs`/`workflow_run_steps`, BullMQ worker with an inline sweeper fallback, and domain events fired from CRM/WhatsApp/widget/scheduling/telephony via `WorkflowTriggerService.emitAsync`. Runs are claimed with a conditional `updateMany` — keep it, or the worker and sweeper double-execute every step.
+**The workflow engine is real** (`workflow-executor/runner/actions/trigger` services): typed nodes (`kind`+`action`+config), durable `workflow_runs`/`workflow_run_steps`, BullMQ worker with an inline sweeper fallback, and domain events fired from CRM/WhatsApp/scheduling/telephony via `WorkflowTriggerService.emitAsync`. Runs are claimed with a conditional `updateMany` — keep it, or the worker and sweeper double-execute every step.
 
 **Onboarding selfies** (`apps/api/src/onboarding/`): one-time upload tokens stored only as SHA-256 hashes, magic-byte image validation (SVG refused), 5-minute signed URLs, private `onboarding-selfies` bucket. This is capture, NOT verification — `verifiedAt` is never set without a real biometric provider.
 

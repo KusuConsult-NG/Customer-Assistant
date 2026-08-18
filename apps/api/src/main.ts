@@ -64,12 +64,15 @@ async function bootstrap() {
   // ── 3. CORS configuration ──────────────────────────────────────────────────
   // Two CORS regimes, selected per request path:
   //
-  //   /api/widget/* — open to EVERY origin, always. These are the public embed
-  //   endpoints: the widget script runs on customers' own websites (any domain),
-  //   and its tenant security is the API key + rate limit, not the Origin header.
-  //   Locking these to CORS_ORIGIN silently breaks the widget on every site the
-  //   moment CORS_ORIGIN is set for production — the exact configuration where
-  //   embeds are demoed. No credentials are ever allowed on this regime.
+  //   /api/widget/* — open to EVERY origin, always. The web chat channel is
+  //   RETIRED and these routes now answer 410 Gone, but the carve-out has to
+  //   stay: the embed script still sits on tenants' own sites, and without it
+  //   their browsers would block the 410 as a CORS violation. The site owner
+  //   would then see a cross-origin error instead of the message explaining
+  //   that the widget was retired — which is the whole point of answering at
+  //   all. Nothing behind these routes reads a key or touches the database, so
+  //   an open origin costs nothing. No credentials, ever.
+  //   Remove this carve-out with the routes, once no site carries the snippet.
   //
   //   Everything else — locked to CORS_ORIGIN (the dashboard). Accepts a
   //   comma-separated list so staging + production dashboards can share an API.
@@ -202,7 +205,7 @@ async function bootstrap() {
 
   logger.log(`🚀 Customer Care Agent API running at http://0.0.0.0:${port}`);
   logger.log(`📡 Environment: ${process.env.NODE_ENV ?? 'development'}`);
-  logger.log(`🔒 CORS Origin: ${Array.isArray(dashboardOrigin) ? dashboardOrigin.join(', ') : dashboardOrigin} (dashboard) · * (/api/widget embeds)`);
+  logger.log(`🔒 CORS Origin: ${Array.isArray(dashboardOrigin) ? dashboardOrigin.join(', ') : dashboardOrigin} (dashboard) · * (/api/widget — retired, answers 410)`);
   logger.log(`📦 Raw body buffering: ENABLED (required for webhook signature verification) | JSON body limit: ${jsonBodyLimit}`);
   logger.log(`📞 Twilio Media Streams: listening on /telephony/stream/:callSid`);
 }

@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { WidgetController } from './widget.controller';
-import { WidgetService } from './widget.service';
-import { WebhooksModule } from '../webhooks/webhooks.module';
 
+/**
+ * The retired web chat channel.
+ *
+ * Only the controller remains, and it answers 410 to everything. The service
+ * that ran the orchestrator for widget visitors, and the DTO it validated, are
+ * gone — see widget.controller.ts for why the routes still answer at all
+ * rather than being deleted with them.
+ */
 @Module({
-  imports: [WebhooksModule],
   controllers: [WidgetController],
-  providers: [WidgetService],
-  exports: [WidgetService],
 })
 export class WidgetModule {}

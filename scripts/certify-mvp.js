@@ -403,16 +403,35 @@ async function main() {
   console.log(`\n${C.dim}  The full inbound flow (contact creation, dedup, tenant routing, media,${C.x}`);
   console.log(`${C.dim}  AI reply) is covered by e2e-validation/whatsapp-inbound-probe.js.${C.x}`);
 
-  // ── 6. Web chat ────────────────────────────────────────────────────────────
-  section('Web chat widget');
+  // ── 6. Web chat, retired ───────────────────────────────────────────────────
+  //
+  // Not dropped from the checklist. A retired channel still has to behave, and
+  // the way it fails is the whole point: tenants' sites keep the script tag for
+  // as long as nobody edits them, so what those pages get back is a live
+  // property of this system, not a historical footnote.
+  section('Web chat widget (retired)');
 
-  await check('The widget script is served', async () => {
+  await check('The API says the widget is gone, rather than 404ing', async () => {
+    const res = await api('GET', '/api/widget/config?apiKey=ace_live_pk_anything');
+    // 410, specifically. A 404 also describes an outage, a bad URL or a broken
+    // proxy, and someone would go looking for a fault that is not there.
+    assert(res.status === 410, `expected 410 Gone, got ${res.status}`);
+    assert(res.body?.retired === true, 'the response does not identify itself as retired');
+  });
+
+  await check('The embed script is inert rather than missing', async () => {
     const web = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000';
     const res = await fetch(`${web}/widget.js`).catch(() => null);
     if (!res) return `no web app at ${web}`;
+    // Still served: a 404 here is a network error in a tenant's console that
+    // reads like our outage. It must load and do nothing.
     assert(res.ok, `widget.js returned ${res.status}`);
     const body = await res.text();
-    assert(!body.includes('\\`'), 'widget.js contains escaped backticks — it will not parse in a browser');
+    assert(/retired/i.test(body), 'widget.js does not say it has been retired');
+    assert(
+      !/createElement|appendChild/.test(body),
+      'widget.js still builds DOM — a retired widget must render nothing'
+    );
   });
 
   // ── 10. Payments ───────────────────────────────────────────────────────────
