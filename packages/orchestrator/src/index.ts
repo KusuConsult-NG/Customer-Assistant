@@ -759,6 +759,7 @@ export class ConversationOrchestrator {
     if (!cleanInput) {
       return {
         replyText: 'I received your message but it appears empty. Could you please try again?',
+        intentDetected: 'EMPTY_MESSAGE',
         confidenceScore: 1.0,
         shouldHandoff: false,
       };
@@ -769,10 +770,23 @@ export class ConversationOrchestrator {
     // ── 1. Active human handoff check ────────────────────────────────────────
     if (context.isHumanHandoffActive) {
       return {
+        // Nothing is said: a person is handling this thread and the AI talking
+        // over them is the point of handing off in the first place.
         replyText: '',
+        // Labelled, so "messages that arrived while a customer waited for a
+        // human" is answerable. Unlabelled it was logged as GENERAL_INQUIRY,
+        // which it is not.
+        intentDetected: 'HUMAN_HANDOFF_ACTIVE',
         confidenceScore: 1.0,
         shouldHandoff: true,
-        handoffReason: HandoffReason.CUSTOMER_REQUEST,
+        // NO handoffReason, deliberately. This branch does not know why the
+        // conversation was escalated — it only knows that it was. It used to
+        // assert CUSTOMER_REQUEST, and WhatsappService writes the reason back on
+        // every message, so a conversation escalated because a booking tool
+        // failed was relabelled "the customer asked" the moment they typed
+        // again. That is the one field telling staff why a thread needs a
+        // person. Omitting it leaves the original intact: Prisma treats an
+        // undefined field as "not provided" rather than as null.
       };
     }
 
@@ -806,6 +820,11 @@ export class ConversationOrchestrator {
     if (ESCALATION_PHRASES.some((p) => lowerInput.includes(p))) {
       return {
         replyText: 'Connecting you to a live human agent right away. Please hold on a moment...',
+        // A customer asking for a person is the single most useful signal a
+        // business has about where the agent is failing them. Unlabelled, every
+        // one of these was recorded as GENERAL_INQUIRY and the question "how
+        // often do customers give up on the AI?" had no answer in the data.
+        intentDetected: 'HUMAN_HANDOFF',
         confidenceScore: 1.0,
         shouldHandoff: true,
         handoffReason: HandoffReason.CUSTOMER_REQUEST,

@@ -305,6 +305,58 @@ describe('ConversationOrchestrator', () => {
     );
   });
 
+  /**
+   * What the record says about why a conversation needs a person.
+   *
+   * `handoffReason` is the one field telling staff whether a thread is waiting
+   * on a human because a tool failed or because the customer asked. The
+   * already-handed-off branch asserted CUSTOMER_REQUEST on every subsequent
+   * message, and WhatsappService writes the reason back each time — so a
+   * conversation escalated by a booking failure was relabelled "the customer
+   * asked" the moment they typed again.
+   *
+   * The same branches also returned no intent at all, and the log substitutes
+   * GENERAL_INQUIRY for a missing one. An explicit request for a human is not a
+   * general inquiry, and it is the most useful signal a business has about
+   * where its agent is failing people.
+   */
+  describe('What a handoff records about itself', () => {
+    const reply = (message: string, isHumanHandoffActive = false) =>
+      orchestrator.processIncomingMessage({ ...baseContext(), isHumanHandoffActive }, message);
+
+    it('does not claim a reason it cannot know for an already-open handoff', async () => {
+      const result = await reply('any update please?', true);
+
+      expect(result.shouldHandoff).toBe(true);
+      // undefined, so the Prisma update leaves the original reason intact.
+      expect(result.handoffReason).toBeUndefined();
+      // And the AI stays quiet while a person is handling the thread.
+      expect(result.replyText).toBe('');
+    });
+
+    it('still records CUSTOMER_REQUEST when the customer actually asks', async () => {
+      const result = await reply('i want a human');
+
+      expect(result.shouldHandoff).toBe(true);
+      expect(result.handoffReason).toBe('CUSTOMER_REQUEST');
+    });
+
+    it.each([
+      ['i want a human', 'HUMAN_HANDOFF'],
+      ['speak to a real person', 'HUMAN_HANDOFF'],
+    ])('labels %j so it is not counted as a general inquiry', async (message, intent) => {
+      expect((await reply(message)).intentDetected).toBe(intent);
+    });
+
+    it('labels a message that arrives during a handoff', async () => {
+      expect((await reply('hello?', true)).intentDetected).toBe('HUMAN_HANDOFF_ACTIVE');
+    });
+
+    it('labels an empty message', async () => {
+      expect((await reply('   ')).intentDetected).toBe('EMPTY_MESSAGE');
+    });
+  });
+
   describe('Appointment booking', () => {
     it('books a real free slot inside business hours and reports the time it took', async () => {
       mockPrisma.booking.create.mockImplementation(({ data }: any) =>
