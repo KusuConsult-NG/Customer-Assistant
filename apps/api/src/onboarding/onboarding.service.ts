@@ -1,11 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import {
-  SELFIE_MAX_UPLOAD_ATTEMPTS,
-  createSelfieRequest,
-  hashSelfieToken,
-  prisma,
-  selfieUploadUrl,
-} from '@ace/database';
+import { SELFIE_MAX_UPLOAD_ATTEMPTS, createSelfieRequest, hashSelfieToken, prisma, selfieUploadUrl, withWhatsAppCredentials } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { MessageSender } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
@@ -117,7 +111,9 @@ export class OnboardingService {
           `Please use this secure link:\n${uploadUrl}\n\n` +
           `The link works once and expires soon. We will never ask you for your PIN or password.`;
 
-    const config = await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } });
+    const config = withWhatsAppCredentials(
+      await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } })
+    );
     if (!config?.phoneNumberId || !config?.accessToken) {
       return {
         delivered: false,

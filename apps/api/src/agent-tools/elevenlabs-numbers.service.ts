@@ -36,7 +36,7 @@
  * floor, not the ceiling.
  */
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, withTelephonyCredentials } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
 
 export interface ImportedNumber {
@@ -106,10 +106,15 @@ export class ElevenLabsNumbersService {
       );
     }
 
-    const telephony = await prisma.telephonyConfig.findFirst({
-      where: { organizationId, provider: 'TWILIO' },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-    });
+    // Decrypted here: these credentials are handed to ElevenLabs so it can
+    // answer the number, and a ciphertext would be rejected as a bad Twilio
+    // token — an error pointing at the tenant's Twilio account, not at us.
+    const telephony = withTelephonyCredentials(
+      await prisma.telephonyConfig.findFirst({
+        where: { organizationId, provider: 'TWILIO' },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      })
+    );
     if (!telephony) {
       throw new NotFoundException('No Twilio configuration exists for this organization.');
     }

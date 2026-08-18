@@ -21,7 +21,7 @@ import {
   EncryptionKeyError,
   isEncrypted,
   secretFingerprint,
-} from '../src/common/secret-box';
+} from '@ace/database';
 
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
 const KEY_B = Buffer.alloc(32, 2).toString('base64');

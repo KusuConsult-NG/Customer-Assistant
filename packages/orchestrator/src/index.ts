@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -1645,7 +1645,9 @@ export class ConversationOrchestrator {
    */
   private async sendSelfieLinkOverWhatsApp(organizationId: string, phoneNumber: string, url: string): Promise<boolean> {
     try {
-      const config = await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } });
+      const config = withWhatsAppCredentials(
+        await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } })
+      );
       if (!config?.phoneNumberId || !config?.accessToken) return false;
 
       const client = new WhatsAppCloudClient({

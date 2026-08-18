@@ -68,3 +68,6 @@ export function getPrismaClient(): PrismaClient {
 export const prisma = getPrismaClient();
 
 export * from './selfie-request';
+
+export * from './secret-box';
+export * from './credentials';

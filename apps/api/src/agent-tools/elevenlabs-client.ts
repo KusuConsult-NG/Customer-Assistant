@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { ElevenLabsError } from '@elevenlabs/elevenlabs-js/errors';
-import { decryptSecret } from '../common/secret-box';
+import { decryptSecret } from '@ace/database';
 
 @Injectable()
 export class ElevenLabsApi {
@@ -25,7 +25,7 @@ export class ElevenLabsApi {
   /**
    * The workspace key to act as, for one organization.
    *
-   * The tenant's own key is stored encrypted (see common/secret-box.ts) and is
+   * The tenant's own key is stored encrypted (see @ace/database secret-box) and is
    * decrypted here — in one place, so a caller cannot accidentally hand the
    * ciphertext to the SDK and get an authentication failure that looks like a
    * revoked key rather than a decryption problem.

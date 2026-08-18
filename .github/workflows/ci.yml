@@ -25,6 +25,10 @@ env:
   WHATSAPP_APP_SECRET: ci-app-secret
   WHATSAPP_VERIFY_TOKEN: ci-verify-token
   REDIS_URL: redis://localhost:6379
+  # Credentials are encrypted at rest. Without a key the API refuses to store a
+  # tenant credential at all — deliberately — so CI needs one to exercise those
+  # paths. A fixed throwaway: it protects nothing real and must never be reused.
+  ENCRYPTION_KEY: Y2lfb25seV9lbmNyeXB0aW9uX2tleV8zMmJ5dGVzISE=
 
 jobs:
   build-and-test:

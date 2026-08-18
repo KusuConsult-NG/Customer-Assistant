@@ -19,6 +19,7 @@ import { prisma } from '@ace/database';
 import { ElevenLabsTakeoverService } from '../src/agent-tools/elevenlabs-takeover.service';
 import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
 import { VoiceAiService } from '../src/telephony/voice-ai.service';
+import { encryptSecret } from '@ace/database';
 
 describe('ElevenLabs takeover', () => {
   let service: ElevenLabsTakeoverService;
@@ -54,6 +55,9 @@ describe('ElevenLabs takeover', () => {
     }).compile();
     service = moduleRef.get(ElevenLabsTakeoverService);
 
+    // Credentials are encrypted at rest, so these suites need a key to store
+    // one with. Fixed rather than random: a failure should be reproducible.
+    process.env.ENCRYPTION_KEY = Buffer.alloc(32, 11).toString('base64');
     process.env.ELEVENLABS_BASE_URL = 'https://elevenlabs.test';
     process.env.ELEVENLABS_API_KEY = 'xi-test-key';
 
@@ -94,6 +98,14 @@ describe('ElevenLabs takeover', () => {
     await prisma.hostedAgentConfig.create({ data: { organizationId: orgId, agentId } });
   });
 
+  /**
+   * Stores the auth token ENCRYPTED, as the application does.
+   *
+   * That is the point of these assertions: a stored ciphertext must arrive at
+   * Twilio as the real token. If a read site ever forgets to decrypt, Twilio
+   * rejects `v1.…` as a bad credential and the failure reads as the tenant's
+   * Twilio account being broken rather than as our bug.
+   */
   const withTelephony = (over: Record<string, unknown> = {}) =>
     prisma.telephonyConfig.create({
       data: {
@@ -101,7 +113,7 @@ describe('ElevenLabs takeover', () => {
         provider: 'TWILIO',
         phoneNumber: '+2348000000001',
         accountSid: 'AC_test',
-        authToken: 'tok_test',
+        authToken: encryptSecret('tok_test'),
         forwardingNumber: '+2348099999999',
         ...over,
       },
@@ -164,13 +176,24 @@ describe('ElevenLabs takeover', () => {
       expect(outcome).toMatchObject({ taken: true, channel: 'voice' });
     });
 
-    it("uses the tenant's own Twilio credentials", async () => {
+    it("uses the tenant's own Twilio credentials, decrypted", async () => {
       await withTelephony();
       stub(conversation());
 
       await service.takeOverConversation(orgId, 'conv_live');
 
+      // Stored as ciphertext, presented as the real token.
       expect(transfers[0].creds).toMatchObject({ accountSid: 'AC_test', authToken: 'tok_test' });
+      expect(transfers[0].creds.authToken).not.toMatch(/^v1\./);
+    });
+
+    it('still works for a tenant whose token predates encryption', async () => {
+      // Turning encryption on must not break a live phone line.
+      await withTelephony({ authToken: 'legacy_plaintext_token' });
+      stub(conversation());
+
+      await service.takeOverConversation(orgId, 'conv_live');
+      expect(transfers[0].creds.authToken).toBe('legacy_plaintext_token');
     });
 
     it('reports failure — not success — when the carrier refuses', async () => {

@@ -18,11 +18,19 @@
  *
  * ── Scope ───────────────────────────────────────────────────────────────────
  *
- * Only HostedAgentConfig.apiKey today. TelephonyConfig.authToken/apiSecret and
- * WhatsAppConfig.accessToken are also plaintext and also worth encrypting, but
- * they sit on the live telephony and messaging paths — moving them is its own
- * change, with its own way of breaking a tenant's phone line, and it is not
- * something to fold in quietly here.
+ * Every provider credential this platform stores:
+ *
+ *   HostedAgentConfig.apiKey            ElevenLabs workspace key
+ *   TelephonyConfig.authToken/apiKey/apiSecret   Twilio
+ *   WhatsAppConfig.accessToken/webhookVerifyToken   Meta
+ *
+ * Not accountSid, phoneNumberId or whatsappBusinessId: those identify accounts
+ * rather than opening them, and being able to read them in a database console
+ * is worth more than hiding them.
+ *
+ * CalendarIntegration.accessToken/refreshToken are also plaintext columns, and
+ * are deliberately left alone — no code in this repo reads or writes that model
+ * at all, so encrypting it would be ceremony over a table nothing uses.
  */
 const path = require('path');
 
@@ -61,86 +69,114 @@ async function main() {
 
   const prisma = new PrismaClient();
   try {
-    const configs = await prisma.hostedAgentConfig.findMany({
-      where: { apiKey: { not: null } },
-      select: { organizationId: true, apiKey: true, organization: { select: { slug: true } } },
+    let totalTodo = 0;
+    let totalUnreadable = 0;
+
+    /**
+     * One model's worth of credential columns.
+     *
+     * `state()` classifies without changing anything, which is what makes the
+     * default run safe to point at production: the report is a read.
+     */
+    const state = (value) => {
+      if (!isEncrypted(value)) return 'plaintext';
+      const previous = process.env.ENCRYPTION_KEY_PREVIOUS;
+      delete process.env.ENCRYPTION_KEY_PREVIOUS;
+      try {
+        decryptSecret(value, 'probe');
+        return 'current';
+      } catch {
+        return 'other';
+      } finally {
+        if (previous !== undefined) process.env.ENCRYPTION_KEY_PREVIOUS = previous;
+      }
+    };
+
+    const sweep = async ({ label, rows, idOf, fields, update }) => {
+      const counts = { current: 0, plaintext: 0, previous: 0, unreadable: 0 };
+      const todo = [];
+
+      for (const row of rows) {
+        const changes = {};
+        for (const field of fields) {
+          const value = row[field];
+          if (!value) continue;
+          const kind = state(value);
+          if (kind === 'current') { counts.current++; continue; }
+          if (kind === 'plaintext') { counts.plaintext++; changes[field] = value; continue; }
+          // Encrypted, but not by the current key. Readable with the previous
+          // one means it needs re-encrypting; readable with neither means the
+          // right key is missing and the value must be LEFT ALONE — overwriting
+          // would destroy a credential the correct key could still recover.
+          try {
+            changes[field] = decryptSecret(value, `${label} ${idOf(row)}.${field}`);
+            counts.previous++;
+          } catch {
+            counts.unreadable++;
+            console.log(
+              `\n  ! ${label} ${idOf(row)}.${field} cannot be decrypted with either key.\n` +
+                '    Left untouched. Find the key that wrote it, or re-enter the credential.'
+            );
+          }
+        }
+        if (Object.keys(changes).length > 0) todo.push({ row, changes });
+      }
+
+      console.log(`\n${label}`);
+      console.log(`  already encrypted with the current key : ${counts.current}`);
+      console.log(`  stored in the clear                    : ${counts.plaintext}`);
+      console.log(`  encrypted with the PREVIOUS key        : ${counts.previous}`);
+      console.log(`  unreadable with either key             : ${counts.unreadable}`);
+
+      totalTodo += todo.length;
+      totalUnreadable += counts.unreadable;
+
+      if (apply) {
+        for (const { row, changes } of todo) {
+          const sealed = {};
+          for (const [field, plain] of Object.entries(changes)) sealed[field] = encryptSecret(plain);
+          await update(row, sealed);
+        }
+        if (todo.length > 0) console.log(`  → rewrote ${todo.length} row(s)`);
+      }
+    };
+
+    await sweep({
+      label: 'HostedAgentConfig.apiKey',
+      rows: await prisma.hostedAgentConfig.findMany({ where: { apiKey: { not: null } } }),
+      idOf: (r) => r.organizationId,
+      fields: ['apiKey'],
+      update: (row, data) =>
+        prisma.hostedAgentConfig.update({ where: { organizationId: row.organizationId }, data }),
     });
 
-    const plaintext = [];
-    const staleKey = [];
-    const unreadable = [];
+    await sweep({
+      label: 'TelephonyConfig (authToken, apiKey, apiSecret)',
+      rows: await prisma.telephonyConfig.findMany(),
+      idOf: (r) => r.id,
+      fields: ['authToken', 'apiKey', 'apiSecret'],
+      update: (row, data) => prisma.telephonyConfig.update({ where: { id: row.id }, data }),
+    });
 
-    for (const config of configs) {
-      if (!isEncrypted(config.apiKey)) {
-        plaintext.push(config);
-        continue;
-      }
-      // Readable with the current key? Then it is already where it should be.
-      // Readable only with the previous key? Then it needs re-encrypting.
-      try {
-        const previous = process.env.ENCRYPTION_KEY_PREVIOUS;
-        delete process.env.ENCRYPTION_KEY_PREVIOUS;
-        try {
-          decryptSecret(config.apiKey, config.organizationId);
-        } finally {
-          if (previous !== undefined) process.env.ENCRYPTION_KEY_PREVIOUS = previous;
-        }
-      } catch {
-        try {
-          decryptSecret(config.apiKey, config.organizationId);
-          staleKey.push(config);
-        } catch {
-          unreadable.push(config);
-        }
-      }
+    await sweep({
+      label: 'WhatsAppConfig (accessToken, webhookVerifyToken)',
+      rows: await prisma.whatsAppConfig.findMany(),
+      idOf: (r) => r.id,
+      fields: ['accessToken', 'webhookVerifyToken'],
+      update: (row, data) => prisma.whatsAppConfig.update({ where: { id: row.id }, data }),
+    });
+
+    console.log('');
+    if (totalTodo === 0) {
+      console.log('Nothing to do.\n');
+    } else if (!apply) {
+      console.log(`${totalTodo} row(s) would be rewritten. Re-run with --apply to do it.\n`);
+    } else {
+      console.log(`Done. ${totalTodo} row(s) rewritten.\n`);
+      console.log('ENCRYPTION_KEY_PREVIOUS can be removed once this reports nothing to do.\n');
     }
-
-    console.log(`\nHostedAgentConfig.apiKey — ${configs.length} row(s) with a key set\n`);
-    console.log(`  already encrypted with the current key : ${
-      configs.length - plaintext.length - staleKey.length - unreadable.length
-    }`);
-    console.log(`  stored in the clear                    : ${plaintext.length}`);
-    console.log(`  encrypted with the PREVIOUS key        : ${staleKey.length}`);
-    console.log(`  unreadable with either key             : ${unreadable.length}`);
-
-    for (const config of unreadable) {
-      // Reported, never "fixed". Overwriting an unreadable value would destroy
-      // a credential that the right key could still recover.
-      console.log(
-        `\n  ! ${config.organization?.slug ?? config.organizationId} has a key that neither\n` +
-          `    ENCRYPTION_KEY nor ENCRYPTION_KEY_PREVIOUS can decrypt. Left untouched —\n` +
-          `    find the key that wrote it, or replace the credential via\n` +
-          `    POST /api/agent-provisioning/credentials.`
-      );
-    }
-
-    const todo = [...plaintext, ...staleKey];
-    if (todo.length === 0) {
-      console.log('\nNothing to do.\n');
-      return;
-    }
-
-    if (!apply) {
-      console.log(`\n${todo.length} row(s) would be rewritten. Re-run with --apply to do it.\n`);
-      return;
-    }
-
-    let done = 0;
-    for (const config of todo) {
-      const value = isEncrypted(config.apiKey)
-        ? decryptSecret(config.apiKey, config.organizationId)
-        : config.apiKey;
-
-      await prisma.hostedAgentConfig.update({
-        where: { organizationId: config.organizationId },
-        data: { apiKey: encryptSecret(value) },
-      });
-      done++;
-    }
-
-    console.log(`\nRewrote ${done} row(s).\n`);
-    if (staleKey.length > 0) {
-      console.log('ENCRYPTION_KEY_PREVIOUS can now be removed from the environment.\n');
+    if (totalUnreadable > 0) {
+      console.log(`${totalUnreadable} value(s) were left untouched because neither key could read them.\n`);
     }
   } finally {
     await prisma.$disconnect();

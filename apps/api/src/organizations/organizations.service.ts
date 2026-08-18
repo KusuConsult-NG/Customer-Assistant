@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret } from '@ace/database';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -15,6 +15,50 @@ function maskSecret(value: string | null | undefined): string | null {
   return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
 }
 
+/**
+ * Mask a credential that is encrypted at rest.
+ *
+ * Decrypt FIRST, then mask. Masking the stored value would show the last four
+ * characters of base64 ciphertext — different every time it is written, and
+ * matching nothing an operator can compare against the token in their Meta or
+ * Twilio console. The suffix exists so somebody can recognise which credential
+ * is configured; a suffix of the ciphertext quietly stops doing that while
+ * still looking like it works.
+ *
+ * An undecryptable value still masks to `••••` rather than throwing: a settings
+ * page must render even when the encryption key is wrong, or an operator cannot
+ * reach the form that would let them re-enter the credential.
+ */
+function maskStoredSecret(value: string | null | undefined, label: string): string | null {
+  if (!value) return null;
+  try {
+    return maskSecret(decryptSecret(value, label));
+  } catch {
+    return '••••';
+  }
+}
+
+
+function maskedTelephonyConfig<T extends Record<string, any>>(c: T) {
+  return {
+    ...c,
+    accountSid: maskSecret(c.accountSid),
+    authToken: maskStoredSecret(c.authToken, `TelephonyConfig ${c.id}.authToken`),
+    apiKey: maskStoredSecret(c.apiKey, `TelephonyConfig ${c.id}.apiKey`),
+    apiSecret: maskStoredSecret(c.apiSecret, `TelephonyConfig ${c.id}.apiSecret`),
+  };
+}
+
+function maskedWhatsAppConfig<T extends Record<string, any>>(c: T) {
+  return {
+    ...c,
+    accessToken: maskStoredSecret(c.accessToken, `WhatsAppConfig ${c.id}.accessToken`),
+    webhookVerifyToken: maskStoredSecret(
+      c.webhookVerifyToken,
+      `WhatsAppConfig ${c.id}.webhookVerifyToken`
+    ),
+  };
+}
 
 @Injectable()
 export class OrganizationsService {
@@ -48,15 +92,20 @@ export class OrganizationsService {
       ...org,
       telephonyConfigs: org.telephonyConfigs.map((c) => ({
         ...c,
+        // accountSid identifies rather than opens, so it is stored in the clear
+        // and masked directly. The other three are encrypted at rest.
         accountSid: maskSecret(c.accountSid),
-        authToken: maskSecret(c.authToken),
-        apiKey: maskSecret(c.apiKey),
-        apiSecret: maskSecret(c.apiSecret),
+        authToken: maskStoredSecret(c.authToken, `TelephonyConfig ${c.id}.authToken`),
+        apiKey: maskStoredSecret(c.apiKey, `TelephonyConfig ${c.id}.apiKey`),
+        apiSecret: maskStoredSecret(c.apiSecret, `TelephonyConfig ${c.id}.apiSecret`),
       })),
       whatsAppConfigs: org.whatsAppConfigs.map((c) => ({
         ...c,
-        accessToken: maskSecret(c.accessToken),
-        webhookVerifyToken: maskSecret(c.webhookVerifyToken),
+        accessToken: maskStoredSecret(c.accessToken, `WhatsAppConfig ${c.id}.accessToken`),
+        webhookVerifyToken: maskStoredSecret(
+          c.webhookVerifyToken,
+          `WhatsAppConfig ${c.id}.webhookVerifyToken`
+        ),
       })),
     };
   }
@@ -159,22 +208,30 @@ export class OrganizationsService {
   ) {
     const existing = await prisma.whatsAppConfig.findFirst({ where: { organizationId } });
 
+    // sealWhatsAppCredentials encrypts accessToken and webhookVerifyToken. It
+    // THROWS when ENCRYPTION_KEY is unset rather than storing them in the clear
+    // — the operator is told to set the key, and nothing is written meanwhile.
+    // Both branches return a MASKED view. The stored row now carries ciphertext,
+    // which is not a leak but is noise; before encryption this same return
+    // handed the caller's own access token straight back in the response body.
+    // Neither is what a settings form needs — it needs to know it saved.
     if (existing) {
-      return prisma.whatsAppConfig.update({
+      const saved = await prisma.whatsAppConfig.update({
         where: { id: existing.id },
-        data: {
+        data: sealWhatsAppCredentials({
           phoneNumberId: data.phoneNumberId,
           accessToken: data.accessToken,
           webhookVerifyToken: data.webhookVerifyToken,
           whatsappBusinessId: data.whatsappBusinessId || existing.whatsappBusinessId,
           displayPhoneNumber: data.displayPhoneNumber || existing.displayPhoneNumber,
           isActive: true,
-        },
+        }),
       });
+      return maskedWhatsAppConfig(saved);
     }
 
-    return prisma.whatsAppConfig.create({
-      data: {
+    const created = await prisma.whatsAppConfig.create({
+      data: sealWhatsAppCredentials({
         organizationId,
         phoneNumberId: data.phoneNumberId,
         accessToken: data.accessToken,
@@ -182,8 +239,9 @@ export class OrganizationsService {
         whatsappBusinessId: data.whatsappBusinessId || `waba_${data.phoneNumberId}`,
         displayPhoneNumber: data.displayPhoneNumber || `+234 WhatsApp`,
         isActive: true,
-      },
+      }),
     });
+    return maskedWhatsAppConfig(created);
   }
 
 
@@ -194,28 +252,30 @@ export class OrganizationsService {
     const existing = await prisma.telephonyConfig.findFirst({ where: { organizationId } });
 
     if (existing) {
-      return prisma.telephonyConfig.update({
+      const saved = await prisma.telephonyConfig.update({
         where: { id: existing.id },
-        data: {
+        data: sealTelephonyCredentials({
           provider: data.provider,
           phoneNumber: data.phoneNumber,
           accountSid: data.accountSid,
           authToken: data.authToken,
           apiKey: data.apiKey,
-        },
+        }),
       });
+      return maskedTelephonyConfig(saved);
     }
 
-    return prisma.telephonyConfig.create({
-      data: {
+    const created = await prisma.telephonyConfig.create({
+      data: sealTelephonyCredentials({
         organizationId,
         provider: data.provider,
         phoneNumber: data.phoneNumber,
         accountSid: data.accountSid,
         authToken: data.authToken,
         apiKey: data.apiKey,
-      },
+      }),
     });
+    return maskedTelephonyConfig(created);
   }
 
   async getTeamMembers(organizationId: string) {
