@@ -66,7 +66,7 @@ import { VoiceAiService } from './voice-ai.service';
 import { CallBroadcastService } from './call-broadcast.service';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
-import { prisma, withTelephonyCredentials } from '@ace/database';
+import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 
 // Early-audio buffer cap: 250 frames × 20 ms = 5 seconds maximum
 const MAX_EARLY_BUFFER_FRAMES = 250;
@@ -611,20 +611,32 @@ export class TwilioMediaStreamHandler {
     // precisely what did happen.
     let ticketNumber: string | null = null;
     try {
-      const contact = await prisma.contact.upsert({
+      // Look up across every stored shape first, then upsert the canonical one.
+      // A bare upsert keyed on the raw carrier number files this ticket against
+      // a NEW contact when the same customer already exists from WhatsApp — so
+      // the escalation lands on a record with none of their history.
+      const existingContact = await prisma.contact.findFirst({
         where: {
-          organizationId_phoneNumber: {
-            organizationId: session.organizationId,
-            phoneNumber: session.fromNumber,
-          },
-        },
-        update: {},
-        create: {
           organizationId: session.organizationId,
-          phoneNumber: session.fromNumber,
-          fullName: `Caller ${session.fromNumber.slice(-4)}`,
+          phoneNumber: { in: phoneNumberVariants(session.fromNumber) },
         },
       });
+      const contact =
+        existingContact ??
+        (await prisma.contact.upsert({
+          where: {
+            organizationId_phoneNumber: {
+              organizationId: session.organizationId,
+              phoneNumber: normalizePhoneNumber(session.fromNumber),
+            },
+          },
+          update: {},
+          create: {
+            organizationId: session.organizationId,
+            phoneNumber: normalizePhoneNumber(session.fromNumber),
+            fullName: `Caller ${session.fromNumber.slice(-4)}`,
+          },
+        }));
 
       const ticket = await prisma.ticket.create({
         data: {

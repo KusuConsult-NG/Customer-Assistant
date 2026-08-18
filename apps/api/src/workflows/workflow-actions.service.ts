@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { prisma, withWhatsAppCredentials } from '@ace/database';
+import { prisma, withWhatsAppCredentials, phoneNumberVariants } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { randomBytes } from 'crypto';
 import { AceLogger } from '../config/logger';
@@ -85,7 +85,7 @@ export class WorkflowActionsService {
     // Mirror into the conversation transcript so an agent opening the thread sees
     // what the automation said on the business's behalf.
     const contact = await prisma.contact.findFirst({
-      where: { organizationId: ctx.organizationId, phoneNumber: to },
+      where: { organizationId: ctx.organizationId, phoneNumber: { in: phoneNumberVariants(to) } },
     });
     if (contact) {
       const conversation = await prisma.conversation.findFirst({
@@ -298,7 +298,10 @@ export class WorkflowActionsService {
     const phone = config.contactPhone ?? ctx.payload?.contactPhone ?? ctx.payload?.contact?.phoneNumber;
     if (phone) {
       const byPhone = await prisma.contact.findFirst({
-        where: { organizationId: ctx.organizationId, phoneNumber: String(phone) },
+        where: {
+          organizationId: ctx.organizationId,
+          phoneNumber: { in: phoneNumberVariants(String(phone)) },
+        },
         select: { id: true },
       });
       if (byPhone) return byPhone.id;

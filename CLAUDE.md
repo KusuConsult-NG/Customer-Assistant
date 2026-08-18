@@ -140,6 +140,14 @@ Cutting a tenant over means: `POST /api/agent-provisioning/sync` (OWNER/ADMIN), 
 
 `callSid` is deliberately not defended against being absent — all three phone-call variants in the SDK declare it required and the SDK validates responses, so a payload without one is rejected in the client first. A test pins that assumption rather than a branch pretending to handle it.
 
+**One phone number, one contact** (`packages/database/src/phone-number.ts`). The same customer arrives as `+2348012345678` (Twilio), `2348012345678` (Meta) and `08012345678` (a staff member typing), and `Contact` is unique on `[organizationId, phoneNumber]` with exact-match lookups — so they were three different people, and a booking made over WhatsApp was invisible to the same person calling in.
+- **Writes store the canonical form** (E.164 with the plus) via `normalizePhoneNumber()`.
+- **Reads match every shape** via `phoneNumberVariants()` — `phoneNumber: { in: … }`. Rows written before this existed are still in their channel's format, so canonical-only lookups would leave every existing customer as unfindable as before.
+- **A number the rules do not recognise is returned UNCHANGED.** Guessing at an unfamiliar shape turns one findable contact into an unfindable one, which is worse than the duplicate. The local-form rule (`0…` → `+234…`) assumes Nigeria and takes the country code as a parameter.
+- The unique constraint now bites correctly: a second row for the same number is a P2002 rather than a differently-formatted string slipping through.
+
+Existing duplicates are collapsed by `npm run contacts:dedupe` (report-only; `-- --apply` merges). Oldest row survives, a real name beats a generated placeholder, and every relation moves — conversations included, where a channel collision moves the MESSAGES into the survivor's thread rather than losing them to the `[organizationId, contactId, channel]` constraint. Deliberately a separate step: merging customer records destroys one of them, and nothing that destructive should happen as a side effect of somebody answering a phone.
+
 **Credentials at rest** — EVERY provider credential is AES-256-GCM encrypted, stored as `v1.<iv>.<tag>.<ciphertext>` with a fresh IV per write. The crypto lives in `@ace/database` (`secret-box.ts` + `credentials.ts`) rather than in the API, because the columns live there and the orchestrator package reads some of them too — a helper only the API could import would leave that path decrypting nothing.
 
 Covered: `HostedAgentConfig.apiKey`, `TelephonyConfig.authToken/apiKey/apiSecret`, `WhatsAppConfig.accessToken/webhookVerifyToken`. NOT covered, deliberately: `accountSid`, `phoneNumberId`, `whatsappBusinessId` — those identify accounts rather than open them, and reading them in a database console is worth more than hiding them. `CalendarIntegration.accessToken/refreshToken` are plaintext but no code in the repo touches that model at all.
@@ -165,7 +173,7 @@ Masking a credential for the dashboard decrypts first (`maskStoredSecret`): mask
 - **Redelivery is idempotent by construction** — calls upsert on `CallLog.callSid`, and each transcript turn is inserted with a deterministic `Message.externalId` (`<conversation_id>:<index>`).
 - **A conversation with no phone number and no WhatsApp id is not stored.** There is nobody to attach it to, and a placeholder contact invents a customer.
 
-Known gap: voice contacts keep the carrier's `+234…` while WhatsApp contacts use Meta's `234…`, so the same human is two `Contact` rows across channels. This predates the agent layer and also affects `lookup-customer`; the ingestion follows each channel's existing convention rather than normalising one side and breaking the match on the other.
+Contacts are matched across phone formats — see the phone-number note below.
 
 **Voice calls** use TWO WebSocket layers that must not be confused: Twilio Media Streams speak a raw `ws` protocol handled by `TwilioMediaStreamHandler` (mounted via an HTTP `upgrade` interceptor in `main.ts` on `/telephony/stream/:callSid`), while the agent console uses Socket.IO gateways (`/events`, `/telephony` namespaces). `CallBroadcastService` bridges the two. In the media-stream handler, socket listeners are registered synchronously before any awaited DB work — Twilio sends `start` immediately on upgrade and a lost `start` leaves the call permanently mute.
 

@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -69,14 +69,17 @@ export class AgentToolsService {
 
   /** Find or create the caller's contact record, so tools have someone to attach to. */
   private async contactFor(organizationId: string, phoneNumber: string, fullName?: string) {
+    // Search every shape, store the canonical one. Otherwise the agent creates
+    // a second row for a customer it already has, and answers them as a
+    // stranger.
     const existing = await prisma.contact.findFirst({
-      where: { organizationId, phoneNumber },
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
     });
     if (existing) return existing;
     return prisma.contact.create({
       data: {
         organizationId,
-        phoneNumber,
+        phoneNumber: normalizePhoneNumber(phoneNumber),
         fullName: fullName?.trim() || `Caller (${phoneNumber.slice(-4)})`,
       },
     });
@@ -86,7 +89,7 @@ export class AgentToolsService {
   async lookupCustomer(organizationId: string, phoneNumber: string): Promise<ToolResult> {
     try {
       const contact = await prisma.contact.findFirst({
-        where: { organizationId, phoneNumber },
+        where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
         select: { id: true, fullName: true, email: true },
       });
       if (!contact) {

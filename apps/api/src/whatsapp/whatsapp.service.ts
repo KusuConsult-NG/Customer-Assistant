@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, withWhatsAppCredentials } from '@ace/database';
+import { prisma, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
@@ -433,8 +433,11 @@ export class WhatsappService {
 
   private async upsertContact(organizationId: string, phoneNumber: string, correlationId: string) {
     try {
+      // Meta gives E.164 without the leading plus. Searching every shape finds
+      // the row a phone call or a staff member created for the same person;
+      // storing the canonical one stops the next channel making a third.
       const existing = await prisma.contact.findFirst({
-        where: { organizationId, phoneNumber },
+        where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
       });
 
       if (existing) return existing;
@@ -442,7 +445,7 @@ export class WhatsappService {
       return await prisma.contact.create({
         data: {
           organizationId,
-          phoneNumber,
+          phoneNumber: normalizePhoneNumber(phoneNumber),
           fullName: `WhatsApp Contact (···${phoneNumber.slice(-4)})`,
         },
       });
@@ -450,7 +453,9 @@ export class WhatsappService {
       // P2002 = Unique constraint violation (race condition: another request created it first)
       if (err.code === 'P2002') {
         log.debug('contact_race_condition_resolved', { correlationId, phoneNumber: phoneNumber.slice(-4) });
-        const contact = await prisma.contact.findFirst({ where: { organizationId, phoneNumber } });
+        const contact = await prisma.contact.findFirst({
+          where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
+        });
         if (contact) return contact;
       }
       throw err;

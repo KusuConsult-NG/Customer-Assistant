@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, phoneNumberVariants } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -36,8 +36,11 @@ export class SchedulingService {
 
   /** Find most recent active booking for a contact phone number (used by AI). */
   async getActiveBookingByPhone(organizationId: string, phoneNumber: string) {
+    // Matches on every shape the same number might be stored under. An exact
+    // match meant a booking made over WhatsApp was invisible to the same
+    // customer calling in, because one row said "+234…" and the other "234…".
     const contact = await prisma.contact.findFirst({
-      where: { organizationId, phoneNumber },
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
     });
     if (!contact) return null;
 
@@ -55,7 +58,7 @@ export class SchedulingService {
   /** Find most recent active reservation for a contact phone number (used by AI). */
   async getActiveReservationByPhone(organizationId: string, phoneNumber: string) {
     const contact = await prisma.contact.findFirst({
-      where: { organizationId, phoneNumber },
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
     });
     if (!contact) return null;
 
