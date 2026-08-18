@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -1517,7 +1517,9 @@ export class ConversationOrchestrator {
       orderBy: { startTime: 'desc' },
     });
 
-    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}`;
+    // Same generator, same reason — and the prefix is kept because staff use it
+    // to tell a refund request from a support ticket at a glance.
+    const refundPrefix = `REF-${booking ? 'BK' : 'RS'}`;
     const subject = booking
       ? `Refund Request — ${booking.serviceName} on ${booking.startTime.toLocaleDateString('en-NG')}`
       : `Refund Request — Reservation (${contact.fullName})`;
@@ -1528,18 +1530,23 @@ export class ConversationOrchestrator {
       (booking ? `Booking: ${booking.serviceName} — ${booking.startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })}\n` : '') +
       `\nCustomer message: "${messageText.slice(0, 300)}"`;
 
-    const ticket = await prisma.ticket.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        ticketNumber,
-        subject,
-        description,
-        status: 'OPEN',
-        priority: 'HIGH',
-        updatedAt: new Date(),
-      },
-    });
+    const ticket = await createTicketWithUniqueNumber(
+      (ticketNumber) =>
+        prisma.ticket.create({
+          data: {
+            organizationId: context.organizationId,
+            contactId: contact.id,
+            ticketNumber,
+            subject,
+            description,
+            status: 'OPEN',
+            priority: 'HIGH',
+            updatedAt: new Date(),
+          },
+        }),
+      refundPrefix
+    );
+    const ticketNumber = ticket.ticketNumber;
 
     return {
       ticketId: ticket.id,
@@ -1863,19 +1870,25 @@ export class ConversationOrchestrator {
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
-    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}`;
 
-    const ticket = await prisma.ticket.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        ticketNumber,
-        subject: subjectText.slice(0, 100),
-        description: subjectText,
-        status: 'OPEN',
-        priority: 'MEDIUM',
-      },
-    });
+    // The number was `TCK-<last 6 digits of Date.now()>`: a million values,
+    // repeating every 16.7 minutes, unique across the WHOLE table and therefore
+    // shared with every other tenant, with no retry. A collision raised P2002,
+    // the tool reported a failure, and a customer who had just described a fault
+    // was told "I ran into a technical problem" with nothing recorded.
+    const ticket = await createTicketWithUniqueNumber((ticketNumber) =>
+      prisma.ticket.create({
+        data: {
+          organizationId: context.organizationId,
+          contactId: contact.id,
+          ticketNumber,
+          subject: subjectText.slice(0, 100),
+          description: subjectText,
+          status: 'OPEN',
+          priority: 'MEDIUM',
+        },
+      })
+    );
 
     return { ticketId: ticket.id, ticketNumber: ticket.ticketNumber };
   }

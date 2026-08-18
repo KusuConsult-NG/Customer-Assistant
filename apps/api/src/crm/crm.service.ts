@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { prisma, normalizePhoneNumber } from '@ace/database';
+import { prisma, normalizePhoneNumber, createTicketWithUniqueNumber } from '@ace/database';
 import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -228,22 +228,25 @@ export class CrmService {
    * unique-constraint violation rather than returning a 500.
    */
   private async createWithUniqueTicketNumber(buildData: () => any) {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const ticketNumber = `TCK-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
-      try {
-        return await prisma.ticket.create({
+    try {
+      // The generator moved to @ace/database. It was correct here and broken in
+      // packages/orchestrator, which could not import from the API — so the live
+      // engine kept allocating `TCK-<6 digits of Date.now()>` and losing tickets
+      // to a table-wide unique constraint. One implementation, in the package
+      // both sides already depend on.
+      return await createTicketWithUniqueNumber((ticketNumber) =>
+        prisma.ticket.create({
           data: { ...buildData(), ticketNumber },
           include: { contact: true },
-        });
-      } catch (err: any) {
-        if (err?.code === 'P2002' && attempt < 4) continue;
-        if (err?.code === 'P2003') {
-          throw new NotFoundException('Contact not found');
-        }
-        throw err;
+        })
+      );
+    } catch (err: any) {
+      if (err?.code === 'P2003') throw new NotFoundException('Contact not found');
+      if (err?.code === 'P2002') {
+        throw new ConflictException('Could not allocate a unique ticket number. Please retry.');
       }
+      throw err;
     }
-    throw new ConflictException('Could not allocate a unique ticket number. Please retry.');
   }
 
   async updateTicketStatus(ticketId: string, status: TicketStatus, organizationId: string) {
