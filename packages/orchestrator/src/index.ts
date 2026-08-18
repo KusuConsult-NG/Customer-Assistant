@@ -144,15 +144,86 @@ function extractPartySize(text: string): number | null {
 }
 
 /**
+ * Words that are never a service, however they are arranged.
+ *
+ * A denylist rather than a language model because the cost of a wrong answer is
+ * asymmetric: filing a booking under a filler word puts nonsense in a real
+ * calendar and reads it back to the customer as if the business offered it,
+ * while falling back to the default merely loses a detail a human can add.
+ */
+const SERVICE_NAME_FILLER = new Set([
+  // Articles, pronouns, prepositions.
+  'a', 'an', 'the', 'me', 'us', 'my', 'our', 'myself', 'ourselves',
+  'it', 'him', 'her', 'them', 'you', 'your', 'some', 'any',
+  'to', 'for', 'of', 'and', 'please', 'now', 'today', 'tomorrow', 'new',
+  // The trigger verbs themselves. The pattern anchors on the FIRST of them, so
+  // "i want to book an appointment" captures "to book an" — the second verb
+  // included — and filed the service as "Book". A verb is never a service, and
+  // sacrificing the vanishingly rare "book binding" is worth not putting the
+  // word "Book" in every calendar.
+  'book', 'schedule', 'arrange', 'need', 'want', 'make', 'get', 'have',
+  'take', 'set', 'up', 'like', 'would',
+]);
+
+/**
+ * The generic word for a booking, standing alone.
+ *
+ * "I want an appointment" names no service — it says the customer wants one.
+ * Filing that as a service called "Appointment" reads, in a calendar, exactly
+ * like a service the business offers. The default says the same thing and is
+ * honest about being a default.
+ *
+ * Only when the phrase is nothing BUT this word: "dental consultation" keeps
+ * every word of what the customer actually asked for.
+ */
+const GENERIC_BOOKING_WORDS = new Set([
+  'appointment', 'appointments', 'consultation', 'session', 'booking', 'slot',
+]);
+
+/**
  * Best-effort service name from the customer's own words, so a booking is not
  * always filed as "General Consultation" regardless of what was asked for.
+ *
+ * ── Why the filtering, and not just the regex ────────────────────────────────
+ *
+ * "book me an appointment" used to produce the service name "Me an".
+ *
+ * The capture group sits between the verb and the word "appointment", and the
+ * article group only consumes "a"/"an" — so with "me" in the way it consumed
+ * nothing and the lazy capture swallowed "me an" instead. The old guard was a
+ * denylist of SINGLE words (`^(a|an|the|me|us|it)$`), so "me" alone would have
+ * been caught and "me an" sailed through.
+ *
+ * The customer was then told "I've put you down for *Me an*", and a staff member
+ * opened the calendar to a booking for a service that does not exist. Nothing
+ * failed; it just wrote nonsense into a real appointment and read it back as
+ * fact — which is invariant 1, in the engine that serves every customer today.
+ *
+ * So filler is now stripped word by word and what remains has to be substantive.
+ * A phrase made entirely of filler falls back to the default, which is honest:
+ * it says a service was not identified rather than inventing one.
+ *
+ * (The TIME is a separate matter and deliberately not read from the message —
+ * the caller is offered the next free slot and told plainly which one, with an
+ * invitation to change it. That is a design decision, not this bug.)
  */
 function extractServiceName(text: string): string {
   const match = text.match(/\b(?:book|schedule|arrange|need|want)\s+(?:an?\s+)?([a-z][a-z\s-]{2,40}?)\s*(?:appointment|consultation|session|for|on|at|tomorrow|today|next|please|$)/i);
   const candidate = match?.[1]?.trim();
-  if (candidate && candidate.length >= 3 && !/^(a|an|the|me|us|it)$/i.test(candidate)) {
-    return candidate.replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
+  if (candidate) {
+    // Filter on the lowercased word but keep the customer's own casing: a
+    // business that calls it "MRI Scan" should see "MRI Scan" in the calendar.
+    const words = candidate
+      .split(/\s+/)
+      .filter((w) => w && !SERVICE_NAME_FILLER.has(w.toLowerCase()));
+    const cleaned = words.join(' ');
+    const saysNothing = words.length === 1 && GENERIC_BOOKING_WORDS.has(words[0].toLowerCase());
+    if (cleaned.length >= 3 && !saysNothing) {
+      return cleaned.replace(/^./, (c) => c.toUpperCase());
+    }
   }
+
   return 'General Consultation';
 }
 

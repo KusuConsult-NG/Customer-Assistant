@@ -127,6 +127,73 @@ describe('ConversationOrchestrator', () => {
     });
   });
 
+  /**
+   * The service name written into a real calendar and read back to the customer.
+   *
+   * "book me an appointment" produced the service name "Me an" — scraped out of
+   * "book **me an** appointment" — and the customer was told "I've put you down
+   * for *Me an*". Nothing failed; it wrote nonsense into a real booking and
+   * asserted it as fact, which is invariant 1 in the engine serving every
+   * customer today.
+   *
+   * Found by `npm run parity`: the agent path refused the same input, so a
+   * cutover would have silently changed the answer.
+   */
+  describe('The service a booking is filed under', () => {
+    const bookedService = async (message: string) => {
+      mockPrisma.booking.create.mockImplementation(({ data }: any) =>
+        Promise.resolve({ id: 'booking_12345678', ...data })
+      );
+      const result = await orchestrator.processIncomingMessage(baseContext(), message);
+      expect(mockPrisma.booking.create).toHaveBeenCalledTimes(1);
+      return {
+        stored: mockPrisma.booking.create.mock.calls[0][0].data.serviceName,
+        said: result.replyText,
+      };
+    };
+
+    it('does not file a booking under filler scraped from the sentence', async () => {
+      const { stored, said } = await bookedService('book me an appointment');
+
+      expect(stored).toBe('General Consultation');
+      // The bug as the customer met it.
+      expect(said).not.toMatch(/\bMe an\b/);
+    });
+
+    it.each([
+      // Filler scraped from between the verb and "appointment".
+      'book me an appointment for the 45th of Neveruary at 99:99',
+      'schedule me an appointment',
+      // No filler, but no service either — the customer named only the generic
+      // word for a booking. Filed as "Appointment", it reads in a calendar
+      // exactly like a service the business offers.
+      'i want an appointment',
+      'i need an appointment please',
+      // The pattern anchors on the first trigger verb, so a second one lands
+      // inside the capture. This filed as "Book".
+      'i want to book an appointment',
+      'i would like to schedule an appointment',
+      'can i set up an appointment',
+    ])('falls back to the default rather than inventing a service for %j', async (message) => {
+      const { stored } = await bookedService(message);
+      // Honest: it says a service was not identified, instead of naming one the
+      // business does not offer.
+      expect(stored).toBe('General Consultation');
+    });
+
+    it('still keeps a real service the customer named', async () => {
+      // The whole point of extracting at all — a regression here would file
+      // every booking as "General Consultation" and lose the detail.
+      const { stored } = await bookedService('i want to book a dental cleaning appointment');
+      expect(stored).toMatch(/dental cleaning/i);
+    });
+
+    it("keeps the customer's own casing for a named service", async () => {
+      const { stored } = await bookedService('book an MRI Scan appointment');
+      expect(stored).toBe('MRI Scan');
+    });
+  });
+
   describe('Appointment booking', () => {
     it('books a real free slot inside business hours and reports the time it took', async () => {
       mockPrisma.booking.create.mockImplementation(({ data }: any) =>

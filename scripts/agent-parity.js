@@ -273,10 +273,20 @@ async function main() {
   // refuses. Both are defensible in isolation; they cannot both be what the
   // business wants, and switching engines silently swaps one for the other.
 
-  await compare('Unparseable booking request — same outcome either way', async () => {
-    const nonsense = 'book me an appointment for the 45th of Neveruary at 99:99';
+  await compare('Vague booking request — neither invents a service', async () => {
+    // Several real phrasings, because the two ways this broke were reached by
+    // different sentences: "book me an appointment" leaked the pronoun ("Me an")
+    // and "i want to book an appointment" leaked the second verb ("Book").
+    // Driving only one of them let the other regress unnoticed — a mutation run
+    // proved exactly that.
+    const phrasings = [
+      'book me an appointment for the 45th of Neveruary at 99:99',
+      'i want to book an appointment',
+      'i would like to schedule an appointment',
+    ];
     const before = await prisma.booking.count({ where: { organizationId: org.orgId } });
-    const o = await viaOrchestrator(nonsense);
+    let o;
+    for (const phrase of phrasings) o = await viaOrchestrator(phrase);
     const afterO = await prisma.booking.count({ where: { organizationId: org.orgId } });
     const a = await viaAgent('book-appointment', {
       phoneNumber: CALLER,
@@ -284,22 +294,35 @@ async function main() {
       startTime: 'the 45th of Neveruary',
     });
 
-    const orchestratorBooked = afterO > before;
-    const agentBooked = a.body?.ok === true;
+    // What actually landed in the calendar, not what was said about it.
+    const stored = await prisma.booking.findMany({
+      where: { organizationId: org.orgId },
+      select: { serviceName: true },
+      orderBy: { createdAt: 'desc' },
+      take: afterO - before,
+    });
+
+    // The bug this scenario found: "book me an appointment" was filed under the
+    // service "Me an", scraped out of the sentence, and read back to the
+    // customer as though the business offered it. Any word from the request
+    // itself appearing as a service name is the same defect returning.
+    const scraped = /\b(me an|book|schedule|arrange|want|need|to book)\b/i;
+    const invented = stored.filter((b) => scraped.test(b.serviceName ?? ''));
 
     return {
       orchestrator: {
-        honoured: !orchestratorBooked,
-        said: orchestratorBooked
-          ? `CREATED A BOOKING from unparseable input — ${trim(o.replyText)}`
-          : trim(o.replyText),
+        honoured: invented.length === 0,
+        said: invented.length
+          ? `filed under an invented service: ${invented.map((b) => b.serviceName).join(', ')}`
+          : `filed under ${stored.map((b) => b.serviceName).join(', ') || '(nothing booked)'}`,
       },
       agent: {
-        honoured: !agentBooked,
-        said: agentBooked ? `CREATED A BOOKING — ${trim(a.body?.speak)}` : trim(a.body?.speak),
+        honoured: a.body?.ok !== true,
+        said: trim(a.body?.speak),
       },
       note:
-        'neither should confirm an appointment it could not actually read a date out of — a confirmed booking nobody made is invariant 1',
+        'the two engines DIFFER BY DESIGN on the time and this is not graded: the orchestrator offers the next free slot and says which one, ' +
+        'while the agent requires the model to resolve a date before calling. A cutover changes that experience — decide it deliberately.',
     };
   });
 
