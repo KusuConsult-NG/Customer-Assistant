@@ -167,13 +167,137 @@ describe('Agent tools', () => {
       expect(res.body.speak).toContain('Agent Tools Ltd');
     });
 
-    it('does not promise a transfer when there is no forwarding number', async () => {
-      const res = await post('handoff', keyA).expect(201);
+    /**
+     * The tool used to check whether a forwarding number was CONFIGURED and, if
+     * one was, say "Connecting you to a member of our team now" — having
+     * attempted nothing. The call was never moved. It also said "I will log
+     * this so a member of our team calls you back" and logged nothing.
+     *
+     * Both are the same failure: a sentence that describes an action nobody
+     * performed. On the orchestrator path a caller hearing "connecting you"
+     * really is being transferred, because TwilioMediaStreamHandler redirects
+     * first and picks the words from what Twilio did. Here the sentence WAS the
+     * action — and after a cutover that handler is not in the path at all.
+     */
+    describe('handoff', () => {
+      it('does not promise a transfer when there is no call to move', async () => {
+        const res = await post('handoff', keyA, { phoneNumber: '+2348055500011' }).expect(201);
 
-      expect(res.body.data.canTransfer).toBe(false);
-      expect(res.body.speak).toMatch(/cannot transfer|call you back/i);
-      // The bug this guards: announcing a connection that never happens.
-      expect(res.body.speak).not.toMatch(/connecting you/i);
+        expect(res.body.data.transferred).toBe(false);
+        // The bug this guards: announcing a connection that never happens.
+        expect(res.body.speak).not.toMatch(/connecting you|putting you through/i);
+      });
+
+      it('actually files the callback it promises, and quotes its reference', async () => {
+        const phone = `+23480555${Date.now().toString().slice(-5)}`;
+        const res = await post('handoff', keyA, { phoneNumber: phone, reason: 'a billing query' })
+          .expect(201);
+
+        // A promise of a record that does not exist is not a degradation — the
+        // customer hangs up and waits for a callback nobody will make.
+        expect(res.body.data.ticketId).toBeTruthy();
+        expect(res.body.speak).toContain(res.body.data.ticketId.slice(0, 8));
+
+        const ticket = await prisma.ticket.findUnique({ where: { id: res.body.data.ticketId } });
+        expect(ticket).not.toBeNull();
+        expect(ticket!.priority).toBe('HIGH');
+        expect(ticket!.organizationId).toBe(orgA);
+      });
+
+      it('claims nothing at all when it cannot even log a callback', async () => {
+        // No phone number: there is nobody to attach a ticket to, and inventing
+        // a contact to hold one would be a record of a customer who does not
+        // exist.
+        const res = await post('handoff', keyA, {}).expect(201);
+
+        expect(res.body.data.ticketId).toBeNull();
+        expect(res.body.speak).not.toMatch(/connecting you|logged this|reference/i);
+      });
+    });
+
+    /**
+     * A taken slot is an ordinary answer, not a malfunction.
+     *
+     * The branch that says so decided by regexing the exception's English
+     * message for /conflict|already booked|overlap|not available/.
+     * SchedulingService throws "That slot is already taken by …" — none of
+     * those four words. So every slot clash reached the customer as "I could
+     * not complete that just now. Let me put you through to a member of our
+     * team" and escalated to a human, which is the opposite of what the branch
+     * exists to do. It now matches the HTTP status, which cannot drift with the
+     * wording.
+     */
+    describe('a slot that is already taken', () => {
+      const slotFor = (days: number) => {
+        const when = new Date(Date.now() + days * 24 * 3600 * 1000);
+        when.setUTCHours(9, 0, 0, 0);
+        return when.toISOString();
+      };
+
+      it('is reported as unavailable, not as a broken tool', async () => {
+        const startTime = slotFor(40);
+        const first = await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501001',
+          serviceName: 'Consultation',
+          startTime,
+          staffName: 'Dr Clash',
+        }).expect(201);
+        expect(first.body.ok).toBe(true);
+
+        const clash = await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501002',
+          serviceName: 'Consultation',
+          startTime,
+          staffName: 'Dr Clash',
+        }).expect(201);
+
+        expect(clash.body.data.reason).toBe('slot_unavailable');
+        expect(clash.body.speak).toMatch(/taken|available/i);
+        // The customer should be offered another time, not a human.
+        expect(clash.body.handoff).toBeFalsy();
+        expect(clash.body.speak).not.toMatch(/could not complete|put you through/i);
+      });
+
+      it('does not swallow a genuine failure as a taken slot', async () => {
+        // The mirror of the bug above, and it survived the first mutation run:
+        // a check that answered "clash" to everything would tell a customer
+        // their time was taken when the truth is the tool broke. An unparseable
+        // date is a 400, not a 409, and must still degrade honestly.
+        const res = await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501009',
+          serviceName: 'Consultation',
+          startTime: 'the 45th of Neveruary',
+        }).expect(201);
+
+        expect(res.body.data.reason).not.toBe('slot_unavailable');
+        expect(res.body.speak).not.toMatch(/taken|another time/i);
+        expect(res.body.handoff).toBe(true);
+      });
+
+      it('is reported as unavailable when rescheduling onto it too', async () => {
+        const taken = slotFor(41);
+        await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501003',
+          serviceName: 'Consultation',
+          startTime: taken,
+          staffName: 'Dr Clash2',
+        }).expect(201);
+        await post('book-appointment', keyA, {
+          phoneNumber: '+2348055501004',
+          serviceName: 'Checkup',
+          startTime: slotFor(42),
+          staffName: 'Dr Clash2',
+        }).expect(201);
+
+        const clash = await post('reschedule-booking', keyA, {
+          phoneNumber: '+2348055501004',
+          newStartTime: taken,
+        }).expect(201);
+
+        expect(clash.body.data.reason).toBe('slot_unavailable');
+        expect(clash.body.handoff).toBeFalsy();
+        expect(clash.body.speak).not.toMatch(/could not complete|put you through/i);
+      });
     });
 
     it('says it does not know rather than inventing an answer', async () => {

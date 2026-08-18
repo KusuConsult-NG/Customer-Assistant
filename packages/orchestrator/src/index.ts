@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -144,15 +144,175 @@ function extractPartySize(text: string): number | null {
 }
 
 /**
+ * Phrases that mean "do something to the booking I already have".
+ *
+ * ── Why these are module constants and not inline ────────────────────────────
+ *
+ * They were declared inside their own branches, several sections below the
+ * branch that CREATES a booking — and that branch triggered on the bare word
+ * "appointment". So it matched first, every time:
+ *
+ *     "cancel my appointment"      → created a second appointment
+ *     "when is my appointment"     → created an appointment
+ *     "reschedule my appointment"  → created an appointment
+ *
+ * A customer trying to cancel was told "I've put you down for..." and left with
+ * two bookings and nothing cancelled. Hoisting them here is what lets the
+ * create branches ask "is this actually about an existing booking?" before
+ * acting, which is the only ordering that cannot silently break again when
+ * somebody adds a phrase.
+ */
+export const CHECK_BOOKING_PHRASES = [
+  'my booking', 'my appointment', 'my reservation', 'check my booking',
+  'when is my appointment', 'booking status', 'reservation status', 'view my booking',
+];
+
+export const CANCEL_BOOKING_PHRASES = [
+  'cancel my booking', 'cancel my appointment', 'cancel appointment',
+  'cancel my reservation', 'cancel reservation', 'i want to cancel',
+  'please cancel', 'cancel booking',
+];
+
+export const RESCHEDULE_PHRASES = [
+  'reschedule', 'change my appointment', 'move my booking', 'postpone',
+  'change my booking', 'change my reservation', 'move my reservation',
+  'different time', 'another time', 'change the date',
+];
+
+/**
+ * NEXT_UPCOMING — how every "my booking" lookup in this file is scoped.
+ *
+ * Two rules, applied together at each site:
+ *
+ *   `<time>: { gte: new Date() }` + `orderBy: <time> asc`
+ *       The NEXT one, not the latest. These ordered descending with no lower
+ *       bound, so a customer with an appointment this Friday and another next
+ *       month was told about next month — and "cancel my appointment" cancelled
+ *       next month while Friday silently stayed. Past bookings were in scope
+ *       too, offered as though they were still to come, while the empty-result
+ *       wording said "I can't find an upcoming appointment".
+ *
+ *   `contact: { phoneNumber: { in: phoneNumberVariants(phone) } }`
+ *       Every stored shape, not an exact match. The same person arrives as
+ *       "+234…" on a call and "234…" on WhatsApp, so an exact match made a
+ *       booking taken on one channel invisible from the other. That is the bug
+ *       phoneNumberVariants exists to remove; these sites filter through the
+ *       relation rather than the contact, which is why the original sweep
+ *       missed them.
+ *
+ * The refund lookup deliberately does NOT follow this: it wants the most recent
+ * PAST booking to refund, so it keeps `desc` and no lower bound.
+ */
+
+/** True when the customer is talking about a booking they already have. */
+export function isAboutExistingBooking(lowerInput: string): boolean {
+  return [...CHECK_BOOKING_PHRASES, ...CANCEL_BOOKING_PHRASES, ...RESCHEDULE_PHRASES].some((p) =>
+    lowerInput.includes(p)
+  );
+}
+
+export const wantsToCancel = (lowerInput: string): boolean =>
+  CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p));
+
+export const wantsToReschedule = (lowerInput: string): boolean =>
+  RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p));
+
+/**
+ * Precedence, most specific first: cancel and reschedule beat "check", and all
+ * three beat "book".
+ *
+ * Without this, guarding only the create branches moved the bug instead of
+ * fixing it — "cancel my appointment" contains "my appointment", so the status
+ * branch answered with the booking's details and cancelled nothing. Less
+ * destructive than creating a second appointment, and still the wrong answer to
+ * the question asked.
+ */
+export const wantsStatusOnly = (lowerInput: string): boolean =>
+  CHECK_BOOKING_PHRASES.some((p) => lowerInput.includes(p)) &&
+  !wantsToCancel(lowerInput) &&
+  !wantsToReschedule(lowerInput);
+
+/**
+ * Words that are never a service, however they are arranged.
+ *
+ * A denylist rather than a language model because the cost of a wrong answer is
+ * asymmetric: filing a booking under a filler word puts nonsense in a real
+ * calendar and reads it back to the customer as if the business offered it,
+ * while falling back to the default merely loses a detail a human can add.
+ */
+const SERVICE_NAME_FILLER = new Set([
+  // Articles, pronouns, prepositions.
+  'a', 'an', 'the', 'me', 'us', 'my', 'our', 'myself', 'ourselves',
+  'it', 'him', 'her', 'them', 'you', 'your', 'some', 'any',
+  'to', 'for', 'of', 'and', 'please', 'now', 'today', 'tomorrow', 'new',
+  // The trigger verbs themselves. The pattern anchors on the FIRST of them, so
+  // "i want to book an appointment" captures "to book an" — the second verb
+  // included — and filed the service as "Book". A verb is never a service, and
+  // sacrificing the vanishingly rare "book binding" is worth not putting the
+  // word "Book" in every calendar.
+  'book', 'schedule', 'arrange', 'need', 'want', 'make', 'get', 'have',
+  'take', 'set', 'up', 'like', 'would',
+]);
+
+/**
+ * The generic word for a booking, standing alone.
+ *
+ * "I want an appointment" names no service — it says the customer wants one.
+ * Filing that as a service called "Appointment" reads, in a calendar, exactly
+ * like a service the business offers. The default says the same thing and is
+ * honest about being a default.
+ *
+ * Only when the phrase is nothing BUT this word: "dental consultation" keeps
+ * every word of what the customer actually asked for.
+ */
+const GENERIC_BOOKING_WORDS = new Set([
+  'appointment', 'appointments', 'consultation', 'session', 'booking', 'slot',
+]);
+
+/**
  * Best-effort service name from the customer's own words, so a booking is not
  * always filed as "General Consultation" regardless of what was asked for.
+ *
+ * ── Why the filtering, and not just the regex ────────────────────────────────
+ *
+ * "book me an appointment" used to produce the service name "Me an".
+ *
+ * The capture group sits between the verb and the word "appointment", and the
+ * article group only consumes "a"/"an" — so with "me" in the way it consumed
+ * nothing and the lazy capture swallowed "me an" instead. The old guard was a
+ * denylist of SINGLE words (`^(a|an|the|me|us|it)$`), so "me" alone would have
+ * been caught and "me an" sailed through.
+ *
+ * The customer was then told "I've put you down for *Me an*", and a staff member
+ * opened the calendar to a booking for a service that does not exist. Nothing
+ * failed; it just wrote nonsense into a real appointment and read it back as
+ * fact — which is invariant 1, in the engine that serves every customer today.
+ *
+ * So filler is now stripped word by word and what remains has to be substantive.
+ * A phrase made entirely of filler falls back to the default, which is honest:
+ * it says a service was not identified rather than inventing one.
+ *
+ * (The TIME is a separate matter and deliberately not read from the message —
+ * the caller is offered the next free slot and told plainly which one, with an
+ * invitation to change it. That is a design decision, not this bug.)
  */
 function extractServiceName(text: string): string {
   const match = text.match(/\b(?:book|schedule|arrange|need|want)\s+(?:an?\s+)?([a-z][a-z\s-]{2,40}?)\s*(?:appointment|consultation|session|for|on|at|tomorrow|today|next|please|$)/i);
   const candidate = match?.[1]?.trim();
-  if (candidate && candidate.length >= 3 && !/^(a|an|the|me|us|it)$/i.test(candidate)) {
-    return candidate.replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
+  if (candidate) {
+    // Filter on the lowercased word but keep the customer's own casing: a
+    // business that calls it "MRI Scan" should see "MRI Scan" in the calendar.
+    const words = candidate
+      .split(/\s+/)
+      .filter((w) => w && !SERVICE_NAME_FILLER.has(w.toLowerCase()));
+    const cleaned = words.join(' ');
+    const saysNothing = words.length === 1 && GENERIC_BOOKING_WORDS.has(words[0].toLowerCase());
+    if (cleaned.length >= 3 && !saysNothing) {
+      return cleaned.replace(/^./, (c) => c.toUpperCase());
+    }
   }
+
   return 'General Consultation';
 }
 
@@ -599,6 +759,7 @@ export class ConversationOrchestrator {
     if (!cleanInput) {
       return {
         replyText: 'I received your message but it appears empty. Could you please try again?',
+        intentDetected: 'EMPTY_MESSAGE',
         confidenceScore: 1.0,
         shouldHandoff: false,
       };
@@ -609,10 +770,23 @@ export class ConversationOrchestrator {
     // ── 1. Active human handoff check ────────────────────────────────────────
     if (context.isHumanHandoffActive) {
       return {
+        // Nothing is said: a person is handling this thread and the AI talking
+        // over them is the point of handing off in the first place.
         replyText: '',
+        // Labelled, so "messages that arrived while a customer waited for a
+        // human" is answerable. Unlabelled it was logged as GENERAL_INQUIRY,
+        // which it is not.
+        intentDetected: 'HUMAN_HANDOFF_ACTIVE',
         confidenceScore: 1.0,
         shouldHandoff: true,
-        handoffReason: HandoffReason.CUSTOMER_REQUEST,
+        // NO handoffReason, deliberately. This branch does not know why the
+        // conversation was escalated — it only knows that it was. It used to
+        // assert CUSTOMER_REQUEST, and WhatsappService writes the reason back on
+        // every message, so a conversation escalated because a booking tool
+        // failed was relabelled "the customer asked" the moment they typed
+        // again. That is the one field telling staff why a thread needs a
+        // person. Omitting it leaves the original intact: Prisma treats an
+        // undefined field as "not provided" rather than as null.
       };
     }
 
@@ -646,6 +820,11 @@ export class ConversationOrchestrator {
     if (ESCALATION_PHRASES.some((p) => lowerInput.includes(p))) {
       return {
         replyText: 'Connecting you to a live human agent right away. Please hold on a moment...',
+        // A customer asking for a person is the single most useful signal a
+        // business has about where the agent is failing them. Unlabelled, every
+        // one of these was recorded as GENERAL_INQUIRY and the question "how
+        // often do customers give up on the AI?" had no answer in the data.
+        intentDetected: 'HUMAN_HANDOFF',
         confidenceScore: 1.0,
         shouldHandoff: true,
         handoffReason: HandoffReason.CUSTOMER_REQUEST,
@@ -661,8 +840,12 @@ export class ConversationOrchestrator {
     // of what the customer asked for, whether the business is open then, or whether
     // that slot was already taken. Customers were told a time nobody was expecting
     // them, and staff got silently double-booked.
+    // The bare word "appointment" is in here, so this branch matches almost any
+    // sentence about one. It sits ABOVE check, cancel and reschedule, so before
+    // the guard "cancel my appointment" created a second appointment and
+    // cancelled nothing — the customer was told "I've put you down for...".
     const APPOINTMENT_PHRASES = ['appointment', 'schedule consultation', 'book a doctor', 'reserve slot', 'book an appointment', 'book appointment'];
-    if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p))) {
+    if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p)) && !isAboutExistingBooking(lowerInput)) {
       try {
         const toolResult = await this.executeBookAppointment(context, cleanInput);
         return {
@@ -679,8 +862,9 @@ export class ConversationOrchestrator {
     }
 
     // ── 4. Tool: Reservation ─────────────────────────────────────────────────
+    // Same shape, same guard: "cancel my reservation" contains "reservation".
     const RESERVATION_PHRASES = ['reservation', 'book room', 'book table', 'book a room', 'book a table', 'reserve a table', 'make a reservation'];
-    if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p))) {
+    if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p)) && !isAboutExistingBooking(lowerInput)) {
       try {
         const toolResult = await this.executeManageReservation(context, cleanInput);
         return {
@@ -697,11 +881,7 @@ export class ConversationOrchestrator {
     }
 
     // ── 5. Tool: Check Booking / Reservation Status ──────────────────────────
-    const CHECK_BOOKING_PHRASES = [
-      'my booking', 'my appointment', 'my reservation', 'check my booking',
-      'when is my appointment', 'booking status', 'reservation status', 'view my booking',
-    ];
-    if (CHECK_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
+    if (wantsStatusOnly(lowerInput)) {
       try {
         const result = await this.executeCheckBookingStatus(context);
         return {
@@ -717,11 +897,6 @@ export class ConversationOrchestrator {
     }
 
     // ── 6. Tool: Cancel Booking / Reservation ─────────────────────────────────
-    const CANCEL_BOOKING_PHRASES = [
-      'cancel my booking', 'cancel my appointment', 'cancel appointment',
-      'cancel my reservation', 'cancel reservation', 'i want to cancel',
-      'please cancel', 'cancel booking',
-    ];
     if (CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
         const result = await this.executeCancelBookingOrReservation(context);
@@ -738,11 +913,6 @@ export class ConversationOrchestrator {
     }
 
     // ── 7. Tool: Reschedule Booking / Reservation ─────────────────────────────
-    const RESCHEDULE_PHRASES = [
-      'reschedule', 'change my appointment', 'move my booking', 'postpone',
-      'change my booking', 'change my reservation', 'move my reservation',
-      'different time', 'another time', 'change the date',
-    ];
     if (RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
         const result = await this.executeRescheduleBookingOrReservation(context);
@@ -1081,11 +1251,12 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (booking) {
@@ -1107,11 +1278,12 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (reservation) {
@@ -1151,11 +1323,12 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (booking) {
@@ -1176,11 +1349,12 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (reservation) {
@@ -1226,11 +1400,12 @@ export class ConversationOrchestrator {
     const booking = await prisma.booking.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        startTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { startTime: 'desc' },
+      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (booking) {
@@ -1255,11 +1430,12 @@ export class ConversationOrchestrator {
     const reservation = await prisma.reservation.findFirst({
       where: {
         organizationId: context.organizationId,
-        contact: { phoneNumber: phone },
+        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
         status: { in: ['CONFIRMED', 'RESCHEDULED'] },
+        reservationTime: { gte: new Date() },
       },
       include: { contact: true },
-      orderBy: { reservationTime: 'desc' },
+      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
     if (reservation) {
@@ -1325,7 +1501,9 @@ export class ConversationOrchestrator {
       orderBy: { startTime: 'desc' },
     });
 
-    const ticketNumber = `REF-${booking ? 'BK' : 'RS'}-${Date.now().toString().slice(-6)}`;
+    // Same generator, same reason — and the prefix is kept because staff use it
+    // to tell a refund request from a support ticket at a glance.
+    const refundPrefix = `REF-${booking ? 'BK' : 'RS'}`;
     const subject = booking
       ? `Refund Request — ${booking.serviceName} on ${booking.startTime.toLocaleDateString('en-NG')}`
       : `Refund Request — Reservation (${contact.fullName})`;
@@ -1336,18 +1514,23 @@ export class ConversationOrchestrator {
       (booking ? `Booking: ${booking.serviceName} — ${booking.startTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })}\n` : '') +
       `\nCustomer message: "${messageText.slice(0, 300)}"`;
 
-    const ticket = await prisma.ticket.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        ticketNumber,
-        subject,
-        description,
-        status: 'OPEN',
-        priority: 'HIGH',
-        updatedAt: new Date(),
-      },
-    });
+    const ticket = await createTicketWithUniqueNumber(
+      (ticketNumber) =>
+        prisma.ticket.create({
+          data: {
+            organizationId: context.organizationId,
+            contactId: contact.id,
+            ticketNumber,
+            subject,
+            description,
+            status: 'OPEN',
+            priority: 'HIGH',
+            updatedAt: new Date(),
+          },
+        }),
+      refundPrefix
+    );
+    const ticketNumber = ticket.ticketNumber;
 
     return {
       ticketId: ticket.id,
@@ -1671,19 +1854,25 @@ export class ConversationOrchestrator {
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
-    const ticketNumber = `TCK-${Date.now().toString().slice(-6)}`;
 
-    const ticket = await prisma.ticket.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        ticketNumber,
-        subject: subjectText.slice(0, 100),
-        description: subjectText,
-        status: 'OPEN',
-        priority: 'MEDIUM',
-      },
-    });
+    // The number was `TCK-<last 6 digits of Date.now()>`: a million values,
+    // repeating every 16.7 minutes, unique across the WHOLE table and therefore
+    // shared with every other tenant, with no retry. A collision raised P2002,
+    // the tool reported a failure, and a customer who had just described a fault
+    // was told "I ran into a technical problem" with nothing recorded.
+    const ticket = await createTicketWithUniqueNumber((ticketNumber) =>
+      prisma.ticket.create({
+        data: {
+          organizationId: context.organizationId,
+          contactId: contact.id,
+          ticketNumber,
+          subject: subjectText.slice(0, 100),
+          description: subjectText,
+          status: 'OPEN',
+          priority: 'MEDIUM',
+        },
+      })
+    );
 
     return { ticketId: ticket.id, ticketNumber: ticket.ticketNumber };
   }

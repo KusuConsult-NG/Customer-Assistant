@@ -315,6 +315,11 @@ export class WhatsappService {
           where: { id: conversation.id },
           data: {
             isHumanHandoffActive: true,
+            // `undefined` means "leave it alone", which is what an already-open
+            // handoff wants: the orchestrator does not know why this thread was
+            // escalated, only that it was, and the original reason is what
+            // tells staff whether a person is needed for a failed tool or an
+            // angry customer.
             handoffReason: orchResult.handoffReason,
           },
         });

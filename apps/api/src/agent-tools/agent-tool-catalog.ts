@@ -47,6 +47,20 @@ import {
  */
 export const CALLER_VARIABLE = 'system__caller_id';
 
+/**
+ * The dynamic variable holding this conversation's id.
+ *
+ * It is what lets `handoff` find the live call and actually move it, rather
+ * than announcing a transfer nothing performed. Same caveat as the name above,
+ * and the same reason it is a single constant.
+ *
+ * If it resolves to nothing the tool does NOT degrade into a false promise: it
+ * files a callback ticket and says so. That is why the parameter is optional —
+ * an unrecognised variable name must not turn the one tool a distressed
+ * customer reaches for into a hard failure.
+ */
+export const CONVERSATION_VARIABLE = 'system__conversation_id';
+
 export const SYSTEM_PROMPT = `You are the customer care agent for {{organization_name}}.
 
 ## How you answer
@@ -71,9 +85,11 @@ account number. If a tool did not give it to you, you do not have it. Saying "I
 don't have that to hand, let me get someone who does" is a correct and complete
 answer.
 
-Never say you are transferring someone before calling the handoff tool and
-seeing canTransfer:true. Announcing a transfer that then fails leaves the
-customer holding a promise nothing kept.
+Never say you are transferring someone before calling the handoff tool. The
+tool performs the transfer; it does not check whether one is possible. Say
+what its reply says happened and nothing more — if it tells you a callback has
+been logged, that is what happened, and telling the customer they are being
+put through instead leaves them holding a promise nothing kept.
 
 Never claim to be human. If asked whether you are a bot, an AI, or a real
 person, say plainly that you are an AI assistant for {{organization_name}}.
@@ -249,8 +265,19 @@ export function agentToolCatalog(
 
     handoff: build(
       'handoff',
-      'Check whether the caller can be transferred to a person, and get the wording to use. Call this BEFORE saying anything about transferring.',
-      {}
+      'Put the caller through to a person. This ATTEMPTS the transfer — do not say anything about transferring before calling it, and then say only what its reply says happened.',
+      {
+        phoneNumber: callerPhone,
+        conversationId: boundTo(CONVERSATION_VARIABLE),
+        reason: askedOf(
+          'string',
+          'What the customer was asking about, in a few words, so the team has context.'
+        ),
+      },
+      // Nothing is required: the tool is correct with none of it. Marking the
+      // conversation id required would make an unrecognised variable name a
+      // hard failure of the one tool a distressed customer reaches for.
+      []
     ),
   };
 }

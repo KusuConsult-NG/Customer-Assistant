@@ -72,3 +72,4 @@ export * from './selfie-request';
 export * from './secret-box';
 export * from './credentials';
 export * from './phone-number';
+export * from './ticket-number';
