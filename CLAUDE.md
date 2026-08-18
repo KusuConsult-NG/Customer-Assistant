@@ -79,7 +79,28 @@ The Playwright suite registers its own org through the real API and injects the 
 
 **Auth**: `JwtStrategy.validate` re-checks the user in the DB on every request — deactivation and role changes take effect on the next request, not at token expiry. Do not remove this in favor of trusting token claims. JWT secrets are read from env with NO fallback anywhere (module factory throws if unset) — tests and local boots must set `JWT_SECRET`/`JWT_REFRESH_SECRET`. `tokenVersion` on User is embedded in every token and checked per request: bump it to revoke all outstanding sessions (logout/password change already do). `RolesGuard` is registered globally and reads `@Roles(...)` metadata.
 
-**The orchestrator** (`packages/orchestrator`) is a keyword-matching intent engine, channel-agnostic, called by the WhatsApp service, widget service, and voice media-stream handler. Its contract: **tool intents never throw to the caller** — every DB-backed tool routes failures through `toolFailureReply()` (honest reply + `shouldHandoff: true`/`TOOL_FAILURE`), because an uncaught throw means the customer receives no reply at all. Unmatched input goes to RAG (Qdrant vector search with a Postgres ILIKE fallback) and then GPT-4o-mini synthesis with the org's persona prompt.
+**The orchestrator** (`packages/orchestrator`) is a keyword-matching intent engine, channel-agnostic, called by the WhatsApp service, widget service, and voice media-stream handler. It is the LIVE conversation engine — see the note below on the second one. Its contract: **tool intents never throw to the caller** — every DB-backed tool routes failures through `toolFailureReply()` (honest reply + `shouldHandoff: true`/`TOOL_FAILURE`), because an uncaught throw means the customer receives no reply at all. Unmatched input goes to RAG (Qdrant vector search with a Postgres ILIKE fallback) and then GPT-4o-mini synthesis with the org's persona prompt.
+
+**TWO conversation engines exist right now, and only one is live.** This is the single most confusing thing in the repo, so read this before changing either.
+
+| | `packages/orchestrator` | `apps/api/src/agent-tools` |
+|---|---|---|
+| Status | **LIVE** — serves every channel today | Built and tested, **not yet serving anyone** |
+| Who runs the conversation | We do: keyword intents → RAG → GPT-4o-mini | ElevenLabs Agents does |
+| Who runs the business logic | We do | We do — same services, over HTTP |
+| Channels | WhatsApp, widget, voice | Intended: WhatsApp + voice, once cut over |
+
+Nothing has been migrated. A customer message today goes through the orchestrator, exactly as before; the agent-tools endpoints have never been called by a real agent. Do not read the ElevenLabs work as a replacement that already happened.
+
+The split is deliberate: the agent layer replaces the CONVERSATION (turn-taking, speech, intent routing), not the BUSINESS LOGIC. Bookings, tickets, payment details and knowledge stay in the same services both paths call. That is why `agent-tools` is a thin controller over `SchedulingService`/`CrmService`/`KnowledgeService` rather than a second implementation — a second implementation would drift, and the drift would be in what customers are told about their money.
+
+Both paths must keep the same guarantees, and they enforce them the same way:
+- a tool failure never throws to the customer (`toolFailureReply()` in the orchestrator, `failed()` in `AgentToolsService`)
+- payment details come only from the org's configured `payout*` fields
+- a transfer is never announced before it is known to be possible
+- the AI admits to being an AI when asked
+
+Cutting a tenant over means: mint an agent key (`scripts/mint-agent-key.js`), generate the agent config (`scripts/generate-agent-config.js`), register it with ElevenLabs, point one number at it, and compare against the orchestrator path. Delete `TwilioMediaStreamHandler` and the Deepgram wiring only after a real call proves the replacement — the voice path has never completed a real call under either engine.
 
 **Webhook security — verify BEFORE ACK, using the raw body**:
 - `main.ts` creates the app with `rawBody: true, bodyParser: false` and registers exactly one JSON parser via `app.useBodyParser('json', ...)`. **Never add another `express.json()`** — a second parser consumes the request without the rawBody hook and silently breaks every signature check.
