@@ -82,7 +82,7 @@ export class OrganizationsController {
   @Post('whatsapp-config')
   async updateWhatsAppConfig(
     @Req() req: { user: AuthUser },
-    @Body() body: { phoneNumberId: string; accessToken: string; webhookVerifyToken: string; businessAccountId?: string }
+    @Body() body: { phoneNumberId: string; accessToken: string; webhookVerifyToken: string; whatsappBusinessId?: string; displayPhoneNumber?: string }
   ) {
     return this.orgsService.updateWhatsAppConfig(req.user.organizationId, body);
   }

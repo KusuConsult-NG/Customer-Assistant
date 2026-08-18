@@ -281,7 +281,57 @@ export class TelephonyService {
       organizationId,
     });
 
-    // ── 4. Generate provider-specific webhook response ────────────────────────
+    // ── 4. Route: ElevenLabs hosted agent (priority) OR media-stream (fallback) ─
+    //
+    // When a tenant has imported their Twilio number into ElevenLabs, ElevenLabs
+    // owns the call from this point — it intercepts the Twilio webhook before we
+    // do, answers with its own TwiML, and the call never reaches our media-stream
+    // handler. In that state, returning our own media-stream TwiML would cause
+    // both to race for the call.
+    //
+    // When `hostedAgentConfig.phoneNumberId` is set, the cutover has happened:
+    // we return a minimal no-op TwiML and let ElevenLabs drive. If the agent id
+    // is missing (not yet provisioned) we fall back to the media-stream path so
+    // the caller is never left in silence during setup.
+    const hostedAgent = await prisma.hostedAgentConfig.findUnique({
+      where: { organizationId },
+      select: { agentId: true, phoneNumberId: true, isActive: true },
+    });
+
+    const elevenLabsActive =
+      hostedAgent?.isActive &&
+      hostedAgent?.agentId &&
+      hostedAgent?.phoneNumberId;
+
+    if (elevenLabsActive) {
+      log.info('telephony_elevenlabs_routing', {
+        correlationId,
+        organizationId,
+        callSid,
+        agentId: hostedAgent.agentId,
+        reason: 'ElevenLabs hosted agent owns this number — deferring to it',
+      }, timer);
+
+      // ElevenLabs has already taken the call. Return an empty TwiML response
+      // so Twilio doesn't hear silence from us — ElevenLabs' own webhook already
+      // answered with its TwiML before this webhook fired.
+      return `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
+    }
+
+    // ── Fallback: media-stream path (Deepgram STT + ElevenLabs TTS) ───────────
+    // Used when: no hosted agent configured, agent not provisioned, or number
+    // not yet imported into ElevenLabs. Keeps callers connected during setup.
+    log.info('telephony_mediastream_routing', {
+      correlationId,
+      organizationId,
+      callSid,
+      reason: elevenLabsActive === false
+        ? 'ElevenLabs agent inactive'
+        : !hostedAgent?.agentId
+          ? 'ElevenLabs agent not yet provisioned — using media-stream fallback'
+          : 'No hosted agent configured — using media-stream fallback',
+    });
+
     const provider = TelephonyFactory.createProvider(providerType, {
       accountSid: config?.accountSid,
       authToken:  config?.authToken,
@@ -300,7 +350,6 @@ export class TelephonyService {
       to:    toNumber,
     });
     const websocketStreamUrl = `${wsBaseUrl}/telephony/stream/${callSid}?${streamParams}`;
-
 
     const response = provider.generateInboundWebhookResponse(welcomeMsg, websocketStreamUrl);
 

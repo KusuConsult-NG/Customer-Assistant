@@ -102,21 +102,21 @@ export class WhatsappService {
       } else if (message.type === 'image') {
         const caption = message.image?.caption ? ` — "${message.image.caption}"` : '';
         textContent = `[Customer sent an image${caption}]`;
-        mediaUrl = message.image?.id ? `https://graph.facebook.com/v20.0/${message.image.id}` : undefined;
+        mediaUrl = message.image?.id ? `https://graph.facebook.com/v22.0/${message.image.id}` : undefined;
         mediaType = 'image';
       } else if (message.type === 'audio') {
         textContent = '[Customer sent a voice message]';
-        mediaUrl = message.audio?.id ? `https://graph.facebook.com/v20.0/${message.audio.id}` : undefined;
+        mediaUrl = message.audio?.id ? `https://graph.facebook.com/v22.0/${message.audio.id}` : undefined;
         mediaType = 'audio';
       } else if (message.type === 'video') {
         const caption = message.video?.caption ? ` — "${message.video.caption}"` : '';
         textContent = `[Customer sent a video${caption}]`;
-        mediaUrl = message.video?.id ? `https://graph.facebook.com/v20.0/${message.video.id}` : undefined;
+        mediaUrl = message.video?.id ? `https://graph.facebook.com/v22.0/${message.video.id}` : undefined;
         mediaType = 'video';
       } else if (message.type === 'document') {
         const filename = message.document?.filename ? ` (${message.document.filename})` : '';
         textContent = `[Customer sent a document${filename}]`;
-        mediaUrl = message.document?.id ? `https://graph.facebook.com/v20.0/${message.document.id}` : undefined;
+        mediaUrl = message.document?.id ? `https://graph.facebook.com/v22.0/${message.document.id}` : undefined;
         mediaType = 'document';
       } else if (message.type === 'sticker') {
         textContent = '[Customer sent a sticker]';

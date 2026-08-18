@@ -8,7 +8,7 @@ export interface WhatsAppClientConfig {
 }
 
 export class WhatsAppCloudClient {
-  private apiVersion = 'v20.0';
+  private apiVersion = 'v22.0';
   private baseUrl = 'https://graph.facebook.com';
 
   constructor(private config: WhatsAppClientConfig) {}

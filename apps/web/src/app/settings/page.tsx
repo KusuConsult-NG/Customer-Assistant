@@ -310,26 +310,43 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
 
 // ─────────────────────── WhatsApp Tab ───────────────────────
 function WhatsAppTab({ org, authHeaders, showToast }: any) {
-  const wa = org?.whatsappConfigs?.[0] || {};
+  // Fix: the API returns `whatsAppConfigs` (capital A), not `whatsappConfigs`
+  const wa = org?.whatsAppConfigs?.[0] || {};
   const [phoneNumberId, setPhoneNumberId] = useState(wa.phoneNumberId || '');
   const [whatsappBusinessId, setWhatsappBusinessId] = useState(wa.whatsappBusinessId || '');
-  const [accessToken, setAccessToken] = useState(wa.accessToken || '');
+  const [accessToken, setAccessToken] = useState(''); // never pre-fill — always masked on server
+  const [displayPhoneNumber, setDisplayPhoneNumber] = useState(wa.displayPhoneNumber || '');
+  const [webhookVerifyToken, setWebhookVerifyToken] = useState(''); // never pre-fill — always masked on server
   const [showToken, setShowToken] = useState(false);
+  const [showVerifyToken, setShowVerifyToken] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const webhookUrl = `${API_URL}/api/whatsapp/webhook`;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!phoneNumberId.trim() || !accessToken.trim() || !webhookVerifyToken.trim()) {
+      showToast('Phone Number ID, Access Token, and Webhook Verify Token are required', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(`${API_URL}/api/organizations/whatsapp-config`, {
         method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ phoneNumberId, whatsappBusinessId, accessToken }),
+        body: JSON.stringify({
+          phoneNumberId: phoneNumberId.trim(),
+          whatsappBusinessId: whatsappBusinessId.trim(),
+          accessToken: accessToken.trim(),
+          webhookVerifyToken: webhookVerifyToken.trim(),
+          displayPhoneNumber: displayPhoneNumber.trim() || phoneNumberId.trim(),
+        }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || 'Save failed');
+      }
       showToast('WhatsApp config saved!');
-    } catch { showToast('Failed to save', 'error'); }
+    } catch (err: any) { showToast(err?.message || 'Failed to save', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -337,7 +354,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
     <form onSubmit={save} className="space-y-5">
       <Section title="WhatsApp Cloud API" description="Connect your Meta Business WhatsApp number">
         <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
-          <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📌 Webhook URL — paste this in Meta Developer Portal</p>
+          <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📌 Webhook URL — paste this in Meta Developer Portal → WhatsApp → Configuration</p>
           <div className="flex items-center gap-2 mt-2">
             <code className="flex-1 text-xs text-blue-200 font-mono bg-blue-50 dark:bg-blue-500/10 px-3 py-2 rounded-lg truncate">{webhookUrl}</code>
             <button type="button" onClick={async () => { const ok = await copyToClipboard(webhookUrl); if (ok) showToast('Copied to clipboard!'); else showToast('Failed to copy', 'error'); }}
@@ -351,21 +368,40 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
           <input type="text" value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} className={inputCls} placeholder="From Meta → WhatsApp → Phone Numbers" />
         </div>
         <div>
-          <label className={labelCls}>WhatsApp Business Account ID</label>
-          <input type="text" value={whatsappBusinessId} onChange={e => setWhatsappBusinessId(e.target.value)} className={inputCls} placeholder="Your WABA ID" />
+          <label className={labelCls}>WhatsApp Business Account ID (WABA ID)</label>
+          <input type="text" value={whatsappBusinessId} onChange={e => setWhatsappBusinessId(e.target.value)} className={inputCls} placeholder="From Meta Business Manager → Accounts → WhatsApp Accounts" />
         </div>
         <div>
-          <label className={labelCls}>Permanent Access Token</label>
+          <label className={labelCls}>Display Phone Number (e.g. +1 555 671-9884)</label>
+          <input type="text" value={displayPhoneNumber} onChange={e => setDisplayPhoneNumber(e.target.value)} className={inputCls} placeholder="+1 555 671-9884" />
+        </div>
+        <div>
+          <label className={labelCls}>Permanent Access Token <span className="text-slate-400 font-normal normal-case">(EAA…)</span></label>
           <div className="relative">
             <input
               type={showToken ? 'text' : 'password'}
               value={accessToken}
               onChange={e => setAccessToken(e.target.value)}
               className={`${inputCls} pr-12`}
-              placeholder="EAA..."
+              placeholder={wa.accessToken ? `Current: ${wa.accessToken} — enter new to replace` : 'EAA...'}
             />
             <button type="button" onClick={() => setShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
               {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Webhook Verify Token <span className="text-slate-400 font-normal normal-case">(you choose — must match Meta Dashboard)</span></label>
+          <div className="relative">
+            <input
+              type={showVerifyToken ? 'text' : 'password'}
+              value={webhookVerifyToken}
+              onChange={e => setWebhookVerifyToken(e.target.value)}
+              className={`${inputCls} pr-12`}
+              placeholder={wa.webhookVerifyToken ? `Current: ${wa.webhookVerifyToken} — enter new to replace` : 'e.g. my_verify_token_123'}
+            />
+            <button type="button" onClick={() => setShowVerifyToken(!showVerifyToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
+              {showVerifyToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
