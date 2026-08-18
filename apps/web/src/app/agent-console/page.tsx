@@ -6,8 +6,16 @@ import {
   MessageSquareText, Phone, User, Send, Bot,
   ToggleLeft, ToggleRight, Search, RefreshCw,
   Wifi, WifiOff, MessageCircle, Clock, Filter,
-  ChevronDown, Circle, Zap, Tag, ShieldCheck, Mail, FileText
+  ChevronDown, Circle, Zap, Tag, ShieldCheck, Mail, FileText, Radio
 } from 'lucide-react';
+import {
+  CHANNEL_LABEL,
+  formatDuration,
+  freshness,
+  liveTitle,
+  type LiveConversation,
+  type LiveConversationsPayload,
+} from '@/lib/live-conversations';
 
 interface Message {
   id?: string;
@@ -59,6 +67,19 @@ export default function AgentConsolePage() {
   const [wsConnected, setWsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // ── Conversations the hosted agent is running right now ────────────────────
+  //
+  // Separate state, separate list, separate selection. These are not rows in
+  // our database — they exist only on ElevenLabs until the call ends and the
+  // post-call webhook lands. Merging them into `conversations` would put a
+  // reply box in front of a call that cannot receive one.
+  const [live, setLive] = useState<LiveConversation[]>([]);
+  const [livePolledAt, setLivePolledAt] = useState<string | null>(null);
+  const [liveId, setLiveId] = useState<string | null>(null);
+  // Re-renders the "updated Ns ago" label as it ages, so a stalled feed looks
+  // stalled instead of looking current.
+  const [, setClockTick] = useState(0);
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('ace_token') : '';
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -95,11 +116,42 @@ export default function AgentConsolePage() {
     }
   }, []);
 
+  /**
+   * The live snapshot on first paint.
+   *
+   * The socket delivers these every few seconds anyway, but a console that has
+   * just loaded should not sit empty for a poll interval — an operator looking
+   * at a blank panel during a live call assumes the feature is broken.
+   */
+  const fetchLive = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/live`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setLive(data);
+        setLivePolledAt(new Date().toISOString());
+      }
+    } catch {
+      // Leave whatever the socket last delivered. Clearing the list on a failed
+      // fetch would make a live call vanish from the console mid-call.
+    }
+  }, []);
+
   useEffect(() => {
     fetchConversations();
     const interval = setInterval(fetchConversations, 8000);
     return () => clearInterval(interval);
   }, [fetchConversations]);
+
+  useEffect(() => {
+    fetchLive();
+  }, [fetchLive]);
+
+  useEffect(() => {
+    const tick = setInterval(() => setClockTick(t => t + 1), 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   useEffect(() => {
     if (activeId) {
@@ -110,6 +162,14 @@ export default function AgentConsolePage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // The open thread, read from inside socket handlers without making the socket
+  // depend on it. This effect used to list `activeId` in its dependencies, so
+  // every click on a conversation tore the socket down and opened a new one —
+  // and on the server each disconnect/connect pair churns the live-feed watcher
+  // count that decides whether ElevenLabs is polled at all.
+  const activeIdRef = useRef<string | null>(null);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
 
   // Socket.IO real-time
   useEffect(() => {
@@ -128,10 +188,25 @@ export default function AgentConsolePage() {
         socket.on('disconnect', () => { if (!cleanup) setWsConnected(false); });
 
         socket.on('new_message_received', (data: any) => {
-          if (!cleanup && data.conversationId === activeId) {
+          if (!cleanup && data.conversationId === activeIdRef.current) {
             setMessages(prev => [...prev, data.message]);
           }
           fetchConversations();
+        });
+
+        // Full snapshots, not deltas — replacing wholesale is the point. The
+        // server sends the entire transcript each poll precisely so a console
+        // that connected mid-call, or received a duplicate from another pod,
+        // ends up correct rather than appending the same turns twice.
+        socket.on('live_conversations', (data: LiveConversationsPayload) => {
+          if (cleanup) return;
+          setLive(data?.conversations ?? []);
+          setLivePolledAt(data?.polledAt ?? new Date().toISOString());
+        });
+
+        socket.on('live_conversation_ended', (data: { conversationId: string }) => {
+          if (cleanup) return;
+          setLive(prev => prev.filter(c => c.conversationId !== data?.conversationId));
         });
 
         const storedUser = localStorage.getItem('ace_user');
@@ -150,7 +225,7 @@ export default function AgentConsolePage() {
       cleanup = true;
       socket?.disconnect();
     };
-  }, [activeId, fetchConversations, token]);
+  }, [fetchConversations, token]);
 
   const handleSend = async (e?: React.FormEvent, customText?: string) => {
     if (e) e.preventDefault();
@@ -199,6 +274,15 @@ export default function AgentConsolePage() {
   };
 
   const activeConv = conversations.find(c => c.id === activeId);
+  const activeLive = live.find(c => c.conversationId === liveId) ?? null;
+
+  /** Selecting one clears the other — they are different panes, not one list. */
+  const selectStored = (id: string) => { setLiveId(null); setActiveId(id); };
+  const selectLive = (id: string) => { setActiveId(null); setLiveId(id); };
+
+  // A call that ended while it was open: keep the operator informed rather than
+  // silently emptying the pane.
+  const selectedLiveEnded = liveId !== null && activeLive === null;
 
   const filteredConvs = conversations.filter(c => {
     const name = (c.contact?.fullName || c.contactName || '').toLowerCase();
@@ -292,6 +376,71 @@ export default function AgentConsolePage() {
           </div>
         </div>
 
+        {/*
+          Live now — conversations the hosted agent is running at this moment.
+
+          Deliberately a separate section above the stored list, not merged into
+          it. These have no row in our database yet, cannot be replied to, and
+          disappear when the call ends; a stored conversation does none of those
+          things. Listed together, the only thing telling them apart would be a
+          badge, and an operator would eventually type into one.
+        */}
+        {live.length > 0 && (
+          <div className="border-b border-slate-200 dark:border-slate-800">
+            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <Radio className="w-3 h-3" /> AI on a call now
+                <span className="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-500/20">{live.length}</span>
+              </h3>
+              {/*
+                The feed is polled every few seconds, not streamed. Saying how
+                old it is keeps the console from promising something it cannot
+                deliver — and makes a stalled poller visible instead of leaving
+                a frozen transcript looking like a quiet call.
+              */}
+              <span className="text-[10px] text-slate-400 dark:text-slate-500" title="This view is polled, not streamed">
+                {freshness(livePolledAt)}
+              </span>
+            </div>
+            <div className="px-2 pb-2 space-y-1">
+              {live.map(conv => {
+                const isActive = liveId === conv.conversationId;
+                const last = conv.turns[conv.turns.length - 1];
+                return (
+                  <button
+                    key={conv.conversationId}
+                    onClick={() => selectLive(conv.conversationId)}
+                    className={`w-full text-left p-3 rounded-xl transition-all ${
+                      isActive
+                        ? 'bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400">
+                        {conv.channel === 'voice' ? <Phone className="w-3.5 h-3.5" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate font-mono">
+                            {liveTitle(conv)}
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold border border-rose-200 dark:border-rose-500/20 bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                            {formatDuration(conv.durationSecs)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                          {last ? `${last.role === 'user' ? 'Customer' : 'AI'}: ${last.message}` : 'Connecting…'}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {loading ? (
@@ -309,7 +458,7 @@ export default function AgentConsolePage() {
               return (
                 <button
                   key={conv.id}
-                  onClick={() => setActiveId(conv.id)}
+                  onClick={() => selectStored(conv.id)}
                   className={`w-full text-left p-3 rounded-xl transition-all ${
                     isActive ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent'
                   }`}
@@ -341,7 +490,110 @@ export default function AgentConsolePage() {
 
       {/* Middle: Chat Window */}
       <div className="flex-1 flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900/80 overflow-hidden">
-        {activeConv ? (
+        {liveId ? (
+          /*
+            A live call, read-only.
+
+            No reply box, deliberately. The conversation is being run by
+            ElevenLabs; anything typed here would be saved nowhere and spoken to
+            nobody. Taking over means telling ElevenLabs to stop responding
+            first, which is C3 — until that exists, offering an input would be a
+            control that silently does nothing.
+          */
+          <>
+            <div className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                  {activeLive?.channel === 'voice' ? <Phone className="w-4 h-4" /> : <MessageCircle className="w-4 h-4" />}
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm font-mono">
+                    {activeLive ? liveTitle(activeLive) : 'Call ended'}
+                  </h3>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    {activeLive && (
+                      <>
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${channelBadge(CHANNEL_LABEL[activeLive.channel])}`}>
+                          {CHANNEL_LABEL[activeLive.channel]}
+                        </span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(activeLive.durationSecs)}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-500/30">
+                <Radio className="w-3.5 h-3.5" /> AI is handling this
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {selectedLiveEnded ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-400 text-center px-6">
+                  <Phone className="w-10 h-10 mb-3 opacity-20" />
+                  <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">This call has ended.</p>
+                  <p className="text-xs mt-1 max-w-sm">
+                    The full transcript is saved to the customer&apos;s record once ElevenLabs
+                    delivers it — usually within a few seconds.
+                  </p>
+                  <button
+                    onClick={() => setLiveId(null)}
+                    className="mt-4 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  >
+                    Back to inbox
+                  </button>
+                </div>
+              ) : activeLive && activeLive.turns.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-400">
+                  <Radio className="w-10 h-10 mb-3 opacity-20 animate-pulse" />
+                  <p className="text-sm">Connected. Nothing said yet.</p>
+                </div>
+              ) : (
+                activeLive?.turns.map((turn, i) => {
+                  const isCustomer = turn.role === 'user';
+                  return (
+                    <div key={`${turn.timeInCallSecs}-${i}`} className={`flex ${isCustomer ? 'justify-start' : 'justify-end'}`}>
+                      {isCustomer && (
+                        <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mr-2 flex-shrink-0 mt-1">
+                          <User className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+                        </div>
+                      )}
+                      <div className={`max-w-[65%] rounded-2xl px-4 py-2.5 text-sm ${
+                        isCustomer
+                          ? 'bg-white/[0.06] text-slate-800 dark:text-slate-200 rounded-tl-sm border border-slate-200 dark:border-slate-800'
+                          : 'bg-blue-600/80 text-white rounded-tr-sm'
+                      }`}>
+                        {!isCustomer && (
+                          <div className="flex items-center gap-1.5 mb-1 opacity-70">
+                            <Bot className="w-3 h-3" />
+                            <span className="text-[9px] uppercase font-bold tracking-wider">AI Assistant</span>
+                          </div>
+                        )}
+                        <p className="leading-relaxed">{turn.message}</p>
+                        <span className="text-[9px] opacity-50 mt-1 block text-right">
+                          {formatDuration(turn.timeInCallSecs)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {!selectedLiveEnded && (
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
+                <div className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                  <Bot className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    Read-only. This conversation is running on the hosted agent, and the
+                    transcript below is refreshed every few seconds — taking over is not
+                    available yet.
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : activeConv ? (
           <>
             {/* Header */}
             <div className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
