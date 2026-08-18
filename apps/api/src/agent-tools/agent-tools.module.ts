@@ -4,6 +4,7 @@ import { CrmModule } from '../crm/crm.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { AgentToolsController } from './agent-tools.controller';
 import { AgentToolsService } from './agent-tools.service';
+import { ElevenLabsOutboundService } from './elevenlabs-outbound.service';
 
 /**
  * Tools a hosted conversational agent calls to do real work. The agent owns the
@@ -12,7 +13,7 @@ import { AgentToolsService } from './agent-tools.service';
 @Module({
   imports: [SchedulingModule, CrmModule, KnowledgeModule],
   controllers: [AgentToolsController],
-  providers: [AgentToolsService],
-  exports: [AgentToolsService],
+  providers: [AgentToolsService, ElevenLabsOutboundService],
+  exports: [AgentToolsService, ElevenLabsOutboundService],
 })
 export class AgentToolsModule {}
