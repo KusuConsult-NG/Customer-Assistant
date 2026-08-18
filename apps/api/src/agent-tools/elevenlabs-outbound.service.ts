@@ -64,6 +64,15 @@ export class ElevenLabsOutboundService {
         'No active hosted agent is configured for this organization.'
       );
     }
+    if (!config.agentId) {
+      // The row exists but provisioning has not run or did not finish. Sending a
+      // null agent id would either be rejected or — worse — routed somewhere by
+      // default, which means this tenant's customer talking to another tenant's
+      // agent.
+      throw new BadRequestException(
+        'This organization has no provisioned ElevenLabs agent yet — sync it before placing calls.'
+      );
+    }
     const apiKey = config.apiKey || process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       throw new BadRequestException(
