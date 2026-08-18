@@ -90,6 +90,16 @@ jobs:
             (cd "packages/$p" && node test/run-test.js)
           done
 
+      # A SECOND set of package suites, and they were never run here.
+      #
+      # The loop above runs each package's plain-node `test/run-test.js`. The
+      # jest `*.spec.ts` suites beside them — orchestrator, telephony-sdk,
+      # database — are a different runner and had no CI step at all, so a change
+      # that broke one of them merged green. That is exactly what happened to the
+      # orchestrator suite when phone-number normalisation landed.
+      - name: Package jest suites
+        run: npm run test:packages
+
       - name: API integration tests (Jest, live PostgreSQL)
         working-directory: apps/api
         run: npx jest --forceExit

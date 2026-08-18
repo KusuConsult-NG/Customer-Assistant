@@ -18,7 +18,24 @@ const mockPrisma = {
   documentChunk: { findMany: jest.fn() },
 };
 
-jest.mock('@ace/database', () => ({ prisma: mockPrisma }));
+/**
+ * Only `prisma` is replaced. The pure helpers stay real.
+ *
+ * Replacing the whole module used to be fine — it exported little else that the
+ * orchestrator touched. Then phone-number normalisation landed, the orchestrator
+ * started calling `phoneNumberVariants` on the contact lookup, and this mock
+ * handed it `undefined`. Every tool that resolves a contact first threw, took
+ * the honest `toolFailureReply()` path, and three tests failed claiming bookings
+ * were no longer created — a real-looking regression in code that was fine.
+ *
+ * Required from the source file rather than the package entrypoint on purpose:
+ * the entrypoint constructs a PrismaClient at import time, which is the whole
+ * reason `prisma` is mocked here.
+ */
+jest.mock('@ace/database', () => ({
+  ...jest.requireActual('../../database/src/phone-number'),
+  prisma: mockPrisma,
+}));
 
 import { ConversationOrchestrator } from '../src/index';
 import { ChannelType, MessageSender } from '@ace/shared-types';
