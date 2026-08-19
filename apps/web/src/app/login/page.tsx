@@ -44,39 +44,45 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
       {/* Left Column: Branding */}
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e]">
-        <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 opacity-40"></div>
+      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0c1a05] via-[#1a3308] to-[#0c1a05]">
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#74BA03]/20 via-transparent to-[#558A02]/20 opacity-40"></div>
         
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
+            <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+            </svg>
           </div>
-          <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
-            Customer Care Agent
-          </h1>
+          <div>
+            <h1 className="font-bold text-2xl text-white">
+              PLASCHEMA
+            </h1>
+            <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
+              Plateau State Contributory Healthcare Management Agency
+            </p>
+          </div>
         </div>
         
         <div className="relative z-10">
-          <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
-            AI-Powered Customer Experience <br/><span className="text-blue-400">for Nigerian Businesses and Government MDAs</span>
+          <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
+            Universal Healthcare Helpline <br/><span style={{ color: '#74BA03' }}>&amp; Enrollee Management Portal</span>
           </h2>
-          <p className="text-slate-300 text-lg max-w-md">
-            Unify your CRM, Knowledge Base, and Omnichannel Communications in one premium dashboard.
+          <p className="text-slate-300 text-base max-w-md">
+            Delivering accessible, affordable, and quality healthcare coverage for every citizen across all 17 LGAs of Plateau State.
           </p>
 
-          <div className="mt-8 p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 max-w-md">
-            <div className="flex items-center gap-2 text-blue-400 text-sm font-semibold mb-1">
-              <ShieldCheck className="w-4 h-4" /> Secure by design
+          <div className="mt-8 p-4 rounded-2xl bg-[#74BA03]/10 border border-[#74BA03]/20 max-w-md">
+            <div className="flex items-center gap-2 text-[#74BA03] text-sm font-semibold mb-1">
+              <ShieldCheck className="w-4 h-4" /> Official Government Helpline
             </div>
             <p className="text-xs text-slate-300">
-              Every organization's data is isolated. Sessions are revocable and all
-              integration credentials stay under your control.
+              Authorized desk officer and admin access for helpline operations, beneficiary support, provider oversight, and inquiries.
             </p>
           </div>
         </div>
         
         <div className="relative z-10 text-sm text-slate-400">
-          © 2026 Customer Care Agent. All rights reserved.
+          © 2026 PLASCHEMA. All rights reserved.
         </div>
       </div>
       
@@ -137,7 +143,8 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-slate-900 dark:text-white font-semibold shadow-lg shadow-blue-500/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 rounded-xl text-white font-semibold shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
             >
               {loading ? (
                 <>
@@ -145,16 +152,13 @@ export default function LoginPage() {
                   Signing in...
                 </>
               ) : (
-                'Sign In'
+                'Sign In to PLASCHEMA Portal'
               )}
             </button>
           </form>
 
           <div className="text-center text-sm text-slate-600 dark:text-slate-400">
-            Don't have an account yet?{' '}
-            <Link href="/register" className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
-              Create Organization Account
-            </Link>
+            Helpline Enrollee Portal &bull; Plateau State Contributory Healthcare
           </div>
         </div>
       </div>

@@ -232,23 +232,23 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-7xl pb-12">
       {/* Top Welcome Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10 border border-indigo-200/60 dark:border-indigo-900/40 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-[#74BA03]/10 via-[#558A02]/10 to-[#74BA03]/5 border border-[#74BA03]/30 dark:border-[#74BA03]/20 shadow-sm">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1 uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5" /> Executive Command Center
+          <div className="flex items-center gap-2 text-xs font-bold text-[#558A02] dark:text-[#74BA03] mb-1 uppercase tracking-wider">
+            <Sparkles className="w-3.5 h-3.5" /> PLASCHEMA Helpline Command Center
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             {firstName ? `Welcome back, ${firstName}` : 'Welcome back'} 👋
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            {orgName ? `${orgName} — ` : ''}live performance and pipeline for {today}.
+            {orgName ? `${orgName} — ` : ''}Plateau State Contributory Healthcare Management Agency &bull; {today}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl">
-            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
-            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
-            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-[#558A02] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-[#558A02] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-[#558A02] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
           </div>
           <button
             onClick={fetchAll}
@@ -259,9 +259,10 @@ export default function DashboardPage() {
           </button>
           <Link
             href="/agent-console"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
+            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
           >
-            <Bot className="w-4 h-4 text-slate-900 dark:text-white" /> Open Live Console
+            <Bot className="w-4 h-4 text-white" /> Open Live Console
           </Link>
         </div>
       </div>
@@ -269,33 +270,33 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
-          title="Total Contacts"
+          title="Total Enrollees"
           value={stats.contacts}
-          subtitle="Registered CRM profiles"
-          icon={<Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />}
+          subtitle="Registered Beneficiaries"
+          icon={<Users className="w-5 h-5 text-[#558A02] dark:text-[#74BA03]" />}
           badge={`${timeRange} active`}
-          badgeColor="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20"
+          badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
         <KpiCard
-          title="Active Leads"
+          title="Enrolment Inquiries"
           value={stats.leads}
-          subtitle="In conversion pipeline"
+          subtitle="Prospective enrollees"
           icon={<Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
           badge={`${stats.openTickets} open tickets`}
           badgeColor="bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20"
         />
         <KpiCard
-          title="Voice AI Calls"
+          title="Helpline Calls"
           value={stats.calls}
-          subtitle="Processed by Telephony"
-          icon={<PhoneCall className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+          subtitle="Handled by Sarah (Voice AI)"
+          icon={<PhoneCall className="w-5 h-5 text-[#558A02] dark:text-[#74BA03]" />}
           badge={`${timeRange} calls`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
         <KpiCard
-          title="Closed Revenue"
+          title="Premiums Collected"
           value={`₦${stats.revenue.toLocaleString()}`}
-          subtitle="Won deals total"
+          subtitle="Informal sector & contributions"
           icon={<DollarSign className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
           badge={`${stats.conversionRate}% conv. rate`}
           badgeColor="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
