@@ -189,8 +189,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={theme}>
       <head>
-        <title>Customer Care Agent — AI-Powered Customer Experience</title>
-        <meta name="description" content="Unify your CRM, Knowledge Base, and Omnichannel Communications" />
+        <title>PLASCHEMA — Enrollee Helpline &amp; Management System</title>
+        <meta name="description" content="Plateau State Contributory Healthcare Management Agency — Enrollee Services, Knowledge Base &amp; Communications" />
         {/*
           No webfont is fetched from a CDN.
 
@@ -259,15 +259,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="flex flex-col h-full">
                 {/* Logo */}
                 <div className={`flex items-center gap-3.5 px-6 py-5 border-b ${theme === 'dark' ? 'border-slate-800/80' : 'border-slate-200/80'}`}>
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-                    <Sparkles className="w-5 h-5 text-white" />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
+                    {/* Health cross icon */}
+                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+                    </svg>
                   </div>
                   <div>
-                    {/* leading-tight because the name wraps to two lines in the
-                        sidebar's width; without it the two lines sit far apart
-                        and the lockup reads as two separate labels. */}
-                    <h1 className={`font-bold text-lg tracking-tight leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Customer Care Agent</h1>
-                    <p className="text-[11px] font-medium text-indigo-500 dark:text-indigo-400">Enterprise AI Experience</p>
+                    <h1 className={`font-bold text-base tracking-tight leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>PLASCHEMA</h1>
+                    <p className="text-[11px] font-medium" style={{ color: '#74BA03' }}>Enrollee Helpline Portal</p>
                   </div>
                 </div>
 
@@ -288,29 +288,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                 {/* Nav */}
                 <nav className="flex-1 px-3.5 py-3 space-y-1 overflow-y-auto">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Platform</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Helpline</p>
                   <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="CRM & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="Enrollees & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Live Conversations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge & FAQs" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Visual Workflows" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Automation Workflows" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Omnichannel</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Channels</p>
                   <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Voice & Telephony" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Bookings & Calendar" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Helpline & Telephony" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Settings & Plans</p>
-                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing & Subscriptions" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="White Label Branding" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Administration</p>
+                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing & Plans" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                 </nav>
 
                 {/* User footer */}
                 <div className={`px-4 py-4 border-t ${theme === 'dark' ? 'border-slate-800/80 bg-slate-900/40' : 'border-slate-200/80 bg-slate-100/50'}`}>
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-md flex-shrink-0">
+                    <div className="w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center text-xs shadow-md flex-shrink-0" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
                       {initials}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -345,7 +345,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <Menu className="w-5 h-5" />
                   </button>
                   {/* Breadcrumb */}
-                  <span className="font-semibold text-indigo-500">Care Agent</span>
+                  <span className="font-semibold" style={{ color: '#74BA03' }}>PLASCHEMA</span>
                   <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                   <span className={`font-semibold capitalize ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     {pathname === '/' ? 'Executive Dashboard' : pathname.slice(1).replace(/-/g, ' ')}
