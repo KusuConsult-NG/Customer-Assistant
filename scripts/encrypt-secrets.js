@@ -36,7 +36,7 @@ const path = require('path');
 
 require(path.join(__dirname, '..', 'apps', 'api', 'dist', 'config', 'load-env.js'));
 
-const SECRET_BOX = path.join(__dirname, '..', 'apps', 'api', 'dist', 'common', 'secret-box.js');
+const SECRET_BOX = path.join(__dirname, '..', 'packages', 'database', 'dist', 'secret-box.js');
 
 let box;
 try {
