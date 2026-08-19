@@ -45,12 +45,12 @@ interface Conversation {
  * (Settings → payout account), which the AI payment-guidance tool reads.
  */
 const QUICK_REPLIES = [
-  "Hello! 👋 How can I assist you with your request today?",
-  "Thank you for contacting us. Could you please confirm your location?",
-  "Our operational hours are Mon - Fri: 8:00 AM - 6:00 PM.",
-  "I have updated your request in our system. An agent will get in touch shortly.",
-  "You can book an appointment directly through our scheduling portal.",
-  "Let me check that for you — one moment please.",
+  "Hello! Welcome to the PLASCHEMA Helpline. How can I assist you with your health coverage today?",
+  "Could you please provide your PLASCHEMA ID number or NIN so I can verify your enrollment status?",
+  "Which Local Government Area (LGA) are you calling from so I can locate your nearest accredited facility?",
+  "If the hospital pharmacy is out of stock, you can take your prescription to any PLASCHEMA-accredited pharmacy.",
+  "You can pay your informal sector premium (₦12,000/individual or ₦50,000/family) at https://enrollments.plaschema.app/pay/informal",
+  "I have logged your complaint regarding the facility. Our Quality Control desk will investigate immediately.",
 ];
 
 export default function AgentConsolePage() {

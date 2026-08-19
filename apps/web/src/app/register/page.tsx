@@ -107,39 +107,46 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-900">
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0a0f1e] via-[#1a2b4c] to-[#0a0f1e] sticky top-0 h-screen">
-        <div className="absolute inset-0 bg-gradient-to-tr from-blue-900/20 via-transparent to-purple-900/20 opacity-40"></div>
+      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0c1a05] via-[#1a3308] to-[#0c1a05] sticky top-0 h-screen">
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#74BA03]/20 via-transparent to-[#558A02]/20 opacity-40"></div>
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
+            <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+            </svg>
           </div>
-          <h1 className="font-bold text-2xl bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
-            Customer Care Agent
-          </h1>
+          <div>
+            <h1 className="font-bold text-2xl text-white">
+              PLASCHEMA
+            </h1>
+            <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
+              Plateau State Contributory Healthcare Management Agency
+            </p>
+          </div>
         </div>
         
         <div className="relative z-10">
-          <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
-            Start Your Journey <br/><span className="text-blue-400">with Customer Care Agent</span>
+          <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
+            Plateau State <br/><span style={{ color: '#74BA03' }}>Enrollee Helpline Portal</span>
           </h2>
-          <ul className="space-y-4 text-slate-300 text-lg">
+          <ul className="space-y-4 text-slate-300 text-base">
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
-              Unify your CRM, Communications, and AI
+              <span className="w-6 h-6 rounded-full bg-[#74BA03]/20 text-[#74BA03] flex items-center justify-center text-sm font-bold">✓</span>
+              400+ accredited healthcare facilities across all 17 LGAs
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
-              Intelligent WhatsApp integration
+              <span className="w-6 h-6 rounded-full bg-[#74BA03]/20 text-[#74BA03] flex items-center justify-center text-sm font-bold">✓</span>
+              24/7 AI-powered voice helpline on 0700-700-1111
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold">✓</span>
-              Smart voice routing and transcriptions
+              <span className="w-6 h-6 rounded-full bg-[#74BA03]/20 text-[#74BA03] flex items-center justify-center text-sm font-bold">✓</span>
+              Comprehensive beneficiary &amp; facility grievance management
             </li>
           </ul>
         </div>
         
         <div className="relative z-10 text-sm text-slate-400">
-          © 2026 Customer Care Agent. All rights reserved.
+          © 2026 PLASCHEMA. All rights reserved.
         </div>
       </div>
       

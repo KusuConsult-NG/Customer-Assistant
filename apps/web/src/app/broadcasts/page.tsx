@@ -227,10 +227,10 @@ export default function BroadcastsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Send className="w-6 h-6 text-blue-600 dark:text-blue-400" /> WhatsApp Template Broadcasts & Campaigns
+            <Send className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Enrollee WhatsApp Broadcasts
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Send approved Meta WhatsApp template messages in bulk to multi-recipient target customer segments.
+            Send policy updates, renewal reminders, facility announcements, and maternal health alerts to Plateau State enrollees.
           </p>
         </div>
         <div className="flex gap-2">
@@ -242,9 +242,10 @@ export default function BroadcastsPage() {
           </button>
           <button
             onClick={() => setShowBroadcastModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
+            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
           >
-            <Send className="w-4 h-4" /> New Broadcast Campaign
+            <Send className="w-4 h-4" /> New Enrollee Broadcast
           </button>
         </div>
       </div>

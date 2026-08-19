@@ -164,10 +164,10 @@ export default function CrmPage() {
   };
 
   const tabs = [
-    { id: 'contacts' as Tab, label: 'Contacts', count: contacts.length, icon: <Users className="w-4 h-4" /> },
-    { id: 'leads' as Tab, label: 'Leads', count: leads.length, icon: <TrendingUp className="w-4 h-4" /> },
-    { id: 'deals' as Tab, label: 'Deals & Pipeline', count: deals.length, icon: <Briefcase className="w-4 h-4" /> },
-    { id: 'tickets' as Tab, label: 'Support Tickets', count: tickets.length, icon: <TicketCheck className="w-4 h-4" /> },
+    { id: 'contacts' as Tab, label: 'Enrollees & Beneficiaries', count: contacts.length, icon: <Users className="w-4 h-4" /> },
+    { id: 'leads' as Tab, label: 'Prospects & Inquiries', count: leads.length, icon: <TrendingUp className="w-4 h-4" /> },
+    { id: 'deals' as Tab, label: 'Premiums & Plans', count: deals.length, icon: <Briefcase className="w-4 h-4" /> },
+    { id: 'tickets' as Tab, label: 'Facility Grievances & Tickets', count: tickets.length, icon: <TicketCheck className="w-4 h-4" /> },
   ];
 
   return (
@@ -176,9 +176,9 @@ export default function CrmPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Customer Relationship Management
+            <Users className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Enrollee &amp; Beneficiary Management
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage contacts, sales pipelines, lead conversions, and customer support tickets.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage Plateau State citizen enrollments, premium subscriptions, and provider grievance reports.</p>
         </div>
         <div className="flex items-center gap-2">
           {tab === 'contacts' && (
@@ -186,15 +186,16 @@ export default function CrmPage() {
               onClick={exportContactsCsv}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white text-sm font-semibold transition-all shadow-sm"
             >
-              <Download className="w-4 h-4" /> Export CSV
+              <Download className="w-4 h-4" /> Export Enrollees CSV
             </button>
           )}
           <button
             onClick={() => setModalType(tab === 'contacts' ? 'contact' : tab === 'leads' ? 'lead' : tab === 'deals' ? 'deal' : 'ticket')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all text-sm shadow-md shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
+            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
           >
             <Plus className="w-4 h-4" />
-            Add {tab === 'contacts' ? 'Contact' : tab === 'leads' ? 'Lead' : tab === 'deals' ? 'Deal' : 'Ticket'}
+            Add {tab === 'contacts' ? 'Enrollee' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Plan' : 'Grievance Ticket'}
           </button>
         </div>
       </div>

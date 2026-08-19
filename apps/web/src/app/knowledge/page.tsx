@@ -313,16 +313,16 @@ export default function KnowledgePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Brain className="w-6 h-6 text-blue-600 dark:text-blue-400" /> AI Knowledge Base & RAG Engine
+            <Brain className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Knowledge Base &amp; Policy Formulary
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Train your AI voice & chat assistant with documents, website links, and explicit Q&A rules.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Official guidelines, benefit packages, accredited facility lists, and FAQ policies for the Sarah Voice Agent.</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowFaqModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#74BA03]/20 hover:bg-[#74BA03]/30 text-[#558A02] dark:text-[#74BA03] border border-[#74BA03]/30 text-sm font-semibold transition-all"
           >
-            <Plus className="w-4 h-4" /> Add FAQ Rule
+            <Plus className="w-4 h-4" /> Add FAQ Policy
           </button>
           <button
             onClick={() => setShowPasteModal(true)}
@@ -340,10 +340,11 @@ export default function KnowledgePage() {
           <button
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            Upload File
+            Upload Policy Doc
           </button>
         </div>
       </div>

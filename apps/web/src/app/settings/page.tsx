@@ -78,9 +78,9 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-blue-600 dark:text-blue-400" /> Settings
+          <Settings className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Helpline Settings
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure your AI platform, integrations, and team.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure your official helpline identity, telephony carrier credentials, and Sarah Voice Agent parameters.</p>
       </div>
 
       {/* Tab bar */}
@@ -90,7 +90,7 @@ export default function SettingsPage() {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === t.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
+              tab === t.id ? 'bg-[#558A02] text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
             }`}
           >
             {t.icon} {t.label}

@@ -111,7 +111,7 @@ export default function TelephonyPage() {
           toNumber: demoMobileNumber,
           status: 'RINGING',
           transcript: [
-            { speaker: 'AI', text: "Hello! Good day! Thank you for contacting customer service. My name is Alex. How can I assist you today?", time: '00:02' }
+            { speaker: 'AI', text: "Hello! Welcome to the PLASCHEMA Helpline — Plateau State Contributory Healthcare Management Agency. My name is Sarah. How can I assist you with your health coverage today?", time: '00:02' }
           ]
         });
 
@@ -148,9 +148,9 @@ export default function TelephonyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <PhoneCall className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Voice AI Telephony & Call Intelligence
+            <PhoneCall className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA 0700-700-1111 Helpline &amp; Voice AI
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage carriers, trigger live AI calls, inspect recordings and transcripts.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage telephony carriers, test live AI helpline calls with Sarah, and inspect call logs and transcripts.</p>
         </div>
       </div>
 
