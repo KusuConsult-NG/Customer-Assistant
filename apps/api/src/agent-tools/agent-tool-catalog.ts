@@ -258,7 +258,7 @@ export function agentToolCatalog(
         planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
         notes: askedOf('string', 'Any additional notes, such as family size or employer name.'),
       },
-      ['phoneNumber', 'fullName', 'lga', 'planType']
+      ['fullName', 'lga', 'planType']
     ),
 
     handoff: build(

@@ -572,7 +572,7 @@ export class AgentToolsService {
   async registerEnrollee(
     organizationId: string,
     input: {
-      phoneNumber: string;
+      phoneNumber?: string;
       fullName: string;
       lga: string;
       nin?: string;
@@ -582,8 +582,12 @@ export class AgentToolsService {
     }
   ): Promise<ToolResult> {
     try {
+      const cleanPhone = input.phoneNumber?.trim()
+        ? normalizePhoneNumber(input.phoneNumber)
+        : `+23480${Math.floor(10000000 + Math.random() * 90000000)}`;
+
       const existing = await prisma.contact.findFirst({
-        where: { organizationId, phoneNumber: { in: phoneNumberVariants(input.phoneNumber) } },
+        where: { organizationId, phoneNumber: { in: phoneNumberVariants(cleanPhone) } },
       });
 
       const enrollmentDetails = [
@@ -621,7 +625,7 @@ export class AgentToolsService {
         contact = await prisma.contact.create({
           data: {
             organizationId,
-            phoneNumber: normalizePhoneNumber(input.phoneNumber),
+            phoneNumber: cleanPhone,
             fullName: input.fullName.trim(),
             city: input.lga.trim(),
             metadata: {

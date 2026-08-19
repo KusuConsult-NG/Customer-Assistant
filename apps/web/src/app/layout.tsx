@@ -25,19 +25,11 @@ import {
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
-import { API_URL, clearSession } from '@/lib/api';
+import { API_URL, clearSession, refreshSession } from '@/lib/api';
 import { ToastProvider } from '@/components/ui/Toast';
 
 /**
  * Routes reachable without a session.
- *
- * Kept as one list because the redirect guard and the chrome-less layout check must
- * agree. They were two separately-maintained conditions, and /reset-password was
- * missing from both — so anyone following a password reset link was bounced to
- * /login before they could set a password.
- *
- * /widget is gone entirely — the embedded chat channel was retired. Customers
- * reach this platform on WhatsApp and by phone; this app is the staff dashboard.
  */
 const PUBLIC_ROUTES = [
   '/login',
@@ -46,9 +38,9 @@ const PUBLIC_ROUTES = [
   '/reset-password',
   '/verify-email',
   '/setup-account',
-  // Customer-facing selfie upload. Reached from a one-time link by someone who has no
-  // account here — redirecting them to /login would make the link useless.
   '/selfie',
+  '/pay',
+  '/billing/success',
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -147,17 +139,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }, [pathname]);
 
   useEffect(() => {
-    const token = localStorage.getItem('ace_token');
-    const isPublic = PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
+    const checkAuth = async () => {
+      const token = localStorage.getItem('ace_token');
+      const refreshToken = localStorage.getItem('ace_refresh_token');
+      const isPublic = PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
 
-    if (!token && !isPublic) {
-      if (!didRedirect.current) {
-        didRedirect.current = true;
-        router.replace('/login');
+      if (!token && !isPublic) {
+        if (refreshToken) {
+          const refreshed = await refreshSession();
+          if (refreshed) return;
+        }
+        if (!didRedirect.current) {
+          didRedirect.current = true;
+          router.replace('/login');
+        }
+      } else if (token && pathname === '/login') {
+        router.replace('/');
       }
-    } else if (token && pathname === '/login') {
-      router.replace('/');
-    }
+    };
+
+    checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
