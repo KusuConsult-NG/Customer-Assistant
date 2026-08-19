@@ -142,6 +142,7 @@ export interface AgentSpec {
    */
   timezone: string;
   language?: string;
+  voiceId?: string;
   llm?: ElevenLabs.PromptAgentApiModelInput['llm'];
   maxDurationSeconds?: number;
 }
@@ -169,6 +170,13 @@ export function agentDefinition(spec: AgentSpec) {
           timezone: spec.timezone,
         },
       },
+      ...(spec.voiceId
+        ? {
+            tts: {
+              voiceId: spec.voiceId,
+            },
+          }
+        : {}),
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,
       },

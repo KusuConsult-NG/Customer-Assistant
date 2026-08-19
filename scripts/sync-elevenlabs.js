@@ -9,8 +9,28 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-  const orgSlug = process.argv[2] || 'ace-demo';
-  console.log(`🚀 Provisioning ElevenLabs Agent for org "${orgSlug}"...`);
+  const args = process.argv.slice(2);
+  const personaIdx = args.indexOf('--persona');
+  let requestedPersona = null;
+  if (personaIdx !== -1 && args[personaIdx + 1]) {
+    requestedPersona = args[personaIdx + 1];
+    process.env.ELEVENLABS_PERSONA = requestedPersona;
+  }
+
+  const { TEAM_PERSONAS, resolvePersona } = require('../apps/api/dist/agent-tools/agent-tool-catalog');
+
+  if (args.includes('--list-personas')) {
+    console.log('\nAvailable Team Personas:');
+    for (const [key, p] of Object.entries(TEAM_PERSONAS)) {
+      console.log(`  • ${p.name} (${p.gender}, voiceId: ${p.voiceId}) - "${p.description}"`);
+    }
+    process.exit(0);
+  }
+
+  const orgSlug = args.find(a => !a.startsWith('--') && a !== requestedPersona) || 'ace-demo';
+  const persona = resolvePersona(requestedPersona);
+
+  console.log(`🚀 Provisioning ElevenLabs Agent for org "${orgSlug}" with persona "${persona.name}"...`);
 
   const org = await prisma.organization.findFirst({
     where: { OR: [{ slug: orgSlug }, { id: orgSlug }] },

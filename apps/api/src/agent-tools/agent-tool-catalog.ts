@@ -266,6 +266,64 @@ export function agentToolCatalog(
   };
 }
 
+/** Persona definitions matching ElevenLabs voice characters */
+export interface TeamPersona {
+  id: string;
+  name: string;
+  gender: 'female' | 'male';
+  voiceId: string;
+  greetingPhrase: string;
+  description: string;
+}
+
+export const TEAM_PERSONAS: Record<string, TeamPersona> = {
+  sarah: {
+    id: 'sarah',
+    name: 'Sarah',
+    gender: 'female',
+    voiceId: 'EXAVITQu4vr4xnSDxMaL',
+    greetingPhrase: 'my name is Sarah',
+    description: 'Warm, reassuring, and professional',
+  },
+  eric: {
+    id: 'eric',
+    name: 'Eric',
+    gender: 'male',
+    voiceId: 'cjVigY5qzO86Huf0OWal',
+    greetingPhrase: 'this is Eric',
+    description: 'Smooth, calm, and trustworthy',
+  },
+  jessica: {
+    id: 'jessica',
+    name: 'Jessica',
+    gender: 'female',
+    voiceId: 'cgSgspJ2msm6clMCkdW9',
+    greetingPhrase: "I'm Jessica",
+    description: 'Bright, friendly, and approachable',
+  },
+  roger: {
+    id: 'roger',
+    name: 'Roger',
+    gender: 'male',
+    voiceId: 'CwhRBWXzGAHq8TQ4Fs17',
+    greetingPhrase: 'my name is Roger',
+    description: 'Resonant, casual, and experienced',
+  },
+  matilda: {
+    id: 'matilda',
+    name: 'Matilda',
+    gender: 'female',
+    voiceId: 'XrExE9yKIg1WjnnlVkGX',
+    greetingPhrase: 'my name is Matilda',
+    description: 'Poised, articulate, and knowledgeable',
+  },
+};
+
+export function resolvePersona(nameOrId?: string | null): TeamPersona {
+  const key = (nameOrId || process.env.ELEVENLABS_PERSONA || 'sarah').toLowerCase().trim();
+  return TEAM_PERSONAS[key] || Object.values(TEAM_PERSONAS).find(p => p.name.toLowerCase() === key) || TEAM_PERSONAS.sarah;
+}
+
 /** The organization fields the agent's identity is built from. */
 export interface AgentOrganization {
   name: string;
@@ -273,39 +331,46 @@ export interface AgentOrganization {
   timezone: string;
   welcomeMessage?: string | null;
   aiPersonaPrompt?: string | null;
+  persona?: string | null;
+  voiceId?: string | null;
 }
 
-/** The system prompt with the business's own persona appended, if it set one. */
-export function agentPromptFor(org: AgentOrganization): string {
-  return [SYSTEM_PROMPT, org.aiPersonaPrompt?.trim()]
+/** The system prompt with the chosen persona identity and business rules appended. */
+export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): string {
+  const resolved = persona || resolvePersona(org.persona);
+  const personaHeader = `You are ${resolved.name}, a dedicated customer service team member at {{organization_name}}.\nIntroduce yourself as ${resolved.name} when asked who is speaking or when greeting the customer.\nConverse consistently as ${resolved.name} throughout the entire call.`;
+
+  return [personaHeader, SYSTEM_PROMPT, org.aiPersonaPrompt?.trim()]
     .filter(Boolean)
     .join('\n\n## The business\n\n');
 }
 
-export function agentNameFor(org: AgentOrganization): string {
-  return `${org.name} — Customer Care`;
+export function agentNameFor(org: AgentOrganization, persona?: TeamPersona): string {
+  const resolved = persona || resolvePersona(org.persona);
+  return `${org.name} — ${resolved.name}`;
 }
 
-export function firstMessageFor(org: AgentOrganization): string {
-  // The opening line the business configured, so the agent and the widget greet
-  // callers the same way.
-  return org.welcomeMessage || `Thank you for calling ${org.name}. How can I help you today?`;
+export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
+  const resolved = persona || resolvePersona(org.persona);
+  if (org.welcomeMessage && org.welcomeMessage.includes('{name}')) {
+    return org.welcomeMessage.replace('{name}', resolved.name);
+  }
+  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. How can I help you today?`;
 }
 
 /**
  * The agent definition for one organization, referencing tools by id.
- *
- * `prompt.tools` is deprecated in favour of `toolIds` — see the findings at the
- * top of elevenlabs-contracts.ts.
  */
-export function agentDefinitionFor(org: AgentOrganization, toolIds: string[]) {
+export function agentDefinitionFor(org: AgentOrganization, toolIds: string[], customPersona?: TeamPersona) {
+  const persona = customPersona || resolvePersona(org.persona);
+  const voiceId = org.voiceId || persona.voiceId;
+
   return agentDefinition({
-    name: agentNameFor(org),
-    firstMessage: firstMessageFor(org),
-    systemPrompt: agentPromptFor(org),
+    name: agentNameFor(org, persona),
+    firstMessage: firstMessageFor(org, persona),
+    systemPrompt: agentPromptFor(org, persona),
+    voiceId,
     toolIds,
-    // Without this the agent does not know what day it is, and book-appointment
-    // asks it to resolve "next Tuesday" into a timestamp.
     timezone: org.timezone,
   });
 }
@@ -314,6 +379,10 @@ export function agentDefinitionFor(org: AgentOrganization, toolIds: string[]) {
  * Values the platform injects per conversation. `organization_name` fills the
  * prompt; the caller variable fills every phoneNumber parameter.
  */
-export function dynamicVariablesFor(org: AgentOrganization): Record<string, string> {
-  return { organization_name: org.name };
+export function dynamicVariablesFor(org: AgentOrganization, persona?: TeamPersona): Record<string, string> {
+  const resolved = persona || resolvePersona(org.persona);
+  return { 
+    organization_name: org.name,
+    representative_name: resolved.name
+  };
 }
