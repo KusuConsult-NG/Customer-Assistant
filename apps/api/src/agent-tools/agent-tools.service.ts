@@ -608,13 +608,58 @@ export class AgentToolsService {
     }
   ): Promise<ToolResult> {
     try {
-      // Guard: fullName must be a non-empty string. The LLM occasionally calls
-      // this tool before collecting the name — return ok: false so Sarah asks again.
+      // Guard: fullName must be a non-empty string.
       if (!input.fullName?.trim()) {
         return {
           ok: false,
-          speak: 'I still need your full name to complete the registration. Could you tell me your full name please?',
+          speak: 'I still need your full name to complete your registration. Could you tell me your full name please?',
           data: { reason: 'missing_full_name' },
+        };
+      }
+
+      // Guard: ageOrDob must be provided
+      if (!input.ageOrDob?.trim()) {
+        return {
+          ok: false,
+          speak: 'Could you tell me your age or date of birth so we can include it on your health profile?',
+          data: { reason: 'missing_age_or_dob' },
+        };
+      }
+
+      // Guard: residentialAddress must be provided
+      if (!input.residentialAddress?.trim() || input.residentialAddress.trim().length < 3) {
+        return {
+          ok: false,
+          speak: 'Could you tell me your residential street address or area where you live in Plateau State?',
+          data: { reason: 'missing_residential_address' },
+        };
+      }
+
+      // Guard: lga must be provided
+      if (!input.lga?.trim()) {
+        return {
+          ok: false,
+          speak: 'Which Local Government Area in Plateau State do you reside in?',
+          data: { reason: 'missing_lga' },
+        };
+      }
+
+      // Guard: planType must be provided
+      if (!input.planType?.trim()) {
+        return {
+          ok: false,
+          speak: 'Which health plan would you like to enroll in? Formal Sector, Informal Sector, BHCPF, or the free Equity Programme?',
+          data: { reason: 'missing_plan_type' },
+        };
+      }
+
+      // Guard: preferredHospital must be provided
+      if (!input.preferredHospital?.trim()) {
+        const facs = getFacilitiesForLGA(input.lga).slice(0, 3).map((f) => f.name).join(', ');
+        return {
+          ok: false,
+          speak: `Which primary hospital or healthcare facility in ${input.lga} would you prefer? For example: ${facs || 'your nearest General Hospital'}.`,
+          data: { reason: 'missing_preferred_hospital' },
         };
       }
 
@@ -635,7 +680,7 @@ export class AgentToolsService {
         selectedFacility = lgaFacilities[0].name;
       }
       if (!selectedFacility) {
-        selectedFacility = 'Accredited Primary Healthcare Provider';
+        selectedFacility = input.preferredHospital?.trim() || 'Accredited Primary Healthcare Provider';
       }
 
       const isEquity = /equity|bhcpf|vulnerable|free/i.test(input.planType);

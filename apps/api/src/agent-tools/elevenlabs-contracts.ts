@@ -183,8 +183,11 @@ export function agentDefinition(spec: AgentSpec) {
         userInputAudioFormat: 'ulaw_8000',
       },
       turn: {
-        turnTimeout: 7,
+        turnTimeout: 3.5,
         mode: 'turn',
+        turnEagerness: 'eager',
+        speculativeTurn: true,
+        turnModel: 'turn_v3',
       },
       tts: {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),

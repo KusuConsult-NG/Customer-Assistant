@@ -296,19 +296,19 @@ export function agentToolCatalog(
 
     'register-enrollee': build(
       'register-enrollee',
-      'Register a new PLASCHEMA enrollee online. Call this once you have collected the caller\'s full name, residential address, LGA, age/date of birth, plan type, preferred primary healthcare facility (hospital/clinic), and optionally NIN. The tool creates their official registration record and automatically delivers a secure selfie upload link and payment info to their WhatsApp/SMS.',
+      'Register a new PLASCHEMA enrollee online. Call this ONLY after you have collected: fullName, ageOrDob, residentialAddress, lga, planType, and preferredHospital. Never call this tool early or with missing details.',
       {
         phoneNumber: callerPhone,
-        fullName: askedOf('string', "The caller's full name as they stated it."),
-        residentialAddress: askedOf('string', "The caller's street address, neighbourhood, or village."),
-        lga: askedOf('string', 'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu).'),
+        fullName: askedOf('string', "The caller's full name as it will appear on their health card."),
         ageOrDob: askedOf('string', "The caller's age in years or date of birth (e.g. '34 years' or '12 May 1990')."),
+        residentialAddress: askedOf('string', "The caller's street address, neighborhood, or village in Plateau State."),
+        lga: askedOf('string', 'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu, Wase, etc.).'),
+        planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
         preferredHospital: askedOf('string', 'The primary hospital or healthcare facility in their LGA where they prefer to access care.'),
         nin: askedOf('string', "The caller's National Identification Number (NIN), if provided."),
-        planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
         notes: askedOf('string', 'Any additional notes, such as family size or employer name.'),
       },
-      ['fullName', 'lga', 'planType']
+      ['fullName', 'ageOrDob', 'residentialAddress', 'lga', 'planType', 'preferredHospital']
     ),
 
     handoff: build(
