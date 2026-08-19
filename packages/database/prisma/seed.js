@@ -26,20 +26,29 @@ async function main() {
     org = await prisma.organization.create({
       data: {
         id: generateId(),
-        name: 'Apex Care Services',
+        name: 'Kusu Consult',
         slug: 'ace-demo',
-        industry: 'CLINIC',
+        industry: 'SME',
         country: 'Nigeria',
         timezone: 'Africa/Lagos',
-        phone: '+234 1 700 8000',
-        welcomeMessage: 'Hello! 👋 Welcome to Apex Care Services. I am your AI Assistant. How can I help you today?',
-        aiPersonaPrompt: 'You are a polite, highly knowledgeable customer service AI assistant for Apex Care Services. Answer queries about services, scheduling, and pricing accurately.',
+        phone: '+17372212163',
+        welcomeMessage: 'Hello! 👋 Welcome to Kusu Consult. I am your AI Assistant. How can I help you today?',
+        aiPersonaPrompt: 'You are a polite, highly knowledgeable customer service AI assistant for Kusu Consult. Answer queries about consulting services, scheduling, and pricing accurately.',
         updatedAt: new Date(),
       },
     });
     console.log(`✅ Created Organization: ${org.name}`);
   } else {
-    console.log(`✅ Using existing Organization: ${org.name} (${org.id})`);
+    org = await prisma.organization.update({
+      where: { id: org.id },
+      data: {
+        name: 'Kusu Consult',
+        phone: '+17372212163',
+        welcomeMessage: 'Hello! 👋 Welcome to Kusu Consult. I am your AI Assistant. How can I help you today?',
+        aiPersonaPrompt: 'You are a polite, highly knowledgeable customer service AI assistant for Kusu Consult. Answer queries about consulting services, scheduling, and pricing accurately.',
+      },
+    });
+    console.log(`✅ Using Organization: ${org.name} (${org.id})`);
   }
 
   // ── 2. Create Admin & Agent Users ───────────────────────────────────────────
@@ -405,7 +414,6 @@ async function main() {
         authToken:  process.env.TWILIO_AUTH_TOKEN  || '',
         apiKey:     process.env.TWILIO_API_KEY      || null,
         isDefault:  true,
-        isActive:   true,
         updatedAt:  new Date(),
       },
     });
