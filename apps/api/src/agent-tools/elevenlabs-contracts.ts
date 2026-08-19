@@ -178,7 +178,9 @@ export function agentDefinition(spec: AgentSpec) {
       },
       asr: {
         quality: 'high',
-        userInputAudioFormat: 'pcm_16000',
+        // ulaw_8000 = G.711 μ-law, the universal phone/PSTN format.
+        // pcm_16000 is for browser WebRTC — it fails silently over Twilio.
+        userInputAudioFormat: 'ulaw_8000',
       },
       turn: {
         turnTimeout: 7,
@@ -186,8 +188,12 @@ export function agentDefinition(spec: AgentSpec) {
       },
       tts: {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
+        // eleven_turbo_v2 — lowest-latency model accepted for English agents.
+        // (eleven_turbo_v2_5 is rejected by ElevenLabs for English language agents)
         modelId: 'eleven_turbo_v2',
-        agentOutputAudioFormat: 'pcm_44100',
+        // ulaw_8000 = G.711 μ-law 8kHz — the ONLY format phone networks understand.
+        // pcm_44100 causes "loud but unintelligible" audio on every PSTN/Twilio call.
+        agentOutputAudioFormat: 'ulaw_8000',
         stability: 0.5,
         similarityBoost: 0.8,
         speed: 1.0,
