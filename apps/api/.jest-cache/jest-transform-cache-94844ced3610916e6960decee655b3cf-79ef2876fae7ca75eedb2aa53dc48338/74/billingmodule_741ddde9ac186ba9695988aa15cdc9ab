@@ -1,0 +1,24 @@
+ea5b5c17e74d489a3ac08cf7f86ee646
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BillingModule = void 0;
+const common_1 = require("@nestjs/common");
+const billing_service_1 = require("./billing.service");
+const billing_controller_1 = require("./billing.controller");
+let BillingModule = class BillingModule {
+};
+exports.BillingModule = BillingModule;
+exports.BillingModule = BillingModule = __decorate([
+    (0, common_1.Module)({
+        providers: [billing_service_1.BillingService],
+        controllers: [billing_controller_1.BillingController],
+        exports: [billing_service_1.BillingService],
+    })
+], BillingModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9iaWxsaW5nL2JpbGxpbmcubW9kdWxlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUFBLDJDQUF3QztBQUN4Qyx1REFBbUQ7QUFDbkQsNkRBQXlEO0FBT2xELElBQU0sYUFBYSxHQUFuQixNQUFNLGFBQWE7Q0FBRyxDQUFBO0FBQWhCLHNDQUFhO3dCQUFiLGFBQWE7SUFMekIsSUFBQSxlQUFNLEVBQUM7UUFDTixTQUFTLEVBQUUsQ0FBQyxnQ0FBYyxDQUFDO1FBQzNCLFdBQVcsRUFBRSxDQUFDLHNDQUFpQixDQUFDO1FBQ2hDLE9BQU8sRUFBRSxDQUFDLGdDQUFjLENBQUM7S0FDMUIsQ0FBQztHQUNXLGFBQWEsQ0FBRyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL2JpbGxpbmcvYmlsbGluZy5tb2R1bGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgTW9kdWxlIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgQmlsbGluZ1NlcnZpY2UgfSBmcm9tICcuL2JpbGxpbmcuc2VydmljZSc7XG5pbXBvcnQgeyBCaWxsaW5nQ29udHJvbGxlciB9IGZyb20gJy4vYmlsbGluZy5jb250cm9sbGVyJztcblxuQE1vZHVsZSh7XG4gIHByb3ZpZGVyczogW0JpbGxpbmdTZXJ2aWNlXSxcbiAgY29udHJvbGxlcnM6IFtCaWxsaW5nQ29udHJvbGxlcl0sXG4gIGV4cG9ydHM6IFtCaWxsaW5nU2VydmljZV0sXG59KVxuZXhwb3J0IGNsYXNzIEJpbGxpbmdNb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

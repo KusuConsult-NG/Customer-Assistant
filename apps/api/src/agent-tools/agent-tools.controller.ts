@@ -107,6 +107,22 @@ export class AgentToolsController {
     return this.tools.searchKnowledge(this.org(req), body?.query ?? '');
   }
 
+  @Post('register-enrollee')
+  registerEnrollee(
+    @Req() req: AgentRequest,
+    @Body()
+    body: {
+      phoneNumber: string;
+      fullName: string;
+      lga: string;
+      nin?: string;
+      planType: string;
+      notes?: string;
+    }
+  ): Promise<ToolResult> {
+    return this.tools.registerEnrollee(this.org(req), body);
+  }
+
   /**
    * Every field is optional and the tool is correct without any of them. The
    * conversation id is what lets the transfer actually be attempted; absent, a

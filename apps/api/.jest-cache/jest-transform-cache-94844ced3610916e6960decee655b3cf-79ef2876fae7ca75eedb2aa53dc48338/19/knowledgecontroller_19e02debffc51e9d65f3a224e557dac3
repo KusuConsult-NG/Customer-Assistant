@@ -1,0 +1,124 @@
+ff739afa0d10eb7c1dd1528d29030bab
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.KnowledgeController = void 0;
+const common_1 = require("@nestjs/common");
+const knowledge_service_1 = require("./knowledge.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const roles_guard_1 = require("../common/guards/roles.guard");
+const roles_decorator_1 = require("../common/decorators/roles.decorator");
+const knowledge_dto_1 = require("./knowledge.dto");
+// RolesGuard follows JwtAuthGuard: guards execute in the order given, and RolesGuard
+// needs request.user. Registering it globally (as before) ran it first, so every
+// @Roles() route here returned 403 no matter who called it.
+let KnowledgeController = class KnowledgeController {
+    knowledgeService;
+    constructor(knowledgeService) {
+        this.knowledgeService = knowledgeService;
+    }
+    async getDocuments(req) {
+        return this.knowledgeService.getDocuments(req.user.organizationId);
+    }
+    async uploadDocument(req, body) {
+        // Decode base64 back to Buffer for Supabase Storage upload.
+        const fileBuffer = Buffer.from(body.fileBufferBase64, 'base64');
+        // Trust the decoded length, not the client-supplied fileSize: the size limit is
+        // meaningless if the caller can simply declare a small number alongside a
+        // 200 MB payload.
+        return this.knowledgeService.uploadAndIndexDocument(req.user.organizationId, {
+            title: body.title,
+            fileName: body.fileName,
+            fileSize: fileBuffer.byteLength,
+            mimeType: body.mimeType,
+            fileBuffer,
+        });
+    }
+    /**
+     * Short-lived signed download URL for an uploaded document.
+     *
+     * KnowledgeService.getDocumentDownloadUrl already existed but nothing routed to it,
+     * so an uploaded file could be stored and never retrieved again through the API.
+     */
+    async downloadDocument(req, id) {
+        const url = await this.knowledgeService.getDocumentDownloadUrl(req.user.organizationId, id);
+        return { url, expiresInSeconds: 3600 };
+    }
+    async searchPlayground(req, query) {
+        return this.knowledgeService.searchPlayground(req.user.organizationId, query || '');
+    }
+    async crawlWebsite(req, body) {
+        return this.knowledgeService.crawlAndIndexWebsite(req.user.organizationId, body.url);
+    }
+    async deleteDocument(req, id) {
+        return this.knowledgeService.deleteDocument(req.user.organizationId, id);
+    }
+};
+exports.KnowledgeController = KnowledgeController;
+__decorate([
+    (0, common_1.Get)('documents'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], KnowledgeController.prototype, "getDocuments", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('documents'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, knowledge_dto_1.UploadDocumentDto]),
+    __metadata("design:returntype", Promise)
+], KnowledgeController.prototype, "uploadDocument", null);
+__decorate([
+    (0, common_1.Get)('documents/:id/download'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], KnowledgeController.prototype, "downloadDocument", null);
+__decorate([
+    (0, common_1.Get)('search'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('q')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], KnowledgeController.prototype, "searchPlayground", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('crawl-website'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, knowledge_dto_1.CrawlWebsiteDto]),
+    __metadata("design:returntype", Promise)
+], KnowledgeController.prototype, "crawlWebsite", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Delete)('documents/:id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], KnowledgeController.prototype, "deleteDocument", null);
+exports.KnowledgeController = KnowledgeController = __decorate([
+    (0, common_1.Controller)('api/knowledge'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __metadata("design:paramtypes", [knowledge_service_1.KnowledgeService])
+], KnowledgeController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9rbm93bGVkZ2Uva25vd2xlZGdlLmNvbnRyb2xsZXIudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7Ozs7O0FBQUEsMkNBQW1HO0FBQ25HLDJEQUF1RDtBQUN2RCwyREFBc0Q7QUFDdEQsOERBQTBEO0FBQzFELDBFQUE2RDtBQUU3RCxtREFBcUU7QUFFckUscUZBQXFGO0FBQ3JGLGlGQUFpRjtBQUNqRiw0REFBNEQ7QUFHckQsSUFBTSxtQkFBbUIsR0FBekIsTUFBTSxtQkFBbUI7SUFDVjtJQUFwQixZQUFvQixnQkFBa0M7UUFBbEMscUJBQWdCLEdBQWhCLGdCQUFnQixDQUFrQjtJQUFHLENBQUM7SUFHcEQsQUFBTixLQUFLLENBQUMsWUFBWSxDQUFRLEdBQXVCO1FBQy9DLE9BQU8sSUFBSSxDQUFDLGdCQUFnQixDQUFDLFlBQVksQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO0lBQ3JFLENBQUM7SUFJSyxBQUFOLEtBQUssQ0FBQyxjQUFjLENBQVEsR0FBdUIsRUFBVSxJQUF1QjtRQUNsRiw0REFBNEQ7UUFDNUQsTUFBTSxVQUFVLEdBQUcsTUFBTSxDQUFDLElBQUksQ0FBQyxJQUFJLENBQUMsZ0JBQWdCLEVBQUUsUUFBUSxDQUFDLENBQUM7UUFFaEUsZ0ZBQWdGO1FBQ2hGLDBFQUEwRTtRQUMxRSxrQkFBa0I7UUFDbEIsT0FBTyxJQUFJLENBQUMsZ0JBQWdCLENBQUMsc0JBQXNCLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUU7WUFDM0UsS0FBSyxFQUFFLElBQUksQ0FBQyxLQUFLO1lBQ2pCLFFBQVEsRUFBRSxJQUFJLENBQUMsUUFBUTtZQUN2QixRQUFRLEVBQUUsVUFBVSxDQUFDLFVBQVU7WUFDL0IsUUFBUSxFQUFFLElBQUksQ0FBQyxRQUFRO1lBQ3ZCLFVBQVU7U0FDWCxDQUFDLENBQUM7SUFDTCxDQUFDO0lBRUQ7Ozs7O09BS0c7SUFFRyxBQUFOLEtBQUssQ0FBQyxnQkFBZ0IsQ0FBUSxHQUF1QixFQUFlLEVBQVU7UUFDNUUsTUFBTSxHQUFHLEdBQUcsTUFBTSxJQUFJLENBQUMsZ0JBQWdCLENBQUMsc0JBQXNCLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUUsRUFBRSxDQUFDLENBQUM7UUFDNUYsT0FBTyxFQUFFLEdBQUcsRUFBRSxnQkFBZ0IsRUFBRSxJQUFJLEVBQUUsQ0FBQztJQUN6QyxDQUFDO0lBR0ssQUFBTixLQUFLLENBQUMsZ0JBQWdCLENBQVEsR0FBdUIsRUFBYyxLQUFhO1FBQzlFLE9BQU8sSUFBSSxDQUFDLGdCQUFnQixDQUFDLGdCQUFnQixDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxFQUFFLEtBQUssSUFBSSxFQUFFLENBQUMsQ0FBQztJQUN0RixDQUFDO0lBSUssQUFBTixLQUFLLENBQUMsWUFBWSxDQUFRLEdBQXVCLEVBQVUsSUFBcUI7UUFDOUUsT0FBTyxJQUFJLENBQUMsZ0JBQWdCLENBQUMsb0JBQW9CLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUUsSUFBSSxDQUFDLEdBQUcsQ0FBQyxDQUFDO0lBQ3ZGLENBQUM7SUFJSyxBQUFOLEtBQUssQ0FBQyxjQUFjLENBQVEsR0FBdUIsRUFBZSxFQUFVO1FBQzFFLE9BQU8sSUFBSSxDQUFDLGdCQUFnQixDQUFDLGNBQWMsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsRUFBRSxFQUFFLENBQUMsQ0FBQztJQUMzRSxDQUFDO0NBQ0YsQ0FBQTtBQXREWSxrREFBbUI7QUFJeEI7SUFETCxJQUFBLFlBQUcsRUFBQyxXQUFXLENBQUM7SUFDRyxXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7Ozs7dURBRXhCO0FBSUs7SUFGTCxJQUFBLHVCQUFLLEVBQUMsT0FBTyxFQUFFLE9BQU8sQ0FBQztJQUN2QixJQUFBLGFBQUksRUFBQyxXQUFXLENBQUM7SUFDSSxXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFBMkIsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOzs2Q0FBTyxpQ0FBaUI7O3lEQWNuRjtBQVNLO0lBREwsSUFBQSxZQUFHLEVBQUMsd0JBQXdCLENBQUM7SUFDTixXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFBMkIsV0FBQSxJQUFBLGNBQUssRUFBQyxJQUFJLENBQUMsQ0FBQTs7OzsyREFHbEU7QUFHSztJQURMLElBQUEsWUFBRyxFQUFDLFFBQVEsQ0FBQztJQUNVLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTtJQUEyQixXQUFBLElBQUEsY0FBSyxFQUFDLEdBQUcsQ0FBQyxDQUFBOzs7OzJEQUVqRTtBQUlLO0lBRkwsSUFBQSx1QkFBSyxFQUFDLE9BQU8sRUFBRSxPQUFPLENBQUM7SUFDdkIsSUFBQSxhQUFJLEVBQUMsZUFBZSxDQUFDO0lBQ0YsV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBO0lBQTJCLFdBQUEsSUFBQSxhQUFJLEdBQUUsQ0FBQTs7NkNBQU8sK0JBQWU7O3VEQUUvRTtBQUlLO0lBRkwsSUFBQSx1QkFBSyxFQUFDLE9BQU8sRUFBRSxPQUFPLENBQUM7SUFDdkIsSUFBQSxlQUFNLEVBQUMsZUFBZSxDQUFDO0lBQ0YsV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBO0lBQTJCLFdBQUEsSUFBQSxjQUFLLEVBQUMsSUFBSSxDQUFDLENBQUE7Ozs7eURBRWhFOzhCQXJEVSxtQkFBbUI7SUFGL0IsSUFBQSxtQkFBVSxFQUFDLGVBQWUsQ0FBQztJQUMzQixJQUFBLGtCQUFTLEVBQUMsNkJBQVksRUFBRSx3QkFBVSxDQUFDO3FDQUVJLG9DQUFnQjtHQUQzQyxtQkFBbUIsQ0FzRC9CIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMva25vd2xlZGdlL2tub3dsZWRnZS5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IENvbnRyb2xsZXIsIEdldCwgUG9zdCwgRGVsZXRlLCBCb2R5LCBQYXJhbSwgUXVlcnksIFJlcSwgVXNlR3VhcmRzIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgS25vd2xlZGdlU2VydmljZSB9IGZyb20gJy4va25vd2xlZGdlLnNlcnZpY2UnO1xuaW1wb3J0IHsgSnd0QXV0aEd1YXJkIH0gZnJvbSAnLi4vYXV0aC9qd3QtYXV0aC5ndWFyZCc7XG5pbXBvcnQgeyBSb2xlc0d1YXJkIH0gZnJvbSAnLi4vY29tbW9uL2d1YXJkcy9yb2xlcy5ndWFyZCc7XG5pbXBvcnQgeyBSb2xlcyB9IGZyb20gJy4uL2NvbW1vbi9kZWNvcmF0b3JzL3JvbGVzLmRlY29yYXRvcic7XG5pbXBvcnQgeyBBdXRoVXNlciB9IGZyb20gJ0BhY2Uvc2hhcmVkLXR5cGVzJztcbmltcG9ydCB7IENyYXdsV2Vic2l0ZUR0bywgVXBsb2FkRG9jdW1lbnREdG8gfSBmcm9tICcuL2tub3dsZWRnZS5kdG8nO1xuXG4vLyBSb2xlc0d1YXJkIGZvbGxvd3MgSnd0QXV0aEd1YXJkOiBndWFyZHMgZXhlY3V0ZSBpbiB0aGUgb3JkZXIgZ2l2ZW4sIGFuZCBSb2xlc0d1YXJkXG4vLyBuZWVkcyByZXF1ZXN0LnVzZXIuIFJlZ2lzdGVyaW5nIGl0IGdsb2JhbGx5IChhcyBiZWZvcmUpIHJhbiBpdCBmaXJzdCwgc28gZXZlcnlcbi8vIEBSb2xlcygpIHJvdXRlIGhlcmUgcmV0dXJuZWQgNDAzIG5vIG1hdHRlciB3aG8gY2FsbGVkIGl0LlxuQENvbnRyb2xsZXIoJ2FwaS9rbm93bGVkZ2UnKVxuQFVzZUd1YXJkcyhKd3RBdXRoR3VhcmQsIFJvbGVzR3VhcmQpXG5leHBvcnQgY2xhc3MgS25vd2xlZGdlQ29udHJvbGxlciB7XG4gIGNvbnN0cnVjdG9yKHByaXZhdGUga25vd2xlZGdlU2VydmljZTogS25vd2xlZGdlU2VydmljZSkge31cblxuICBAR2V0KCdkb2N1bWVudHMnKVxuICBhc3luYyBnZXREb2N1bWVudHMoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9KSB7XG4gICAgcmV0dXJuIHRoaXMua25vd2xlZGdlU2VydmljZS5nZXREb2N1bWVudHMocmVxLnVzZXIub3JnYW5pemF0aW9uSWQpO1xuICB9XG5cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCdkb2N1bWVudHMnKVxuICBhc3luYyB1cGxvYWREb2N1bWVudChAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sIEBCb2R5KCkgYm9keTogVXBsb2FkRG9jdW1lbnREdG8pIHtcbiAgICAvLyBEZWNvZGUgYmFzZTY0IGJhY2sgdG8gQnVmZmVyIGZvciBTdXBhYmFzZSBTdG9yYWdlIHVwbG9hZC5cbiAgICBjb25zdCBmaWxlQnVmZmVyID0gQnVmZmVyLmZyb20oYm9keS5maWxlQnVmZmVyQmFzZTY0LCAnYmFzZTY0Jyk7XG5cbiAgICAvLyBUcnVzdCB0aGUgZGVjb2RlZCBsZW5ndGgsIG5vdCB0aGUgY2xpZW50LXN1cHBsaWVkIGZpbGVTaXplOiB0aGUgc2l6ZSBsaW1pdCBpc1xuICAgIC8vIG1lYW5pbmdsZXNzIGlmIHRoZSBjYWxsZXIgY2FuIHNpbXBseSBkZWNsYXJlIGEgc21hbGwgbnVtYmVyIGFsb25nc2lkZSBhXG4gICAgLy8gMjAwIE1CIHBheWxvYWQuXG4gICAgcmV0dXJuIHRoaXMua25vd2xlZGdlU2VydmljZS51cGxvYWRBbmRJbmRleERvY3VtZW50KHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCB7XG4gICAgICB0aXRsZTogYm9keS50aXRsZSxcbiAgICAgIGZpbGVOYW1lOiBib2R5LmZpbGVOYW1lLFxuICAgICAgZmlsZVNpemU6IGZpbGVCdWZmZXIuYnl0ZUxlbmd0aCxcbiAgICAgIG1pbWVUeXBlOiBib2R5Lm1pbWVUeXBlLFxuICAgICAgZmlsZUJ1ZmZlcixcbiAgICB9KTtcbiAgfVxuXG4gIC8qKlxuICAgKiBTaG9ydC1saXZlZCBzaWduZWQgZG93bmxvYWQgVVJMIGZvciBhbiB1cGxvYWRlZCBkb2N1bWVudC5cbiAgICpcbiAgICogS25vd2xlZGdlU2VydmljZS5nZXREb2N1bWVudERvd25sb2FkVXJsIGFscmVhZHkgZXhpc3RlZCBidXQgbm90aGluZyByb3V0ZWQgdG8gaXQsXG4gICAqIHNvIGFuIHVwbG9hZGVkIGZpbGUgY291bGQgYmUgc3RvcmVkIGFuZCBuZXZlciByZXRyaWV2ZWQgYWdhaW4gdGhyb3VnaCB0aGUgQVBJLlxuICAgKi9cbiAgQEdldCgnZG9jdW1lbnRzLzppZC9kb3dubG9hZCcpXG4gIGFzeW5jIGRvd25sb2FkRG9jdW1lbnQoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LCBAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZykge1xuICAgIGNvbnN0IHVybCA9IGF3YWl0IHRoaXMua25vd2xlZGdlU2VydmljZS5nZXREb2N1bWVudERvd25sb2FkVXJsKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBpZCk7XG4gICAgcmV0dXJuIHsgdXJsLCBleHBpcmVzSW5TZWNvbmRzOiAzNjAwIH07XG4gIH1cblxuICBAR2V0KCdzZWFyY2gnKVxuICBhc3luYyBzZWFyY2hQbGF5Z3JvdW5kKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSwgQFF1ZXJ5KCdxJykgcXVlcnk6IHN0cmluZykge1xuICAgIHJldHVybiB0aGlzLmtub3dsZWRnZVNlcnZpY2Uuc2VhcmNoUGxheWdyb3VuZChyZXEudXNlci5vcmdhbml6YXRpb25JZCwgcXVlcnkgfHwgJycpO1xuICB9XG5cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCdjcmF3bC13ZWJzaXRlJylcbiAgYXN5bmMgY3Jhd2xXZWJzaXRlKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSwgQEJvZHkoKSBib2R5OiBDcmF3bFdlYnNpdGVEdG8pIHtcbiAgICByZXR1cm4gdGhpcy5rbm93bGVkZ2VTZXJ2aWNlLmNyYXdsQW5kSW5kZXhXZWJzaXRlKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBib2R5LnVybCk7XG4gIH1cblxuICBAUm9sZXMoJ09XTkVSJywgJ0FETUlOJylcbiAgQERlbGV0ZSgnZG9jdW1lbnRzLzppZCcpXG4gIGFzeW5jIGRlbGV0ZURvY3VtZW50KEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSwgQFBhcmFtKCdpZCcpIGlkOiBzdHJpbmcpIHtcbiAgICByZXR1cm4gdGhpcy5rbm93bGVkZ2VTZXJ2aWNlLmRlbGV0ZURvY3VtZW50KHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBpZCk7XG4gIH1cbn1cblxuIl0sInZlcnNpb24iOjN9

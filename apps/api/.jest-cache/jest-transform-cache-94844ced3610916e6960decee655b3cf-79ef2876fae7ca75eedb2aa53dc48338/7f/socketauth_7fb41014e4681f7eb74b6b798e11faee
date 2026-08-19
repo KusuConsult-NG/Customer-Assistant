@@ -1,0 +1,64 @@
+f514a5a2a175f02e72a9ec13b3eb9016
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.authenticateSocket = authenticateSocket;
+exports.socketCorsOrigin = socketCorsOrigin;
+const database_1 = require("@ace/database");
+/**
+ * Authenticates a Socket.IO connection from its JWT.
+ *
+ * Both gateways were previously wide open: `cors: { origin: '*' }`, no handshake
+ * check, and a `join_organization` handler that joined whatever organizationId the
+ * client asked for. Anyone who could reach the server could subscribe to
+ * `org_<uuid>` and receive every customer message, call transcript and handoff event
+ * for that tenant in real time — and emit `agent_whisper` / `agent_takeover` into it.
+ *
+ * The identity is derived from the signed token, never from the message payload.
+ */
+async function authenticateSocket(socket, jwtService) {
+    const raw = socket.handshake.auth?.token ??
+        socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '') ??
+        socket.handshake.query?.token;
+    if (!raw)
+        return null;
+    let payload;
+    try {
+        payload = jwtService.verify(raw);
+    }
+    catch {
+        return null;
+    }
+    if (!payload?.userId || !payload?.organizationId)
+        return null;
+    // Same checks as JwtStrategy: a revoked or deactivated account must not be able to
+    // hold a long-lived socket open past the point its HTTP access was cut off.
+    const user = await database_1.prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: { id: true, organizationId: true, role: true, isActive: true, tokenVersion: true },
+    });
+    if (!user || !user.isActive)
+        return null;
+    if ((payload.tokenVersion ?? 0) !== user.tokenVersion)
+        return null;
+    return {
+        userId: user.id,
+        organizationId: user.organizationId,
+        role: user.role,
+    };
+}
+/**
+ * Allowed WebSocket origins.
+ *
+ * Socket.IO's CORS check is the only thing standing between a token in a browser and
+ * a cross-site page opening a socket with it, so `origin: '*'` is not appropriate for
+ * an authenticated namespace. Defaults to the dashboard origin.
+ */
+function socketCorsOrigin() {
+    const configured = process.env.CORS_ORIGIN || process.env.WEB_BASE_URL;
+    if (!configured || configured === '*') {
+        // Development convenience only; production sets CORS_ORIGIN.
+        return process.env.NODE_ENV === 'production' ? false : true;
+    }
+    return configured.split(',').map((o) => o.trim()).filter(Boolean);
+}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9ldmVudHMvc29ja2V0LWF1dGgudHMiLCJtYXBwaW5ncyI6Ijs7QUFxQkEsZ0RBbUNDO0FBU0QsNENBT0M7QUF0RUQsNENBQXVDO0FBUXZDOzs7Ozs7Ozs7O0dBVUc7QUFDSSxLQUFLLFVBQVUsa0JBQWtCLENBQ3RDLE1BQWMsRUFDZCxVQUFzQjtJQUV0QixNQUFNLEdBQUcsR0FDTixNQUFNLENBQUMsU0FBUyxDQUFDLElBQUksRUFBRSxLQUE0QjtRQUNuRCxNQUFNLENBQUMsU0FBUyxDQUFDLE9BQU8sRUFBRSxhQUFvQyxFQUFFLE9BQU8sQ0FBQyxhQUFhLEVBQUUsRUFBRSxDQUFDO1FBQzFGLE1BQU0sQ0FBQyxTQUFTLENBQUMsS0FBSyxFQUFFLEtBQTRCLENBQUM7SUFFeEQsSUFBSSxDQUFDLEdBQUc7UUFBRSxPQUFPLElBQUksQ0FBQztJQUV0QixJQUFJLE9BQVksQ0FBQztJQUNqQixJQUFJLENBQUM7UUFDSCxPQUFPLEdBQUcsVUFBVSxDQUFDLE1BQU0sQ0FBQyxHQUFHLENBQUMsQ0FBQztJQUNuQyxDQUFDO0lBQUMsTUFBTSxDQUFDO1FBQ1AsT0FBTyxJQUFJLENBQUM7SUFDZCxDQUFDO0lBRUQsSUFBSSxDQUFDLE9BQU8sRUFBRSxNQUFNLElBQUksQ0FBQyxPQUFPLEVBQUUsY0FBYztRQUFFLE9BQU8sSUFBSSxDQUFDO0lBRTlELG1GQUFtRjtJQUNuRiw0RUFBNEU7SUFDNUUsTUFBTSxJQUFJLEdBQUcsTUFBTSxpQkFBTSxDQUFDLElBQUksQ0FBQyxVQUFVLENBQUM7UUFDeEMsS0FBSyxFQUFFLEVBQUUsRUFBRSxFQUFFLE9BQU8sQ0FBQyxNQUFNLEVBQUU7UUFDN0IsTUFBTSxFQUFFLEVBQUUsRUFBRSxFQUFFLElBQUksRUFBRSxjQUFjLEVBQUUsSUFBSSxFQUFFLElBQUksRUFBRSxJQUFJLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxZQUFZLEVBQUUsSUFBSSxFQUFFO0tBQzNGLENBQUMsQ0FBQztJQUVILElBQUksQ0FBQyxJQUFJLElBQUksQ0FBQyxJQUFJLENBQUMsUUFBUTtRQUFFLE9BQU8sSUFBSSxDQUFDO0lBQ3pDLElBQUksQ0FBQyxPQUFPLENBQUMsWUFBWSxJQUFJLENBQUMsQ0FBQyxLQUFLLElBQUksQ0FBQyxZQUFZO1FBQUUsT0FBTyxJQUFJLENBQUM7SUFFbkUsT0FBTztRQUNMLE1BQU0sRUFBRSxJQUFJLENBQUMsRUFBRTtRQUNmLGNBQWMsRUFBRSxJQUFJLENBQUMsY0FBYztRQUNuQyxJQUFJLEVBQUUsSUFBSSxDQUFDLElBQUk7S0FDaEIsQ0FBQztBQUNKLENBQUM7QUFFRDs7Ozs7O0dBTUc7QUFDSCxTQUFnQixnQkFBZ0I7SUFDOUIsTUFBTSxVQUFVLEdBQUcsT0FBTyxDQUFDLEdBQUcsQ0FBQyxXQUFXLElBQUksT0FBTyxDQUFDLEdBQUcsQ0FBQyxZQUFZLENBQUM7SUFDdkUsSUFBSSxDQUFDLFVBQVUsSUFBSSxVQUFVLEtBQUssR0FBRyxFQUFFLENBQUM7UUFDdEMsNkRBQTZEO1FBQzdELE9BQU8sT0FBTyxDQUFDLEdBQUcsQ0FBQyxRQUFRLEtBQUssWUFBWSxDQUFDLENBQUMsQ0FBQyxLQUFLLENBQUMsQ0FBQyxDQUFDLElBQUksQ0FBQztJQUM5RCxDQUFDO0lBQ0QsT0FBTyxVQUFVLENBQUMsS0FBSyxDQUFDLEdBQUcsQ0FBQyxDQUFDLEdBQUcsQ0FBQyxDQUFDLENBQUMsRUFBRSxFQUFFLENBQUMsQ0FBQyxDQUFDLElBQUksRUFBRSxDQUFDLENBQUMsTUFBTSxDQUFDLE9BQU8sQ0FBQyxDQUFDO0FBQ3BFLENBQUMiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9ldmVudHMvc29ja2V0LWF1dGgudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgSnd0U2VydmljZSB9IGZyb20gJ0BuZXN0anMvand0JztcbmltcG9ydCB7IFNvY2tldCB9IGZyb20gJ3NvY2tldC5pbyc7XG5pbXBvcnQgeyBwcmlzbWEgfSBmcm9tICdAYWNlL2RhdGFiYXNlJztcblxuZXhwb3J0IGludGVyZmFjZSBTb2NrZXRJZGVudGl0eSB7XG4gIHVzZXJJZDogc3RyaW5nO1xuICBvcmdhbml6YXRpb25JZDogc3RyaW5nO1xuICByb2xlOiBzdHJpbmc7XG59XG5cbi8qKlxuICogQXV0aGVudGljYXRlcyBhIFNvY2tldC5JTyBjb25uZWN0aW9uIGZyb20gaXRzIEpXVC5cbiAqXG4gKiBCb3RoIGdhdGV3YXlzIHdlcmUgcHJldmlvdXNseSB3aWRlIG9wZW46IGBjb3JzOiB7IG9yaWdpbjogJyonIH1gLCBubyBoYW5kc2hha2VcbiAqIGNoZWNrLCBhbmQgYSBgam9pbl9vcmdhbml6YXRpb25gIGhhbmRsZXIgdGhhdCBqb2luZWQgd2hhdGV2ZXIgb3JnYW5pemF0aW9uSWQgdGhlXG4gKiBjbGllbnQgYXNrZWQgZm9yLiBBbnlvbmUgd2hvIGNvdWxkIHJlYWNoIHRoZSBzZXJ2ZXIgY291bGQgc3Vic2NyaWJlIHRvXG4gKiBgb3JnXzx1dWlkPmAgYW5kIHJlY2VpdmUgZXZlcnkgY3VzdG9tZXIgbWVzc2FnZSwgY2FsbCB0cmFuc2NyaXB0IGFuZCBoYW5kb2ZmIGV2ZW50XG4gKiBmb3IgdGhhdCB0ZW5hbnQgaW4gcmVhbCB0aW1lIOKAlCBhbmQgZW1pdCBgYWdlbnRfd2hpc3BlcmAgLyBgYWdlbnRfdGFrZW92ZXJgIGludG8gaXQuXG4gKlxuICogVGhlIGlkZW50aXR5IGlzIGRlcml2ZWQgZnJvbSB0aGUgc2lnbmVkIHRva2VuLCBuZXZlciBmcm9tIHRoZSBtZXNzYWdlIHBheWxvYWQuXG4gKi9cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiBhdXRoZW50aWNhdGVTb2NrZXQoXG4gIHNvY2tldDogU29ja2V0LFxuICBqd3RTZXJ2aWNlOiBKd3RTZXJ2aWNlXG4pOiBQcm9taXNlPFNvY2tldElkZW50aXR5IHwgbnVsbD4ge1xuICBjb25zdCByYXcgPVxuICAgIChzb2NrZXQuaGFuZHNoYWtlLmF1dGg/LnRva2VuIGFzIHN0cmluZyB8IHVuZGVmaW5lZCkgPz9cbiAgICAoc29ja2V0LmhhbmRzaGFrZS5oZWFkZXJzPy5hdXRob3JpemF0aW9uIGFzIHN0cmluZyB8IHVuZGVmaW5lZCk/LnJlcGxhY2UoL15CZWFyZXJcXHMrL2ksICcnKSA/P1xuICAgIChzb2NrZXQuaGFuZHNoYWtlLnF1ZXJ5Py50b2tlbiBhcyBzdHJpbmcgfCB1bmRlZmluZWQpO1xuXG4gIGlmICghcmF3KSByZXR1cm4gbnVsbDtcblxuICBsZXQgcGF5bG9hZDogYW55O1xuICB0cnkge1xuICAgIHBheWxvYWQgPSBqd3RTZXJ2aWNlLnZlcmlmeShyYXcpO1xuICB9IGNhdGNoIHtcbiAgICByZXR1cm4gbnVsbDtcbiAgfVxuXG4gIGlmICghcGF5bG9hZD8udXNlcklkIHx8ICFwYXlsb2FkPy5vcmdhbml6YXRpb25JZCkgcmV0dXJuIG51bGw7XG5cbiAgLy8gU2FtZSBjaGVja3MgYXMgSnd0U3RyYXRlZ3k6IGEgcmV2b2tlZCBvciBkZWFjdGl2YXRlZCBhY2NvdW50IG11c3Qgbm90IGJlIGFibGUgdG9cbiAgLy8gaG9sZCBhIGxvbmctbGl2ZWQgc29ja2V0IG9wZW4gcGFzdCB0aGUgcG9pbnQgaXRzIEhUVFAgYWNjZXNzIHdhcyBjdXQgb2ZmLlxuICBjb25zdCB1c2VyID0gYXdhaXQgcHJpc21hLnVzZXIuZmluZFVuaXF1ZSh7XG4gICAgd2hlcmU6IHsgaWQ6IHBheWxvYWQudXNlcklkIH0sXG4gICAgc2VsZWN0OiB7IGlkOiB0cnVlLCBvcmdhbml6YXRpb25JZDogdHJ1ZSwgcm9sZTogdHJ1ZSwgaXNBY3RpdmU6IHRydWUsIHRva2VuVmVyc2lvbjogdHJ1ZSB9LFxuICB9KTtcblxuICBpZiAoIXVzZXIgfHwgIXVzZXIuaXNBY3RpdmUpIHJldHVybiBudWxsO1xuICBpZiAoKHBheWxvYWQudG9rZW5WZXJzaW9uID8/IDApICE9PSB1c2VyLnRva2VuVmVyc2lvbikgcmV0dXJuIG51bGw7XG5cbiAgcmV0dXJuIHtcbiAgICB1c2VySWQ6IHVzZXIuaWQsXG4gICAgb3JnYW5pemF0aW9uSWQ6IHVzZXIub3JnYW5pemF0aW9uSWQsXG4gICAgcm9sZTogdXNlci5yb2xlLFxuICB9O1xufVxuXG4vKipcbiAqIEFsbG93ZWQgV2ViU29ja2V0IG9yaWdpbnMuXG4gKlxuICogU29ja2V0LklPJ3MgQ09SUyBjaGVjayBpcyB0aGUgb25seSB0aGluZyBzdGFuZGluZyBiZXR3ZWVuIGEgdG9rZW4gaW4gYSBicm93c2VyIGFuZFxuICogYSBjcm9zcy1zaXRlIHBhZ2Ugb3BlbmluZyBhIHNvY2tldCB3aXRoIGl0LCBzbyBgb3JpZ2luOiAnKidgIGlzIG5vdCBhcHByb3ByaWF0ZSBmb3JcbiAqIGFuIGF1dGhlbnRpY2F0ZWQgbmFtZXNwYWNlLiBEZWZhdWx0cyB0byB0aGUgZGFzaGJvYXJkIG9yaWdpbi5cbiAqL1xuZXhwb3J0IGZ1bmN0aW9uIHNvY2tldENvcnNPcmlnaW4oKTogc3RyaW5nIHwgc3RyaW5nW10gfCBib29sZWFuIHtcbiAgY29uc3QgY29uZmlndXJlZCA9IHByb2Nlc3MuZW52LkNPUlNfT1JJR0lOIHx8IHByb2Nlc3MuZW52LldFQl9CQVNFX1VSTDtcbiAgaWYgKCFjb25maWd1cmVkIHx8IGNvbmZpZ3VyZWQgPT09ICcqJykge1xuICAgIC8vIERldmVsb3BtZW50IGNvbnZlbmllbmNlIG9ubHk7IHByb2R1Y3Rpb24gc2V0cyBDT1JTX09SSUdJTi5cbiAgICByZXR1cm4gcHJvY2Vzcy5lbnYuTk9ERV9FTlYgPT09ICdwcm9kdWN0aW9uJyA/IGZhbHNlIDogdHJ1ZTtcbiAgfVxuICByZXR1cm4gY29uZmlndXJlZC5zcGxpdCgnLCcpLm1hcCgobykgPT4gby50cmltKCkpLmZpbHRlcihCb29sZWFuKTtcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

@@ -1,0 +1,192 @@
+41dcf74eb31916673c92403db81cb6ae
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.UpdateMemberStatusDto = exports.ChangePasswordDto = exports.SetupAccountDto = exports.ResetPasswordDto = exports.ForgotPasswordDto = exports.RefreshTokenDto = exports.ResendVerificationDto = exports.VerifyEmailDto = exports.LoginDto = exports.RegisterDto = void 0;
+const class_validator_1 = require("class-validator");
+const shared_types_1 = require("@ace/shared-types");
+/**
+ * Auth request DTOs.
+ *
+ * These are real classes rather than inline TypeScript object types on purpose:
+ * the global ValidationPipe (main.ts) can only validate — and only strips unknown
+ * keys from — a body whose declared type is a class with class-validator metadata.
+ * With inline `@Body() body: { email: string; … }` types the pipe has no metatype to
+ * work with and silently forwards whatever the client sent, so a mismatched field
+ * name (the dashboard used to post `adminEmail`/`adminPassword`) reached the service
+ * as `undefined` and blew up deep inside bcrypt/Prisma as a 500 instead of a 400.
+ */
+class RegisterDto {
+    organizationName;
+    industry;
+    email;
+    password;
+    fullName;
+    phone;
+    country;
+}
+exports.RegisterDto = RegisterDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(2),
+    (0, class_validator_1.MaxLength)(120),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "organizationName", void 0);
+__decorate([
+    (0, class_validator_1.IsEnum)(shared_types_1.IndustryType, {
+        message: `industry must be one of: ${Object.values(shared_types_1.IndustryType).join(', ')}`,
+    }),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "industry", void 0);
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "email", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(8, { message: 'password must be at least 8 characters long' }),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "password", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(2),
+    (0, class_validator_1.MaxLength)(120),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "fullName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(32),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "phone", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(80),
+    __metadata("design:type", String)
+], RegisterDto.prototype, "country", void 0);
+class LoginDto {
+    email;
+    password;
+}
+exports.LoginDto = LoginDto;
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], LoginDto.prototype, "email", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], LoginDto.prototype, "password", void 0);
+class VerifyEmailDto {
+    token;
+}
+exports.VerifyEmailDto = VerifyEmailDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], VerifyEmailDto.prototype, "token", void 0);
+class ResendVerificationDto {
+    email;
+}
+exports.ResendVerificationDto = ResendVerificationDto;
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], ResendVerificationDto.prototype, "email", void 0);
+class RefreshTokenDto {
+    refreshToken;
+}
+exports.RefreshTokenDto = RefreshTokenDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], RefreshTokenDto.prototype, "refreshToken", void 0);
+class ForgotPasswordDto {
+    email;
+}
+exports.ForgotPasswordDto = ForgotPasswordDto;
+__decorate([
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], ForgotPasswordDto.prototype, "email", void 0);
+class ResetPasswordDto {
+    token;
+    newPassword;
+    /**
+     * Optional. The reset token is already a 256-bit single-use secret stored as a
+     * SHA-256 hash, so it identifies the user on its own. Older reset links carried
+     * an `email` query param; it is accepted and cross-checked when present.
+     */
+    email;
+}
+exports.ResetPasswordDto = ResetPasswordDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], ResetPasswordDto.prototype, "token", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(8, { message: 'newPassword must be at least 8 characters long' }),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], ResetPasswordDto.prototype, "newPassword", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEmail)(),
+    __metadata("design:type", String)
+], ResetPasswordDto.prototype, "email", void 0);
+class SetupAccountDto {
+    token;
+    password;
+}
+exports.SetupAccountDto = SetupAccountDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], SetupAccountDto.prototype, "token", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(8, { message: 'password must be at least 8 characters long' }),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], SetupAccountDto.prototype, "password", void 0);
+class ChangePasswordDto {
+    currentPassword;
+    newPassword;
+}
+exports.ChangePasswordDto = ChangePasswordDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], ChangePasswordDto.prototype, "currentPassword", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(8, { message: 'newPassword must be at least 8 characters long' }),
+    (0, class_validator_1.MaxLength)(128),
+    __metadata("design:type", String)
+], ChangePasswordDto.prototype, "newPassword", void 0);
+class UpdateMemberStatusDto {
+    isActive;
+}
+exports.UpdateMemberStatusDto = UpdateMemberStatusDto;
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateMemberStatusDto.prototype, "isActive", void 0);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hdXRoL2F1dGguZHRvLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLHFEQVF5QjtBQUN6QixvREFBaUQ7QUFFakQ7Ozs7Ozs7Ozs7R0FVRztBQUVILE1BQWEsV0FBVztJQUl0QixnQkFBZ0IsQ0FBVTtJQUsxQixRQUFRLENBQWdCO0lBR3hCLEtBQUssQ0FBVTtJQUtmLFFBQVEsQ0FBVTtJQUtsQixRQUFRLENBQVU7SUFLbEIsS0FBSyxDQUFVO0lBS2YsT0FBTyxDQUFVO0NBQ2xCO0FBakNELGtDQWlDQztBQTdCQztJQUhDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7SUFDWixJQUFBLDJCQUFTLEVBQUMsR0FBRyxDQUFDOztxREFDVztBQUsxQjtJQUhDLElBQUEsd0JBQU0sRUFBQywyQkFBWSxFQUFFO1FBQ3BCLE9BQU8sRUFBRSw0QkFBNEIsTUFBTSxDQUFDLE1BQU0sQ0FBQywyQkFBWSxDQUFDLENBQUMsSUFBSSxDQUFDLElBQUksQ0FBQyxFQUFFO0tBQzlFLENBQUM7OzZDQUNzQjtBQUd4QjtJQURDLElBQUEseUJBQU8sR0FBRTs7MENBQ0s7QUFLZjtJQUhDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLEVBQUUsRUFBRSxPQUFPLEVBQUUsNkNBQTZDLEVBQUUsQ0FBQztJQUN4RSxJQUFBLDJCQUFTLEVBQUMsR0FBRyxDQUFDOzs2Q0FDRztBQUtsQjtJQUhDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7SUFDWixJQUFBLDJCQUFTLEVBQUMsR0FBRyxDQUFDOzs2Q0FDRztBQUtsQjtJQUhDLElBQUEsNEJBQVUsR0FBRTtJQUNaLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxFQUFFLENBQUM7OzBDQUNDO0FBS2Y7SUFIQyxJQUFBLDRCQUFVLEdBQUU7SUFDWixJQUFBLDBCQUFRLEdBQUU7SUFDVixJQUFBLDJCQUFTLEVBQUMsRUFBRSxDQUFDOzs0Q0FDRztBQUduQixNQUFhLFFBQVE7SUFFbkIsS0FBSyxDQUFVO0lBSWYsUUFBUSxDQUFVO0NBQ25CO0FBUEQsNEJBT0M7QUFMQztJQURDLElBQUEseUJBQU8sR0FBRTs7dUNBQ0s7QUFJZjtJQUZDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7OzBDQUNLO0FBR3BCLE1BQWEsY0FBYztJQUd6QixLQUFLLENBQVU7Q0FDaEI7QUFKRCx3Q0FJQztBQURDO0lBRkMsSUFBQSwwQkFBUSxHQUFFO0lBQ1YsSUFBQSwyQkFBUyxFQUFDLENBQUMsQ0FBQzs7NkNBQ0U7QUFHakIsTUFBYSxxQkFBcUI7SUFFaEMsS0FBSyxDQUFVO0NBQ2hCO0FBSEQsc0RBR0M7QUFEQztJQURDLElBQUEseUJBQU8sR0FBRTs7b0RBQ0s7QUFHakIsTUFBYSxlQUFlO0lBRzFCLFlBQVksQ0FBVTtDQUN2QjtBQUpELDBDQUlDO0FBREM7SUFGQyxJQUFBLDBCQUFRLEdBQUU7SUFDVixJQUFBLDJCQUFTLEVBQUMsQ0FBQyxDQUFDOztxREFDUztBQUd4QixNQUFhLGlCQUFpQjtJQUU1QixLQUFLLENBQVU7Q0FDaEI7QUFIRCw4Q0FHQztBQURDO0lBREMsSUFBQSx5QkFBTyxHQUFFOztnREFDSztBQUdqQixNQUFhLGdCQUFnQjtJQUczQixLQUFLLENBQVU7SUFLZixXQUFXLENBQVU7SUFFckI7Ozs7T0FJRztJQUdILEtBQUssQ0FBVTtDQUNoQjtBQWxCRCw0Q0FrQkM7QUFmQztJQUZDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7OytDQUNFO0FBS2Y7SUFIQyxJQUFBLDBCQUFRLEdBQUU7SUFDVixJQUFBLDJCQUFTLEVBQUMsQ0FBQyxFQUFFLEVBQUUsT0FBTyxFQUFFLGdEQUFnRCxFQUFFLENBQUM7SUFDM0UsSUFBQSwyQkFBUyxFQUFDLEdBQUcsQ0FBQzs7cURBQ007QUFTckI7SUFGQyxJQUFBLDRCQUFVLEdBQUU7SUFDWixJQUFBLHlCQUFPLEdBQUU7OytDQUNLO0FBR2pCLE1BQWEsZUFBZTtJQUcxQixLQUFLLENBQVU7SUFLZixRQUFRLENBQVU7Q0FDbkI7QUFURCwwQ0FTQztBQU5DO0lBRkMsSUFBQSwwQkFBUSxHQUFFO0lBQ1YsSUFBQSwyQkFBUyxFQUFDLENBQUMsQ0FBQzs7OENBQ0U7QUFLZjtJQUhDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLEVBQUUsRUFBRSxPQUFPLEVBQUUsNkNBQTZDLEVBQUUsQ0FBQztJQUN4RSxJQUFBLDJCQUFTLEVBQUMsR0FBRyxDQUFDOztpREFDRztBQUdwQixNQUFhLGlCQUFpQjtJQUc1QixlQUFlLENBQVU7SUFLekIsV0FBVyxDQUFVO0NBQ3RCO0FBVEQsOENBU0M7QUFOQztJQUZDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7OzBEQUNZO0FBS3pCO0lBSEMsSUFBQSwwQkFBUSxHQUFFO0lBQ1YsSUFBQSwyQkFBUyxFQUFDLENBQUMsRUFBRSxFQUFFLE9BQU8sRUFBRSxnREFBZ0QsRUFBRSxDQUFDO0lBQzNFLElBQUEsMkJBQVMsRUFBQyxHQUFHLENBQUM7O3NEQUNNO0FBR3ZCLE1BQWEscUJBQXFCO0lBRWhDLFFBQVEsQ0FBVztDQUNwQjtBQUhELHNEQUdDO0FBREM7SUFEQyxJQUFBLDJCQUFTLEdBQUU7O3VEQUNPIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvYXV0aC9hdXRoLmR0by50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQge1xuICBJc0Jvb2xlYW4sXG4gIElzRW1haWwsXG4gIElzRW51bSxcbiAgSXNPcHRpb25hbCxcbiAgSXNTdHJpbmcsXG4gIE1heExlbmd0aCxcbiAgTWluTGVuZ3RoLFxufSBmcm9tICdjbGFzcy12YWxpZGF0b3InO1xuaW1wb3J0IHsgSW5kdXN0cnlUeXBlIH0gZnJvbSAnQGFjZS9zaGFyZWQtdHlwZXMnO1xuXG4vKipcbiAqIEF1dGggcmVxdWVzdCBEVE9zLlxuICpcbiAqIFRoZXNlIGFyZSByZWFsIGNsYXNzZXMgcmF0aGVyIHRoYW4gaW5saW5lIFR5cGVTY3JpcHQgb2JqZWN0IHR5cGVzIG9uIHB1cnBvc2U6XG4gKiB0aGUgZ2xvYmFsIFZhbGlkYXRpb25QaXBlIChtYWluLnRzKSBjYW4gb25seSB2YWxpZGF0ZSDigJQgYW5kIG9ubHkgc3RyaXBzIHVua25vd25cbiAqIGtleXMgZnJvbSDigJQgYSBib2R5IHdob3NlIGRlY2xhcmVkIHR5cGUgaXMgYSBjbGFzcyB3aXRoIGNsYXNzLXZhbGlkYXRvciBtZXRhZGF0YS5cbiAqIFdpdGggaW5saW5lIGBAQm9keSgpIGJvZHk6IHsgZW1haWw6IHN0cmluZzsg4oCmIH1gIHR5cGVzIHRoZSBwaXBlIGhhcyBubyBtZXRhdHlwZSB0b1xuICogd29yayB3aXRoIGFuZCBzaWxlbnRseSBmb3J3YXJkcyB3aGF0ZXZlciB0aGUgY2xpZW50IHNlbnQsIHNvIGEgbWlzbWF0Y2hlZCBmaWVsZFxuICogbmFtZSAodGhlIGRhc2hib2FyZCB1c2VkIHRvIHBvc3QgYGFkbWluRW1haWxgL2BhZG1pblBhc3N3b3JkYCkgcmVhY2hlZCB0aGUgc2VydmljZVxuICogYXMgYHVuZGVmaW5lZGAgYW5kIGJsZXcgdXAgZGVlcCBpbnNpZGUgYmNyeXB0L1ByaXNtYSBhcyBhIDUwMCBpbnN0ZWFkIG9mIGEgNDAwLlxuICovXG5cbmV4cG9ydCBjbGFzcyBSZWdpc3RlckR0byB7XG4gIEBJc1N0cmluZygpXG4gIEBNaW5MZW5ndGgoMilcbiAgQE1heExlbmd0aCgxMjApXG4gIG9yZ2FuaXphdGlvbk5hbWUhOiBzdHJpbmc7XG5cbiAgQElzRW51bShJbmR1c3RyeVR5cGUsIHtcbiAgICBtZXNzYWdlOiBgaW5kdXN0cnkgbXVzdCBiZSBvbmUgb2Y6ICR7T2JqZWN0LnZhbHVlcyhJbmR1c3RyeVR5cGUpLmpvaW4oJywgJyl9YCxcbiAgfSlcbiAgaW5kdXN0cnkhOiBJbmR1c3RyeVR5cGU7XG5cbiAgQElzRW1haWwoKVxuICBlbWFpbCE6IHN0cmluZztcblxuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDgsIHsgbWVzc2FnZTogJ3Bhc3N3b3JkIG11c3QgYmUgYXQgbGVhc3QgOCBjaGFyYWN0ZXJzIGxvbmcnIH0pXG4gIEBNYXhMZW5ndGgoMTI4KVxuICBwYXNzd29yZCE6IHN0cmluZztcblxuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDIpXG4gIEBNYXhMZW5ndGgoMTIwKVxuICBmdWxsTmFtZSE6IHN0cmluZztcblxuICBASXNPcHRpb25hbCgpXG4gIEBJc1N0cmluZygpXG4gIEBNYXhMZW5ndGgoMzIpXG4gIHBob25lPzogc3RyaW5nO1xuXG4gIEBJc09wdGlvbmFsKClcbiAgQElzU3RyaW5nKClcbiAgQE1heExlbmd0aCg4MClcbiAgY291bnRyeT86IHN0cmluZztcbn1cblxuZXhwb3J0IGNsYXNzIExvZ2luRHRvIHtcbiAgQElzRW1haWwoKVxuICBlbWFpbCE6IHN0cmluZztcblxuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDEpXG4gIHBhc3N3b3JkITogc3RyaW5nO1xufVxuXG5leHBvcnQgY2xhc3MgVmVyaWZ5RW1haWxEdG8ge1xuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDEpXG4gIHRva2VuITogc3RyaW5nO1xufVxuXG5leHBvcnQgY2xhc3MgUmVzZW5kVmVyaWZpY2F0aW9uRHRvIHtcbiAgQElzRW1haWwoKVxuICBlbWFpbCE6IHN0cmluZztcbn1cblxuZXhwb3J0IGNsYXNzIFJlZnJlc2hUb2tlbkR0byB7XG4gIEBJc1N0cmluZygpXG4gIEBNaW5MZW5ndGgoMSlcbiAgcmVmcmVzaFRva2VuITogc3RyaW5nO1xufVxuXG5leHBvcnQgY2xhc3MgRm9yZ290UGFzc3dvcmREdG8ge1xuICBASXNFbWFpbCgpXG4gIGVtYWlsITogc3RyaW5nO1xufVxuXG5leHBvcnQgY2xhc3MgUmVzZXRQYXNzd29yZER0byB7XG4gIEBJc1N0cmluZygpXG4gIEBNaW5MZW5ndGgoMSlcbiAgdG9rZW4hOiBzdHJpbmc7XG5cbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCg4LCB7IG1lc3NhZ2U6ICduZXdQYXNzd29yZCBtdXN0IGJlIGF0IGxlYXN0IDggY2hhcmFjdGVycyBsb25nJyB9KVxuICBATWF4TGVuZ3RoKDEyOClcbiAgbmV3UGFzc3dvcmQhOiBzdHJpbmc7XG5cbiAgLyoqXG4gICAqIE9wdGlvbmFsLiBUaGUgcmVzZXQgdG9rZW4gaXMgYWxyZWFkeSBhIDI1Ni1iaXQgc2luZ2xlLXVzZSBzZWNyZXQgc3RvcmVkIGFzIGFcbiAgICogU0hBLTI1NiBoYXNoLCBzbyBpdCBpZGVudGlmaWVzIHRoZSB1c2VyIG9uIGl0cyBvd24uIE9sZGVyIHJlc2V0IGxpbmtzIGNhcnJpZWRcbiAgICogYW4gYGVtYWlsYCBxdWVyeSBwYXJhbTsgaXQgaXMgYWNjZXB0ZWQgYW5kIGNyb3NzLWNoZWNrZWQgd2hlbiBwcmVzZW50LlxuICAgKi9cbiAgQElzT3B0aW9uYWwoKVxuICBASXNFbWFpbCgpXG4gIGVtYWlsPzogc3RyaW5nO1xufVxuXG5leHBvcnQgY2xhc3MgU2V0dXBBY2NvdW50RHRvIHtcbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCgxKVxuICB0b2tlbiE6IHN0cmluZztcblxuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDgsIHsgbWVzc2FnZTogJ3Bhc3N3b3JkIG11c3QgYmUgYXQgbGVhc3QgOCBjaGFyYWN0ZXJzIGxvbmcnIH0pXG4gIEBNYXhMZW5ndGgoMTI4KVxuICBwYXNzd29yZCE6IHN0cmluZztcbn1cblxuZXhwb3J0IGNsYXNzIENoYW5nZVBhc3N3b3JkRHRvIHtcbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCgxKVxuICBjdXJyZW50UGFzc3dvcmQhOiBzdHJpbmc7XG5cbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCg4LCB7IG1lc3NhZ2U6ICduZXdQYXNzd29yZCBtdXN0IGJlIGF0IGxlYXN0IDggY2hhcmFjdGVycyBsb25nJyB9KVxuICBATWF4TGVuZ3RoKDEyOClcbiAgbmV3UGFzc3dvcmQhOiBzdHJpbmc7XG59XG5cbmV4cG9ydCBjbGFzcyBVcGRhdGVNZW1iZXJTdGF0dXNEdG8ge1xuICBASXNCb29sZWFuKClcbiAgaXNBY3RpdmUhOiBib29sZWFuO1xufVxuIl0sInZlcnNpb24iOjN9

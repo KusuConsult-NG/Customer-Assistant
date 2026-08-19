@@ -1,0 +1,48 @@
+a1bde429f7ef56cb5d1364d0876da2b7
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SubscriptionGuard = void 0;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
+const skip_subscription_check_decorator_1 = require("../decorators/skip-subscription-check.decorator");
+const database_1 = require("@ace/database");
+let SubscriptionGuard = class SubscriptionGuard {
+    reflector;
+    constructor(reflector) {
+        this.reflector = reflector;
+    }
+    async canActivate(context) {
+        const skip = this.reflector.getAllAndOverride(skip_subscription_check_decorator_1.SKIP_SUBSCRIPTION_CHECK_KEY, [context.getHandler(), context.getClass()]);
+        if (skip) {
+            return true;
+        }
+        const request = context.switchToHttp().getRequest();
+        const user = request.user;
+        if (!user || !user.organizationId) {
+            return true;
+        }
+        const org = await database_1.prisma.organization.findUnique({
+            where: { id: user.organizationId },
+            select: { subscriptionStatus: true },
+        });
+        if (org && (org.subscriptionStatus === 'CANCELLED' || org.subscriptionStatus === 'PAST_DUE')) {
+            throw new common_1.ForbiddenException('Your subscription is inactive. Please renew at /billing.');
+        }
+        return true;
+    }
+};
+exports.SubscriptionGuard = SubscriptionGuard;
+exports.SubscriptionGuard = SubscriptionGuard = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [core_1.Reflector])
+], SubscriptionGuard);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9jb21tb24vZ3VhcmRzL3N1YnNjcmlwdGlvbi5ndWFyZC50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwyQ0FLd0I7QUFDeEIsdUNBQXlDO0FBQ3pDLHVHQUE4RjtBQUM5Riw0Q0FBdUM7QUFHaEMsSUFBTSxpQkFBaUIsR0FBdkIsTUFBTSxpQkFBaUI7SUFDUjtJQUFwQixZQUFvQixTQUFvQjtRQUFwQixjQUFTLEdBQVQsU0FBUyxDQUFXO0lBQUcsQ0FBQztJQUU1QyxLQUFLLENBQUMsV0FBVyxDQUFDLE9BQXlCO1FBQ3pDLE1BQU0sSUFBSSxHQUFHLElBQUksQ0FBQyxTQUFTLENBQUMsaUJBQWlCLENBQzNDLCtEQUEyQixFQUMzQixDQUFDLE9BQU8sQ0FBQyxVQUFVLEVBQUUsRUFBRSxPQUFPLENBQUMsUUFBUSxFQUFFLENBQUMsQ0FDM0MsQ0FBQztRQUVGLElBQUksSUFBSSxFQUFFLENBQUM7WUFDVCxPQUFPLElBQUksQ0FBQztRQUNkLENBQUM7UUFFRCxNQUFNLE9BQU8sR0FBRyxPQUFPLENBQUMsWUFBWSxFQUFFLENBQUMsVUFBVSxFQUFFLENBQUM7UUFDcEQsTUFBTSxJQUFJLEdBQUcsT0FBTyxDQUFDLElBQUksQ0FBQztRQUUxQixJQUFJLENBQUMsSUFBSSxJQUFJLENBQUMsSUFBSSxDQUFDLGNBQWMsRUFBRSxDQUFDO1lBQ2xDLE9BQU8sSUFBSSxDQUFDO1FBQ2QsQ0FBQztRQUVELE1BQU0sR0FBRyxHQUFHLE1BQU0saUJBQU0sQ0FBQyxZQUFZLENBQUMsVUFBVSxDQUFDO1lBQy9DLEtBQUssRUFBRSxFQUFFLEVBQUUsRUFBRSxJQUFJLENBQUMsY0FBYyxFQUFFO1lBQ2xDLE1BQU0sRUFBRSxFQUFFLGtCQUFrQixFQUFFLElBQUksRUFBRTtTQUNyQyxDQUFDLENBQUM7UUFFSCxJQUFJLEdBQUcsSUFBSSxDQUFDLEdBQUcsQ0FBQyxrQkFBa0IsS0FBSyxXQUFXLElBQUksR0FBRyxDQUFDLGtCQUFrQixLQUFLLFVBQVUsQ0FBQyxFQUFFLENBQUM7WUFDN0YsTUFBTSxJQUFJLDJCQUFrQixDQUFDLDBEQUEwRCxDQUFDLENBQUM7UUFDM0YsQ0FBQztRQUVELE9BQU8sSUFBSSxDQUFDO0lBQ2QsQ0FBQztDQUNGLENBQUE7QUEvQlksOENBQWlCOzRCQUFqQixpQkFBaUI7SUFEN0IsSUFBQSxtQkFBVSxHQUFFO3FDQUVvQixnQkFBUztHQUQ3QixpQkFBaUIsQ0ErQjdCIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvY29tbW9uL2d1YXJkcy9zdWJzY3JpcHRpb24uZ3VhcmQudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHtcbiAgQ2FuQWN0aXZhdGUsXG4gIEV4ZWN1dGlvbkNvbnRleHQsXG4gIEZvcmJpZGRlbkV4Y2VwdGlvbixcbiAgSW5qZWN0YWJsZSxcbn0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgUmVmbGVjdG9yIH0gZnJvbSAnQG5lc3Rqcy9jb3JlJztcbmltcG9ydCB7IFNLSVBfU1VCU0NSSVBUSU9OX0NIRUNLX0tFWSB9IGZyb20gJy4uL2RlY29yYXRvcnMvc2tpcC1zdWJzY3JpcHRpb24tY2hlY2suZGVjb3JhdG9yJztcbmltcG9ydCB7IHByaXNtYSB9IGZyb20gJ0BhY2UvZGF0YWJhc2UnO1xuXG5ASW5qZWN0YWJsZSgpXG5leHBvcnQgY2xhc3MgU3Vic2NyaXB0aW9uR3VhcmQgaW1wbGVtZW50cyBDYW5BY3RpdmF0ZSB7XG4gIGNvbnN0cnVjdG9yKHByaXZhdGUgcmVmbGVjdG9yOiBSZWZsZWN0b3IpIHt9XG5cbiAgYXN5bmMgY2FuQWN0aXZhdGUoY29udGV4dDogRXhlY3V0aW9uQ29udGV4dCk6IFByb21pc2U8Ym9vbGVhbj4ge1xuICAgIGNvbnN0IHNraXAgPSB0aGlzLnJlZmxlY3Rvci5nZXRBbGxBbmRPdmVycmlkZTxib29sZWFuPihcbiAgICAgIFNLSVBfU1VCU0NSSVBUSU9OX0NIRUNLX0tFWSxcbiAgICAgIFtjb250ZXh0LmdldEhhbmRsZXIoKSwgY29udGV4dC5nZXRDbGFzcygpXSxcbiAgICApO1xuXG4gICAgaWYgKHNraXApIHtcbiAgICAgIHJldHVybiB0cnVlO1xuICAgIH1cblxuICAgIGNvbnN0IHJlcXVlc3QgPSBjb250ZXh0LnN3aXRjaFRvSHR0cCgpLmdldFJlcXVlc3QoKTtcbiAgICBjb25zdCB1c2VyID0gcmVxdWVzdC51c2VyO1xuXG4gICAgaWYgKCF1c2VyIHx8ICF1c2VyLm9yZ2FuaXphdGlvbklkKSB7XG4gICAgICByZXR1cm4gdHJ1ZTtcbiAgICB9XG5cbiAgICBjb25zdCBvcmcgPSBhd2FpdCBwcmlzbWEub3JnYW5pemF0aW9uLmZpbmRVbmlxdWUoe1xuICAgICAgd2hlcmU6IHsgaWQ6IHVzZXIub3JnYW5pemF0aW9uSWQgfSxcbiAgICAgIHNlbGVjdDogeyBzdWJzY3JpcHRpb25TdGF0dXM6IHRydWUgfSxcbiAgICB9KTtcblxuICAgIGlmIChvcmcgJiYgKG9yZy5zdWJzY3JpcHRpb25TdGF0dXMgPT09ICdDQU5DRUxMRUQnIHx8IG9yZy5zdWJzY3JpcHRpb25TdGF0dXMgPT09ICdQQVNUX0RVRScpKSB7XG4gICAgICB0aHJvdyBuZXcgRm9yYmlkZGVuRXhjZXB0aW9uKCdZb3VyIHN1YnNjcmlwdGlvbiBpcyBpbmFjdGl2ZS4gUGxlYXNlIHJlbmV3IGF0IC9iaWxsaW5nLicpO1xuICAgIH1cblxuICAgIHJldHVybiB0cnVlO1xuICB9XG59XG4iXSwidmVyc2lvbiI6M30=

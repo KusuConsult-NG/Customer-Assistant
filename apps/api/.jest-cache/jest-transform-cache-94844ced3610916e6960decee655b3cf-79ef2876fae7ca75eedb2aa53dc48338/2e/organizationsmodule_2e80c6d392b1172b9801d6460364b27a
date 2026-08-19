@@ -1,0 +1,24 @@
+645fd62b35bf0dd3e32c7dd2a8b63d59
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OrganizationsModule = void 0;
+const common_1 = require("@nestjs/common");
+const organizations_service_1 = require("./organizations.service");
+const organizations_controller_1 = require("./organizations.controller");
+let OrganizationsModule = class OrganizationsModule {
+};
+exports.OrganizationsModule = OrganizationsModule;
+exports.OrganizationsModule = OrganizationsModule = __decorate([
+    (0, common_1.Module)({
+        providers: [organizations_service_1.OrganizationsService],
+        controllers: [organizations_controller_1.OrganizationsController],
+        exports: [organizations_service_1.OrganizationsService],
+    })
+], OrganizationsModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9vcmdhbml6YXRpb25zL29yZ2FuaXphdGlvbnMubW9kdWxlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUFBLDJDQUF3QztBQUN4QyxtRUFBK0Q7QUFDL0QseUVBQXFFO0FBTzlELElBQU0sbUJBQW1CLEdBQXpCLE1BQU0sbUJBQW1CO0NBQUcsQ0FBQTtBQUF0QixrREFBbUI7OEJBQW5CLG1CQUFtQjtJQUwvQixJQUFBLGVBQU0sRUFBQztRQUNOLFNBQVMsRUFBRSxDQUFDLDRDQUFvQixDQUFDO1FBQ2pDLFdBQVcsRUFBRSxDQUFDLGtEQUF1QixDQUFDO1FBQ3RDLE9BQU8sRUFBRSxDQUFDLDRDQUFvQixDQUFDO0tBQ2hDLENBQUM7R0FDVyxtQkFBbUIsQ0FBRyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL29yZ2FuaXphdGlvbnMvb3JnYW5pemF0aW9ucy5tb2R1bGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgTW9kdWxlIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgT3JnYW5pemF0aW9uc1NlcnZpY2UgfSBmcm9tICcuL29yZ2FuaXphdGlvbnMuc2VydmljZSc7XG5pbXBvcnQgeyBPcmdhbml6YXRpb25zQ29udHJvbGxlciB9IGZyb20gJy4vb3JnYW5pemF0aW9ucy5jb250cm9sbGVyJztcblxuQE1vZHVsZSh7XG4gIHByb3ZpZGVyczogW09yZ2FuaXphdGlvbnNTZXJ2aWNlXSxcbiAgY29udHJvbGxlcnM6IFtPcmdhbml6YXRpb25zQ29udHJvbGxlcl0sXG4gIGV4cG9ydHM6IFtPcmdhbml6YXRpb25zU2VydmljZV0sXG59KVxuZXhwb3J0IGNsYXNzIE9yZ2FuaXphdGlvbnNNb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

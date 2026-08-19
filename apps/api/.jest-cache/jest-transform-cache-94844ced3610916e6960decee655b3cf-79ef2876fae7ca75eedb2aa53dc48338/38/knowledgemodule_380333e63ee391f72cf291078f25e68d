@@ -1,0 +1,29 @@
+4797df6eaacf17cd0413232b31e92cbf
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.KnowledgeModule = void 0;
+const common_1 = require("@nestjs/common");
+const knowledge_service_1 = require("./knowledge.service");
+const knowledge_controller_1 = require("./knowledge.controller");
+const faq_service_1 = require("./faq.service");
+const faq_controller_1 = require("./faq.controller");
+const document_worker_host_1 = require("./document-worker.host");
+let KnowledgeModule = class KnowledgeModule {
+};
+exports.KnowledgeModule = KnowledgeModule;
+exports.KnowledgeModule = KnowledgeModule = __decorate([
+    (0, common_1.Module)({
+        // DocumentWorkerHost starts the BullMQ ingestion worker in-process when
+        // REDIS_URL is set — without it, enqueued uploads are never consumed.
+        providers: [knowledge_service_1.KnowledgeService, faq_service_1.FaqService, document_worker_host_1.DocumentWorkerHost],
+        controllers: [knowledge_controller_1.KnowledgeController, faq_controller_1.FaqController],
+        exports: [knowledge_service_1.KnowledgeService, faq_service_1.FaqService],
+    })
+], KnowledgeModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9rbm93bGVkZ2Uva25vd2xlZGdlLm1vZHVsZS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBd0M7QUFDeEMsMkRBQXVEO0FBQ3ZELGlFQUE2RDtBQUM3RCwrQ0FBMkM7QUFDM0MscURBQWlEO0FBQ2pELGlFQUE0RDtBQVNyRCxJQUFNLGVBQWUsR0FBckIsTUFBTSxlQUFlO0NBQUcsQ0FBQTtBQUFsQiwwQ0FBZTswQkFBZixlQUFlO0lBUDNCLElBQUEsZUFBTSxFQUFDO1FBQ04sd0VBQXdFO1FBQ3hFLHNFQUFzRTtRQUN0RSxTQUFTLEVBQUUsQ0FBQyxvQ0FBZ0IsRUFBRSx3QkFBVSxFQUFFLHlDQUFrQixDQUFDO1FBQzdELFdBQVcsRUFBRSxDQUFDLDBDQUFtQixFQUFFLDhCQUFhLENBQUM7UUFDakQsT0FBTyxFQUFFLENBQUMsb0NBQWdCLEVBQUUsd0JBQVUsQ0FBQztLQUN4QyxDQUFDO0dBQ1csZUFBZSxDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMva25vd2xlZGdlL2tub3dsZWRnZS5tb2R1bGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgTW9kdWxlIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgS25vd2xlZGdlU2VydmljZSB9IGZyb20gJy4va25vd2xlZGdlLnNlcnZpY2UnO1xuaW1wb3J0IHsgS25vd2xlZGdlQ29udHJvbGxlciB9IGZyb20gJy4va25vd2xlZGdlLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgRmFxU2VydmljZSB9IGZyb20gJy4vZmFxLnNlcnZpY2UnO1xuaW1wb3J0IHsgRmFxQ29udHJvbGxlciB9IGZyb20gJy4vZmFxLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgRG9jdW1lbnRXb3JrZXJIb3N0IH0gZnJvbSAnLi9kb2N1bWVudC13b3JrZXIuaG9zdCc7XG5cbkBNb2R1bGUoe1xuICAvLyBEb2N1bWVudFdvcmtlckhvc3Qgc3RhcnRzIHRoZSBCdWxsTVEgaW5nZXN0aW9uIHdvcmtlciBpbi1wcm9jZXNzIHdoZW5cbiAgLy8gUkVESVNfVVJMIGlzIHNldCDigJQgd2l0aG91dCBpdCwgZW5xdWV1ZWQgdXBsb2FkcyBhcmUgbmV2ZXIgY29uc3VtZWQuXG4gIHByb3ZpZGVyczogW0tub3dsZWRnZVNlcnZpY2UsIEZhcVNlcnZpY2UsIERvY3VtZW50V29ya2VySG9zdF0sXG4gIGNvbnRyb2xsZXJzOiBbS25vd2xlZGdlQ29udHJvbGxlciwgRmFxQ29udHJvbGxlcl0sXG4gIGV4cG9ydHM6IFtLbm93bGVkZ2VTZXJ2aWNlLCBGYXFTZXJ2aWNlXSxcbn0pXG5leHBvcnQgY2xhc3MgS25vd2xlZGdlTW9kdWxlIHt9XG4iXSwidmVyc2lvbiI6M30=

@@ -1,0 +1,77 @@
+ce214a9a5767fc40413742d76865e803
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AgentToolsModule = void 0;
+const common_1 = require("@nestjs/common");
+const scheduling_module_1 = require("../scheduling/scheduling.module");
+const crm_module_1 = require("../crm/crm.module");
+const knowledge_module_1 = require("../knowledge/knowledge.module");
+const telephony_module_1 = require("../telephony/telephony.module");
+const agent_tools_controller_1 = require("./agent-tools.controller");
+const agent_tools_service_1 = require("./agent-tools.service");
+const agent_provisioning_controller_1 = require("./agent-provisioning.controller");
+const elevenlabs_agent_service_1 = require("./elevenlabs-agent.service");
+const elevenlabs_client_1 = require("./elevenlabs-client");
+const elevenlabs_live_service_1 = require("./elevenlabs-live.service");
+const elevenlabs_numbers_service_1 = require("./elevenlabs-numbers.service");
+const elevenlabs_outbound_service_1 = require("./elevenlabs-outbound.service");
+const elevenlabs_takeover_service_1 = require("./elevenlabs-takeover.service");
+const elevenlabs_webhook_controller_1 = require("./elevenlabs-webhook.controller");
+const elevenlabs_webhook_service_1 = require("./elevenlabs-webhook.service");
+/**
+ * Everything to do with a hosted conversational agent (ElevenLabs Agents):
+ *
+ *   INBOUND  — AgentToolsController: the agent calls us to do real work.
+ *              Authenticated per organization by AgentKeyGuard.
+ *   OUTBOUND — ElevenLabsOutboundService: we call ElevenLabs to start a
+ *              WhatsApp call or send a template message.
+ *   SETUP    — ElevenLabsAgentService + AgentProvisioningController: staff
+ *              create, sync and inspect the agent that serves the others.
+ *              Authenticated by JWT, not by an agent key.
+ *   AFTER    — ElevenLabsWebhookController: the finished transcript comes back
+ *              to us. Authenticated by an HMAC over the raw body.
+ *
+ * The module is named for the inbound half because that is the larger surface,
+ * but all four live here since they share the same tenant configuration.
+ *
+ * This is NOT yet the live conversation path. `packages/orchestrator` still
+ * serves every channel; nothing has been cut over. See CLAUDE.md — "TWO
+ * conversation engines exist right now, and only one is live."
+ */
+let AgentToolsModule = class AgentToolsModule {
+};
+exports.AgentToolsModule = AgentToolsModule;
+exports.AgentToolsModule = AgentToolsModule = __decorate([
+    (0, common_1.Module)({
+        // TelephonyModule exports VoiceAiService, whose transferCallToHuman is what
+        // actually moves a live call — the same one the orchestrator path uses.
+        imports: [scheduling_module_1.SchedulingModule, crm_module_1.CrmModule, knowledge_module_1.KnowledgeModule, telephony_module_1.TelephonyModule],
+        controllers: [agent_tools_controller_1.AgentToolsController, agent_provisioning_controller_1.AgentProvisioningController, elevenlabs_webhook_controller_1.ElevenLabsWebhookController],
+        providers: [
+            agent_tools_service_1.AgentToolsService,
+            elevenlabs_client_1.ElevenLabsApi,
+            elevenlabs_agent_service_1.ElevenLabsAgentService,
+            elevenlabs_live_service_1.ElevenLabsLiveService,
+            elevenlabs_numbers_service_1.ElevenLabsNumbersService,
+            elevenlabs_outbound_service_1.ElevenLabsOutboundService,
+            elevenlabs_takeover_service_1.ElevenLabsTakeoverService,
+            elevenlabs_webhook_service_1.ElevenLabsWebhookService,
+        ],
+        exports: [
+            agent_tools_service_1.AgentToolsService,
+            elevenlabs_agent_service_1.ElevenLabsAgentService,
+            elevenlabs_live_service_1.ElevenLabsLiveService,
+            elevenlabs_numbers_service_1.ElevenLabsNumbersService,
+            elevenlabs_outbound_service_1.ElevenLabsOutboundService,
+            elevenlabs_takeover_service_1.ElevenLabsTakeoverService,
+            elevenlabs_webhook_service_1.ElevenLabsWebhookService,
+        ],
+    })
+], AgentToolsModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hZ2VudC10b29scy9hZ2VudC10b29scy5tb2R1bGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7O0FBQUEsMkNBQXdDO0FBQ3hDLHVFQUFtRTtBQUNuRSxrREFBOEM7QUFDOUMsb0VBQWdFO0FBQ2hFLG9FQUFnRTtBQUNoRSxxRUFBZ0U7QUFDaEUsK0RBQTBEO0FBQzFELG1GQUE4RTtBQUM5RSx5RUFBb0U7QUFDcEUsMkRBQW9EO0FBQ3BELHVFQUFrRTtBQUNsRSw2RUFBd0U7QUFDeEUsK0VBQTBFO0FBQzFFLCtFQUEwRTtBQUMxRSxtRkFBOEU7QUFDOUUsNkVBQXdFO0FBRXhFOzs7Ozs7Ozs7Ozs7Ozs7Ozs7O0dBbUJHO0FBMEJJLElBQU0sZ0JBQWdCLEdBQXRCLE1BQU0sZ0JBQWdCO0NBQUcsQ0FBQTtBQUFuQiw0Q0FBZ0I7MkJBQWhCLGdCQUFnQjtJQXpCNUIsSUFBQSxlQUFNLEVBQUM7UUFDTiw0RUFBNEU7UUFDNUUsd0VBQXdFO1FBQ3hFLE9BQU8sRUFBRSxDQUFDLG9DQUFnQixFQUFFLHNCQUFTLEVBQUUsa0NBQWUsRUFBRSxrQ0FBZSxDQUFDO1FBQ3hFLFdBQVcsRUFBRSxDQUFDLDZDQUFvQixFQUFFLDJEQUEyQixFQUFFLDJEQUEyQixDQUFDO1FBQzdGLFNBQVMsRUFBRTtZQUNULHVDQUFpQjtZQUNqQixpQ0FBYTtZQUNiLGlEQUFzQjtZQUN0QiwrQ0FBcUI7WUFDckIscURBQXdCO1lBQ3hCLHVEQUF5QjtZQUN6Qix1REFBeUI7WUFDekIscURBQXdCO1NBQ3pCO1FBQ0QsT0FBTyxFQUFFO1lBQ1AsdUNBQWlCO1lBQ2pCLGlEQUFzQjtZQUN0QiwrQ0FBcUI7WUFDckIscURBQXdCO1lBQ3hCLHVEQUF5QjtZQUN6Qix1REFBeUI7WUFDekIscURBQXdCO1NBQ3pCO0tBQ0YsQ0FBQztHQUNXLGdCQUFnQixDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvYWdlbnQtdG9vbHMvYWdlbnQtdG9vbHMubW9kdWxlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IE1vZHVsZSB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IFNjaGVkdWxpbmdNb2R1bGUgfSBmcm9tICcuLi9zY2hlZHVsaW5nL3NjaGVkdWxpbmcubW9kdWxlJztcbmltcG9ydCB7IENybU1vZHVsZSB9IGZyb20gJy4uL2NybS9jcm0ubW9kdWxlJztcbmltcG9ydCB7IEtub3dsZWRnZU1vZHVsZSB9IGZyb20gJy4uL2tub3dsZWRnZS9rbm93bGVkZ2UubW9kdWxlJztcbmltcG9ydCB7IFRlbGVwaG9ueU1vZHVsZSB9IGZyb20gJy4uL3RlbGVwaG9ueS90ZWxlcGhvbnkubW9kdWxlJztcbmltcG9ydCB7IEFnZW50VG9vbHNDb250cm9sbGVyIH0gZnJvbSAnLi9hZ2VudC10b29scy5jb250cm9sbGVyJztcbmltcG9ydCB7IEFnZW50VG9vbHNTZXJ2aWNlIH0gZnJvbSAnLi9hZ2VudC10b29scy5zZXJ2aWNlJztcbmltcG9ydCB7IEFnZW50UHJvdmlzaW9uaW5nQ29udHJvbGxlciB9IGZyb20gJy4vYWdlbnQtcHJvdmlzaW9uaW5nLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgRWxldmVuTGFic0FnZW50U2VydmljZSB9IGZyb20gJy4vZWxldmVubGFicy1hZ2VudC5zZXJ2aWNlJztcbmltcG9ydCB7IEVsZXZlbkxhYnNBcGkgfSBmcm9tICcuL2VsZXZlbmxhYnMtY2xpZW50JztcbmltcG9ydCB7IEVsZXZlbkxhYnNMaXZlU2VydmljZSB9IGZyb20gJy4vZWxldmVubGFicy1saXZlLnNlcnZpY2UnO1xuaW1wb3J0IHsgRWxldmVuTGFic051bWJlcnNTZXJ2aWNlIH0gZnJvbSAnLi9lbGV2ZW5sYWJzLW51bWJlcnMuc2VydmljZSc7XG5pbXBvcnQgeyBFbGV2ZW5MYWJzT3V0Ym91bmRTZXJ2aWNlIH0gZnJvbSAnLi9lbGV2ZW5sYWJzLW91dGJvdW5kLnNlcnZpY2UnO1xuaW1wb3J0IHsgRWxldmVuTGFic1Rha2VvdmVyU2VydmljZSB9IGZyb20gJy4vZWxldmVubGFicy10YWtlb3Zlci5zZXJ2aWNlJztcbmltcG9ydCB7IEVsZXZlbkxhYnNXZWJob29rQ29udHJvbGxlciB9IGZyb20gJy4vZWxldmVubGFicy13ZWJob29rLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgRWxldmVuTGFic1dlYmhvb2tTZXJ2aWNlIH0gZnJvbSAnLi9lbGV2ZW5sYWJzLXdlYmhvb2suc2VydmljZSc7XG5cbi8qKlxuICogRXZlcnl0aGluZyB0byBkbyB3aXRoIGEgaG9zdGVkIGNvbnZlcnNhdGlvbmFsIGFnZW50IChFbGV2ZW5MYWJzIEFnZW50cyk6XG4gKlxuICogICBJTkJPVU5EICDigJQgQWdlbnRUb29sc0NvbnRyb2xsZXI6IHRoZSBhZ2VudCBjYWxscyB1cyB0byBkbyByZWFsIHdvcmsuXG4gKiAgICAgICAgICAgICAgQXV0aGVudGljYXRlZCBwZXIgb3JnYW5pemF0aW9uIGJ5IEFnZW50S2V5R3VhcmQuXG4gKiAgIE9VVEJPVU5EIOKAlCBFbGV2ZW5MYWJzT3V0Ym91bmRTZXJ2aWNlOiB3ZSBjYWxsIEVsZXZlbkxhYnMgdG8gc3RhcnQgYVxuICogICAgICAgICAgICAgIFdoYXRzQXBwIGNhbGwgb3Igc2VuZCBhIHRlbXBsYXRlIG1lc3NhZ2UuXG4gKiAgIFNFVFVQICAgIOKAlCBFbGV2ZW5MYWJzQWdlbnRTZXJ2aWNlICsgQWdlbnRQcm92aXNpb25pbmdDb250cm9sbGVyOiBzdGFmZlxuICogICAgICAgICAgICAgIGNyZWF0ZSwgc3luYyBhbmQgaW5zcGVjdCB0aGUgYWdlbnQgdGhhdCBzZXJ2ZXMgdGhlIG90aGVycy5cbiAqICAgICAgICAgICAgICBBdXRoZW50aWNhdGVkIGJ5IEpXVCwgbm90IGJ5IGFuIGFnZW50IGtleS5cbiAqICAgQUZURVIgICAg4oCUIEVsZXZlbkxhYnNXZWJob29rQ29udHJvbGxlcjogdGhlIGZpbmlzaGVkIHRyYW5zY3JpcHQgY29tZXMgYmFja1xuICogICAgICAgICAgICAgIHRvIHVzLiBBdXRoZW50aWNhdGVkIGJ5IGFuIEhNQUMgb3ZlciB0aGUgcmF3IGJvZHkuXG4gKlxuICogVGhlIG1vZHVsZSBpcyBuYW1lZCBmb3IgdGhlIGluYm91bmQgaGFsZiBiZWNhdXNlIHRoYXQgaXMgdGhlIGxhcmdlciBzdXJmYWNlLFxuICogYnV0IGFsbCBmb3VyIGxpdmUgaGVyZSBzaW5jZSB0aGV5IHNoYXJlIHRoZSBzYW1lIHRlbmFudCBjb25maWd1cmF0aW9uLlxuICpcbiAqIFRoaXMgaXMgTk9UIHlldCB0aGUgbGl2ZSBjb252ZXJzYXRpb24gcGF0aC4gYHBhY2thZ2VzL29yY2hlc3RyYXRvcmAgc3RpbGxcbiAqIHNlcnZlcyBldmVyeSBjaGFubmVsOyBub3RoaW5nIGhhcyBiZWVuIGN1dCBvdmVyLiBTZWUgQ0xBVURFLm1kIOKAlCBcIlRXT1xuICogY29udmVyc2F0aW9uIGVuZ2luZXMgZXhpc3QgcmlnaHQgbm93LCBhbmQgb25seSBvbmUgaXMgbGl2ZS5cIlxuICovXG5ATW9kdWxlKHtcbiAgLy8gVGVsZXBob255TW9kdWxlIGV4cG9ydHMgVm9pY2VBaVNlcnZpY2UsIHdob3NlIHRyYW5zZmVyQ2FsbFRvSHVtYW4gaXMgd2hhdFxuICAvLyBhY3R1YWxseSBtb3ZlcyBhIGxpdmUgY2FsbCDigJQgdGhlIHNhbWUgb25lIHRoZSBvcmNoZXN0cmF0b3IgcGF0aCB1c2VzLlxuICBpbXBvcnRzOiBbU2NoZWR1bGluZ01vZHVsZSwgQ3JtTW9kdWxlLCBLbm93bGVkZ2VNb2R1bGUsIFRlbGVwaG9ueU1vZHVsZV0sXG4gIGNvbnRyb2xsZXJzOiBbQWdlbnRUb29sc0NvbnRyb2xsZXIsIEFnZW50UHJvdmlzaW9uaW5nQ29udHJvbGxlciwgRWxldmVuTGFic1dlYmhvb2tDb250cm9sbGVyXSxcbiAgcHJvdmlkZXJzOiBbXG4gICAgQWdlbnRUb29sc1NlcnZpY2UsXG4gICAgRWxldmVuTGFic0FwaSxcbiAgICBFbGV2ZW5MYWJzQWdlbnRTZXJ2aWNlLFxuICAgIEVsZXZlbkxhYnNMaXZlU2VydmljZSxcbiAgICBFbGV2ZW5MYWJzTnVtYmVyc1NlcnZpY2UsXG4gICAgRWxldmVuTGFic091dGJvdW5kU2VydmljZSxcbiAgICBFbGV2ZW5MYWJzVGFrZW92ZXJTZXJ2aWNlLFxuICAgIEVsZXZlbkxhYnNXZWJob29rU2VydmljZSxcbiAgXSxcbiAgZXhwb3J0czogW1xuICAgIEFnZW50VG9vbHNTZXJ2aWNlLFxuICAgIEVsZXZlbkxhYnNBZ2VudFNlcnZpY2UsXG4gICAgRWxldmVuTGFic0xpdmVTZXJ2aWNlLFxuICAgIEVsZXZlbkxhYnNOdW1iZXJzU2VydmljZSxcbiAgICBFbGV2ZW5MYWJzT3V0Ym91bmRTZXJ2aWNlLFxuICAgIEVsZXZlbkxhYnNUYWtlb3ZlclNlcnZpY2UsXG4gICAgRWxldmVuTGFic1dlYmhvb2tTZXJ2aWNlLFxuICBdLFxufSlcbmV4cG9ydCBjbGFzcyBBZ2VudFRvb2xzTW9kdWxlIHt9XG4iXSwidmVyc2lvbiI6M30=

@@ -1,0 +1,25 @@
+44dac42445d466b06ca1ff1ac64febde
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SchedulingModule = void 0;
+const common_1 = require("@nestjs/common");
+const scheduling_service_1 = require("./scheduling.service");
+const scheduling_controller_1 = require("./scheduling.controller");
+const appointment_reminder_service_1 = require("./appointment-reminder.service");
+let SchedulingModule = class SchedulingModule {
+};
+exports.SchedulingModule = SchedulingModule;
+exports.SchedulingModule = SchedulingModule = __decorate([
+    (0, common_1.Module)({
+        providers: [scheduling_service_1.SchedulingService, appointment_reminder_service_1.AppointmentReminderService],
+        controllers: [scheduling_controller_1.SchedulingController],
+        exports: [scheduling_service_1.SchedulingService],
+    })
+], SchedulingModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9zY2hlZHVsaW5nL3NjaGVkdWxpbmcubW9kdWxlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUFBLDJDQUF3QztBQUN4Qyw2REFBeUQ7QUFDekQsbUVBQStEO0FBQy9ELGlGQUE0RTtBQU9yRSxJQUFNLGdCQUFnQixHQUF0QixNQUFNLGdCQUFnQjtDQUFHLENBQUE7QUFBbkIsNENBQWdCOzJCQUFoQixnQkFBZ0I7SUFMNUIsSUFBQSxlQUFNLEVBQUM7UUFDTixTQUFTLEVBQUUsQ0FBQyxzQ0FBaUIsRUFBRSx5REFBMEIsQ0FBQztRQUMxRCxXQUFXLEVBQUUsQ0FBQyw0Q0FBb0IsQ0FBQztRQUNuQyxPQUFPLEVBQUUsQ0FBQyxzQ0FBaUIsQ0FBQztLQUM3QixDQUFDO0dBQ1csZ0JBQWdCLENBQUciLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9zY2hlZHVsaW5nL3NjaGVkdWxpbmcubW9kdWxlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IE1vZHVsZSB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IFNjaGVkdWxpbmdTZXJ2aWNlIH0gZnJvbSAnLi9zY2hlZHVsaW5nLnNlcnZpY2UnO1xuaW1wb3J0IHsgU2NoZWR1bGluZ0NvbnRyb2xsZXIgfSBmcm9tICcuL3NjaGVkdWxpbmcuY29udHJvbGxlcic7XG5pbXBvcnQgeyBBcHBvaW50bWVudFJlbWluZGVyU2VydmljZSB9IGZyb20gJy4vYXBwb2ludG1lbnQtcmVtaW5kZXIuc2VydmljZSc7XG5cbkBNb2R1bGUoe1xuICBwcm92aWRlcnM6IFtTY2hlZHVsaW5nU2VydmljZSwgQXBwb2ludG1lbnRSZW1pbmRlclNlcnZpY2VdLFxuICBjb250cm9sbGVyczogW1NjaGVkdWxpbmdDb250cm9sbGVyXSxcbiAgZXhwb3J0czogW1NjaGVkdWxpbmdTZXJ2aWNlXSxcbn0pXG5leHBvcnQgY2xhc3MgU2NoZWR1bGluZ01vZHVsZSB7fVxuIl0sInZlcnNpb24iOjN9

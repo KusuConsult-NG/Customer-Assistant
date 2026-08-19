@@ -1,0 +1,123 @@
+792b2704acba39126143b3d2a3d7b3f6
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TelephonyProviderType = exports.TicketPriority = exports.TicketStatus = exports.DealStage = exports.LeadStatus = exports.BookingStatus = exports.HandoffReason = exports.MessageSender = exports.CallStatus = exports.CallDirection = exports.ChannelType = exports.IndustryType = exports.UserRole = void 0;
+// Roles & Access Control
+var UserRole;
+(function (UserRole) {
+    UserRole["OWNER"] = "OWNER";
+    UserRole["ADMIN"] = "ADMIN";
+    UserRole["AGENT"] = "AGENT";
+    UserRole["VIEWER"] = "VIEWER";
+})(UserRole || (exports.UserRole = UserRole = {}));
+var IndustryType;
+(function (IndustryType) {
+    IndustryType["HOSPITAL"] = "HOSPITAL";
+    IndustryType["CLINIC"] = "CLINIC";
+    IndustryType["HOTEL"] = "HOTEL";
+    IndustryType["RESTAURANT"] = "RESTAURANT";
+    IndustryType["SCHOOL"] = "SCHOOL";
+    IndustryType["UNIVERSITY"] = "UNIVERSITY";
+    IndustryType["CHURCH"] = "CHURCH";
+    IndustryType["LAW_FIRM"] = "LAW_FIRM";
+    IndustryType["REAL_ESTATE"] = "REAL_ESTATE";
+    IndustryType["LOGISTICS"] = "LOGISTICS";
+    IndustryType["BANK"] = "BANK";
+    IndustryType["INSURANCE"] = "INSURANCE";
+    IndustryType["GOVERNMENT"] = "GOVERNMENT";
+    IndustryType["SALON_SPA"] = "SALON_SPA";
+    IndustryType["SME"] = "SME";
+    IndustryType["ENTERPRISE"] = "ENTERPRISE";
+    IndustryType["OTHER"] = "OTHER";
+})(IndustryType || (exports.IndustryType = IndustryType = {}));
+var ChannelType;
+(function (ChannelType) {
+    ChannelType["VOICE"] = "VOICE";
+    ChannelType["WHATSAPP"] = "WHATSAPP";
+    ChannelType["WEBCHAT"] = "WEBCHAT";
+    ChannelType["SMS"] = "SMS";
+    ChannelType["EMAIL"] = "EMAIL";
+    ChannelType["INSTAGRAM"] = "INSTAGRAM";
+    ChannelType["TELEGRAM"] = "TELEGRAM";
+    ChannelType["MESSENGER"] = "MESSENGER";
+})(ChannelType || (exports.ChannelType = ChannelType = {}));
+var CallDirection;
+(function (CallDirection) {
+    CallDirection["INBOUND"] = "INBOUND";
+    CallDirection["OUTBOUND"] = "OUTBOUND";
+})(CallDirection || (exports.CallDirection = CallDirection = {}));
+var CallStatus;
+(function (CallStatus) {
+    CallStatus["QUEUED"] = "QUEUED";
+    CallStatus["RINGING"] = "RINGING";
+    CallStatus["IN_PROGRESS"] = "IN_PROGRESS";
+    CallStatus["COMPLETED"] = "COMPLETED";
+    CallStatus["FAILED"] = "FAILED";
+    CallStatus["BUSY"] = "BUSY";
+    CallStatus["NO_ANSWER"] = "NO_ANSWER";
+})(CallStatus || (exports.CallStatus = CallStatus = {}));
+var MessageSender;
+(function (MessageSender) {
+    MessageSender["CUSTOMER"] = "CUSTOMER";
+    MessageSender["AI"] = "AI";
+    MessageSender["HUMAN_AGENT"] = "HUMAN_AGENT";
+    MessageSender["SYSTEM"] = "SYSTEM";
+})(MessageSender || (exports.MessageSender = MessageSender = {}));
+var HandoffReason;
+(function (HandoffReason) {
+    HandoffReason["LOW_CONFIDENCE"] = "LOW_CONFIDENCE";
+    HandoffReason["CUSTOMER_REQUEST"] = "CUSTOMER_REQUEST";
+    HandoffReason["TOOL_FAILURE"] = "TOOL_FAILURE";
+    HandoffReason["COMPLEX_QUERY"] = "COMPLEX_QUERY";
+    HandoffReason["URGENT_ESCALATION"] = "URGENT_ESCALATION";
+})(HandoffReason || (exports.HandoffReason = HandoffReason = {}));
+var BookingStatus;
+(function (BookingStatus) {
+    BookingStatus["CONFIRMED"] = "CONFIRMED";
+    BookingStatus["CANCELLED"] = "CANCELLED";
+    BookingStatus["RESCHEDULED"] = "RESCHEDULED";
+    BookingStatus["COMPLETED"] = "COMPLETED";
+    BookingStatus["NO_SHOW"] = "NO_SHOW";
+})(BookingStatus || (exports.BookingStatus = BookingStatus = {}));
+var LeadStatus;
+(function (LeadStatus) {
+    LeadStatus["NEW"] = "NEW";
+    LeadStatus["CONTACTED"] = "CONTACTED";
+    LeadStatus["QUALIFIED"] = "QUALIFIED";
+    LeadStatus["UNQUALIFIED"] = "UNQUALIFIED";
+    LeadStatus["CONVERTED"] = "CONVERTED";
+})(LeadStatus || (exports.LeadStatus = LeadStatus = {}));
+var DealStage;
+(function (DealStage) {
+    DealStage["DISCOVERY"] = "DISCOVERY";
+    DealStage["PROPOSAL"] = "PROPOSAL";
+    DealStage["NEGOTIATION"] = "NEGOTIATION";
+    DealStage["CLOSED_WON"] = "CLOSED_WON";
+    DealStage["CLOSED_LOST"] = "CLOSED_LOST";
+})(DealStage || (exports.DealStage = DealStage = {}));
+var TicketStatus;
+(function (TicketStatus) {
+    TicketStatus["OPEN"] = "OPEN";
+    TicketStatus["IN_PROGRESS"] = "IN_PROGRESS";
+    TicketStatus["PENDING_CUSTOMER"] = "PENDING_CUSTOMER";
+    TicketStatus["RESOLVED"] = "RESOLVED";
+    TicketStatus["CLOSED"] = "CLOSED";
+})(TicketStatus || (exports.TicketStatus = TicketStatus = {}));
+var TicketPriority;
+(function (TicketPriority) {
+    TicketPriority["LOW"] = "LOW";
+    TicketPriority["MEDIUM"] = "MEDIUM";
+    TicketPriority["HIGH"] = "HIGH";
+    TicketPriority["URGENT"] = "URGENT";
+})(TicketPriority || (exports.TicketPriority = TicketPriority = {}));
+var TelephonyProviderType;
+(function (TelephonyProviderType) {
+    TelephonyProviderType["TWILIO"] = "TWILIO";
+    TelephonyProviderType["PLIVO"] = "PLIVO";
+    TelephonyProviderType["TELNYX"] = "TELNYX";
+    TelephonyProviderType["AFRICAS_TALKING"] = "AFRICAS_TALKING";
+    TelephonyProviderType["NIGERIA_CARRIER_FORWARD"] = "NIGERIA_CARRIER_FORWARD";
+    TelephonyProviderType["MTN_ENTERPRISE_SIP"] = "MTN_ENTERPRISE_SIP";
+    TelephonyProviderType["AIRTEL_BUSINESS_SIP"] = "AIRTEL_BUSINESS_SIP";
+})(TelephonyProviderType || (exports.TelephonyProviderType = TelephonyProviderType = {}));
+//# sourceMappingURL=index.js.map

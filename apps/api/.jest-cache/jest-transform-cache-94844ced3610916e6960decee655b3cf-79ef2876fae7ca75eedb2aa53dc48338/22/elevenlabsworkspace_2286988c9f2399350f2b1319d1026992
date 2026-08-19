@@ -1,0 +1,79 @@
+e4ef8d42c83b8fa9a7e677cbcbf4e3d3
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sharedWorkspaceAllowed = sharedWorkspaceAllowed;
+exports.sharedWorkspaceRefusal = sharedWorkspaceRefusal;
+exports.tenantWebhookPath = tenantWebhookPath;
+exports.tenantWebhookUrl = tenantWebhookUrl;
+/**
+ * Whose ElevenLabs workspace a tenant is operating in.
+ *
+ * ── The problem ─────────────────────────────────────────────────────────────
+ *
+ * An ElevenLabs workspace has no tenancy of its own. Everything inside one — the
+ * agents, the phone numbers, the WhatsApp lines, and every conversation
+ * transcript — belongs to whoever holds the key. So a platform that puts all its
+ * tenants behind one shared `ELEVENLABS_API_KEY` has put all of their customers'
+ * conversations in one bucket, and the only thing keeping them apart is our own
+ * filtering code being right every single time.
+ *
+ * That filtering exists (see ElevenLabsNumbersService) and it is not nothing.
+ * But it is a defence that has to be re-applied correctly at every new listing
+ * endpoint anyone ever adds. A per-tenant workspace makes the boundary the
+ * provider's problem instead of ours, which is the only version that stays true
+ * when somebody forgets.
+ *
+ * ── The rule ────────────────────────────────────────────────────────────────
+ *
+ * A tenant-scoped operation requires that tenant's own key. Falling back to the
+ * shared one is permitted ONLY when ELEVENLABS_ALLOW_SHARED_WORKSPACE is set —
+ * a deliberate switch for single-tenant deployments, demos and local
+ * development, where "every tenant" is one tenant and the distinction is moot.
+ *
+ * Deliberately not inferred from NODE_ENV. A security boundary that changes
+ * shape depending on an environment variable nobody set on purpose is one
+ * nobody can reason about; this one is off unless somebody typed it.
+ *
+ * ── This is a breaking change, and that is the point ────────────────────────
+ *
+ * A deployment running today on ELEVENLABS_API_KEY alone will start refusing
+ * tenant operations until either each tenant has a key or the flag is set. That
+ * is the intended behaviour: silently continuing to share is the failure being
+ * fixed. Nothing has ever served a real customer through this path, so the cost
+ * of the break is a configuration line, not an outage.
+ */
+const common_1 = require("@nestjs/common");
+function sharedWorkspaceAllowed() {
+    const raw = (process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE ?? '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes';
+}
+/**
+ * Why a tenant cannot act, phrased for whoever has to fix it.
+ *
+ * Both halves are named because the reader is usually an operator who does not
+ * know a shared-workspace mode exists, and the honest answer is that there are
+ * two ways forward with very different consequences.
+ */
+function sharedWorkspaceRefusal(organizationId) {
+    return new common_1.BadRequestException(`This organization has no ElevenLabs API key of its own, so it would have to share a workspace with every other tenant — including their phone numbers, WhatsApp lines and conversation transcripts. ` +
+        `Give it its own key (POST /api/agent-provisioning/credentials), or, if this deployment genuinely serves one tenant, set ELEVENLABS_ALLOW_SHARED_WORKSPACE=1. ` +
+        `Organization: ${organizationId}.`);
+}
+/**
+ * Where a tenant's own workspace should send its post-call webhook.
+ *
+ * Path-scoped because a dedicated workspace signs with its OWN secret, and the
+ * signature has to be checked before the body is parsed — so the tenant has to
+ * be identifiable from the URL alone. One source of truth for the path, because
+ * it is quoted back to operators in the credentials status and a shape that
+ * drifts from the route is a 404 nobody can diagnose from the dashboard.
+ */
+function tenantWebhookPath(organizationId) {
+    return `/api/webhooks/elevenlabs/${organizationId}`;
+}
+/** The absolute URL for the same, using whatever base this deployment answers on. */
+function tenantWebhookUrl(organizationId) {
+    const base = (process.env.API_BASE_URL || process.env.API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+    return `${base}${tenantWebhookPath(organizationId)}`;
+}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hZ2VudC10b29scy9lbGV2ZW5sYWJzLXdvcmtzcGFjZS50cyIsIm1hcHBpbmdzIjoiOztBQThDQSx3REFHQztBQVNELHdEQU1DO0FBV0QsOENBRUM7QUFHRCw0Q0FNQztBQXRGRDs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7O0dBb0NHO0FBQ0gsMkNBQXFEO0FBU3JELFNBQWdCLHNCQUFzQjtJQUNwQyxNQUFNLEdBQUcsR0FBRyxDQUFDLE9BQU8sQ0FBQyxHQUFHLENBQUMsaUNBQWlDLElBQUksRUFBRSxDQUFDLENBQUMsSUFBSSxFQUFFLENBQUMsV0FBVyxFQUFFLENBQUM7SUFDdkYsT0FBTyxHQUFHLEtBQUssR0FBRyxJQUFJLEdBQUcsS0FBSyxNQUFNLElBQUksR0FBRyxLQUFLLEtBQUssQ0FBQztBQUN4RCxDQUFDO0FBRUQ7Ozs7OztHQU1HO0FBQ0gsU0FBZ0Isc0JBQXNCLENBQUMsY0FBc0I7SUFDM0QsT0FBTyxJQUFJLDRCQUFtQixDQUM1QixzTUFBc007UUFDcE0sK0pBQStKO1FBQy9KLGlCQUFpQixjQUFjLEdBQUcsQ0FDckMsQ0FBQztBQUNKLENBQUM7QUFFRDs7Ozs7Ozs7R0FRRztBQUNILFNBQWdCLGlCQUFpQixDQUFDLGNBQXNCO0lBQ3RELE9BQU8sNEJBQTRCLGNBQWMsRUFBRSxDQUFDO0FBQ3RELENBQUM7QUFFRCxxRkFBcUY7QUFDckYsU0FBZ0IsZ0JBQWdCLENBQUMsY0FBc0I7SUFDckQsTUFBTSxJQUFJLEdBQUcsQ0FBQyxPQUFPLENBQUMsR0FBRyxDQUFDLFlBQVksSUFBSSxPQUFPLENBQUMsR0FBRyxDQUFDLE9BQU8sSUFBSSx1QkFBdUIsQ0FBQyxDQUFDLE9BQU8sQ0FDL0YsTUFBTSxFQUNOLEVBQUUsQ0FDSCxDQUFDO0lBQ0YsT0FBTyxHQUFHLElBQUksR0FBRyxpQkFBaUIsQ0FBQyxjQUFjLENBQUMsRUFBRSxDQUFDO0FBQ3ZELENBQUMiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hZ2VudC10b29scy9lbGV2ZW5sYWJzLXdvcmtzcGFjZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyIvKipcbiAqIFdob3NlIEVsZXZlbkxhYnMgd29ya3NwYWNlIGEgdGVuYW50IGlzIG9wZXJhdGluZyBpbi5cbiAqXG4gKiDilIDilIAgVGhlIHByb2JsZW0g4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAXG4gKlxuICogQW4gRWxldmVuTGFicyB3b3Jrc3BhY2UgaGFzIG5vIHRlbmFuY3kgb2YgaXRzIG93bi4gRXZlcnl0aGluZyBpbnNpZGUgb25lIOKAlCB0aGVcbiAqIGFnZW50cywgdGhlIHBob25lIG51bWJlcnMsIHRoZSBXaGF0c0FwcCBsaW5lcywgYW5kIGV2ZXJ5IGNvbnZlcnNhdGlvblxuICogdHJhbnNjcmlwdCDigJQgYmVsb25ncyB0byB3aG9ldmVyIGhvbGRzIHRoZSBrZXkuIFNvIGEgcGxhdGZvcm0gdGhhdCBwdXRzIGFsbCBpdHNcbiAqIHRlbmFudHMgYmVoaW5kIG9uZSBzaGFyZWQgYEVMRVZFTkxBQlNfQVBJX0tFWWAgaGFzIHB1dCBhbGwgb2YgdGhlaXIgY3VzdG9tZXJzJ1xuICogY29udmVyc2F0aW9ucyBpbiBvbmUgYnVja2V0LCBhbmQgdGhlIG9ubHkgdGhpbmcga2VlcGluZyB0aGVtIGFwYXJ0IGlzIG91ciBvd25cbiAqIGZpbHRlcmluZyBjb2RlIGJlaW5nIHJpZ2h0IGV2ZXJ5IHNpbmdsZSB0aW1lLlxuICpcbiAqIFRoYXQgZmlsdGVyaW5nIGV4aXN0cyAoc2VlIEVsZXZlbkxhYnNOdW1iZXJzU2VydmljZSkgYW5kIGl0IGlzIG5vdCBub3RoaW5nLlxuICogQnV0IGl0IGlzIGEgZGVmZW5jZSB0aGF0IGhhcyB0byBiZSByZS1hcHBsaWVkIGNvcnJlY3RseSBhdCBldmVyeSBuZXcgbGlzdGluZ1xuICogZW5kcG9pbnQgYW55b25lIGV2ZXIgYWRkcy4gQSBwZXItdGVuYW50IHdvcmtzcGFjZSBtYWtlcyB0aGUgYm91bmRhcnkgdGhlXG4gKiBwcm92aWRlcidzIHByb2JsZW0gaW5zdGVhZCBvZiBvdXJzLCB3aGljaCBpcyB0aGUgb25seSB2ZXJzaW9uIHRoYXQgc3RheXMgdHJ1ZVxuICogd2hlbiBzb21lYm9keSBmb3JnZXRzLlxuICpcbiAqIOKUgOKUgCBUaGUgcnVsZSDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIBcbiAqXG4gKiBBIHRlbmFudC1zY29wZWQgb3BlcmF0aW9uIHJlcXVpcmVzIHRoYXQgdGVuYW50J3Mgb3duIGtleS4gRmFsbGluZyBiYWNrIHRvIHRoZVxuICogc2hhcmVkIG9uZSBpcyBwZXJtaXR0ZWQgT05MWSB3aGVuIEVMRVZFTkxBQlNfQUxMT1dfU0hBUkVEX1dPUktTUEFDRSBpcyBzZXQg4oCUXG4gKiBhIGRlbGliZXJhdGUgc3dpdGNoIGZvciBzaW5nbGUtdGVuYW50IGRlcGxveW1lbnRzLCBkZW1vcyBhbmQgbG9jYWxcbiAqIGRldmVsb3BtZW50LCB3aGVyZSBcImV2ZXJ5IHRlbmFudFwiIGlzIG9uZSB0ZW5hbnQgYW5kIHRoZSBkaXN0aW5jdGlvbiBpcyBtb290LlxuICpcbiAqIERlbGliZXJhdGVseSBub3QgaW5mZXJyZWQgZnJvbSBOT0RFX0VOVi4gQSBzZWN1cml0eSBib3VuZGFyeSB0aGF0IGNoYW5nZXNcbiAqIHNoYXBlIGRlcGVuZGluZyBvbiBhbiBlbnZpcm9ubWVudCB2YXJpYWJsZSBub2JvZHkgc2V0IG9uIHB1cnBvc2UgaXMgb25lXG4gKiBub2JvZHkgY2FuIHJlYXNvbiBhYm91dDsgdGhpcyBvbmUgaXMgb2ZmIHVubGVzcyBzb21lYm9keSB0eXBlZCBpdC5cbiAqXG4gKiDilIDilIAgVGhpcyBpcyBhIGJyZWFraW5nIGNoYW5nZSwgYW5kIHRoYXQgaXMgdGhlIHBvaW50IOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuICpcbiAqIEEgZGVwbG95bWVudCBydW5uaW5nIHRvZGF5IG9uIEVMRVZFTkxBQlNfQVBJX0tFWSBhbG9uZSB3aWxsIHN0YXJ0IHJlZnVzaW5nXG4gKiB0ZW5hbnQgb3BlcmF0aW9ucyB1bnRpbCBlaXRoZXIgZWFjaCB0ZW5hbnQgaGFzIGEga2V5IG9yIHRoZSBmbGFnIGlzIHNldC4gVGhhdFxuICogaXMgdGhlIGludGVuZGVkIGJlaGF2aW91cjogc2lsZW50bHkgY29udGludWluZyB0byBzaGFyZSBpcyB0aGUgZmFpbHVyZSBiZWluZ1xuICogZml4ZWQuIE5vdGhpbmcgaGFzIGV2ZXIgc2VydmVkIGEgcmVhbCBjdXN0b21lciB0aHJvdWdoIHRoaXMgcGF0aCwgc28gdGhlIGNvc3RcbiAqIG9mIHRoZSBicmVhayBpcyBhIGNvbmZpZ3VyYXRpb24gbGluZSwgbm90IGFuIG91dGFnZS5cbiAqL1xuaW1wb3J0IHsgQmFkUmVxdWVzdEV4Y2VwdGlvbiB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcblxuZXhwb3J0IHR5cGUgV29ya3NwYWNlTW9kZSA9ICdkZWRpY2F0ZWQnIHwgJ3NoYXJlZCc7XG5cbmV4cG9ydCBpbnRlcmZhY2UgV29ya3NwYWNlUmVzb2x1dGlvbiB7XG4gIGFwaUtleTogc3RyaW5nO1xuICBtb2RlOiBXb3Jrc3BhY2VNb2RlO1xufVxuXG5leHBvcnQgZnVuY3Rpb24gc2hhcmVkV29ya3NwYWNlQWxsb3dlZCgpOiBib29sZWFuIHtcbiAgY29uc3QgcmF3ID0gKHByb2Nlc3MuZW52LkVMRVZFTkxBQlNfQUxMT1dfU0hBUkVEX1dPUktTUEFDRSA/PyAnJykudHJpbSgpLnRvTG93ZXJDYXNlKCk7XG4gIHJldHVybiByYXcgPT09ICcxJyB8fCByYXcgPT09ICd0cnVlJyB8fCByYXcgPT09ICd5ZXMnO1xufVxuXG4vKipcbiAqIFdoeSBhIHRlbmFudCBjYW5ub3QgYWN0LCBwaHJhc2VkIGZvciB3aG9ldmVyIGhhcyB0byBmaXggaXQuXG4gKlxuICogQm90aCBoYWx2ZXMgYXJlIG5hbWVkIGJlY2F1c2UgdGhlIHJlYWRlciBpcyB1c3VhbGx5IGFuIG9wZXJhdG9yIHdobyBkb2VzIG5vdFxuICoga25vdyBhIHNoYXJlZC13b3Jrc3BhY2UgbW9kZSBleGlzdHMsIGFuZCB0aGUgaG9uZXN0IGFuc3dlciBpcyB0aGF0IHRoZXJlIGFyZVxuICogdHdvIHdheXMgZm9yd2FyZCB3aXRoIHZlcnkgZGlmZmVyZW50IGNvbnNlcXVlbmNlcy5cbiAqL1xuZXhwb3J0IGZ1bmN0aW9uIHNoYXJlZFdvcmtzcGFjZVJlZnVzYWwob3JnYW5pemF0aW9uSWQ6IHN0cmluZyk6IEJhZFJlcXVlc3RFeGNlcHRpb24ge1xuICByZXR1cm4gbmV3IEJhZFJlcXVlc3RFeGNlcHRpb24oXG4gICAgYFRoaXMgb3JnYW5pemF0aW9uIGhhcyBubyBFbGV2ZW5MYWJzIEFQSSBrZXkgb2YgaXRzIG93biwgc28gaXQgd291bGQgaGF2ZSB0byBzaGFyZSBhIHdvcmtzcGFjZSB3aXRoIGV2ZXJ5IG90aGVyIHRlbmFudCDigJQgaW5jbHVkaW5nIHRoZWlyIHBob25lIG51bWJlcnMsIFdoYXRzQXBwIGxpbmVzIGFuZCBjb252ZXJzYXRpb24gdHJhbnNjcmlwdHMuIGAgK1xuICAgICAgYEdpdmUgaXQgaXRzIG93biBrZXkgKFBPU1QgL2FwaS9hZ2VudC1wcm92aXNpb25pbmcvY3JlZGVudGlhbHMpLCBvciwgaWYgdGhpcyBkZXBsb3ltZW50IGdlbnVpbmVseSBzZXJ2ZXMgb25lIHRlbmFudCwgc2V0IEVMRVZFTkxBQlNfQUxMT1dfU0hBUkVEX1dPUktTUEFDRT0xLiBgICtcbiAgICAgIGBPcmdhbml6YXRpb246ICR7b3JnYW5pemF0aW9uSWR9LmBcbiAgKTtcbn1cblxuLyoqXG4gKiBXaGVyZSBhIHRlbmFudCdzIG93biB3b3Jrc3BhY2Ugc2hvdWxkIHNlbmQgaXRzIHBvc3QtY2FsbCB3ZWJob29rLlxuICpcbiAqIFBhdGgtc2NvcGVkIGJlY2F1c2UgYSBkZWRpY2F0ZWQgd29ya3NwYWNlIHNpZ25zIHdpdGggaXRzIE9XTiBzZWNyZXQsIGFuZCB0aGVcbiAqIHNpZ25hdHVyZSBoYXMgdG8gYmUgY2hlY2tlZCBiZWZvcmUgdGhlIGJvZHkgaXMgcGFyc2VkIOKAlCBzbyB0aGUgdGVuYW50IGhhcyB0b1xuICogYmUgaWRlbnRpZmlhYmxlIGZyb20gdGhlIFVSTCBhbG9uZS4gT25lIHNvdXJjZSBvZiB0cnV0aCBmb3IgdGhlIHBhdGgsIGJlY2F1c2VcbiAqIGl0IGlzIHF1b3RlZCBiYWNrIHRvIG9wZXJhdG9ycyBpbiB0aGUgY3JlZGVudGlhbHMgc3RhdHVzIGFuZCBhIHNoYXBlIHRoYXRcbiAqIGRyaWZ0cyBmcm9tIHRoZSByb3V0ZSBpcyBhIDQwNCBub2JvZHkgY2FuIGRpYWdub3NlIGZyb20gdGhlIGRhc2hib2FyZC5cbiAqL1xuZXhwb3J0IGZ1bmN0aW9uIHRlbmFudFdlYmhvb2tQYXRoKG9yZ2FuaXphdGlvbklkOiBzdHJpbmcpOiBzdHJpbmcge1xuICByZXR1cm4gYC9hcGkvd2ViaG9va3MvZWxldmVubGFicy8ke29yZ2FuaXphdGlvbklkfWA7XG59XG5cbi8qKiBUaGUgYWJzb2x1dGUgVVJMIGZvciB0aGUgc2FtZSwgdXNpbmcgd2hhdGV2ZXIgYmFzZSB0aGlzIGRlcGxveW1lbnQgYW5zd2VycyBvbi4gKi9cbmV4cG9ydCBmdW5jdGlvbiB0ZW5hbnRXZWJob29rVXJsKG9yZ2FuaXphdGlvbklkOiBzdHJpbmcpOiBzdHJpbmcge1xuICBjb25zdCBiYXNlID0gKHByb2Nlc3MuZW52LkFQSV9CQVNFX1VSTCB8fCBwcm9jZXNzLmVudi5BUElfVVJMIHx8ICdodHRwOi8vbG9jYWxob3N0OjQwMDAnKS5yZXBsYWNlKFxuICAgIC9cXC8rJC8sXG4gICAgJydcbiAgKTtcbiAgcmV0dXJuIGAke2Jhc2V9JHt0ZW5hbnRXZWJob29rUGF0aChvcmdhbml6YXRpb25JZCl9YDtcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

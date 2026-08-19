@@ -1,0 +1,66 @@
+ca4babfd7485dbc859625e3c7a463eb2
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CrawlWebsiteDto = exports.UploadDocumentDto = void 0;
+const class_validator_1 = require("class-validator");
+class UploadDocumentDto {
+    title;
+    fileName;
+    /**
+     * Advisory only — the server recomputes the real size from the decoded buffer.
+     * A client-declared size cannot be allowed to gate a size limit.
+     */
+    fileSize;
+    mimeType;
+    fileBufferBase64;
+}
+exports.UploadDocumentDto = UploadDocumentDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(200),
+    __metadata("design:type", String)
+], UploadDocumentDto.prototype, "title", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(255),
+    __metadata("design:type", String)
+], UploadDocumentDto.prototype, "fileName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], UploadDocumentDto.prototype, "fileSize", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(120),
+    __metadata("design:type", String)
+], UploadDocumentDto.prototype, "mimeType", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    __metadata("design:type", String)
+], UploadDocumentDto.prototype, "fileBufferBase64", void 0);
+class CrawlWebsiteDto {
+    url;
+}
+exports.CrawlWebsiteDto = CrawlWebsiteDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(4),
+    (0, class_validator_1.MaxLength)(2048),
+    __metadata("design:type", String)
+], CrawlWebsiteDto.prototype, "url", void 0);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9rbm93bGVkZ2Uva25vd2xlZGdlLmR0by50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSxxREFBeUY7QUFFekYsTUFBYSxpQkFBaUI7SUFJNUIsS0FBSyxDQUFVO0lBS2YsUUFBUSxDQUFVO0lBRWxCOzs7T0FHRztJQUlILFFBQVEsQ0FBVTtJQUtsQixRQUFRLENBQVU7SUFJbEIsZ0JBQWdCLENBQVU7Q0FDM0I7QUE1QkQsOENBNEJDO0FBeEJDO0lBSEMsSUFBQSwwQkFBUSxHQUFFO0lBQ1YsSUFBQSwyQkFBUyxFQUFDLENBQUMsQ0FBQztJQUNaLElBQUEsMkJBQVMsRUFBQyxHQUFHLENBQUM7O2dEQUNBO0FBS2Y7SUFIQyxJQUFBLDBCQUFRLEdBQUU7SUFDVixJQUFBLDJCQUFTLEVBQUMsQ0FBQyxDQUFDO0lBQ1osSUFBQSwyQkFBUyxFQUFDLEdBQUcsQ0FBQzs7bURBQ0c7QUFTbEI7SUFIQyxJQUFBLDRCQUFVLEdBQUU7SUFDWixJQUFBLHVCQUFLLEdBQUU7SUFDUCxJQUFBLHFCQUFHLEVBQUMsQ0FBQyxDQUFDOzttREFDVztBQUtsQjtJQUhDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7SUFDWixJQUFBLDJCQUFTLEVBQUMsR0FBRyxDQUFDOzttREFDRztBQUlsQjtJQUZDLElBQUEsMEJBQVEsR0FBRTtJQUNWLElBQUEsMkJBQVMsRUFBQyxDQUFDLENBQUM7OzJEQUNhO0FBRzVCLE1BQWEsZUFBZTtJQUkxQixHQUFHLENBQVU7Q0FDZDtBQUxELDBDQUtDO0FBREM7SUFIQyxJQUFBLDBCQUFRLEdBQUU7SUFDVixJQUFBLDJCQUFTLEVBQUMsQ0FBQyxDQUFDO0lBQ1osSUFBQSwyQkFBUyxFQUFDLElBQUksQ0FBQzs7NENBQ0giLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9rbm93bGVkZ2Uva25vd2xlZGdlLmR0by50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBJc0ludCwgSXNPcHRpb25hbCwgSXNTdHJpbmcsIE1heExlbmd0aCwgTWluLCBNaW5MZW5ndGggfSBmcm9tICdjbGFzcy12YWxpZGF0b3InO1xuXG5leHBvcnQgY2xhc3MgVXBsb2FkRG9jdW1lbnREdG8ge1xuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDEpXG4gIEBNYXhMZW5ndGgoMjAwKVxuICB0aXRsZSE6IHN0cmluZztcblxuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDEpXG4gIEBNYXhMZW5ndGgoMjU1KVxuICBmaWxlTmFtZSE6IHN0cmluZztcblxuICAvKipcbiAgICogQWR2aXNvcnkgb25seSDigJQgdGhlIHNlcnZlciByZWNvbXB1dGVzIHRoZSByZWFsIHNpemUgZnJvbSB0aGUgZGVjb2RlZCBidWZmZXIuXG4gICAqIEEgY2xpZW50LWRlY2xhcmVkIHNpemUgY2Fubm90IGJlIGFsbG93ZWQgdG8gZ2F0ZSBhIHNpemUgbGltaXQuXG4gICAqL1xuICBASXNPcHRpb25hbCgpXG4gIEBJc0ludCgpXG4gIEBNaW4oMClcbiAgZmlsZVNpemU/OiBudW1iZXI7XG5cbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCgxKVxuICBATWF4TGVuZ3RoKDEyMClcbiAgbWltZVR5cGUhOiBzdHJpbmc7XG5cbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCgxKVxuICBmaWxlQnVmZmVyQmFzZTY0ITogc3RyaW5nO1xufVxuXG5leHBvcnQgY2xhc3MgQ3Jhd2xXZWJzaXRlRHRvIHtcbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCg0KVxuICBATWF4TGVuZ3RoKDIwNDgpXG4gIHVybCE6IHN0cmluZztcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

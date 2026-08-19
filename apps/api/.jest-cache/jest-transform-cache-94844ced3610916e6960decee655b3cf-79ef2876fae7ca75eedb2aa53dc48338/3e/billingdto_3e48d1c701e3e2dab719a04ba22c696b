@@ -1,0 +1,70 @@
+3ea819bfa8f02b67f0d057d7301f5cd6
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ServicePaymentGuidanceDto = exports.ActivatePlanDto = exports.CheckoutDto = void 0;
+const class_validator_1 = require("class-validator");
+const billing_service_1 = require("./billing.service");
+class CheckoutDto {
+    plan;
+}
+exports.CheckoutDto = CheckoutDto;
+__decorate([
+    (0, class_validator_1.IsEnum)(billing_service_1.SubscriptionPlan, {
+        message: `plan must be one of: ${Object.values(billing_service_1.SubscriptionPlan).join(', ')}`,
+    }),
+    __metadata("design:type", String)
+], CheckoutDto.prototype, "plan", void 0);
+/**
+ * Activating a plan requires proof that somebody paid.
+ *
+ * The reference is verified against Paystack directly — its existence in this request
+ * proves nothing on its own.
+ */
+class ActivatePlanDto {
+    plan;
+    reference;
+}
+exports.ActivatePlanDto = ActivatePlanDto;
+__decorate([
+    (0, class_validator_1.IsEnum)(billing_service_1.SubscriptionPlan, {
+        message: `plan must be one of: ${Object.values(billing_service_1.SubscriptionPlan).join(', ')}`,
+    }),
+    __metadata("design:type", String)
+], ActivatePlanDto.prototype, "plan", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(6),
+    (0, class_validator_1.MaxLength)(200),
+    __metadata("design:type", String)
+], ActivatePlanDto.prototype, "reference", void 0);
+class ServicePaymentGuidanceDto {
+    serviceName;
+    /**
+     * Amount in whole Naira. Integer and positive: a negative or fractional amount
+     * would produce nonsense payment instructions and, with Paystack, a kobo amount
+     * that does not match what the customer was told.
+     */
+    amountNgn;
+}
+exports.ServicePaymentGuidanceDto = ServicePaymentGuidanceDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(160),
+    __metadata("design:type", String)
+], ServicePaymentGuidanceDto.prototype, "serviceName", void 0);
+__decorate([
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], ServicePaymentGuidanceDto.prototype, "amountNgn", void 0);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9iaWxsaW5nL2JpbGxpbmcuZHRvLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLHFEQUFxRjtBQUNyRix1REFBcUQ7QUFFckQsTUFBYSxXQUFXO0lBSXRCLElBQUksQ0FBb0I7Q0FDekI7QUFMRCxrQ0FLQztBQURDO0lBSEMsSUFBQSx3QkFBTSxFQUFDLGtDQUFnQixFQUFFO1FBQ3hCLE9BQU8sRUFBRSx3QkFBd0IsTUFBTSxDQUFDLE1BQU0sQ0FBQyxrQ0FBZ0IsQ0FBQyxDQUFDLElBQUksQ0FBQyxJQUFJLENBQUMsRUFBRTtLQUM5RSxDQUFDOzt5Q0FDc0I7QUFHMUI7Ozs7O0dBS0c7QUFDSCxNQUFhLGVBQWU7SUFJMUIsSUFBSSxDQUFvQjtJQUt4QixTQUFTLENBQVU7Q0FDcEI7QUFWRCwwQ0FVQztBQU5DO0lBSEMsSUFBQSx3QkFBTSxFQUFDLGtDQUFnQixFQUFFO1FBQ3hCLE9BQU8sRUFBRSx3QkFBd0IsTUFBTSxDQUFDLE1BQU0sQ0FBQyxrQ0FBZ0IsQ0FBQyxDQUFDLElBQUksQ0FBQyxJQUFJLENBQUMsRUFBRTtLQUM5RSxDQUFDOzs2Q0FDc0I7QUFLeEI7SUFIQyxJQUFBLDBCQUFRLEdBQUU7SUFDVixJQUFBLDJCQUFTLEVBQUMsQ0FBQyxDQUFDO0lBQ1osSUFBQSwyQkFBUyxFQUFDLEdBQUcsQ0FBQzs7a0RBQ0k7QUFHckIsTUFBYSx5QkFBeUI7SUFJcEMsV0FBVyxDQUFVO0lBRXJCOzs7O09BSUc7SUFHSCxTQUFTLENBQVU7Q0FDcEI7QUFkRCw4REFjQztBQVZDO0lBSEMsSUFBQSwwQkFBUSxHQUFFO0lBQ1YsSUFBQSwyQkFBUyxFQUFDLENBQUMsQ0FBQztJQUNaLElBQUEsMkJBQVMsRUFBQyxHQUFHLENBQUM7OzhEQUNNO0FBU3JCO0lBRkMsSUFBQSx1QkFBSyxHQUFFO0lBQ1AsSUFBQSxxQkFBRyxFQUFDLENBQUMsQ0FBQzs7NERBQ1kiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9iaWxsaW5nL2JpbGxpbmcuZHRvLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IElzRW51bSwgSXNJbnQsIElzU3RyaW5nLCBNYXhMZW5ndGgsIE1pbiwgTWluTGVuZ3RoIH0gZnJvbSAnY2xhc3MtdmFsaWRhdG9yJztcbmltcG9ydCB7IFN1YnNjcmlwdGlvblBsYW4gfSBmcm9tICcuL2JpbGxpbmcuc2VydmljZSc7XG5cbmV4cG9ydCBjbGFzcyBDaGVja291dER0byB7XG4gIEBJc0VudW0oU3Vic2NyaXB0aW9uUGxhbiwge1xuICAgIG1lc3NhZ2U6IGBwbGFuIG11c3QgYmUgb25lIG9mOiAke09iamVjdC52YWx1ZXMoU3Vic2NyaXB0aW9uUGxhbikuam9pbignLCAnKX1gLFxuICB9KVxuICBwbGFuITogU3Vic2NyaXB0aW9uUGxhbjtcbn1cblxuLyoqXG4gKiBBY3RpdmF0aW5nIGEgcGxhbiByZXF1aXJlcyBwcm9vZiB0aGF0IHNvbWVib2R5IHBhaWQuXG4gKlxuICogVGhlIHJlZmVyZW5jZSBpcyB2ZXJpZmllZCBhZ2FpbnN0IFBheXN0YWNrIGRpcmVjdGx5IOKAlCBpdHMgZXhpc3RlbmNlIGluIHRoaXMgcmVxdWVzdFxuICogcHJvdmVzIG5vdGhpbmcgb24gaXRzIG93bi5cbiAqL1xuZXhwb3J0IGNsYXNzIEFjdGl2YXRlUGxhbkR0byB7XG4gIEBJc0VudW0oU3Vic2NyaXB0aW9uUGxhbiwge1xuICAgIG1lc3NhZ2U6IGBwbGFuIG11c3QgYmUgb25lIG9mOiAke09iamVjdC52YWx1ZXMoU3Vic2NyaXB0aW9uUGxhbikuam9pbignLCAnKX1gLFxuICB9KVxuICBwbGFuITogU3Vic2NyaXB0aW9uUGxhbjtcblxuICBASXNTdHJpbmcoKVxuICBATWluTGVuZ3RoKDYpXG4gIEBNYXhMZW5ndGgoMjAwKVxuICByZWZlcmVuY2UhOiBzdHJpbmc7XG59XG5cbmV4cG9ydCBjbGFzcyBTZXJ2aWNlUGF5bWVudEd1aWRhbmNlRHRvIHtcbiAgQElzU3RyaW5nKClcbiAgQE1pbkxlbmd0aCgxKVxuICBATWF4TGVuZ3RoKDE2MClcbiAgc2VydmljZU5hbWUhOiBzdHJpbmc7XG5cbiAgLyoqXG4gICAqIEFtb3VudCBpbiB3aG9sZSBOYWlyYS4gSW50ZWdlciBhbmQgcG9zaXRpdmU6IGEgbmVnYXRpdmUgb3IgZnJhY3Rpb25hbCBhbW91bnRcbiAgICogd291bGQgcHJvZHVjZSBub25zZW5zZSBwYXltZW50IGluc3RydWN0aW9ucyBhbmQsIHdpdGggUGF5c3RhY2ssIGEga29ibyBhbW91bnRcbiAgICogdGhhdCBkb2VzIG5vdCBtYXRjaCB3aGF0IHRoZSBjdXN0b21lciB3YXMgdG9sZC5cbiAgICovXG4gIEBJc0ludCgpXG4gIEBNaW4oMSlcbiAgYW1vdW50TmduITogbnVtYmVyO1xufVxuIl0sInZlcnNpb24iOjN9

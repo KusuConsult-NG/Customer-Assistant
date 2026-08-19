@@ -1,0 +1,161 @@
+e58cefe7616991ec200788cd9f50709d
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OrganizationsController = void 0;
+const common_1 = require("@nestjs/common");
+const organizations_service_1 = require("./organizations.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const roles_decorator_1 = require("../common/decorators/roles.decorator");
+const roles_guard_1 = require("../common/guards/roles.guard");
+// Guard order matters: RolesGuard reads request.user, which JwtAuthGuard populates.
+let OrganizationsController = class OrganizationsController {
+    orgsService;
+    constructor(orgsService) {
+        this.orgsService = orgsService;
+    }
+    async getMyOrganization(req) {
+        return this.orgsService.getOrganization(req.user.organizationId);
+    }
+    async updateSettings(req, body) {
+        return this.orgsService.updateSettings(req.user.organizationId, body);
+    }
+    async addTeamMember(req, body) {
+        return this.orgsService.addTeamMember(req.user.organizationId, body);
+    }
+    async getTeamMembers(req) {
+        return this.orgsService.getTeamMembers(req.user.organizationId);
+    }
+    async updateTeamMemberRole(req, userId, body) {
+        return this.orgsService.updateTeamMemberRole(req.user.organizationId, userId, body.role);
+    }
+    async updateTeamMemberStatus(req, userId, body) {
+        return this.orgsService.updateTeamMemberStatus(req.user.organizationId, userId, body.isActive);
+    }
+    async getPermissionsMatrix() {
+        return this.orgsService.getPermissionsMatrix();
+    }
+    async removeTeamMember(req, userId) {
+        return this.orgsService.removeTeamMember(req.user.organizationId, userId);
+    }
+    async updateWhatsAppConfig(req, body) {
+        return this.orgsService.updateWhatsAppConfig(req.user.organizationId, body);
+    }
+    async updateTelephonyConfig(req, body) {
+        return this.orgsService.updateTelephonyConfig(req.user.organizationId, body);
+    }
+    async regenerateApiKey(req) {
+        return this.orgsService.regenerateApiKey(req.user.organizationId);
+    }
+};
+exports.OrganizationsController = OrganizationsController;
+__decorate([
+    (0, common_1.Get)('me'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "getMyOrganization", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Patch)('settings'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "updateSettings", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('members'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "addTeamMember", null);
+__decorate([
+    (0, common_1.Get)('members'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "getTeamMembers", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Patch)('members/:id/role'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "updateTeamMemberRole", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Patch)('members/:id/status'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "updateTeamMemberStatus", null);
+__decorate([
+    (0, common_1.Get)('roles/permissions'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "getPermissionsMatrix", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Delete)('members/:id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "removeTeamMember", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('whatsapp-config'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "updateWhatsAppConfig", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('telephony-config'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "updateTelephonyConfig", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('api-keys/regenerate'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], OrganizationsController.prototype, "regenerateApiKey", null);
+exports.OrganizationsController = OrganizationsController = __decorate([
+    (0, common_1.Controller)('api/organizations'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __metadata("design:paramtypes", [organizations_service_1.OrganizationsService])
+], OrganizationsController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9vcmdhbml6YXRpb25zL29yZ2FuaXphdGlvbnMuY29udHJvbGxlci50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7Ozs7QUFBQSwyQ0FBbUc7QUFDbkcsbUVBQStEO0FBQy9ELDJEQUFzRDtBQUN0RCwwRUFBNkQ7QUFHN0QsOERBQTBEO0FBRTFELG9GQUFvRjtBQUc3RSxJQUFNLHVCQUF1QixHQUE3QixNQUFNLHVCQUF1QjtJQUNkO0lBQXBCLFlBQW9CLFdBQWlDO1FBQWpDLGdCQUFXLEdBQVgsV0FBVyxDQUFzQjtJQUFHLENBQUM7SUFHbkQsQUFBTixLQUFLLENBQUMsaUJBQWlCLENBQVEsR0FBdUI7UUFDcEQsT0FBTyxJQUFJLENBQUMsV0FBVyxDQUFDLGVBQWUsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO0lBQ25FLENBQUM7SUFJSyxBQUFOLEtBQUssQ0FBQyxjQUFjLENBQ1gsR0FBdUIsRUFDdEIsSUFJUDtRQUVELE9BQU8sSUFBSSxDQUFDLFdBQVcsQ0FBQyxjQUFjLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUUsSUFBSSxDQUFDLENBQUM7SUFDeEUsQ0FBQztJQUlLLEFBQU4sS0FBSyxDQUFDLGFBQWEsQ0FDVixHQUF1QixFQUN0QixJQUFvRDtRQUU1RCxPQUFPLElBQUksQ0FBQyxXQUFXLENBQUMsYUFBYSxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxFQUFFLElBQUksQ0FBQyxDQUFDO0lBQ3ZFLENBQUM7SUFHSyxBQUFOLEtBQUssQ0FBQyxjQUFjLENBQVEsR0FBdUI7UUFDakQsT0FBTyxJQUFJLENBQUMsV0FBVyxDQUFDLGNBQWMsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO0lBQ2xFLENBQUM7SUFJSyxBQUFOLEtBQUssQ0FBQyxvQkFBb0IsQ0FDakIsR0FBdUIsRUFDakIsTUFBYyxFQUNuQixJQUFtQjtRQUUz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O0FBR0s7SUFETCxJQUFBLFlBQUcsRUFBQyxtQkFBbUIsQ0FBQzs7OzttRUFHeEI7QUFJSztJQUZMLElBQUEsdUJBQUssRUFBQyxPQUFPLEVBQUUsT0FBTyxDQUFDO0lBQ3ZCLElBQUEsZUFBTSxFQUFDLGFBQWEsQ0FBQztJQUVuQixXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFDTCxXQUFBLElBQUEsY0FBSyxFQUFDLElBQUksQ0FBQyxDQUFBOzs7OytEQUdiO0FBSUs7SUFGTCxJQUFBLHVCQUFLLEVBQUMsT0FBTyxFQUFFLE9BQU8sQ0FBQztJQUN2QixJQUFBLGFBQUksRUFBQyxpQkFBaUIsQ0FBQztJQUVyQixXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFDTCxXQUFBLElBQUEsYUFBSSxHQUFFLENBQUE7Ozs7bUVBR1I7QUFJSztJQUZMLElBQUEsdUJBQUssRUFBQyxPQUFPLEVBQUUsT0FBTyxDQUFDO0lBQ3ZCLElBQUEsYUFBSSxFQUFDLGtCQUFrQixDQUFDO0lBRXRCLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTtJQUNMLFdBQUEsSUFBQSxhQUFJLEdBQUUsQ0FBQTs7OztvRUFHUjtBQUlLO0lBRkwsSUFBQSx1QkFBSyxFQUFDLE9BQU8sRUFBRSxPQUFPLENBQUM7SUFDdkIsSUFBQSxhQUFJLEVBQUMscUJBQXFCLENBQUM7SUFDSixXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7Ozs7K0RBRTVCO2tDQTNGVSx1QkFBdUI7SUFGbkMsSUFBQSxtQkFBVSxFQUFDLG1CQUFtQixDQUFDO0lBQy9CLElBQUEsa0JBQVMsRUFBQyw2QkFBWSxFQUFFLHdCQUFVLENBQUM7cUNBRUQsNENBQW9CO0dBRDFDLHVCQUF1QixDQTRGbkMiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9vcmdhbml6YXRpb25zL29yZ2FuaXphdGlvbnMuY29udHJvbGxlci50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBDb250cm9sbGVyLCBHZXQsIFBhdGNoLCBQb3N0LCBEZWxldGUsIFBhcmFtLCBCb2R5LCBVc2VHdWFyZHMsIFJlcSB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IE9yZ2FuaXphdGlvbnNTZXJ2aWNlIH0gZnJvbSAnLi9vcmdhbml6YXRpb25zLnNlcnZpY2UnO1xuaW1wb3J0IHsgSnd0QXV0aEd1YXJkIH0gZnJvbSAnLi4vYXV0aC9qd3QtYXV0aC5ndWFyZCc7XG5pbXBvcnQgeyBSb2xlcyB9IGZyb20gJy4uL2NvbW1vbi9kZWNvcmF0b3JzL3JvbGVzLmRlY29yYXRvcic7XG5pbXBvcnQgeyBBdXRoVXNlciB9IGZyb20gJ0BhY2Uvc2hhcmVkLXR5cGVzJztcblxuaW1wb3J0IHsgUm9sZXNHdWFyZCB9IGZyb20gJy4uL2NvbW1vbi9ndWFyZHMvcm9sZXMuZ3VhcmQnO1xuXG4vLyBHdWFyZCBvcmRlciBtYXR0ZXJzOiBSb2xlc0d1YXJkIHJlYWRzIHJlcXVlc3QudXNlciwgd2hpY2ggSnd0QXV0aEd1YXJkIHBvcHVsYXRlcy5cbkBDb250cm9sbGVyKCdhcGkvb3JnYW5pemF0aW9ucycpXG5AVXNlR3VhcmRzKEp3dEF1dGhHdWFyZCwgUm9sZXNHdWFyZClcbmV4cG9ydCBjbGFzcyBPcmdhbml6YXRpb25zQ29udHJvbGxlciB7XG4gIGNvbnN0cnVjdG9yKHByaXZhdGUgb3Jnc1NlcnZpY2U6IE9yZ2FuaXphdGlvbnNTZXJ2aWNlKSB7fVxuXG4gIEBHZXQoJ21lJylcbiAgYXN5bmMgZ2V0TXlPcmdhbml6YXRpb24oQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9KSB7XG4gICAgcmV0dXJuIHRoaXMub3Jnc1NlcnZpY2UuZ2V0T3JnYW5pemF0aW9uKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkKTtcbiAgfVxuXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBAUGF0Y2goJ3NldHRpbmdzJylcbiAgYXN5bmMgdXBkYXRlU2V0dGluZ3MoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBCb2R5KCkgYm9keToge1xuICAgICAgbmFtZT86IHN0cmluZzsgYWlQZXJzb25hUHJvbXB0Pzogc3RyaW5nOyB3ZWxjb21lTWVzc2FnZT86IHN0cmluZzsgcGhvbmU/OiBzdHJpbmc7XG4gICAgICBsb2dvVXJsPzogc3RyaW5nOyB3ZWJob29rVXJsPzogc3RyaW5nOyBlbmFibGVkV2ViaG9va0V2ZW50cz86IHN0cmluZ1tdO1xuICAgICAgcGF5b3V0QmFua05hbWU/OiBzdHJpbmc7IHBheW91dEFjY291bnROYW1lPzogc3RyaW5nOyBwYXlvdXRBY2NvdW50TnVtYmVyPzogc3RyaW5nOyBwYXlvdXRVc3NkQ29kZT86IHN0cmluZztcbiAgICB9XG4gICkge1xuICAgIHJldHVybiB0aGlzLm9yZ3NTZXJ2aWNlLnVwZGF0ZVNldHRpbmdzKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBib2R5KTtcbiAgfVxuXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBAUG9zdCgnbWVtYmVycycpXG4gIGFzeW5jIGFkZFRlYW1NZW1iZXIoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBCb2R5KCkgYm9keTogeyBlbWFpbDogc3RyaW5nOyBmdWxsTmFtZTogc3RyaW5nOyByb2xlOiBhbnkgfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5vcmdzU2VydmljZS5hZGRUZWFtTWVtYmVyKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBib2R5KTtcbiAgfVxuXG4gIEBHZXQoJ21lbWJlcnMnKVxuICBhc3luYyBnZXRUZWFtTWVtYmVycyhAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0pIHtcbiAgICByZXR1cm4gdGhpcy5vcmdzU2VydmljZS5nZXRUZWFtTWVtYmVycyhyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICBAUm9sZXMoJ09XTkVSJywgJ0FETUlOJylcbiAgQFBhdGNoKCdtZW1iZXJzLzppZC9yb2xlJylcbiAgYXN5bmMgdXBkYXRlVGVhbU1lbWJlclJvbGUoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBQYXJhbSgnaWQnKSB1c2VySWQ6IHN0cmluZyxcbiAgICBAQm9keSgpIGJvZHk6IHsgcm9sZTogYW55IH1cbiAgKSB7XG4gICAgcmV0dXJuIHRoaXMub3Jnc1NlcnZpY2UudXBkYXRlVGVhbU1lbWJlclJvbGUocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIHVzZXJJZCwgYm9keS5yb2xlKTtcbiAgfVxuXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBAUGF0Y2goJ21lbWJlcnMvOmlkL3N0YXR1cycpXG4gIGFzeW5jIHVwZGF0ZVRlYW1NZW1iZXJTdGF0dXMoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBQYXJhbSgnaWQnKSB1c2VySWQ6IHN0cmluZyxcbiAgICBAQm9keSgpIGJvZHk6IHsgaXNBY3RpdmU6IGJvb2xlYW4gfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5vcmdzU2VydmljZS51cGRhdGVUZWFtTWVtYmVyU3RhdHVzKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCB1c2VySWQsIGJvZHkuaXNBY3RpdmUpO1xuICB9XG5cbiAgQEdldCgncm9sZXMvcGVybWlzc2lvbnMnKVxuICBhc3luYyBnZXRQZXJtaXNzaW9uc01hdHJpeCgpIHtcbiAgICByZXR1cm4gdGhpcy5vcmdzU2VydmljZS5nZXRQZXJtaXNzaW9uc01hdHJpeCgpO1xuICB9XG5cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBEZWxldGUoJ21lbWJlcnMvOmlkJylcbiAgYXN5bmMgcmVtb3ZlVGVhbU1lbWJlcihcbiAgICBAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sXG4gICAgQFBhcmFtKCdpZCcpIHVzZXJJZDogc3RyaW5nXG4gICkge1xuICAgIHJldHVybiB0aGlzLm9yZ3NTZXJ2aWNlLnJlbW92ZVRlYW1NZW1iZXIocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIHVzZXJJZCk7XG4gIH1cblxuICBAUm9sZXMoJ09XTkVSJywgJ0FETUlOJylcbiAgQFBvc3QoJ3doYXRzYXBwLWNvbmZpZycpXG4gIGFzeW5jIHVwZGF0ZVdoYXRzQXBwQ29uZmlnKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAQm9keSgpIGJvZHk6IHsgcGhvbmVOdW1iZXJJZDogc3RyaW5nOyBhY2Nlc3NUb2tlbjogc3RyaW5nOyB3ZWJob29rVmVyaWZ5VG9rZW46IHN0cmluZzsgd2hhdHNhcHBCdXNpbmVzc0lkPzogc3RyaW5nOyBkaXNwbGF5UGhvbmVOdW1iZXI/OiBzdHJpbmcgfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5vcmdzU2VydmljZS51cGRhdGVXaGF0c0FwcENvbmZpZyhyZXEudXNlci5vcmdhbml6YXRpb25JZCwgYm9keSk7XG4gIH1cblxuICBAUm9sZXMoJ09XTkVSJywgJ0FETUlOJylcbiAgQFBvc3QoJ3RlbGVwaG9ueS1jb25maWcnKVxuICBhc3luYyB1cGRhdGVUZWxlcGhvbnlDb25maWcoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBCb2R5KCkgYm9keTogeyBwcm92aWRlcjogYW55OyBwaG9uZU51bWJlcjogc3RyaW5nOyBhY2NvdW50U2lkPzogc3RyaW5nOyBhdXRoVG9rZW4/OiBzdHJpbmc7IGFwaUtleT86IHN0cmluZyB9XG4gICkge1xuICAgIHJldHVybiB0aGlzLm9yZ3NTZXJ2aWNlLnVwZGF0ZVRlbGVwaG9ueUNvbmZpZyhyZXEudXNlci5vcmdhbml6YXRpb25JZCwgYm9keSk7XG4gIH1cblxuICBAUm9sZXMoJ09XTkVSJywgJ0FETUlOJylcbiAgQFBvc3QoJ2FwaS1rZXlzL3JlZ2VuZXJhdGUnKVxuICBhc3luYyByZWdlbmVyYXRlQXBpS2V5KEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSkge1xuICAgIHJldHVybiB0aGlzLm9yZ3NTZXJ2aWNlLnJlZ2VuZXJhdGVBcGlLZXkocmVxLnVzZXIub3JnYW5pemF0aW9uSWQpO1xuICB9XG59XG5cbiJdLCJ2ZXJzaW9uIjozfQ==

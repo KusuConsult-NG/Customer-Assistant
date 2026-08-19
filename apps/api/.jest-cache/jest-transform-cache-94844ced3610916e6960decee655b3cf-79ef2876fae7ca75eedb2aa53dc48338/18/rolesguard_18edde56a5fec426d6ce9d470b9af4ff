@@ -1,0 +1,48 @@
+39c0776e3516a00597b01982edc9608c
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RolesGuard = void 0;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
+const roles_decorator_1 = require("../decorators/roles.decorator");
+let RolesGuard = class RolesGuard {
+    reflector;
+    constructor(reflector) {
+        this.reflector = reflector;
+    }
+    canActivate(context) {
+        const requiredRoles = this.reflector.getAllAndOverride(roles_decorator_1.ROLES_KEY, [
+            context.getHandler(),
+            context.getClass(),
+        ]);
+        if (!requiredRoles || requiredRoles.length === 0) {
+            return true;
+        }
+        const request = context.switchToHttp().getRequest();
+        const user = request.user;
+        if (!user || !user.role) {
+            throw new common_1.ForbiddenException('Insufficient permissions');
+        }
+        const userRoleStr = String(user.role).toUpperCase();
+        const allowed = requiredRoles.some((r) => String(r).toUpperCase() === userRoleStr);
+        if (!allowed) {
+            throw new common_1.ForbiddenException('Insufficient permissions');
+        }
+        return true;
+    }
+};
+exports.RolesGuard = RolesGuard;
+exports.RolesGuard = RolesGuard = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [core_1.Reflector])
+], RolesGuard);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9jb21tb24vZ3VhcmRzL3JvbGVzLmd1YXJkLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDJDQUErRjtBQUMvRix1Q0FBeUM7QUFDekMsbUVBQTBEO0FBSW5ELElBQU0sVUFBVSxHQUFoQixNQUFNLFVBQVU7SUFDRDtJQUFwQixZQUFvQixTQUFvQjtRQUFwQixjQUFTLEdBQVQsU0FBUyxDQUFXO0lBQUcsQ0FBQztJQUU1QyxXQUFXLENBQUMsT0FBeUI7UUFDbkMsTUFBTSxhQUFhLEdBQUcsSUFBSSxDQUFDLFNBQVMsQ0FBQyxpQkFBaUIsQ0FBVywyQkFBUyxFQUFFO1lBQzFFLE9BQU8sQ0FBQyxVQUFVLEVBQUU7WUFDcEIsT0FBTyxDQUFDLFFBQVEsRUFBRTtTQUNuQixDQUFDLENBQUM7UUFFSCxJQUFJLENBQUMsYUFBYSxJQUFJLGFBQWEsQ0FBQyxNQUFNLEtBQUssQ0FBQyxFQUFFLENBQUM7WUFDakQsT0FBTyxJQUFJLENBQUM7UUFDZCxDQUFDO1FBRUQsTUFBTSxPQUFPLEdBQUcsT0FBTyxDQUFDLFlBQVksRUFBRSxDQUFDLFVBQVUsRUFBRSxDQUFDO1FBQ3BELE1BQU0sSUFBSSxHQUFHLE9BQU8sQ0FBQyxJQUFnQixDQUFDO1FBRXRDLElBQUksQ0FBQyxJQUFJLElBQUksQ0FBQyxJQUFJLENBQUMsSUFBSSxFQUFFLENBQUM7WUFDeEIsTUFBTSxJQUFJLDJCQUFrQixDQUFDLDBCQUEwQixDQUFDLENBQUM7UUFDM0QsQ0FBQztRQUVELE1BQU0sV0FBVyxHQUFHLE1BQU0sQ0FBQyxJQUFJLENBQUMsSUFBSSxDQUFDLENBQUMsV0FBVyxFQUFFLENBQUM7UUFDcEQsTUFBTSxPQUFPLEdBQUcsYUFBYSxDQUFDLElBQUksQ0FBQyxDQUFDLENBQUMsRUFBRSxFQUFFLENBQUMsTUFBTSxDQUFDLENBQUMsQ0FBQyxDQUFDLFdBQVcsRUFBRSxLQUFLLFdBQVcsQ0FBQyxDQUFDO1FBRW5GLElBQUksQ0FBQyxPQUFPLEVBQUUsQ0FBQztZQUNiLE1BQU0sSUFBSSwyQkFBa0IsQ0FBQywwQkFBMEIsQ0FBQyxDQUFDO1FBQzNELENBQUM7UUFFRCxPQUFPLElBQUksQ0FBQztJQUNkLENBQUM7Q0FDRixDQUFBO0FBN0JZLGdDQUFVO3FCQUFWLFVBQVU7SUFEdEIsSUFBQSxtQkFBVSxHQUFFO3FDQUVvQixnQkFBUztHQUQ3QixVQUFVLENBNkJ0QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL2NvbW1vbi9ndWFyZHMvcm9sZXMuZ3VhcmQudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgSW5qZWN0YWJsZSwgQ2FuQWN0aXZhdGUsIEV4ZWN1dGlvbkNvbnRleHQsIEZvcmJpZGRlbkV4Y2VwdGlvbiB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IFJlZmxlY3RvciB9IGZyb20gJ0BuZXN0anMvY29yZSc7XG5pbXBvcnQgeyBST0xFU19LRVkgfSBmcm9tICcuLi9kZWNvcmF0b3JzL3JvbGVzLmRlY29yYXRvcic7XG5pbXBvcnQgeyBBdXRoVXNlciB9IGZyb20gJ0BhY2Uvc2hhcmVkLXR5cGVzJztcblxuQEluamVjdGFibGUoKVxuZXhwb3J0IGNsYXNzIFJvbGVzR3VhcmQgaW1wbGVtZW50cyBDYW5BY3RpdmF0ZSB7XG4gIGNvbnN0cnVjdG9yKHByaXZhdGUgcmVmbGVjdG9yOiBSZWZsZWN0b3IpIHt9XG5cbiAgY2FuQWN0aXZhdGUoY29udGV4dDogRXhlY3V0aW9uQ29udGV4dCk6IGJvb2xlYW4ge1xuICAgIGNvbnN0IHJlcXVpcmVkUm9sZXMgPSB0aGlzLnJlZmxlY3Rvci5nZXRBbGxBbmRPdmVycmlkZTxzdHJpbmdbXT4oUk9MRVNfS0VZLCBbXG4gICAgICBjb250ZXh0LmdldEhhbmRsZXIoKSxcbiAgICAgIGNvbnRleHQuZ2V0Q2xhc3MoKSxcbiAgICBdKTtcblxuICAgIGlmICghcmVxdWlyZWRSb2xlcyB8fCByZXF1aXJlZFJvbGVzLmxlbmd0aCA9PT0gMCkge1xuICAgICAgcmV0dXJuIHRydWU7XG4gICAgfVxuXG4gICAgY29uc3QgcmVxdWVzdCA9IGNvbnRleHQuc3dpdGNoVG9IdHRwKCkuZ2V0UmVxdWVzdCgpO1xuICAgIGNvbnN0IHVzZXIgPSByZXF1ZXN0LnVzZXIgYXMgQXV0aFVzZXI7XG5cbiAgICBpZiAoIXVzZXIgfHwgIXVzZXIucm9sZSkge1xuICAgICAgdGhyb3cgbmV3IEZvcmJpZGRlbkV4Y2VwdGlvbignSW5zdWZmaWNpZW50IHBlcm1pc3Npb25zJyk7XG4gICAgfVxuXG4gICAgY29uc3QgdXNlclJvbGVTdHIgPSBTdHJpbmcodXNlci5yb2xlKS50b1VwcGVyQ2FzZSgpO1xuICAgIGNvbnN0IGFsbG93ZWQgPSByZXF1aXJlZFJvbGVzLnNvbWUoKHIpID0+IFN0cmluZyhyKS50b1VwcGVyQ2FzZSgpID09PSB1c2VyUm9sZVN0cik7XG5cbiAgICBpZiAoIWFsbG93ZWQpIHtcbiAgICAgIHRocm93IG5ldyBGb3JiaWRkZW5FeGNlcHRpb24oJ0luc3VmZmljaWVudCBwZXJtaXNzaW9ucycpO1xuICAgIH1cblxuICAgIHJldHVybiB0cnVlO1xuICB9XG59XG4iXSwidmVyc2lvbiI6M30=

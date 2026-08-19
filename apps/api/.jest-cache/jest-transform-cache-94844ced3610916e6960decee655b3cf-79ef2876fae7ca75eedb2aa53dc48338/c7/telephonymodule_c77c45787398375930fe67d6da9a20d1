@@ -1,0 +1,52 @@
+a7dde5bca19f238de5377ee2ae2d87cc
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TelephonyModule = void 0;
+const common_1 = require("@nestjs/common");
+const telephony_service_1 = require("./telephony.service");
+const telephony_controller_1 = require("./telephony.controller");
+const voice_stream_gateway_1 = require("./voice-stream.gateway");
+const voice_ai_service_1 = require("./voice-ai.service");
+const twilio_media_stream_handler_1 = require("./twilio-media-stream.handler");
+const call_broadcast_service_1 = require("./call-broadcast.service");
+const webhooks_module_1 = require("../webhooks/webhooks.module");
+const auth_module_1 = require("../auth/auth.module");
+let TelephonyModule = class TelephonyModule {
+};
+exports.TelephonyModule = TelephonyModule;
+exports.TelephonyModule = TelephonyModule = __decorate([
+    (0, common_1.Module)({
+        // AuthModule exports JwtService, used by VoiceStreamGateway to authenticate
+        // the Socket.IO handshake before an agent may monitor a live call.
+        imports: [webhooks_module_1.WebhooksModule, auth_module_1.AuthModule],
+        providers: [
+            // Core telephony logic
+            telephony_service_1.TelephonyService,
+            // Voice AI: Deepgram STT + ElevenLabs TTS
+            voice_ai_service_1.VoiceAiService,
+            // Shared broadcast bridge between raw WS handler and Socket.IO gateway
+            call_broadcast_service_1.CallBroadcastService,
+            // Raw WebSocket handler for Twilio Media Streams (instantiated in main.ts)
+            twilio_media_stream_handler_1.TwilioMediaStreamHandler,
+            // Socket.IO gateway: agent console monitoring + injects server into CallBroadcastService
+            voice_stream_gateway_1.VoiceStreamGateway,
+        ],
+        controllers: [telephony_controller_1.TelephonyController],
+        exports: [
+            telephony_service_1.TelephonyService,
+            twilio_media_stream_handler_1.TwilioMediaStreamHandler, // Exported so main.ts can retrieve it via app.get()
+            call_broadcast_service_1.CallBroadcastService,
+            // Exported for the hosted-agent takeover path. Both engines must redirect a
+            // live call the same way — a second implementation of "move the call" is a
+            // second thing that can silently stop moving it.
+            voice_ai_service_1.VoiceAiService,
+        ],
+    })
+], TelephonyModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy90ZWxlcGhvbnkvdGVsZXBob255Lm1vZHVsZS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBd0M7QUFDeEMsMkRBQXVEO0FBQ3ZELGlFQUE2RDtBQUM3RCxpRUFBNEQ7QUFDNUQseURBQW9EO0FBQ3BELCtFQUF5RTtBQUN6RSxxRUFBZ0U7QUFDaEUsaUVBQTZEO0FBQzdELHFEQUFpRDtBQWtDMUMsSUFBTSxlQUFlLEdBQXJCLE1BQU0sZUFBZTtDQUFHLENBQUE7QUFBbEIsMENBQWU7MEJBQWYsZUFBZTtJQWhDM0IsSUFBQSxlQUFNLEVBQUM7UUFDTiw0RUFBNEU7UUFDNUUsbUVBQW1FO1FBQ25FLE9BQU8sRUFBRSxDQUFDLGdDQUFjLEVBQUUsd0JBQVUsQ0FBQztRQUNyQyxTQUFTLEVBQUU7WUFDVCx1QkFBdUI7WUFDdkIsb0NBQWdCO1lBRWhCLDBDQUEwQztZQUMxQyxpQ0FBYztZQUVkLHVFQUF1RTtZQUN2RSw2Q0FBb0I7WUFFcEIsMkVBQTJFO1lBQzNFLHNEQUF3QjtZQUV4Qix5RkFBeUY7WUFDekYseUNBQWtCO1NBQ25CO1FBQ0QsV0FBVyxFQUFFLENBQUMsMENBQW1CLENBQUM7UUFDbEMsT0FBTyxFQUFFO1lBQ1Asb0NBQWdCO1lBQ2hCLHNEQUF3QixFQUFHLG9EQUFvRDtZQUMvRSw2Q0FBb0I7WUFFcEIsNEVBQTRFO1lBQzVFLDJFQUEyRTtZQUMzRSxpREFBaUQ7WUFDakQsaUNBQWM7U0FDZjtLQUNGLENBQUM7R0FDVyxlQUFlLENBQUciLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy90ZWxlcGhvbnkvdGVsZXBob255Lm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBUZWxlcGhvbnlTZXJ2aWNlIH0gZnJvbSAnLi90ZWxlcGhvbnkuc2VydmljZSc7XG5pbXBvcnQgeyBUZWxlcGhvbnlDb250cm9sbGVyIH0gZnJvbSAnLi90ZWxlcGhvbnkuY29udHJvbGxlcic7XG5pbXBvcnQgeyBWb2ljZVN0cmVhbUdhdGV3YXkgfSBmcm9tICcuL3ZvaWNlLXN0cmVhbS5nYXRld2F5JztcbmltcG9ydCB7IFZvaWNlQWlTZXJ2aWNlIH0gZnJvbSAnLi92b2ljZS1haS5zZXJ2aWNlJztcbmltcG9ydCB7IFR3aWxpb01lZGlhU3RyZWFtSGFuZGxlciB9IGZyb20gJy4vdHdpbGlvLW1lZGlhLXN0cmVhbS5oYW5kbGVyJztcbmltcG9ydCB7IENhbGxCcm9hZGNhc3RTZXJ2aWNlIH0gZnJvbSAnLi9jYWxsLWJyb2FkY2FzdC5zZXJ2aWNlJztcbmltcG9ydCB7IFdlYmhvb2tzTW9kdWxlIH0gZnJvbSAnLi4vd2ViaG9va3Mvd2ViaG9va3MubW9kdWxlJztcbmltcG9ydCB7IEF1dGhNb2R1bGUgfSBmcm9tICcuLi9hdXRoL2F1dGgubW9kdWxlJztcblxuQE1vZHVsZSh7XG4gIC8vIEF1dGhNb2R1bGUgZXhwb3J0cyBKd3RTZXJ2aWNlLCB1c2VkIGJ5IFZvaWNlU3RyZWFtR2F0ZXdheSB0byBhdXRoZW50aWNhdGVcbiAgLy8gdGhlIFNvY2tldC5JTyBoYW5kc2hha2UgYmVmb3JlIGFuIGFnZW50IG1heSBtb25pdG9yIGEgbGl2ZSBjYWxsLlxuICBpbXBvcnRzOiBbV2ViaG9va3NNb2R1bGUsIEF1dGhNb2R1bGVdLFxuICBwcm92aWRlcnM6IFtcbiAgICAvLyBDb3JlIHRlbGVwaG9ueSBsb2dpY1xuICAgIFRlbGVwaG9ueVNlcnZpY2UsXG5cbiAgICAvLyBWb2ljZSBBSTogRGVlcGdyYW0gU1RUICsgRWxldmVuTGFicyBUVFNcbiAgICBWb2ljZUFpU2VydmljZSxcblxuICAgIC8vIFNoYXJlZCBicm9hZGNhc3QgYnJpZGdlIGJldHdlZW4gcmF3IFdTIGhhbmRsZXIgYW5kIFNvY2tldC5JTyBnYXRld2F5XG4gICAgQ2FsbEJyb2FkY2FzdFNlcnZpY2UsXG5cbiAgICAvLyBSYXcgV2ViU29ja2V0IGhhbmRsZXIgZm9yIFR3aWxpbyBNZWRpYSBTdHJlYW1zIChpbnN0YW50aWF0ZWQgaW4gbWFpbi50cylcbiAgICBUd2lsaW9NZWRpYVN0cmVhbUhhbmRsZXIsXG5cbiAgICAvLyBTb2NrZXQuSU8gZ2F0ZXdheTogYWdlbnQgY29uc29sZSBtb25pdG9yaW5nICsgaW5qZWN0cyBzZXJ2ZXIgaW50byBDYWxsQnJvYWRjYXN0U2VydmljZVxuICAgIFZvaWNlU3RyZWFtR2F0ZXdheSxcbiAgXSxcbiAgY29udHJvbGxlcnM6IFtUZWxlcGhvbnlDb250cm9sbGVyXSxcbiAgZXhwb3J0czogW1xuICAgIFRlbGVwaG9ueVNlcnZpY2UsXG4gICAgVHdpbGlvTWVkaWFTdHJlYW1IYW5kbGVyLCAgLy8gRXhwb3J0ZWQgc28gbWFpbi50cyBjYW4gcmV0cmlldmUgaXQgdmlhIGFwcC5nZXQoKVxuICAgIENhbGxCcm9hZGNhc3RTZXJ2aWNlLFxuXG4gICAgLy8gRXhwb3J0ZWQgZm9yIHRoZSBob3N0ZWQtYWdlbnQgdGFrZW92ZXIgcGF0aC4gQm90aCBlbmdpbmVzIG11c3QgcmVkaXJlY3QgYVxuICAgIC8vIGxpdmUgY2FsbCB0aGUgc2FtZSB3YXkg4oCUIGEgc2Vjb25kIGltcGxlbWVudGF0aW9uIG9mIFwibW92ZSB0aGUgY2FsbFwiIGlzIGFcbiAgICAvLyBzZWNvbmQgdGhpbmcgdGhhdCBjYW4gc2lsZW50bHkgc3RvcCBtb3ZpbmcgaXQuXG4gICAgVm9pY2VBaVNlcnZpY2UsXG4gIF0sXG59KVxuZXhwb3J0IGNsYXNzIFRlbGVwaG9ueU1vZHVsZSB7fVxuIl0sInZlcnNpb24iOjN9

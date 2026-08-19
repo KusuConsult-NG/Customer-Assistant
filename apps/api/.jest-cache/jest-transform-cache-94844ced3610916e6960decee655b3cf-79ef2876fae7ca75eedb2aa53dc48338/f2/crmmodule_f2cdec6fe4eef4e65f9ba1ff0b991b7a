@@ -1,0 +1,31 @@
+53654129100aec037bedb9bd08baa7b4
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CrmModule = void 0;
+const common_1 = require("@nestjs/common");
+const crm_service_1 = require("./crm.service");
+const crm_timeline_service_1 = require("./crm-timeline.service");
+const crm_controller_1 = require("./crm.controller");
+const webhooks_module_1 = require("../webhooks/webhooks.module");
+let CrmModule = class CrmModule {
+};
+exports.CrmModule = CrmModule;
+exports.CrmModule = CrmModule = __decorate([
+    (0, common_1.Module)({
+        imports: [webhooks_module_1.WebhooksModule],
+        // CrmTimelineService was fully implemented but never registered in any module and
+        // never referenced by a controller — the unified customer timeline and health score
+        // it builds were unreachable. It is now provided and exposed at
+        // GET /api/crm/contacts/:id/timeline.
+        providers: [crm_service_1.CrmService, crm_timeline_service_1.CrmTimelineService],
+        controllers: [crm_controller_1.CrmController],
+        exports: [crm_service_1.CrmService, crm_timeline_service_1.CrmTimelineService],
+    })
+], CrmModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9jcm0vY3JtLm1vZHVsZS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBd0M7QUFDeEMsK0NBQTJDO0FBQzNDLGlFQUE0RDtBQUM1RCxxREFBaUQ7QUFDakQsaUVBQTZEO0FBWXRELElBQU0sU0FBUyxHQUFmLE1BQU0sU0FBUztDQUFHLENBQUE7QUFBWiw4QkFBUztvQkFBVCxTQUFTO0lBVnJCLElBQUEsZUFBTSxFQUFDO1FBQ04sT0FBTyxFQUFFLENBQUMsZ0NBQWMsQ0FBQztRQUN6QixrRkFBa0Y7UUFDbEYsb0ZBQW9GO1FBQ3BGLGdFQUFnRTtRQUNoRSxzQ0FBc0M7UUFDdEMsU0FBUyxFQUFFLENBQUMsd0JBQVUsRUFBRSx5Q0FBa0IsQ0FBQztRQUMzQyxXQUFXLEVBQUUsQ0FBQyw4QkFBYSxDQUFDO1FBQzVCLE9BQU8sRUFBRSxDQUFDLHdCQUFVLEVBQUUseUNBQWtCLENBQUM7S0FDMUMsQ0FBQztHQUNXLFNBQVMsQ0FBRyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL2NybS9jcm0ubW9kdWxlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IE1vZHVsZSB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IENybVNlcnZpY2UgfSBmcm9tICcuL2NybS5zZXJ2aWNlJztcbmltcG9ydCB7IENybVRpbWVsaW5lU2VydmljZSB9IGZyb20gJy4vY3JtLXRpbWVsaW5lLnNlcnZpY2UnO1xuaW1wb3J0IHsgQ3JtQ29udHJvbGxlciB9IGZyb20gJy4vY3JtLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgV2ViaG9va3NNb2R1bGUgfSBmcm9tICcuLi93ZWJob29rcy93ZWJob29rcy5tb2R1bGUnO1xuXG5ATW9kdWxlKHtcbiAgaW1wb3J0czogW1dlYmhvb2tzTW9kdWxlXSxcbiAgLy8gQ3JtVGltZWxpbmVTZXJ2aWNlIHdhcyBmdWxseSBpbXBsZW1lbnRlZCBidXQgbmV2ZXIgcmVnaXN0ZXJlZCBpbiBhbnkgbW9kdWxlIGFuZFxuICAvLyBuZXZlciByZWZlcmVuY2VkIGJ5IGEgY29udHJvbGxlciDigJQgdGhlIHVuaWZpZWQgY3VzdG9tZXIgdGltZWxpbmUgYW5kIGhlYWx0aCBzY29yZVxuICAvLyBpdCBidWlsZHMgd2VyZSB1bnJlYWNoYWJsZS4gSXQgaXMgbm93IHByb3ZpZGVkIGFuZCBleHBvc2VkIGF0XG4gIC8vIEdFVCAvYXBpL2NybS9jb250YWN0cy86aWQvdGltZWxpbmUuXG4gIHByb3ZpZGVyczogW0NybVNlcnZpY2UsIENybVRpbWVsaW5lU2VydmljZV0sXG4gIGNvbnRyb2xsZXJzOiBbQ3JtQ29udHJvbGxlcl0sXG4gIGV4cG9ydHM6IFtDcm1TZXJ2aWNlLCBDcm1UaW1lbGluZVNlcnZpY2VdLFxufSlcbmV4cG9ydCBjbGFzcyBDcm1Nb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

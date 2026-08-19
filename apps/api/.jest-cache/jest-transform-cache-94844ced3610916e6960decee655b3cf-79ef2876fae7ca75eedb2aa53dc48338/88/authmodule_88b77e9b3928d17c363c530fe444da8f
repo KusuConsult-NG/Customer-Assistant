@@ -1,0 +1,44 @@
+555050f5f4df30127aa3a26cd0bdd7fa
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AuthModule = void 0;
+const common_1 = require("@nestjs/common");
+const jwt_1 = require("@nestjs/jwt");
+const passport_1 = require("@nestjs/passport");
+const auth_service_1 = require("./auth.service");
+const auth_controller_1 = require("./auth.controller");
+const jwt_strategy_1 = require("./jwt.strategy");
+let AuthModule = class AuthModule {
+};
+exports.AuthModule = AuthModule;
+exports.AuthModule = AuthModule = __decorate([
+    (0, common_1.Module)({
+        imports: [
+            passport_1.PassportModule,
+            // No fallback secret: JWT_SECRET is required at startup (config/env.validation.ts),
+            // and a hardcoded default here would only ever be used by a misconfigured build —
+            // where it would sign tokens anyone could forge.
+            jwt_1.JwtModule.registerAsync({
+                useFactory: () => {
+                    const secret = process.env.JWT_SECRET;
+                    if (!secret)
+                        throw new Error('JWT_SECRET is not set.');
+                    return {
+                        secret,
+                        signOptions: { expiresIn: process.env.JWT_ACCESS_TTL || '1d' },
+                    };
+                },
+            }),
+        ],
+        providers: [auth_service_1.AuthService, jwt_strategy_1.JwtStrategy],
+        controllers: [auth_controller_1.AuthController],
+        exports: [auth_service_1.AuthService, jwt_1.JwtModule],
+    })
+], AuthModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hdXRoL2F1dGgubW9kdWxlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUFBLDJDQUF3QztBQUN4QyxxQ0FBd0M7QUFDeEMsK0NBQWtEO0FBQ2xELGlEQUE2QztBQUM3Qyx1REFBbUQ7QUFDbkQsaURBQTZDO0FBdUJ0QyxJQUFNLFVBQVUsR0FBaEIsTUFBTSxVQUFVO0NBQUcsQ0FBQTtBQUFiLGdDQUFVO3FCQUFWLFVBQVU7SUFyQnRCLElBQUEsZUFBTSxFQUFDO1FBQ04sT0FBTyxFQUFFO1lBQ1AseUJBQWM7WUFDZCxvRkFBb0Y7WUFDcEYsa0ZBQWtGO1lBQ2xGLGlEQUFpRDtZQUNqRCxlQUFTLENBQUMsYUFBYSxDQUFDO2dCQUN0QixVQUFVLEVBQUUsR0FBRyxFQUFFO29CQUNmLE1BQU0sTUFBTSxHQUFHLE9BQU8sQ0FBQyxHQUFHLENBQUMsVUFBVSxDQUFDO29CQUN0QyxJQUFJLENBQUMsTUFBTTt3QkFBRSxNQUFNLElBQUksS0FBSyxDQUFDLHdCQUF3QixDQUFDLENBQUM7b0JBQ3ZELE9BQU87d0JBQ0wsTUFBTTt3QkFDTixXQUFXLEVBQUUsRUFBRSxTQUFTLEVBQUUsT0FBTyxDQUFDLEdBQUcsQ0FBQyxjQUFjLElBQUksSUFBSSxFQUFFO3FCQUMvRCxDQUFDO2dCQUNKLENBQUM7YUFDRixDQUFDO1NBQ0g7UUFDRCxTQUFTLEVBQUUsQ0FBQywwQkFBVyxFQUFFLDBCQUFXLENBQUM7UUFDckMsV0FBVyxFQUFFLENBQUMsZ0NBQWMsQ0FBQztRQUM3QixPQUFPLEVBQUUsQ0FBQywwQkFBVyxFQUFFLGVBQVMsQ0FBQztLQUNsQyxDQUFDO0dBQ1csVUFBVSxDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvYXV0aC9hdXRoLm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBKd3RNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2p3dCc7XG5pbXBvcnQgeyBQYXNzcG9ydE1vZHVsZSB9IGZyb20gJ0BuZXN0anMvcGFzc3BvcnQnO1xuaW1wb3J0IHsgQXV0aFNlcnZpY2UgfSBmcm9tICcuL2F1dGguc2VydmljZSc7XG5pbXBvcnQgeyBBdXRoQ29udHJvbGxlciB9IGZyb20gJy4vYXV0aC5jb250cm9sbGVyJztcbmltcG9ydCB7IEp3dFN0cmF0ZWd5IH0gZnJvbSAnLi9qd3Quc3RyYXRlZ3knO1xuXG5ATW9kdWxlKHtcbiAgaW1wb3J0czogW1xuICAgIFBhc3Nwb3J0TW9kdWxlLFxuICAgIC8vIE5vIGZhbGxiYWNrIHNlY3JldDogSldUX1NFQ1JFVCBpcyByZXF1aXJlZCBhdCBzdGFydHVwIChjb25maWcvZW52LnZhbGlkYXRpb24udHMpLFxuICAgIC8vIGFuZCBhIGhhcmRjb2RlZCBkZWZhdWx0IGhlcmUgd291bGQgb25seSBldmVyIGJlIHVzZWQgYnkgYSBtaXNjb25maWd1cmVkIGJ1aWxkIOKAlFxuICAgIC8vIHdoZXJlIGl0IHdvdWxkIHNpZ24gdG9rZW5zIGFueW9uZSBjb3VsZCBmb3JnZS5cbiAgICBKd3RNb2R1bGUucmVnaXN0ZXJBc3luYyh7XG4gICAgICB1c2VGYWN0b3J5OiAoKSA9PiB7XG4gICAgICAgIGNvbnN0IHNlY3JldCA9IHByb2Nlc3MuZW52LkpXVF9TRUNSRVQ7XG4gICAgICAgIGlmICghc2VjcmV0KSB0aHJvdyBuZXcgRXJyb3IoJ0pXVF9TRUNSRVQgaXMgbm90IHNldC4nKTtcbiAgICAgICAgcmV0dXJuIHtcbiAgICAgICAgICBzZWNyZXQsXG4gICAgICAgICAgc2lnbk9wdGlvbnM6IHsgZXhwaXJlc0luOiBwcm9jZXNzLmVudi5KV1RfQUNDRVNTX1RUTCB8fCAnMWQnIH0sXG4gICAgICAgIH07XG4gICAgICB9LFxuICAgIH0pLFxuICBdLFxuICBwcm92aWRlcnM6IFtBdXRoU2VydmljZSwgSnd0U3RyYXRlZ3ldLFxuICBjb250cm9sbGVyczogW0F1dGhDb250cm9sbGVyXSxcbiAgZXhwb3J0czogW0F1dGhTZXJ2aWNlLCBKd3RNb2R1bGVdLFxufSlcbmV4cG9ydCBjbGFzcyBBdXRoTW9kdWxlIHt9XG4iXSwidmVyc2lvbiI6M30=

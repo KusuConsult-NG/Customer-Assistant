@@ -1,0 +1,309 @@
+a5dc872ee717a4c98ad0076ebf7015b9
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AgentProvisioningController = void 0;
+/**
+ * Staff-facing provisioning for a tenant's hosted agent.
+ *
+ * Distinct from AgentToolsController in both direction and audience: that one
+ * is called BY the agent and authenticated with an agent key; this one is
+ * called by a signed-in operator in the dashboard and authenticated with a JWT.
+ * They share a module because they share the tenant's configuration, and
+ * nothing else.
+ *
+ * The organization always comes from the token, never from the body — an
+ * operator can only ever provision their own tenant's agent.
+ */
+const common_1 = require("@nestjs/common");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const roles_guard_1 = require("../common/guards/roles.guard");
+const roles_decorator_1 = require("../common/decorators/roles.decorator");
+const elevenlabs_agent_service_1 = require("./elevenlabs-agent.service");
+const elevenlabs_numbers_service_1 = require("./elevenlabs-numbers.service");
+const elevenlabs_live_service_1 = require("./elevenlabs-live.service");
+const elevenlabs_takeover_service_1 = require("./elevenlabs-takeover.service");
+// RolesGuard must follow JwtAuthGuard — it reads request.user.
+let AgentProvisioningController = class AgentProvisioningController {
+    agents;
+    numbers;
+    liveConversations;
+    takeover;
+    constructor(agents, numbers, liveConversations, takeover) {
+        this.agents = agents;
+        this.numbers = numbers;
+        this.liveConversations = liveConversations;
+        this.takeover = takeover;
+    }
+    /**
+     * What the agent customers reach actually looks like, compared to this repo.
+     *
+     * Readable by any signed-in user: knowing whether the agent has drifted is
+     * not a privileged action, and the answer is exactly what a support person
+     * needs when a customer says the AI gave them a wrong date.
+     */
+    status(req) {
+        return this.agents.getAgentStatus(req.user.organizationId);
+    }
+    // ── Workspace credentials ──────────────────────────────────────────────────
+    /**
+     * Which ElevenLabs workspace this organization is in, and what is still
+     * missing from it. Never returns a credential — only fingerprints.
+     */
+    credentials(req) {
+        return this.agents.getWorkspaceKeyStatus(req.user.organizationId);
+    }
+    /**
+     * Store this organization's own workspace credentials.
+     *
+     * A dedicated workspace needs BOTH halves, and they can be set in either
+     * order or together: the API key is what makes the tenancy boundary real
+     * (without it the tenant shares a workspace with everyone else's numbers and
+     * WhatsApp lines), and the webhook secret is what lets that workspace's
+     * post-call transcripts be verified once it does. Setting only the key leaves
+     * a tenant whose calls are private and whose transcripts are dropped, which is
+     * why the status endpoint warns about exactly that.
+     */
+    async setCredentials(req, body) {
+        const organizationId = req.user.organizationId;
+        const apiKey = body?.apiKey?.trim();
+        const webhookSecret = body?.webhookSecret?.trim();
+        if (!apiKey && !webhookSecret) {
+            throw new common_1.BadRequestException('Provide an apiKey, a webhookSecret, or both. A dedicated ElevenLabs workspace needs each: the key to act in it, the secret to verify what it sends back.');
+        }
+        if (apiKey)
+            await this.agents.setWorkspaceKey(organizationId, apiKey);
+        if (webhookSecret)
+            await this.agents.setWebhookSecret(organizationId, webhookSecret);
+        // The full status rather than a bare acknowledgement, so a caller that set
+        // one half is told immediately that the other is still missing.
+        return this.agents.getWorkspaceKeyStatus(organizationId);
+    }
+    sync(req) {
+        return this.agents.syncAgent(req.user.organizationId);
+    }
+    create(req) {
+        return this.agents.createAgent(req.user.organizationId);
+    }
+    /**
+     * Replace the credential the agent's tools authenticate with.
+     *
+     * The response carries the new key once. It is stored only as a hash here and
+     * lives on in the ElevenLabs workspace secret, so nothing can show it again.
+     */
+    rotateKey(req) {
+        return this.agents.rotateAgentKey(req.user.organizationId);
+    }
+    // ── Live conversations ─────────────────────────────────────────────────────
+    /**
+     * What the agent is saying right now.
+     *
+     * The console also receives these over the `/events` socket every few
+     * seconds, but a page that has just loaded should not sit blank for a poll
+     * interval. Readable by any signed-in user: watching live conversations is
+     * the console's whole purpose, not a privileged action.
+     */
+    live(req) {
+        return this.liveConversations.fetchLive(req.user.organizationId);
+    }
+    /**
+     * Take a live call away from the agent and put it through to a person.
+     *
+     * Any signed-in user, not just an admin: the people watching the console are
+     * the ones who need to rescue a call going wrong, and requiring an admin
+     * means the customer waits for one.
+     *
+     * Returns `{ taken: false, reason }` for the cases a working system still
+     * hits — a call that ended while the operator was reaching for the button, a
+     * WhatsApp thread that cannot be taken over. Those are answers, not errors.
+     */
+    takeOver(req, conversationId) {
+        return this.takeover.takeOverConversation(req.user.organizationId, conversationId);
+    }
+    /**
+     * Stop the agent answering the whole WhatsApp line.
+     *
+     * Not a takeover, and named so it cannot be mistaken for one — it silences
+     * the agent for every customer on that number.
+     */
+    pauseWhatsApp(req, body) {
+        return this.takeover.setWhatsAppLinePaused(req.user.organizationId, body?.paused !== false, body?.confirmAffectsEveryConversation === true);
+    }
+    // ── Phone numbers ──────────────────────────────────────────────────────────
+    numbersList(req) {
+        return this.numbers.listNumbers(req.user.organizationId);
+    }
+    /**
+     * Hand the tenant's Twilio number to ElevenLabs.
+     *
+     * `confirmVoiceCutover` is required and deliberately not defaulted: after
+     * this, the agent answers the number instead of the orchestrator. That is a
+     * change in who talks to customers.
+     */
+    importNumber(req, body) {
+        return this.numbers.importTwilioNumber(req.user.organizationId, {
+            confirmVoiceCutover: body?.confirmVoiceCutover === true,
+            enableSms: body?.enableSms,
+            label: body?.label,
+        });
+    }
+    releaseNumber(req) {
+        return this.numbers.releaseNumber(req.user.organizationId);
+    }
+    // ── WhatsApp ───────────────────────────────────────────────────────────────
+    whatsappList(req) {
+        return this.numbers.listWhatsAppAccounts(req.user.organizationId);
+    }
+    /**
+     * Point an already-connected WhatsApp line at this organization's agent.
+     *
+     * Connecting the line itself happens in the ElevenLabs dashboard — Meta's
+     * embedded signup needs a human, so there is no endpoint that can do it.
+     */
+    attachWhatsApp(req, body) {
+        return this.numbers.attachWhatsAppAccount(req.user.organizationId, body?.phoneNumberId ?? '');
+    }
+    detachWhatsApp(req) {
+        return this.numbers.detachWhatsAppAccount(req.user.organizationId);
+    }
+};
+exports.AgentProvisioningController = AgentProvisioningController;
+__decorate([
+    (0, common_1.Get)('status'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "status", null);
+__decorate([
+    (0, common_1.Get)('credentials'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AgentProvisioningController.prototype, "credentials", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('credentials'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "setCredentials", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('sync'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "sync", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('create'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "create", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('rotate-key'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "rotateKey", null);
+__decorate([
+    (0, common_1.Get)('live'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "live", null);
+__decorate([
+    (0, common_1.Post)('live/:conversationId/takeover'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('conversationId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "takeOver", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('whatsapp/pause'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "pauseWhatsApp", null);
+__decorate([
+    (0, common_1.Get)('numbers'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "numbersList", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('numbers/import'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "importNumber", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('numbers/release'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "releaseNumber", null);
+__decorate([
+    (0, common_1.Get)('whatsapp'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "whatsappList", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('whatsapp/attach'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "attachWhatsApp", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('whatsapp/detach'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AgentProvisioningController.prototype, "detachWhatsApp", null);
+exports.AgentProvisioningController = AgentProvisioningController = __decorate([
+    (0, common_1.Controller)('api/agent-provisioning'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __metadata("design:paramtypes", [elevenlabs_agent_service_1.ElevenLabsAgentService,
+        elevenlabs_numbers_service_1.ElevenLabsNumbersService,
+        elevenlabs_live_service_1.ElevenLabsLiveService,
+        elevenlabs_takeover_service_1.ElevenLabsTakeoverService])
+], AgentProvisioningController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hZ2VudC10b29scy9hZ2VudC1wcm92aXNpb25pbmcuY29udHJvbGxlci50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7Ozs7QUFBQTs7Ozs7Ozs7Ozs7R0FXRztBQUNILDJDQVN3QjtBQUN4QiwyREFBc0Q7QUFDdEQsOERBQTBEO0FBQzFELDBFQUE2RDtBQUU3RCx5RUFBNkY7QUFDN0YsNkVBSXNDO0FBQ3RDLHVFQUFvRjtBQUNwRiwrRUFBMkY7QUFFM0YsK0RBQStEO0FBR3hELElBQU0sMkJBQTJCLEdBQWpDLE1BQU0sMkJBQTJCO0lBRW5CO0lBQ0E7SUFDQTtJQUNBO0lBSm5CLFlBQ21CLE1BQThCLEVBQzlCLE9BQWlDLEVBQ2pDLGlCQUF3QyxFQUN4QyxRQUFtQztRQUhuQyxXQUFNLEdBQU4sTUFBTSxDQUF3QjtRQUM5QixZQUFPLEdBQVAsT0FBTyxDQUEwQjtRQUNqQyxzQkFBaUIsR0FBakIsaUJBQWlCLENBQXVCO1FBQ3hDLGFBQVEsR0FBUixRQUFRLENBQTJCO0lBQ25ELENBQUM7SUFFSjs7Ozs7O09BTUc7SUFFSCxNQUFNLENBQVEsR0FBdUI7UUFDbkMsT0FBTyxJQUFJLENBQUMsTUFBTSxDQUFDLGNBQWMsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO0lBQzdELENBQUM7SUFFRCw4RUFBOEU7SUFFOUU7OztPQUdHO0lBRUgsV0FBVyxDQUFRLEdBQXVCO1FBQ3hDLE9BQU8sSUFBSSxDQUFDLE1BQU0sQ0FBQyxxQkFBcUIsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO0lBQ3BFLENBQUM7SUFFRDs7Ozs7Ozs7OztPQVVHO0lBR0csQUFBTixLQUFLLENBQUMsY0FBYyxDQUNYLEdBQXVCLEVBQ3RCLElBQWlEO1FBRXpELE1BQU0sY0FBYyxHQUFHLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxDQUFDO1FBQy9DLE1BQU0sTUFBTSxHQUFHLElBQUks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QUEsdUJBQUssRUFBQyxPQUFPLEVBQUUsT0FBTyxDQUFDO0lBQ3ZCLElBQUEsYUFBSSxFQUFDLGlCQUFpQixDQUFDO0lBRXJCLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTtJQUNMLFdBQUEsSUFBQSxhQUFJLEdBQUUsQ0FBQTs7OztpRUFHUjtBQUlEO0lBRkMsSUFBQSx1QkFBSyxFQUFDLE9BQU8sRUFBRSxPQUFPLENBQUM7SUFDdkIsSUFBQSxhQUFJLEVBQUMsaUJBQWlCLENBQUM7SUFDUixXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7Ozs7aUVBRXBCO3NDQTFNVSwyQkFBMkI7SUFGdkMsSUFBQSxtQkFBVSxFQUFDLHdCQUF3QixDQUFDO0lBQ3BDLElBQUEsa0JBQVMsRUFBQyw2QkFBWSxFQUFFLHdCQUFVLENBQUM7cUNBR1AsaURBQXNCO1FBQ3JCLHFEQUF3QjtRQUNkLCtDQUFxQjtRQUM5Qix1REFBeUI7R0FMM0MsMkJBQTJCLENBMk12QyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL2FnZW50LXRvb2xzL2FnZW50LXByb3Zpc2lvbmluZy5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8qKlxuICogU3RhZmYtZmFjaW5nIHByb3Zpc2lvbmluZyBmb3IgYSB0ZW5hbnQncyBob3N0ZWQgYWdlbnQuXG4gKlxuICogRGlzdGluY3QgZnJvbSBBZ2VudFRvb2xzQ29udHJvbGxlciBpbiBib3RoIGRpcmVjdGlvbiBhbmQgYXVkaWVuY2U6IHRoYXQgb25lXG4gKiBpcyBjYWxsZWQgQlkgdGhlIGFnZW50IGFuZCBhdXRoZW50aWNhdGVkIHdpdGggYW4gYWdlbnQga2V5OyB0aGlzIG9uZSBpc1xuICogY2FsbGVkIGJ5IGEgc2lnbmVkLWluIG9wZXJhdG9yIGluIHRoZSBkYXNoYm9hcmQgYW5kIGF1dGhlbnRpY2F0ZWQgd2l0aCBhIEpXVC5cbiAqIFRoZXkgc2hhcmUgYSBtb2R1bGUgYmVjYXVzZSB0aGV5IHNoYXJlIHRoZSB0ZW5hbnQncyBjb25maWd1cmF0aW9uLCBhbmRcbiAqIG5vdGhpbmcgZWxzZS5cbiAqXG4gKiBUaGUgb3JnYW5pemF0aW9uIGFsd2F5cyBjb21lcyBmcm9tIHRoZSB0b2tlbiwgbmV2ZXIgZnJvbSB0aGUgYm9keSDigJQgYW5cbiAqIG9wZXJhdG9yIGNhbiBvbmx5IGV2ZXIgcHJvdmlzaW9uIHRoZWlyIG93biB0ZW5hbnQncyBhZ2VudC5cbiAqL1xuaW1wb3J0IHtcbiAgQmFkUmVxdWVzdEV4Y2VwdGlvbixcbiAgQm9keSxcbiAgQ29udHJvbGxlcixcbiAgR2V0LFxuICBQYXJhbSxcbiAgUG9zdCxcbiAgUmVxLFxuICBVc2VHdWFyZHMsXG59IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IEp3dEF1dGhHdWFyZCB9IGZyb20gJy4uL2F1dGgvand0LWF1dGguZ3VhcmQnO1xuaW1wb3J0IHsgUm9sZXNHdWFyZCB9IGZyb20gJy4uL2NvbW1vbi9ndWFyZHMvcm9sZXMuZ3VhcmQnO1xuaW1wb3J0IHsgUm9sZXMgfSBmcm9tICcuLi9jb21tb24vZGVjb3JhdG9ycy9yb2xlcy5kZWNvcmF0b3InO1xuaW1wb3J0IHsgQXV0aFVzZXIgfSBmcm9tICdAYWNlL3NoYXJlZC10eXBlcyc7XG5pbXBvcnQgeyBBZ2VudFN0YXR1cywgRWxldmVuTGFic0FnZW50U2VydmljZSwgU3luY1JlcG9ydCB9IGZyb20gJy4vZWxldmVubGFicy1hZ2VudC5zZXJ2aWNlJztcbmltcG9ydCB7XG4gIEVsZXZlbkxhYnNOdW1iZXJzU2VydmljZSxcbiAgSW1wb3J0ZWROdW1iZXIsXG4gIFdoYXRzQXBwQWNjb3VudCxcbn0gZnJvbSAnLi9lbGV2ZW5sYWJzLW51bWJlcnMuc2VydmljZSc7XG5pbXBvcnQgeyBFbGV2ZW5MYWJzTGl2ZVNlcnZpY2UsIExpdmVDb252ZXJzYXRpb24gfSBmcm9tICcuL2VsZXZlbmxhYnMtbGl2ZS5zZXJ2aWNlJztcbmltcG9ydCB7IEVsZXZlbkxhYnNUYWtlb3ZlclNlcnZpY2UsIFRha2VvdmVyT3V0Y29tZSB9IGZyb20gJy4vZWxldmVubGFicy10YWtlb3Zlci5zZXJ2aWNlJztcblxuLy8gUm9sZXNHdWFyZCBtdXN0IGZvbGxvdyBKd3RBdXRoR3VhcmQg4oCUIGl0IHJlYWRzIHJlcXVlc3QudXNlci5cbkBDb250cm9sbGVyKCdhcGkvYWdlbnQtcHJvdmlzaW9uaW5nJylcbkBVc2VHdWFyZHMoSnd0QXV0aEd1YXJkLCBSb2xlc0d1YXJkKVxuZXhwb3J0IGNsYXNzIEFnZW50UHJvdmlzaW9uaW5nQ29udHJvbGxlciB7XG4gIGNvbnN0cnVjdG9yKFxuICAgIHByaXZhdGUgcmVhZG9ubHkgYWdlbnRzOiBFbGV2ZW5MYWJzQWdlbnRTZXJ2aWNlLFxuICAgIHByaXZhdGUgcmVhZG9ubHkgbnVtYmVyczogRWxldmVuTGFic051bWJlcnNTZXJ2aWNlLFxuICAgIHByaXZhdGUgcmVhZG9ubHkgbGl2ZUNvbnZlcnNhdGlvbnM6IEVsZXZlbkxhYnNMaXZlU2VydmljZSxcbiAgICBwcml2YXRlIHJlYWRvbmx5IHRha2VvdmVyOiBFbGV2ZW5MYWJzVGFrZW92ZXJTZXJ2aWNlXG4gICkge31cblxuICAvKipcbiAgICogV2hhdCB0aGUgYWdlbnQgY3VzdG9tZXJzIHJlYWNoIGFjdHVhbGx5IGxvb2tzIGxpa2UsIGNvbXBhcmVkIHRvIHRoaXMgcmVwby5cbiAgICpcbiAgICogUmVhZGFibGUgYnkgYW55IHNpZ25lZC1pbiB1c2VyOiBrbm93aW5nIHdoZXRoZXIgdGhlIGFnZW50IGhhcyBkcmlmdGVkIGlzXG4gICAqIG5vdCBhIHByaXZpbGVnZWQgYWN0aW9uLCBhbmQgdGhlIGFuc3dlciBpcyBleGFjdGx5IHdoYXQgYSBzdXBwb3J0IHBlcnNvblxuICAgKiBuZWVkcyB3aGVuIGEgY3VzdG9tZXIgc2F5cyB0aGUgQUkgZ2F2ZSB0aGVtIGEgd3JvbmcgZGF0ZS5cbiAgICovXG4gIEBHZXQoJ3N0YXR1cycpXG4gIHN0YXR1cyhAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0pOiBQcm9taXNlPEFnZW50U3RhdHVzPiB7XG4gICAgcmV0dXJuIHRoaXMuYWdlbnRzLmdldEFnZW50U3RhdHVzKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkKTtcbiAgfVxuXG4gIC8vIOKUgOKUgCBXb3Jrc3BhY2UgY3JlZGVudGlhbHMg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAXG5cbiAgLyoqXG4gICAqIFdoaWNoIEVsZXZlbkxhYnMgd29ya3NwYWNlIHRoaXMgb3JnYW5pemF0aW9uIGlzIGluLCBhbmQgd2hhdCBpcyBzdGlsbFxuICAgKiBtaXNzaW5nIGZyb20gaXQuIE5ldmVyIHJldHVybnMgYSBjcmVkZW50aWFsIOKAlCBvbmx5IGZpbmdlcnByaW50cy5cbiAgICovXG4gIEBHZXQoJ2NyZWRlbnRpYWxzJylcbiAgY3JlZGVudGlhbHMoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9KSB7XG4gICAgcmV0dXJuIHRoaXMuYWdlbnRzLmdldFdvcmtzcGFjZUtleVN0YXR1cyhyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICAvKipcbiAgICogU3RvcmUgdGhpcyBvcmdhbml6YXRpb24ncyBvd24gd29ya3NwYWNlIGNyZWRlbnRpYWxzLlxuICAgKlxuICAgKiBBIGRlZGljYXRlZCB3b3Jrc3BhY2UgbmVlZHMgQk9USCBoYWx2ZXMsIGFuZCB0aGV5IGNhbiBiZSBzZXQgaW4gZWl0aGVyXG4gICAqIG9yZGVyIG9yIHRvZ2V0aGVyOiB0aGUgQVBJIGtleSBpcyB3aGF0IG1ha2VzIHRoZSB0ZW5hbmN5IGJvdW5kYXJ5IHJlYWxcbiAgICogKHdpdGhvdXQgaXQgdGhlIHRlbmFudCBzaGFyZXMgYSB3b3Jrc3BhY2Ugd2l0aCBldmVyeW9uZSBlbHNlJ3MgbnVtYmVycyBhbmRcbiAgICogV2hhdHNBcHAgbGluZXMpLCBhbmQgdGhlIHdlYmhvb2sgc2VjcmV0IGlzIHdoYXQgbGV0cyB0aGF0IHdvcmtzcGFjZSdzXG4gICAqIHBvc3QtY2FsbCB0cmFuc2NyaXB0cyBiZSB2ZXJpZmllZCBvbmNlIGl0IGRvZXMuIFNldHRpbmcgb25seSB0aGUga2V5IGxlYXZlc1xuICAgKiBhIHRlbmFudCB3aG9zZSBjYWxscyBhcmUgcHJpdmF0ZSBhbmQgd2hvc2UgdHJhbnNjcmlwdHMgYXJlIGRyb3BwZWQsIHdoaWNoIGlzXG4gICAqIHdoeSB0aGUgc3RhdHVzIGVuZHBvaW50IHdhcm5zIGFib3V0IGV4YWN0bHkgdGhhdC5cbiAgICovXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBAUG9zdCgnY3JlZGVudGlhbHMnKVxuICBhc3luYyBzZXRDcmVkZW50aWFscyhcbiAgICBAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sXG4gICAgQEJvZHkoKSBib2R5OiB7IGFwaUtleT86IHN0cmluZzsgd2ViaG9va1NlY3JldD86IHN0cmluZyB9XG4gICkge1xuICAgIGNvbnN0IG9yZ2FuaXphdGlvbklkID0gcmVxLnVzZXIub3JnYW5pemF0aW9uSWQ7XG4gICAgY29uc3QgYXBpS2V5ID0gYm9keT8uYXBpS2V5Py50cmltKCk7XG4gICAgY29uc3Qgd2ViaG9va1NlY3JldCA9IGJvZHk/LndlYmhvb2tTZWNyZXQ/LnRyaW0oKTtcblxuICAgIGlmICghYXBpS2V5ICYmICF3ZWJob29rU2VjcmV0KSB7XG4gICAgICB0aHJvdyBuZXcgQmFkUmVxdWVzdEV4Y2VwdGlvbihcbiAgICAgICAgJ1Byb3ZpZGUgYW4gYXBpS2V5LCBhIHdlYmhvb2tTZWNyZXQsIG9yIGJvdGguIEEgZGVkaWNhdGVkIEVsZXZlbkxhYnMgd29ya3NwYWNlIG5lZWRzIGVhY2g6IHRoZSBrZXkgdG8gYWN0IGluIGl0LCB0aGUgc2VjcmV0IHRvIHZlcmlmeSB3aGF0IGl0IHNlbmRzIGJhY2suJ1xuICAgICAgKTtcbiAgICB9XG5cbiAgICBpZiAoYXBpS2V5KSBhd2FpdCB0aGlzLmFnZW50cy5zZXRXb3Jrc3BhY2VLZXkob3JnYW5pemF0aW9uSWQsIGFwaUtleSk7XG4gICAgaWYgKHdlYmhvb2tTZWNyZXQpIGF3YWl0IHRoaXMuYWdlbnRzLnNldFdlYmhvb2tTZWNyZXQob3JnYW5pemF0aW9uSWQsIHdlYmhvb2tTZWNyZXQpO1xuXG4gICAgLy8gVGhlIGZ1bGwgc3RhdHVzIHJhdGhlciB0aGFuIGEgYmFyZSBhY2tub3dsZWRnZW1lbnQsIHNvIGEgY2FsbGVyIHRoYXQgc2V0XG4gICAgLy8gb25lIGhhbGYgaXMgdG9sZCBpbW1lZGlhdGVseSB0aGF0IHRoZSBvdGhlciBpcyBzdGlsbCBtaXNzaW5nLlxuICAgIHJldHVybiB0aGlzLmFnZW50cy5nZXRXb3Jrc3BhY2VLZXlTdGF0dXMob3JnYW5pemF0aW9uSWQpO1xuICB9XG5cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCdzeW5jJylcbiAgc3luYyhAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0pOiBQcm9taXNlPFN5bmNSZXBvcnQ+IHtcbiAgICByZXR1cm4gdGhpcy5hZ2VudHMuc3luY0FnZW50KHJlcS51c2VyLm9yZ2FuaXphdGlvbklkKTtcbiAgfVxuXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBAUG9zdCgnY3JlYXRlJylcbiAgY3JlYXRlKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSk6IFByb21pc2U8U3luY1JlcG9ydD4ge1xuICAgIHJldHVybiB0aGlzLmFnZW50cy5jcmVhdGVBZ2VudChyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICAvKipcbiAgICogUmVwbGFjZSB0aGUgY3JlZGVudGlhbCB0aGUgYWdlbnQncyB0b29scyBhdXRoZW50aWNhdGUgd2l0aC5cbiAgICpcbiAgICogVGhlIHJlc3BvbnNlIGNhcnJpZXMgdGhlIG5ldyBrZXkgb25jZS4gSXQgaXMgc3RvcmVkIG9ubHkgYXMgYSBoYXNoIGhlcmUgYW5kXG4gICAqIGxpdmVzIG9uIGluIHRoZSBFbGV2ZW5MYWJzIHdvcmtzcGFjZSBzZWNyZXQsIHNvIG5vdGhpbmcgY2FuIHNob3cgaXQgYWdhaW4uXG4gICAqL1xuICBAUm9sZXMoJ09XTkVSJywgJ0FETUlOJylcbiAgQFBvc3QoJ3JvdGF0ZS1rZXknKVxuICByb3RhdGVLZXkoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9KTogUHJvbWlzZTx7IGFnZW50S2V5OiBzdHJpbmcgfT4ge1xuICAgIHJldHVybiB0aGlzLmFnZW50cy5yb3RhdGVBZ2VudEtleShyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICAvLyDilIDilIAgTGl2ZSBjb252ZXJzYXRpb25zIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuXG4gIC8qKlxuICAgKiBXaGF0IHRoZSBhZ2VudCBpcyBzYXlpbmcgcmlnaHQgbm93LlxuICAgKlxuICAgKiBUaGUgY29uc29sZSBhbHNvIHJlY2VpdmVzIHRoZXNlIG92ZXIgdGhlIGAvZXZlbnRzYCBzb2NrZXQgZXZlcnkgZmV3XG4gICAqIHNlY29uZHMsIGJ1dCBhIHBhZ2UgdGhhdCBoYXMganVzdCBsb2FkZWQgc2hvdWxkIG5vdCBzaXQgYmxhbmsgZm9yIGEgcG9sbFxuICAgKiBpbnRlcnZhbC4gUmVhZGFibGUgYnkgYW55IHNpZ25lZC1pbiB1c2VyOiB3YXRjaGluZyBsaXZlIGNvbnZlcnNhdGlvbnMgaXNcbiAgICogdGhlIGNvbnNvbGUncyB3aG9sZSBwdXJwb3NlLCBub3QgYSBwcml2aWxlZ2VkIGFjdGlvbi5cbiAgICovXG4gIEBHZXQoJ2xpdmUnKVxuICBsaXZlKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSk6IFByb21pc2U8TGl2ZUNvbnZlcnNhdGlvbltdPiB7XG4gICAgcmV0dXJuIHRoaXMubGl2ZUNvbnZlcnNhdGlvbnMuZmV0Y2hMaXZlKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkKTtcbiAgfVxuXG4gIC8qKlxuICAgKiBUYWtlIGEgbGl2ZSBjYWxsIGF3YXkgZnJvbSB0aGUgYWdlbnQgYW5kIHB1dCBpdCB0aHJvdWdoIHRvIGEgcGVyc29uLlxuICAgKlxuICAgKiBBbnkgc2lnbmVkLWluIHVzZXIsIG5vdCBqdXN0IGFuIGFkbWluOiB0aGUgcGVvcGxlIHdhdGNoaW5nIHRoZSBjb25zb2xlIGFyZVxuICAgKiB0aGUgb25lcyB3aG8gbmVlZCB0byByZXNjdWUgYSBjYWxsIGdvaW5nIHdyb25nLCBhbmQgcmVxdWlyaW5nIGFuIGFkbWluXG4gICAqIG1lYW5zIHRoZSBjdXN0b21lciB3YWl0cyBmb3Igb25lLlxuICAgKlxuICAgKiBSZXR1cm5zIGB7IHRha2VuOiBmYWxzZSwgcmVhc29uIH1gIGZvciB0aGUgY2FzZXMgYSB3b3JraW5nIHN5c3RlbSBzdGlsbFxuICAgKiBoaXRzIOKAlCBhIGNhbGwgdGhhdCBlbmRlZCB3aGlsZSB0aGUgb3BlcmF0b3Igd2FzIHJlYWNoaW5nIGZvciB0aGUgYnV0dG9uLCBhXG4gICAqIFdoYXRzQXBwIHRocmVhZCB0aGF0IGNhbm5vdCBiZSB0YWtlbiBvdmVyLiBUaG9zZSBhcmUgYW5zd2Vycywgbm90IGVycm9ycy5cbiAgICovXG4gIEBQb3N0KCdsaXZlLzpjb252ZXJzYXRpb25JZC90YWtlb3ZlcicpXG4gIHRha2VPdmVyKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAUGFyYW0oJ2NvbnZlcnNhdGlvbklkJykgY29udmVyc2F0aW9uSWQ6IHN0cmluZ1xuICApOiBQcm9taXNlPFRha2VvdmVyT3V0Y29tZT4ge1xuICAgIHJldHVybiB0aGlzLnRha2VvdmVyLnRha2VPdmVyQ29udmVyc2F0aW9uKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBjb252ZXJzYXRpb25JZCk7XG4gIH1cblxuICAvKipcbiAgICogU3RvcCB0aGUgYWdlbnQgYW5zd2VyaW5nIHRoZSB3aG9sZSBXaGF0c0FwcCBsaW5lLlxuICAgKlxuICAgKiBOb3QgYSB0YWtlb3ZlciwgYW5kIG5hbWVkIHNvIGl0IGNhbm5vdCBiZSBtaXN0YWtlbiBmb3Igb25lIOKAlCBpdCBzaWxlbmNlc1xuICAgKiB0aGUgYWdlbnQgZm9yIGV2ZXJ5IGN1c3RvbWVyIG9uIHRoYXQgbnVtYmVyLlxuICAgKi9cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCd3aGF0c2FwcC9wYXVzZScpXG4gIHBhdXNlV2hhdHNBcHAoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBCb2R5KCkgYm9keTogeyBwYXVzZWQ/OiBib29sZWFuOyBjb25maXJtQWZmZWN0c0V2ZXJ5Q29udmVyc2F0aW9uPzogYm9vbGVhbiB9XG4gICk6IFByb21pc2U8eyBwYXVzZWQ6IGJvb2xlYW47IG5vdGU6IHN0cmluZyB9PiB7XG4gICAgcmV0dXJuIHRoaXMudGFrZW92ZXIuc2V0V2hhdHNBcHBMaW5lUGF1c2VkKFxuICAgICAgcmVxLnVzZXIub3JnYW5pemF0aW9uSWQsXG4gICAgICBib2R5Py5wYXVzZWQgIT09IGZhbHNlLFxuICAgICAgYm9keT8uY29uZmlybUFmZmVjdHNFdmVyeUNvbnZlcnNhdGlvbiA9PT0gdHJ1ZVxuICAgICk7XG4gIH1cblxuICAvLyDilIDilIAgUGhvbmUgbnVtYmVycyDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIBcblxuICBAR2V0KCdudW1iZXJzJylcbiAgbnVtYmVyc0xpc3QoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9KTogUHJvbWlzZTxJbXBvcnRlZE51bWJlcltdPiB7XG4gICAgcmV0dXJuIHRoaXMubnVtYmVycy5saXN0TnVtYmVycyhyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICAvKipcbiAgICogSGFuZCB0aGUgdGVuYW50J3MgVHdpbGlvIG51bWJlciB0byBFbGV2ZW5MYWJzLlxuICAgKlxuICAgKiBgY29uZmlybVZvaWNlQ3V0b3ZlcmAgaXMgcmVxdWlyZWQgYW5kIGRlbGliZXJhdGVseSBub3QgZGVmYXVsdGVkOiBhZnRlclxuICAgKiB0aGlzLCB0aGUgYWdlbnQgYW5zd2VycyB0aGUgbnVtYmVyIGluc3RlYWQgb2YgdGhlIG9yY2hlc3RyYXRvci4gVGhhdCBpcyBhXG4gICAqIGNoYW5nZSBpbiB3aG8gdGFsa3MgdG8gY3VzdG9tZXJzLlxuICAgKi9cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCdudW1iZXJzL2ltcG9ydCcpXG4gIGltcG9ydE51bWJlcihcbiAgICBAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sXG4gICAgQEJvZHkoKSBib2R5OiB7IGNvbmZpcm1Wb2ljZUN1dG92ZXI/OiBib29sZWFuOyBlbmFibGVTbXM/OiBib29sZWFuOyBsYWJlbD86IHN0cmluZyB9XG4gICk6IFByb21pc2U8SW1wb3J0ZWROdW1iZXI+IHtcbiAgICByZXR1cm4gdGhpcy5udW1iZXJzLmltcG9ydFR3aWxpb051bWJlcihyZXEudXNlci5vcmdhbml6YXRpb25JZCwge1xuICAgICAgY29uZmlybVZvaWNlQ3V0b3ZlcjogYm9keT8uY29uZmlybVZvaWNlQ3V0b3ZlciA9PT0gdHJ1ZSxcbiAgICAgIGVuYWJsZVNtczogYm9keT8uZW5hYmxlU21zLFxuICAgICAgbGFiZWw6IGJvZHk/LmxhYmVsLFxuICAgIH0pO1xuICB9XG5cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCdudW1iZXJzL3JlbGVhc2UnKVxuICByZWxlYXNlTnVtYmVyKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSk6IFByb21pc2U8eyByZWxlYXNlZDogYm9vbGVhbjsgbm90ZTogc3RyaW5nIH0+IHtcbiAgICByZXR1cm4gdGhpcy5udW1iZXJzLnJlbGVhc2VOdW1iZXIocmVxLnVzZXIub3JnYW5pemF0aW9uSWQpO1xuICB9XG5cbiAgLy8g4pSA4pSAIFdoYXRzQXBwIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuXG4gIEBHZXQoJ3doYXRzYXBwJylcbiAgd2hhdHNhcHBMaXN0KEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSk6IFByb21pc2U8V2hhdHNBcHBBY2NvdW50W10+IHtcbiAgICByZXR1cm4gdGhpcy5udW1iZXJzLmxpc3RXaGF0c0FwcEFjY291bnRzKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkKTtcbiAgfVxuXG4gIC8qKlxuICAgKiBQb2ludCBhbiBhbHJlYWR5LWNvbm5lY3RlZCBXaGF0c0FwcCBsaW5lIGF0IHRoaXMgb3JnYW5pemF0aW9uJ3MgYWdlbnQuXG4gICAqXG4gICAqIENvbm5lY3RpbmcgdGhlIGxpbmUgaXRzZWxmIGhhcHBlbnMgaW4gdGhlIEVsZXZlbkxhYnMgZGFzaGJvYXJkIOKAlCBNZXRhJ3NcbiAgICogZW1iZWRkZWQgc2lnbnVwIG5lZWRzIGEgaHVtYW4sIHNvIHRoZXJlIGlzIG5vIGVuZHBvaW50IHRoYXQgY2FuIGRvIGl0LlxuICAgKi9cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCd3aGF0c2FwcC9hdHRhY2gnKVxuICBhdHRhY2hXaGF0c0FwcChcbiAgICBAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sXG4gICAgQEJvZHkoKSBib2R5OiB7IHBob25lTnVtYmVySWQ6IHN0cmluZyB9XG4gICk6IFByb21pc2U8V2hhdHNBcHBBY2NvdW50PiB7XG4gICAgcmV0dXJuIHRoaXMubnVtYmVycy5hdHRhY2hXaGF0c0FwcEFjY291bnQocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIGJvZHk/LnBob25lTnVtYmVySWQgPz8gJycpO1xuICB9XG5cbiAgQFJvbGVzKCdPV05FUicsICdBRE1JTicpXG4gIEBQb3N0KCd3aGF0c2FwcC9kZXRhY2gnKVxuICBkZXRhY2hXaGF0c0FwcChAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0pOiBQcm9taXNlPHsgZGV0YWNoZWQ6IGJvb2xlYW4gfT4ge1xuICAgIHJldHVybiB0aGlzLm51bWJlcnMuZGV0YWNoV2hhdHNBcHBBY2NvdW50KHJlcS51c2VyLm9yZ2FuaXphdGlvbklkKTtcbiAgfVxufVxuIl0sInZlcnNpb24iOjN9

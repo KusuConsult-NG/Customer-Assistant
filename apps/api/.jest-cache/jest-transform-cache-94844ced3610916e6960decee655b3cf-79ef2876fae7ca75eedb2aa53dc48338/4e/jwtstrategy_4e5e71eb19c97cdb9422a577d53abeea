@@ -1,0 +1,91 @@
+86e2f5b18b76ba4034d205f4ce429e07
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.JwtStrategy = void 0;
+const common_1 = require("@nestjs/common");
+const passport_1 = require("@nestjs/passport");
+const passport_jwt_1 = require("passport-jwt");
+const database_1 = require("@ace/database");
+/**
+ * JWT_SECRET is validated as required at startup (config/env.validation.ts).
+ * Reading it once here — with no fallback — guarantees that a deployment which
+ * somehow bypasses that check fails loudly instead of quietly signing every
+ * token with a publicly-known default string.
+ */
+function jwtSecret() {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error('JWT_SECRET is not set. Refusing to start the JWT strategy with a default secret.');
+    }
+    return secret;
+}
+let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy) {
+    constructor() {
+        super({
+            jwtFromRequest: passport_jwt_1.ExtractJwt.fromAuthHeaderAsBearerToken(),
+            ignoreExpiration: false,
+            secretOrKey: jwtSecret(),
+        });
+    }
+    /**
+     * The signature and expiry are already verified by passport-jwt at this point.
+     * We additionally re-check the user against the database on every request so that:
+     *
+     *   - deactivating a member (isActive=false) takes effect immediately rather than
+     *     whenever their token happens to expire, up to a day later;
+     *   - logout / password change / password reset genuinely revoke outstanding
+     *     tokens, via the tokenVersion counter;
+     *   - a token naming a deleted user cannot keep addressing that organization.
+     *
+     * This is one primary-key lookup per authenticated request.
+     */
+    async validate(payload) {
+        if (!payload?.userId || !payload?.organizationId) {
+            throw new common_1.UnauthorizedException('Invalid JWT payload');
+        }
+        const user = await database_1.prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: {
+                id: true,
+                email: true,
+                fullName: true,
+                role: true,
+                isActive: true,
+                organizationId: true,
+                tokenVersion: true,
+            },
+        });
+        if (!user)
+            throw new common_1.UnauthorizedException('User no longer exists');
+        if (!user.isActive)
+            throw new common_1.UnauthorizedException('Your account has been deactivated.');
+        if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
+            throw new common_1.UnauthorizedException('This session has been signed out. Please log in again.');
+        }
+        // Source role and organization from the database, not from the token: a role
+        // change must take effect at once, and it must not be possible to widen access
+        // by holding on to a token minted before a demotion.
+        return {
+            userId: user.id,
+            organizationId: user.organizationId,
+            email: user.email,
+            fullName: user.fullName,
+            role: user.role,
+        };
+    }
+};
+exports.JwtStrategy = JwtStrategy;
+exports.JwtStrategy = JwtStrategy = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [])
+], JwtStrategy);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hdXRoL2p3dC5zdHJhdGVneS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwyQ0FBbUU7QUFDbkUsK0NBQW9EO0FBQ3BELCtDQUFvRDtBQUVwRCw0Q0FBdUM7QUFFdkM7Ozs7O0dBS0c7QUFDSCxTQUFTLFNBQVM7SUFDaEIsTUFBTSxNQUFNLEdBQUcsT0FBTyxDQUFDLEdBQUcsQ0FBQyxVQUFVLENBQUM7SUFDdEMsSUFBSSxDQUFDLE1BQU0sRUFBRSxDQUFDO1FBQ1osTUFBTSxJQUFJLEtBQUssQ0FBQyxrRkFBa0YsQ0FBQyxDQUFDO0lBQ3RHLENBQUM7SUFDRCxPQUFPLE1BQU0sQ0FBQztBQUNoQixDQUFDO0FBR00sSUFBTSxXQUFXLEdBQWpCLE1BQU0sV0FBWSxTQUFRLElBQUEsMkJBQWdCLEVBQUMsdUJBQVEsQ0FBQztJQUN6RDtRQUNFLEtBQUssQ0FBQztZQUNKLGNBQWMsRUFBRSx5QkFBVSxDQUFDLDJCQUEyQixFQUFFO1lBQ3hELGdCQUFnQixFQUFFLEtBQUs7WUFDdkIsV0FBVyxFQUFFLFNBQVMsRUFBRTtTQUN6QixDQUFDLENBQUM7SUFDTCxDQUFDO0lBRUQ7Ozs7Ozs7Ozs7O09BV0c7SUFDSCxLQUFLLENBQUMsUUFBUSxDQUFDLE9BQVk7UUFDekIsSUFBSSxDQUFDLE9BQU8sRUFBRSxNQUFNLElBQUksQ0FBQyxPQUFPLEVBQUUsY0FBYyxFQUFFLENBQUM7WUFDakQsTUFBTSxJQUFJLDhCQUFxQixDQUFDLHFCQUFxQixDQUFDLENBQUM7UUFDekQsQ0FBQztRQUVELE1BQU0sSUFBSSxHQUFHLE1BQU0saUJBQU0sQ0FBQyxJQUFJLENBQUMsVUFBVSxDQUFDO1lBQ3hDLEtBQUssRUFBRSxFQUFFLEVBQUUsRUFBRSxPQUFPLENBQUMsTUFBTSxFQUFFO1lBQzdCLE1BQU0sRUFBRTtnQkFDTixFQUFFLEVBQUUsSUFBSTtnQkFDUixLQUFLLEVBQUUsSUFBSTtnQkFDWCxRQUFRLEVBQUUsSUFBSTtnQkFDZCxJQUFJLEVBQUUsSUFBSTtnQkFDVixRQUFRLEVBQUUsSUFBSTtnQkFDZCxjQUFjLEVBQUUsSUFBSTtnQkFDcEIsWUFBWSxFQUFFLElBQUk7YUFDbkI7U0FDRixDQUFDLENBQUM7UUFFSCxJQUFJLENBQUMsSUFBSTtZQUFFLE1BQU0sSUFBSSw4QkFBcUIsQ0FBQyx1QkFBdUIsQ0FBQyxDQUFDO1FBQ3BFLElBQUksQ0FBQyxJQUFJLENBQUMsUUFBUTtZQUFFLE1BQU0sSUFBSSw4QkFBcUIsQ0FBQyxvQ0FBb0MsQ0FBQyxDQUFDO1FBQzFGLElBQUksQ0FBQyxPQUFPLENBQUMsWUFBWSxJQUFJLENBQUMsQ0FBQyxLQUFLLElBQUksQ0FBQyxZQUFZLEVBQUUsQ0FBQztZQUN0RCxNQUFNLElBQUksOEJBQXFCLENBQUMsd0RBQXdELENBQUMsQ0FBQztRQUM1RixDQUFDO1FBRUQsNkVBQTZFO1FBQzdFLCtFQUErRTtRQUMvRSxxREFBcUQ7UUFDckQsT0FBTztZQUNMLE1BQU0sRUFBRSxJQUFJLENBQUMsRUFBRTtZQUNmLGNBQWMsRUFBRSxJQUFJLENBQUMsY0FBYztZQUNuQyxLQUFLLEVBQUUsSUFBSSxDQUFDLEtBQUs7WUFDakIsUUFBUSxFQUFFLElBQUksQ0FBQyxRQUFRO1lBQ3ZCLElBQUksRUFBRSxJQUFJLENBQUMsSUFBd0I7U0FDcEMsQ0FBQztJQUNKLENBQUM7Q0FDRixDQUFBO0FBeERZLGtDQUFXO3NCQUFYLFdBQVc7SUFEdkIsSUFBQSxtQkFBVSxHQUFFOztHQUNBLFdBQVcsQ0F3RHZCIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvYXV0aC9qd3Quc3RyYXRlZ3kudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgSW5qZWN0YWJsZSwgVW5hdXRob3JpemVkRXhjZXB0aW9uIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgUGFzc3BvcnRTdHJhdGVneSB9IGZyb20gJ0BuZXN0anMvcGFzc3BvcnQnO1xuaW1wb3J0IHsgRXh0cmFjdEp3dCwgU3RyYXRlZ3kgfSBmcm9tICdwYXNzcG9ydC1qd3QnO1xuaW1wb3J0IHsgQXV0aFVzZXIgfSBmcm9tICdAYWNlL3NoYXJlZC10eXBlcyc7XG5pbXBvcnQgeyBwcmlzbWEgfSBmcm9tICdAYWNlL2RhdGFiYXNlJztcblxuLyoqXG4gKiBKV1RfU0VDUkVUIGlzIHZhbGlkYXRlZCBhcyByZXF1aXJlZCBhdCBzdGFydHVwIChjb25maWcvZW52LnZhbGlkYXRpb24udHMpLlxuICogUmVhZGluZyBpdCBvbmNlIGhlcmUg4oCUIHdpdGggbm8gZmFsbGJhY2sg4oCUIGd1YXJhbnRlZXMgdGhhdCBhIGRlcGxveW1lbnQgd2hpY2hcbiAqIHNvbWVob3cgYnlwYXNzZXMgdGhhdCBjaGVjayBmYWlscyBsb3VkbHkgaW5zdGVhZCBvZiBxdWlldGx5IHNpZ25pbmcgZXZlcnlcbiAqIHRva2VuIHdpdGggYSBwdWJsaWNseS1rbm93biBkZWZhdWx0IHN0cmluZy5cbiAqL1xuZnVuY3Rpb24gand0U2VjcmV0KCk6IHN0cmluZyB7XG4gIGNvbnN0IHNlY3JldCA9IHByb2Nlc3MuZW52LkpXVF9TRUNSRVQ7XG4gIGlmICghc2VjcmV0KSB7XG4gICAgdGhyb3cgbmV3IEVycm9yKCdKV1RfU0VDUkVUIGlzIG5vdCBzZXQuIFJlZnVzaW5nIHRvIHN0YXJ0IHRoZSBKV1Qgc3RyYXRlZ3kgd2l0aCBhIGRlZmF1bHQgc2VjcmV0LicpO1xuICB9XG4gIHJldHVybiBzZWNyZXQ7XG59XG5cbkBJbmplY3RhYmxlKClcbmV4cG9ydCBjbGFzcyBKd3RTdHJhdGVneSBleHRlbmRzIFBhc3Nwb3J0U3RyYXRlZ3koU3RyYXRlZ3kpIHtcbiAgY29uc3RydWN0b3IoKSB7XG4gICAgc3VwZXIoe1xuICAgICAgand0RnJvbVJlcXVlc3Q6IEV4dHJhY3RKd3QuZnJvbUF1dGhIZWFkZXJBc0JlYXJlclRva2VuKCksXG4gICAgICBpZ25vcmVFeHBpcmF0aW9uOiBmYWxzZSxcbiAgICAgIHNlY3JldE9yS2V5OiBqd3RTZWNyZXQoKSxcbiAgICB9KTtcbiAgfVxuXG4gIC8qKlxuICAgKiBUaGUgc2lnbmF0dXJlIGFuZCBleHBpcnkgYXJlIGFscmVhZHkgdmVyaWZpZWQgYnkgcGFzc3BvcnQtand0IGF0IHRoaXMgcG9pbnQuXG4gICAqIFdlIGFkZGl0aW9uYWxseSByZS1jaGVjayB0aGUgdXNlciBhZ2FpbnN0IHRoZSBkYXRhYmFzZSBvbiBldmVyeSByZXF1ZXN0IHNvIHRoYXQ6XG4gICAqXG4gICAqICAgLSBkZWFjdGl2YXRpbmcgYSBtZW1iZXIgKGlzQWN0aXZlPWZhbHNlKSB0YWtlcyBlZmZlY3QgaW1tZWRpYXRlbHkgcmF0aGVyIHRoYW5cbiAgICogICAgIHdoZW5ldmVyIHRoZWlyIHRva2VuIGhhcHBlbnMgdG8gZXhwaXJlLCB1cCB0byBhIGRheSBsYXRlcjtcbiAgICogICAtIGxvZ291dCAvIHBhc3N3b3JkIGNoYW5nZSAvIHBhc3N3b3JkIHJlc2V0IGdlbnVpbmVseSByZXZva2Ugb3V0c3RhbmRpbmdcbiAgICogICAgIHRva2VucywgdmlhIHRoZSB0b2tlblZlcnNpb24gY291bnRlcjtcbiAgICogICAtIGEgdG9rZW4gbmFtaW5nIGEgZGVsZXRlZCB1c2VyIGNhbm5vdCBrZWVwIGFkZHJlc3NpbmcgdGhhdCBvcmdhbml6YXRpb24uXG4gICAqXG4gICAqIFRoaXMgaXMgb25lIHByaW1hcnkta2V5IGxvb2t1cCBwZXIgYXV0aGVudGljYXRlZCByZXF1ZXN0LlxuICAgKi9cbiAgYXN5bmMgdmFsaWRhdGUocGF5bG9hZDogYW55KTogUHJvbWlzZTxBdXRoVXNlcj4ge1xuICAgIGlmICghcGF5bG9hZD8udXNlcklkIHx8ICFwYXlsb2FkPy5vcmdhbml6YXRpb25JZCkge1xuICAgICAgdGhyb3cgbmV3IFVuYXV0aG9yaXplZEV4Y2VwdGlvbignSW52YWxpZCBKV1QgcGF5bG9hZCcpO1xuICAgIH1cblxuICAgIGNvbnN0IHVzZXIgPSBhd2FpdCBwcmlzbWEudXNlci5maW5kVW5pcXVlKHtcbiAgICAgIHdoZXJlOiB7IGlkOiBwYXlsb2FkLnVzZXJJZCB9LFxuICAgICAgc2VsZWN0OiB7XG4gICAgICAgIGlkOiB0cnVlLFxuICAgICAgICBlbWFpbDogdHJ1ZSxcbiAgICAgICAgZnVsbE5hbWU6IHRydWUsXG4gICAgICAgIHJvbGU6IHRydWUsXG4gICAgICAgIGlzQWN0aXZlOiB0cnVlLFxuICAgICAgICBvcmdhbml6YXRpb25JZDogdHJ1ZSxcbiAgICAgICAgdG9rZW5WZXJzaW9uOiB0cnVlLFxuICAgICAgfSxcbiAgICB9KTtcblxuICAgIGlmICghdXNlcikgdGhyb3cgbmV3IFVuYXV0aG9yaXplZEV4Y2VwdGlvbignVXNlciBubyBsb25nZXIgZXhpc3RzJyk7XG4gICAgaWYgKCF1c2VyLmlzQWN0aXZlKSB0aHJvdyBuZXcgVW5hdXRob3JpemVkRXhjZXB0aW9uKCdZb3VyIGFjY291bnQgaGFzIGJlZW4gZGVhY3RpdmF0ZWQuJyk7XG4gICAgaWYgKChwYXlsb2FkLnRva2VuVmVyc2lvbiA/PyAwKSAhPT0gdXNlci50b2tlblZlcnNpb24pIHtcbiAgICAgIHRocm93IG5ldyBVbmF1dGhvcml6ZWRFeGNlcHRpb24oJ1RoaXMgc2Vzc2lvbiBoYXMgYmVlbiBzaWduZWQgb3V0LiBQbGVhc2UgbG9nIGluIGFnYWluLicpO1xuICAgIH1cblxuICAgIC8vIFNvdXJjZSByb2xlIGFuZCBvcmdhbml6YXRpb24gZnJvbSB0aGUgZGF0YWJhc2UsIG5vdCBmcm9tIHRoZSB0b2tlbjogYSByb2xlXG4gICAgLy8gY2hhbmdlIG11c3QgdGFrZSBlZmZlY3QgYXQgb25jZSwgYW5kIGl0IG11c3Qgbm90IGJlIHBvc3NpYmxlIHRvIHdpZGVuIGFjY2Vzc1xuICAgIC8vIGJ5IGhvbGRpbmcgb24gdG8gYSB0b2tlbiBtaW50ZWQgYmVmb3JlIGEgZGVtb3Rpb24uXG4gICAgcmV0dXJuIHtcbiAgICAgIHVzZXJJZDogdXNlci5pZCxcbiAgICAgIG9yZ2FuaXphdGlvbklkOiB1c2VyLm9yZ2FuaXphdGlvbklkLFxuICAgICAgZW1haWw6IHVzZXIuZW1haWwsXG4gICAgICBmdWxsTmFtZTogdXNlci5mdWxsTmFtZSxcbiAgICAgIHJvbGU6IHVzZXIucm9sZSBhcyBBdXRoVXNlclsncm9sZSddLFxuICAgIH07XG4gIH1cbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

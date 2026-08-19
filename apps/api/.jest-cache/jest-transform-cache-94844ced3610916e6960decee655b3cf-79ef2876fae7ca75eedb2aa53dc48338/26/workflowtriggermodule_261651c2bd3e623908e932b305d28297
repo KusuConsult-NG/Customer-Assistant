@@ -1,0 +1,34 @@
+f677805a6f0430b963490f34f669c4c1
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WorkflowTriggerModule = void 0;
+const common_1 = require("@nestjs/common");
+const workflow_trigger_service_1 = require("./workflow-trigger.service");
+/**
+ * Trigger-only module.
+ *
+ * Split from WorkflowsModule on purpose. Domain code (CRM, WhatsApp, scheduling,
+ * telephony) needs to FIRE workflows, while the executor needs those same modules to
+ * PERFORM actions — importing one module both ways is a cycle Nest cannot resolve.
+ *
+ * WorkflowTriggerService depends on nothing but Prisma and the queue, so this module
+ * is safe for anyone to import. Marked @Global so call sites do not each have to
+ * declare the import.
+ */
+let WorkflowTriggerModule = class WorkflowTriggerModule {
+};
+exports.WorkflowTriggerModule = WorkflowTriggerModule;
+exports.WorkflowTriggerModule = WorkflowTriggerModule = __decorate([
+    (0, common_1.Global)(),
+    (0, common_1.Module)({
+        providers: [workflow_trigger_service_1.WorkflowTriggerService],
+        exports: [workflow_trigger_service_1.WorkflowTriggerService],
+    })
+], WorkflowTriggerModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93b3JrZmxvd3Mvd29ya2Zsb3ctdHJpZ2dlci5tb2R1bGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7O0FBQUEsMkNBQWdEO0FBQ2hELHlFQUFvRTtBQUVwRTs7Ozs7Ozs7OztHQVVHO0FBTUksSUFBTSxxQkFBcUIsR0FBM0IsTUFBTSxxQkFBcUI7Q0FBRyxDQUFBO0FBQXhCLHNEQUFxQjtnQ0FBckIscUJBQXFCO0lBTGpDLElBQUEsZUFBTSxHQUFFO0lBQ1IsSUFBQSxlQUFNLEVBQUM7UUFDTixTQUFTLEVBQUUsQ0FBQyxpREFBc0IsQ0FBQztRQUNuQyxPQUFPLEVBQUUsQ0FBQyxpREFBc0IsQ0FBQztLQUNsQyxDQUFDO0dBQ1cscUJBQXFCLENBQUciLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93b3JrZmxvd3Mvd29ya2Zsb3ctdHJpZ2dlci5tb2R1bGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgR2xvYmFsLCBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBXb3JrZmxvd1RyaWdnZXJTZXJ2aWNlIH0gZnJvbSAnLi93b3JrZmxvdy10cmlnZ2VyLnNlcnZpY2UnO1xuXG4vKipcbiAqIFRyaWdnZXItb25seSBtb2R1bGUuXG4gKlxuICogU3BsaXQgZnJvbSBXb3JrZmxvd3NNb2R1bGUgb24gcHVycG9zZS4gRG9tYWluIGNvZGUgKENSTSwgV2hhdHNBcHAsIHNjaGVkdWxpbmcsXG4gKiB0ZWxlcGhvbnkpIG5lZWRzIHRvIEZJUkUgd29ya2Zsb3dzLCB3aGlsZSB0aGUgZXhlY3V0b3IgbmVlZHMgdGhvc2Ugc2FtZSBtb2R1bGVzIHRvXG4gKiBQRVJGT1JNIGFjdGlvbnMg4oCUIGltcG9ydGluZyBvbmUgbW9kdWxlIGJvdGggd2F5cyBpcyBhIGN5Y2xlIE5lc3QgY2Fubm90IHJlc29sdmUuXG4gKlxuICogV29ya2Zsb3dUcmlnZ2VyU2VydmljZSBkZXBlbmRzIG9uIG5vdGhpbmcgYnV0IFByaXNtYSBhbmQgdGhlIHF1ZXVlLCBzbyB0aGlzIG1vZHVsZVxuICogaXMgc2FmZSBmb3IgYW55b25lIHRvIGltcG9ydC4gTWFya2VkIEBHbG9iYWwgc28gY2FsbCBzaXRlcyBkbyBub3QgZWFjaCBoYXZlIHRvXG4gKiBkZWNsYXJlIHRoZSBpbXBvcnQuXG4gKi9cbkBHbG9iYWwoKVxuQE1vZHVsZSh7XG4gIHByb3ZpZGVyczogW1dvcmtmbG93VHJpZ2dlclNlcnZpY2VdLFxuICBleHBvcnRzOiBbV29ya2Zsb3dUcmlnZ2VyU2VydmljZV0sXG59KVxuZXhwb3J0IGNsYXNzIFdvcmtmbG93VHJpZ2dlck1vZHVsZSB7fVxuIl0sInZlcnNpb24iOjN9

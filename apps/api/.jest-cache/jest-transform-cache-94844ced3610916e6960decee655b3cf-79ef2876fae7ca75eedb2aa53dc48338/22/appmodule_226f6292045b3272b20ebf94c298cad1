@@ -1,0 +1,92 @@
+bdaf956e1354ca02c755ce1857b1df01
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AppModule = void 0;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
+const throttler_1 = require("@nestjs/throttler");
+const app_controller_1 = require("./app.controller");
+const auth_module_1 = require("./auth/auth.module");
+const organizations_module_1 = require("./organizations/organizations.module");
+const crm_module_1 = require("./crm/crm.module");
+const telephony_module_1 = require("./telephony/telephony.module");
+const whatsapp_module_1 = require("./whatsapp/whatsapp.module");
+const knowledge_module_1 = require("./knowledge/knowledge.module");
+const scheduling_module_1 = require("./scheduling/scheduling.module");
+const analytics_module_1 = require("./analytics/analytics.module");
+const billing_module_1 = require("./billing/billing.module");
+const events_module_1 = require("./events/events.module");
+const webhooks_module_1 = require("./webhooks/webhooks.module");
+const widget_module_1 = require("./widget/widget.module");
+const agent_tools_module_1 = require("./agent-tools/agent-tools.module");
+const workflows_module_1 = require("./workflows/workflows.module");
+const redis_throttler_storage_1 = require("./config/redis-throttler-storage");
+const workflow_trigger_module_1 = require("./workflows/workflow-trigger.module");
+const onboarding_module_1 = require("./onboarding/onboarding.module");
+let AppModule = class AppModule {
+};
+exports.AppModule = AppModule;
+exports.AppModule = AppModule = __decorate([
+    (0, common_1.Module)({
+        imports: [
+            // Rate limiting.
+            //
+            // IMPORTANT: ThrottlerGuard applies EVERY configured throttler to EVERY route
+            // (they are ANDed, not selected by decorator). Registering several named tiers
+            // here therefore imposes the *strictest* tier on the whole API — a previous
+            // 3-tier config silently capped every endpoint at 5 requests/minute.
+            //
+            // So there is exactly one tier. Routes that need a different budget override it
+            // per-controller/handler with @Throttle({ default: { limit, ttl } }), and webhooks
+            // opt out entirely with @SkipThrottle().
+            // Storage: Redis-backed when REDIS_URL is set, so counters survive restarts
+            // and are shared across pods (in-memory storage silently multiplies the
+            // limit by the replica count). Fails open if Redis is down.
+            throttler_1.ThrottlerModule.forRoot({
+                throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+                ...(process.env.REDIS_URL
+                    ? { storage: new redis_throttler_storage_1.RedisThrottlerStorage(process.env.REDIS_URL) }
+                    : {}),
+            }),
+            // Global: lets any module fire workflow triggers without a circular import.
+            workflow_trigger_module_1.WorkflowTriggerModule,
+            // Global: WhatsApp inbound and the workflow engine both attach selfies.
+            onboarding_module_1.OnboardingModule,
+            auth_module_1.AuthModule,
+            organizations_module_1.OrganizationsModule,
+            crm_module_1.CrmModule,
+            telephony_module_1.TelephonyModule,
+            whatsapp_module_1.WhatsappModule,
+            knowledge_module_1.KnowledgeModule,
+            scheduling_module_1.SchedulingModule,
+            analytics_module_1.AnalyticsModule,
+            billing_module_1.BillingModule,
+            events_module_1.EventsModule,
+            webhooks_module_1.WebhooksModule,
+            widget_module_1.WidgetModule,
+            agent_tools_module_1.AgentToolsModule,
+            workflows_module_1.WorkflowsModule,
+        ],
+        controllers: [app_controller_1.AppController],
+        providers: [
+            // Apply the default throttle tier globally to every route.
+            { provide: core_1.APP_GUARD, useClass: throttler_1.ThrottlerGuard },
+            //
+            // RolesGuard is deliberately NOT registered globally. Nest runs guards in the
+            // order global → controller → route, so a global RolesGuard executes BEFORE the
+            // controller's JwtAuthGuard has populated request.user — which made every
+            // @Roles()-decorated endpoint reject with 403 unconditionally. It is now applied
+            // per-controller *after* JwtAuthGuard: @UseGuards(JwtAuthGuard, RolesGuard).
+            //
+            // VoiceStreamGateway is likewise not listed here — TelephonyModule already
+            // provides it, and declaring it twice bound the same Socket.IO namespace twice.
+        ],
+    })
+], AppModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hcHAubW9kdWxlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUFBLDJDQUF3QztBQUN4Qyx1Q0FBeUM7QUFDekMsaURBQW9FO0FBQ3BFLHFEQUFpRDtBQUNqRCxvREFBZ0Q7QUFDaEQsK0VBQTJFO0FBQzNFLGlEQUE2QztBQUM3QyxtRUFBK0Q7QUFDL0QsZ0VBQTREO0FBQzVELG1FQUErRDtBQUMvRCxzRUFBa0U7QUFDbEUsbUVBQStEO0FBQy9ELDZEQUF5RDtBQUN6RCwwREFBc0Q7QUFDdEQsZ0VBQTREO0FBQzVELDBEQUFzRDtBQUN0RCx5RUFBb0U7QUFDcEUsbUVBQStEO0FBQy9ELDhFQUF5RTtBQUN6RSxpRkFBNEU7QUFDNUUsc0VBQWtFO0FBeUQzRCxJQUFNLFNBQVMsR0FBZixNQUFNLFNBQVM7Q0FBRyxDQUFBO0FBQVosOEJBQVM7b0JBQVQsU0FBUztJQXZEckIsSUFBQSxlQUFNLEVBQUM7UUFDTixPQUFPLEVBQUU7WUFDUCxpQkFBaUI7WUFDakIsRUFBRTtZQUNGLDhFQUE4RTtZQUM5RSwrRUFBK0U7WUFDL0UsNEVBQTRFO1lBQzVFLHFFQUFxRTtZQUNyRSxFQUFFO1lBQ0YsZ0ZBQWdGO1lBQ2hGLG1GQUFtRjtZQUNuRix5Q0FBeUM7WUFDekMsNEVBQTRFO1lBQzVFLHdFQUF3RTtZQUN4RSw0REFBNEQ7WUFDNUQsMkJBQWUsQ0FBQyxPQUFPLENBQUM7Z0JBQ3RCLFVBQVUsRUFBRSxDQUFDLEVBQUUsSUFBSSxFQUFFLFNBQVMsRUFBRSxHQUFHLEVBQUUsTUFBTSxFQUFFLEtBQUssRUFBRSxHQUFHLEVBQUUsQ0FBQztnQkFDMUQsR0FBRyxDQUFDLE9BQU8sQ0FBQyxHQUFHLENBQUMsU0FBUztvQkFDdkIsQ0FBQyxDQUFDLEVBQUUsT0FBTyxFQUFFLElBQUksK0NBQXFCLENBQUMsT0FBTyxDQUFDLEdBQUcsQ0FBQyxTQUFTLENBQUMsRUFBRTtvQkFDL0QsQ0FBQyxDQUFDLEVBQUUsQ0FBQzthQUNSLENBQUM7WUFDRiw0RUFBNEU7WUFDNUUsK0NBQXFCO1lBQ3JCLHdFQUF3RTtZQUN4RSxvQ0FBZ0I7WUFDaEIsd0JBQVU7WUFDViwwQ0FBbUI7WUFDbkIsc0JBQVM7WUFDVCxrQ0FBZTtZQUNmLGdDQUFjO1lBQ2Qsa0NBQWU7WUFDZixvQ0FBZ0I7WUFDaEIsa0NBQWU7WUFDZiw4QkFBYTtZQUNiLDRCQUFZO1lBQ1osZ0NBQWM7WUFDZCw0QkFBWTtZQUNaLHFDQUFnQjtZQUNoQixrQ0FBZTtTQUNoQjtRQUNELFdBQVcsRUFBRSxDQUFDLDhCQUFhLENBQUM7UUFDNUIsU0FBUyxFQUFFO1lBQ1QsMkRBQTJEO1lBQzNELEVBQUUsT0FBTyxFQUFFLGdCQUFTLEVBQUUsUUFBUSxFQUFFLDBCQUFjLEVBQUU7WUFDaEQsRUFBRTtZQUNGLDhFQUE4RTtZQUM5RSxnRkFBZ0Y7WUFDaEYsMEVBQTBFO1lBQzFFLGlGQUFpRjtZQUNqRiw2RUFBNkU7WUFDN0UsRUFBRTtZQUNGLDJFQUEyRTtZQUMzRSxnRkFBZ0Y7U0FDakY7S0FDRixDQUFDO0dBQ1csU0FBUyxDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvYXBwLm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBBUFBfR1VBUkQgfSBmcm9tICdAbmVzdGpzL2NvcmUnO1xuaW1wb3J0IHsgVGhyb3R0bGVyTW9kdWxlLCBUaHJvdHRsZXJHdWFyZCB9IGZyb20gJ0BuZXN0anMvdGhyb3R0bGVyJztcbmltcG9ydCB7IEFwcENvbnRyb2xsZXIgfSBmcm9tICcuL2FwcC5jb250cm9sbGVyJztcbmltcG9ydCB7IEF1dGhNb2R1bGUgfSBmcm9tICcuL2F1dGgvYXV0aC5tb2R1bGUnO1xuaW1wb3J0IHsgT3JnYW5pemF0aW9uc01vZHVsZSB9IGZyb20gJy4vb3JnYW5pemF0aW9ucy9vcmdhbml6YXRpb25zLm1vZHVsZSc7XG5pbXBvcnQgeyBDcm1Nb2R1bGUgfSBmcm9tICcuL2NybS9jcm0ubW9kdWxlJztcbmltcG9ydCB7IFRlbGVwaG9ueU1vZHVsZSB9IGZyb20gJy4vdGVsZXBob255L3RlbGVwaG9ueS5tb2R1bGUnO1xuaW1wb3J0IHsgV2hhdHNhcHBNb2R1bGUgfSBmcm9tICcuL3doYXRzYXBwL3doYXRzYXBwLm1vZHVsZSc7XG5pbXBvcnQgeyBLbm93bGVkZ2VNb2R1bGUgfSBmcm9tICcuL2tub3dsZWRnZS9rbm93bGVkZ2UubW9kdWxlJztcbmltcG9ydCB7IFNjaGVkdWxpbmdNb2R1bGUgfSBmcm9tICcuL3NjaGVkdWxpbmcvc2NoZWR1bGluZy5tb2R1bGUnO1xuaW1wb3J0IHsgQW5hbHl0aWNzTW9kdWxlIH0gZnJvbSAnLi9hbmFseXRpY3MvYW5hbHl0aWNzLm1vZHVsZSc7XG5pbXBvcnQgeyBCaWxsaW5nTW9kdWxlIH0gZnJvbSAnLi9iaWxsaW5nL2JpbGxpbmcubW9kdWxlJztcbmltcG9ydCB7IEV2ZW50c01vZHVsZSB9IGZyb20gJy4vZXZlbnRzL2V2ZW50cy5tb2R1bGUnO1xuaW1wb3J0IHsgV2ViaG9va3NNb2R1bGUgfSBmcm9tICcuL3dlYmhvb2tzL3dlYmhvb2tzLm1vZHVsZSc7XG5pbXBvcnQgeyBXaWRnZXRNb2R1bGUgfSBmcm9tICcuL3dpZGdldC93aWRnZXQubW9kdWxlJztcbmltcG9ydCB7IEFnZW50VG9vbHNNb2R1bGUgfSBmcm9tICcuL2FnZW50LXRvb2xzL2FnZW50LXRvb2xzLm1vZHVsZSc7XG5pbXBvcnQgeyBXb3JrZmxvd3NNb2R1bGUgfSBmcm9tICcuL3dvcmtmbG93cy93b3JrZmxvd3MubW9kdWxlJztcbmltcG9ydCB7IFJlZGlzVGhyb3R0bGVyU3RvcmFnZSB9IGZyb20gJy4vY29uZmlnL3JlZGlzLXRocm90dGxlci1zdG9yYWdlJztcbmltcG9ydCB7IFdvcmtmbG93VHJpZ2dlck1vZHVsZSB9IGZyb20gJy4vd29ya2Zsb3dzL3dvcmtmbG93LXRyaWdnZXIubW9kdWxlJztcbmltcG9ydCB7IE9uYm9hcmRpbmdNb2R1bGUgfSBmcm9tICcuL29uYm9hcmRpbmcvb25ib2FyZGluZy5tb2R1bGUnO1xuXG5ATW9kdWxlKHtcbiAgaW1wb3J0czogW1xuICAgIC8vIFJhdGUgbGltaXRpbmcuXG4gICAgLy9cbiAgICAvLyBJTVBPUlRBTlQ6IFRocm90dGxlckd1YXJkIGFwcGxpZXMgRVZFUlkgY29uZmlndXJlZCB0aHJvdHRsZXIgdG8gRVZFUlkgcm91dGVcbiAgICAvLyAodGhleSBhcmUgQU5EZWQsIG5vdCBzZWxlY3RlZCBieSBkZWNvcmF0b3IpLiBSZWdpc3RlcmluZyBzZXZlcmFsIG5hbWVkIHRpZXJzXG4gICAgLy8gaGVyZSB0aGVyZWZvcmUgaW1wb3NlcyB0aGUgKnN0cmljdGVzdCogdGllciBvbiB0aGUgd2hvbGUgQVBJIOKAlCBhIHByZXZpb3VzXG4gICAgLy8gMy10aWVyIGNvbmZpZyBzaWxlbnRseSBjYXBwZWQgZXZlcnkgZW5kcG9pbnQgYXQgNSByZXF1ZXN0cy9taW51dGUuXG4gICAgLy9cbiAgICAvLyBTbyB0aGVyZSBpcyBleGFjdGx5IG9uZSB0aWVyLiBSb3V0ZXMgdGhhdCBuZWVkIGEgZGlmZmVyZW50IGJ1ZGdldCBvdmVycmlkZSBpdFxuICAgIC8vIHBlci1jb250cm9sbGVyL2hhbmRsZXIgd2l0aCBAVGhyb3R0bGUoeyBkZWZhdWx0OiB7IGxpbWl0LCB0dGwgfSB9KSwgYW5kIHdlYmhvb2tzXG4gICAgLy8gb3B0IG91dCBlbnRpcmVseSB3aXRoIEBTa2lwVGhyb3R0bGUoKS5cbiAgICAvLyBTdG9yYWdlOiBSZWRpcy1iYWNrZWQgd2hlbiBSRURJU19VUkwgaXMgc2V0LCBzbyBjb3VudGVycyBzdXJ2aXZlIHJlc3RhcnRzXG4gICAgLy8gYW5kIGFyZSBzaGFyZWQgYWNyb3NzIHBvZHMgKGluLW1lbW9yeSBzdG9yYWdlIHNpbGVudGx5IG11bHRpcGxpZXMgdGhlXG4gICAgLy8gbGltaXQgYnkgdGhlIHJlcGxpY2EgY291bnQpLiBGYWlscyBvcGVuIGlmIFJlZGlzIGlzIGRvd24uXG4gICAgVGhyb3R0bGVyTW9kdWxlLmZvclJvb3Qoe1xuICAgICAgdGhyb3R0bGVyczogW3sgbmFtZTogJ2RlZmF1bHQnLCB0dGw6IDYwXzAwMCwgbGltaXQ6IDEyMCB9XSxcbiAgICAgIC4uLihwcm9jZXNzLmVudi5SRURJU19VUkxcbiAgICAgICAgPyB7IHN0b3JhZ2U6IG5ldyBSZWRpc1Rocm90dGxlclN0b3JhZ2UocHJvY2Vzcy5lbnYuUkVESVNfVVJMKSB9XG4gICAgICAgIDoge30pLFxuICAgIH0pLFxuICAgIC8vIEdsb2JhbDogbGV0cyBhbnkgbW9kdWxlIGZpcmUgd29ya2Zsb3cgdHJpZ2dlcnMgd2l0aG91dCBhIGNpcmN1bGFyIGltcG9ydC5cbiAgICBXb3JrZmxvd1RyaWdnZXJNb2R1bGUsXG4gICAgLy8gR2xvYmFsOiBXaGF0c0FwcCBpbmJvdW5kIGFuZCB0aGUgd29ya2Zsb3cgZW5naW5lIGJvdGggYXR0YWNoIHNlbGZpZXMuXG4gICAgT25ib2FyZGluZ01vZHVsZSxcbiAgICBBdXRoTW9kdWxlLFxuICAgIE9yZ2FuaXphdGlvbnNNb2R1bGUsXG4gICAgQ3JtTW9kdWxlLFxuICAgIFRlbGVwaG9ueU1vZHVsZSxcbiAgICBXaGF0c2FwcE1vZHVsZSxcbiAgICBLbm93bGVkZ2VNb2R1bGUsXG4gICAgU2NoZWR1bGluZ01vZHVsZSxcbiAgICBBbmFseXRpY3NNb2R1bGUsXG4gICAgQmlsbGluZ01vZHVsZSxcbiAgICBFdmVudHNNb2R1bGUsXG4gICAgV2ViaG9va3NNb2R1bGUsXG4gICAgV2lkZ2V0TW9kdWxlLFxuICAgIEFnZW50VG9vbHNNb2R1bGUsXG4gICAgV29ya2Zsb3dzTW9kdWxlLFxuICBdLFxuICBjb250cm9sbGVyczogW0FwcENvbnRyb2xsZXJdLFxuICBwcm92aWRlcnM6IFtcbiAgICAvLyBBcHBseSB0aGUgZGVmYXVsdCB0aHJvdHRsZSB0aWVyIGdsb2JhbGx5IHRvIGV2ZXJ5IHJvdXRlLlxuICAgIHsgcHJvdmlkZTogQVBQX0dVQVJELCB1c2VDbGFzczogVGhyb3R0bGVyR3VhcmQgfSxcbiAgICAvL1xuICAgIC8vIFJvbGVzR3VhcmQgaXMgZGVsaWJlcmF0ZWx5IE5PVCByZWdpc3RlcmVkIGdsb2JhbGx5LiBOZXN0IHJ1bnMgZ3VhcmRzIGluIHRoZVxuICAgIC8vIG9yZGVyIGdsb2JhbCDihpIgY29udHJvbGxlciDihpIgcm91dGUsIHNvIGEgZ2xvYmFsIFJvbGVzR3VhcmQgZXhlY3V0ZXMgQkVGT1JFIHRoZVxuICAgIC8vIGNvbnRyb2xsZXIncyBKd3RBdXRoR3VhcmQgaGFzIHBvcHVsYXRlZCByZXF1ZXN0LnVzZXIg4oCUIHdoaWNoIG1hZGUgZXZlcnlcbiAgICAvLyBAUm9sZXMoKS1kZWNvcmF0ZWQgZW5kcG9pbnQgcmVqZWN0IHdpdGggNDAzIHVuY29uZGl0aW9uYWxseS4gSXQgaXMgbm93IGFwcGxpZWRcbiAgICAvLyBwZXItY29udHJvbGxlciAqYWZ0ZXIqIEp3dEF1dGhHdWFyZDogQFVzZUd1YXJkcyhKd3RBdXRoR3VhcmQsIFJvbGVzR3VhcmQpLlxuICAgIC8vXG4gICAgLy8gVm9pY2VTdHJlYW1HYXRld2F5IGlzIGxpa2V3aXNlIG5vdCBsaXN0ZWQgaGVyZSDigJQgVGVsZXBob255TW9kdWxlIGFscmVhZHlcbiAgICAvLyBwcm92aWRlcyBpdCwgYW5kIGRlY2xhcmluZyBpdCB0d2ljZSBib3VuZCB0aGUgc2FtZSBTb2NrZXQuSU8gbmFtZXNwYWNlIHR3aWNlLlxuICBdLFxufSlcbmV4cG9ydCBjbGFzcyBBcHBNb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

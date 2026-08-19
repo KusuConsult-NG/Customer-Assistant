@@ -1,0 +1,40 @@
+5f03199c6b65cad7f0b5a5697ef898d6
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WorkflowsModule = void 0;
+const common_1 = require("@nestjs/common");
+const workflows_service_1 = require("./workflows.service");
+const workflows_controller_1 = require("./workflows.controller");
+const workflow_actions_service_1 = require("./workflow-actions.service");
+const workflow_executor_service_1 = require("./workflow-executor.service");
+const workflow_runner_service_1 = require("./workflow-runner.service");
+/**
+ * The execution half of the workflow engine.
+ *
+ * Note it imports no domain modules: WorkflowActionsService talks to Prisma and the
+ * WhatsApp SDK directly rather than through CrmService/WhatsappService. That keeps
+ * the module graph acyclic (those modules import WorkflowTriggerModule to fire
+ * events) and keeps an action's failure contained to the action.
+ */
+let WorkflowsModule = class WorkflowsModule {
+};
+exports.WorkflowsModule = WorkflowsModule;
+exports.WorkflowsModule = WorkflowsModule = __decorate([
+    (0, common_1.Module)({
+        controllers: [workflows_controller_1.WorkflowsController],
+        providers: [
+            workflows_service_1.WorkflowsService,
+            workflow_actions_service_1.WorkflowActionsService,
+            workflow_executor_service_1.WorkflowExecutorService,
+            workflow_runner_service_1.WorkflowRunnerService,
+        ],
+        exports: [workflows_service_1.WorkflowsService, workflow_runner_service_1.WorkflowRunnerService],
+    })
+], WorkflowsModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93b3JrZmxvd3Mvd29ya2Zsb3dzLm1vZHVsZS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBd0M7QUFDeEMsMkRBQXVEO0FBQ3ZELGlFQUE2RDtBQUM3RCx5RUFBb0U7QUFDcEUsMkVBQXNFO0FBQ3RFLHVFQUFrRTtBQUVsRTs7Ozs7OztHQU9HO0FBV0ksSUFBTSxlQUFlLEdBQXJCLE1BQU0sZUFBZTtDQUFHLENBQUE7QUFBbEIsMENBQWU7MEJBQWYsZUFBZTtJQVYzQixJQUFBLGVBQU0sRUFBQztRQUNOLFdBQVcsRUFBRSxDQUFDLDBDQUFtQixDQUFDO1FBQ2xDLFNBQVMsRUFBRTtZQUNULG9DQUFnQjtZQUNoQixpREFBc0I7WUFDdEIsbURBQXVCO1lBQ3ZCLCtDQUFxQjtTQUN0QjtRQUNELE9BQU8sRUFBRSxDQUFDLG9DQUFnQixFQUFFLCtDQUFxQixDQUFDO0tBQ25ELENBQUM7R0FDVyxlQUFlLENBQUciLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93b3JrZmxvd3Mvd29ya2Zsb3dzLm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBXb3JrZmxvd3NTZXJ2aWNlIH0gZnJvbSAnLi93b3JrZmxvd3Muc2VydmljZSc7XG5pbXBvcnQgeyBXb3JrZmxvd3NDb250cm9sbGVyIH0gZnJvbSAnLi93b3JrZmxvd3MuY29udHJvbGxlcic7XG5pbXBvcnQgeyBXb3JrZmxvd0FjdGlvbnNTZXJ2aWNlIH0gZnJvbSAnLi93b3JrZmxvdy1hY3Rpb25zLnNlcnZpY2UnO1xuaW1wb3J0IHsgV29ya2Zsb3dFeGVjdXRvclNlcnZpY2UgfSBmcm9tICcuL3dvcmtmbG93LWV4ZWN1dG9yLnNlcnZpY2UnO1xuaW1wb3J0IHsgV29ya2Zsb3dSdW5uZXJTZXJ2aWNlIH0gZnJvbSAnLi93b3JrZmxvdy1ydW5uZXIuc2VydmljZSc7XG5cbi8qKlxuICogVGhlIGV4ZWN1dGlvbiBoYWxmIG9mIHRoZSB3b3JrZmxvdyBlbmdpbmUuXG4gKlxuICogTm90ZSBpdCBpbXBvcnRzIG5vIGRvbWFpbiBtb2R1bGVzOiBXb3JrZmxvd0FjdGlvbnNTZXJ2aWNlIHRhbGtzIHRvIFByaXNtYSBhbmQgdGhlXG4gKiBXaGF0c0FwcCBTREsgZGlyZWN0bHkgcmF0aGVyIHRoYW4gdGhyb3VnaCBDcm1TZXJ2aWNlL1doYXRzYXBwU2VydmljZS4gVGhhdCBrZWVwc1xuICogdGhlIG1vZHVsZSBncmFwaCBhY3ljbGljICh0aG9zZSBtb2R1bGVzIGltcG9ydCBXb3JrZmxvd1RyaWdnZXJNb2R1bGUgdG8gZmlyZVxuICogZXZlbnRzKSBhbmQga2VlcHMgYW4gYWN0aW9uJ3MgZmFpbHVyZSBjb250YWluZWQgdG8gdGhlIGFjdGlvbi5cbiAqL1xuQE1vZHVsZSh7XG4gIGNvbnRyb2xsZXJzOiBbV29ya2Zsb3dzQ29udHJvbGxlcl0sXG4gIHByb3ZpZGVyczogW1xuICAgIFdvcmtmbG93c1NlcnZpY2UsXG4gICAgV29ya2Zsb3dBY3Rpb25zU2VydmljZSxcbiAgICBXb3JrZmxvd0V4ZWN1dG9yU2VydmljZSxcbiAgICBXb3JrZmxvd1J1bm5lclNlcnZpY2UsXG4gIF0sXG4gIGV4cG9ydHM6IFtXb3JrZmxvd3NTZXJ2aWNlLCBXb3JrZmxvd1J1bm5lclNlcnZpY2VdLFxufSlcbmV4cG9ydCBjbGFzcyBXb3JrZmxvd3NNb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

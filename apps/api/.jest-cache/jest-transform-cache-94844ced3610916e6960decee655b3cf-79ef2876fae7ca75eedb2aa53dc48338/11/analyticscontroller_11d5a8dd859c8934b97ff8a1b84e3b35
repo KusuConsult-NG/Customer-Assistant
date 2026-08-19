@@ -1,0 +1,45 @@
+042f034e0e069319c574b1f960445b34
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AnalyticsController = void 0;
+const common_1 = require("@nestjs/common");
+const analytics_service_1 = require("./analytics.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+let AnalyticsController = class AnalyticsController {
+    analyticsService;
+    constructor(analyticsService) {
+        this.analyticsService = analyticsService;
+    }
+    async getDashboardMetrics(req, period = '7d') {
+        const validPeriods = ['7d', '30d', '90d'];
+        const safePeriod = validPeriods.includes(period) ? period : '7d';
+        return this.analyticsService.getDashboardSummary(req.user.organizationId, safePeriod);
+    }
+};
+exports.AnalyticsController = AnalyticsController;
+__decorate([
+    (0, common_1.Get)('dashboard'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('period')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], AnalyticsController.prototype, "getDashboardMetrics", null);
+exports.AnalyticsController = AnalyticsController = __decorate([
+    (0, common_1.Controller)('api/analytics'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __metadata("design:paramtypes", [analytics_service_1.AnalyticsService])
+], AnalyticsController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hbmFseXRpY3MvYW5hbHl0aWNzLmNvbnRyb2xsZXIudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7Ozs7O0FBQUEsMkNBQXdFO0FBQ3hFLDJEQUF1RDtBQUN2RCwyREFBc0Q7QUFLL0MsSUFBTSxtQkFBbUIsR0FBekIsTUFBTSxtQkFBbUI7SUFDVjtJQUFwQixZQUFvQixnQkFBa0M7UUFBbEMscUJBQWdCLEdBQWhCLGdCQUFnQixDQUFrQjtJQUFHLENBQUM7SUFHcEQsQUFBTixLQUFLLENBQUMsbUJBQW1CLENBQ2hCLEdBQXVCLEVBQ2IsU0FBK0IsSUFBSTtRQUVwRCxNQUFNLFlBQVksR0FBZ0MsQ0FBQyxJQUFJLEVBQUUsS0FBSyxFQUFFLEtBQUssQ0FBQyxDQUFDO1FBQ3ZFLE1BQU0sVUFBVSxHQUFHLFlBQVksQ0FBQyxRQUFRLENBQUMsTUFBTSxDQUFDLENBQUMsQ0FBQyxDQUFDLE1BQU0sQ0FBQyxDQUFDLENBQUMsSUFBSSxDQUFDO1FBQ2pFLE9BQU8sSUFBSSxDQUFDLGdCQUFnQixDQUFDLG1CQUFtQixDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxFQUFFLFVBQVUsQ0FBQyxDQUFDO0lBQ3hGLENBQUM7Q0FDRixDQUFBO0FBWlksa0RBQW1CO0FBSXhCO0lBREwsSUFBQSxZQUFHLEVBQUMsV0FBVyxDQUFDO0lBRWQsV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBO0lBQ0wsV0FBQSxJQUFBLGNBQUssRUFBQyxRQUFRLENBQUMsQ0FBQTs7Ozs4REFLakI7OEJBWFUsbUJBQW1CO0lBRi9CLElBQUEsbUJBQVUsRUFBQyxlQUFlLENBQUM7SUFDM0IsSUFBQSxrQkFBUyxFQUFDLDZCQUFZLENBQUM7cUNBRWdCLG9DQUFnQjtHQUQzQyxtQkFBbUIsQ0FZL0IiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hbmFseXRpY3MvYW5hbHl0aWNzLmNvbnRyb2xsZXIudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgQ29udHJvbGxlciwgR2V0LCBRdWVyeSwgUmVxLCBVc2VHdWFyZHMgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBBbmFseXRpY3NTZXJ2aWNlIH0gZnJvbSAnLi9hbmFseXRpY3Muc2VydmljZSc7XG5pbXBvcnQgeyBKd3RBdXRoR3VhcmQgfSBmcm9tICcuLi9hdXRoL2p3dC1hdXRoLmd1YXJkJztcbmltcG9ydCB7IEF1dGhVc2VyIH0gZnJvbSAnQGFjZS9zaGFyZWQtdHlwZXMnO1xuXG5AQ29udHJvbGxlcignYXBpL2FuYWx5dGljcycpXG5AVXNlR3VhcmRzKEp3dEF1dGhHdWFyZClcbmV4cG9ydCBjbGFzcyBBbmFseXRpY3NDb250cm9sbGVyIHtcbiAgY29uc3RydWN0b3IocHJpdmF0ZSBhbmFseXRpY3NTZXJ2aWNlOiBBbmFseXRpY3NTZXJ2aWNlKSB7fVxuXG4gIEBHZXQoJ2Rhc2hib2FyZCcpXG4gIGFzeW5jIGdldERhc2hib2FyZE1ldHJpY3MoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBRdWVyeSgncGVyaW9kJykgcGVyaW9kOiAnN2QnIHwgJzMwZCcgfCAnOTBkJyA9ICc3ZCcsXG4gICkge1xuICAgIGNvbnN0IHZhbGlkUGVyaW9kczogQXJyYXk8JzdkJyB8ICczMGQnIHwgJzkwZCc+ID0gWyc3ZCcsICczMGQnLCAnOTBkJ107XG4gICAgY29uc3Qgc2FmZVBlcmlvZCA9IHZhbGlkUGVyaW9kcy5pbmNsdWRlcyhwZXJpb2QpID8gcGVyaW9kIDogJzdkJztcbiAgICByZXR1cm4gdGhpcy5hbmFseXRpY3NTZXJ2aWNlLmdldERhc2hib2FyZFN1bW1hcnkocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIHNhZmVQZXJpb2QpO1xuICB9XG59XG4iXSwidmVyc2lvbiI6M30=

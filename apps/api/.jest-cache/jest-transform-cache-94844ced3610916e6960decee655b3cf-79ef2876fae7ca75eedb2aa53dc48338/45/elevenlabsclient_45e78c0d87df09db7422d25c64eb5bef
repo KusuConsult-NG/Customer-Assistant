@@ -1,0 +1,97 @@
+5ddda6e557f2ad1b0dbd14b69d57b481
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ElevenLabsApi = void 0;
+/**
+ * One place to build an ElevenLabs client and one place to turn its failures
+ * into ours.
+ *
+ * The error translation is the reason this is shared rather than copied. This
+ * platform's rule is that a provider failure surfaces with the provider's own
+ * reason attached — never a generic "something went wrong", and never a success
+ * shape with empty fields. Two services calling the same API should not have
+ * two different ideas of what a 422 means.
+ */
+const common_1 = require("@nestjs/common");
+const elevenlabs_js_1 = require("@elevenlabs/elevenlabs-js");
+const errors_1 = require("@elevenlabs/elevenlabs-js/errors");
+const database_1 = require("@ace/database");
+const elevenlabs_workspace_1 = require("./elevenlabs-workspace");
+let ElevenLabsApi = class ElevenLabsApi {
+    log = new common_1.Logger('ElevenLabsApi');
+    /**
+     * The workspace key to act as, for one organization.
+     *
+     * The tenant's own key is stored encrypted (see @ace/database secret-box) and is
+     * decrypted here — in one place, so a caller cannot accidentally hand the
+     * ciphertext to the SDK and get an authentication failure that looks like a
+     * revoked key rather than a decryption problem.
+     *
+     * A tenant with no key of its own is REFUSED unless the deployment has opted
+     * into sharing. See elevenlabs-workspace.ts: an ElevenLabs workspace has no
+     * tenancy of its own, so sharing one puts every tenant's numbers, WhatsApp
+     * lines and conversation transcripts in a single bucket kept apart only by
+     * our own filtering being right every time.
+     */
+    keyFor(organizationId, stored) {
+        return this.workspaceFor(organizationId, stored).apiKey;
+    }
+    /** The key, and whether it is this tenant's own or the shared one. */
+    workspaceFor(organizationId, stored) {
+        if (stored) {
+            return {
+                apiKey: (0, database_1.decryptSecret)(stored, `HostedAgentConfig.apiKey org=${organizationId}`),
+                mode: 'dedicated',
+            };
+        }
+        const shared = process.env.ELEVENLABS_API_KEY;
+        if (!shared) {
+            throw new common_1.BadRequestException(`No ElevenLabs API key is configured for this organization, and ELEVENLABS_API_KEY is unset. Organization: ${organizationId}.`);
+        }
+        if (!(0, elevenlabs_workspace_1.sharedWorkspaceAllowed)())
+            throw (0, elevenlabs_workspace_1.sharedWorkspaceRefusal)(organizationId);
+        // Allowed, but never silent: an operator reading logs should be able to see
+        // that a tenant is running in the shared workspace without going looking.
+        this.log.warn(`shared_workspace org=${organizationId} — no per-tenant key; running in the shared ElevenLabs workspace`);
+        return { apiKey: shared, mode: 'shared' };
+    }
+    /**
+     * A client bound to one tenant's key.
+     *
+     * Built per call rather than cached: the key is per organization, and a
+     * cached client keyed on nothing is how one tenant ends up making requests
+     * against another tenant's workspace.
+     */
+    for(apiKey) {
+        // Data-residency deployments use a different host (api.eu.residency…,
+        // api.in.residency…). Configurable so a tenant bound to a jurisdiction is
+        // not silently routed through the default US endpoint.
+        const baseUrl = process.env.ELEVENLABS_BASE_URL?.replace(/\/+$/, '');
+        return new elevenlabs_js_1.ElevenLabsClient({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
+    }
+    /** Rethrow a provider failure with the provider named and its reason kept. */
+    fail(what, err) {
+        if (err instanceof errors_1.ElevenLabsError) {
+            const body = typeof err.body === 'string' ? err.body : JSON.stringify(err.body ?? {});
+            this.log.error(`elevenlabs_error ${what} status=${err.statusCode} body=${body.slice(0, 400)}`);
+            throw new common_1.ServiceUnavailableException(`ElevenLabs rejected ${what} (HTTP ${err.statusCode ?? '?'}): ${body.slice(0, 300)}`);
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        this.log.error(`elevenlabs_unreachable ${what} error=${message}`);
+        throw new common_1.ServiceUnavailableException(`Could not reach ElevenLabs for ${what}: ${message}`);
+    }
+    isNotFound(err) {
+        return err instanceof errors_1.ElevenLabsError && err.statusCode === 404;
+    }
+};
+exports.ElevenLabsApi = ElevenLabsApi;
+exports.ElevenLabsApi = ElevenLabsApi = __decorate([
+    (0, common_1.Injectable)()
+], ElevenLabsApi);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9hZ2VudC10b29scy9lbGV2ZW5sYWJzLWNsaWVudC50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQTs7Ozs7Ozs7O0dBU0c7QUFDSCwyQ0FLd0I7QUFDeEIsNkRBQTZEO0FBQzdELDZEQUFtRTtBQUNuRSw0Q0FBOEM7QUFDOUMsaUVBSWdDO0FBR3pCLElBQU0sYUFBYSxHQUFuQixNQUFNLGFBQWE7SUFDUCxHQUFHLEdBQUcsSUFBSSxlQUFNLENBQUMsZUFBZSxDQUFDLENBQUM7SUFFbkQ7Ozs7Ozs7Ozs7Ozs7T0FhRztJQUNILE1BQU0sQ0FBQyxjQUFzQixFQUFFLE1BQWlDO1FBQzlELE9BQU8sSUFBSSxDQUFDLFlBQVksQ0FBQyxjQUFjLEVBQUUsTUFBTSxDQUFDLENBQUMsTUFBTSxDQUFDO0lBQzFELENBQUM7SUFFRCxzRUFBc0U7SUFDdEUsWUFBWSxDQUNWLGNBQXNCLEVBQ3RCLE1BQWlDO1FBRWpDLElBQUksTUFBTSxFQUFFLENBQUM7WUFDWCxPQUFPO2dCQUNMLE1BQU0sRUFBRSxJQUFBLHdCQUFhLEVBQUMsTUFBTSxFQUFFLGdDQUFnQyxjQUFjLEVBQUUsQ0FBQztnQkFDL0UsSUFBSSxFQUFFLFdBQVc7YUFDbEIsQ0FBQztRQUNKLENBQUM7UUFFRCxNQUFNLE1BQU0sR0FBRyxPQUFPLENBQUMsR0FBRyxDQUFDLGtCQUFrQixDQUFDO1FBQzlDLElBQUksQ0FBQyxNQUFNLEVBQUUsQ0FBQztZQUNaLE1BQU0sSUFBSSw0QkFBbUIsQ0FDM0IsNkdBQTZHLGNBQWMsR0FBRyxDQUMvSCxDQUFDO1FBQ0osQ0FBQztRQUNELElBQUksQ0FBQyxJQUFBLDZDQUFzQixHQUFFO1lBQUUsTUFBTSxJQUFBLDZDQUFzQixFQUFDLGNBQWMsQ0FBQyxDQUFDO1FBRTVFLDRFQUE0RTtRQUM1RSwwRUFBMEU7UUFDMUUsSUFBSSxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQ1gsd0JBQXdCLGNBQWMsa0VBQWtFLENBQ3pHLENBQUM7UUFDRixPQUFPLEVBQUUsTUFBTSxFQUFFLE1BQU0sRUFBRSxJQUFJLEVBQUUsUUFBUSxFQUFFLENBQUM7SUFDNUMsQ0FBQztJQUVEOzs7Ozs7T0FNRztJQUNILEdBQUcsQ0FBQyxNQUFjO1FBQ2hCLHNFQUFzRTtRQUN0RSwwRUFBMEU7UUFDMUUsdURBQXVEO1FBQ3ZELE1BQU0sT0FBTyxHQUFHLE9BQU8sQ0FBQyxHQUFHLENBQUMsbUJBQW1CLEVBQUUsT0FBTyxDQUFDLE1BQU0sRUFBRSxFQUFFLENBQUMsQ0FBQztRQUNyRSxPQUFPLElBQUksZ0NBQWdCLENBQUMsRUFBRSxNQUFNLEVBQUUsR0FBRyxDQUFDLE9BQU8sQ0FBQyxDQUFDLENBQUMsRUFBRSxPQUFPLEVBQUUsQ0FBQyxDQUFDLENBQUMsRUFBRSxDQUFDLEVBQUUsQ0FBQyxDQUFDO0lBQzNFLENBQUM7SUFFRCw4RUFBOEU7SUFDOUUsSUFBSSxDQUFDLElBQVksRUFBRSxHQUFZO1FBQzdCLElBQUksR0FBRyxZQUFZLHdCQUFlLEVBQUUsQ0FBQztZQUNuQyxNQUFNLElBQUksR0FBRyxPQUFPLEdBQUcsQ0FBQyxJQUFJLEtBQUssUUFBUSxDQUFDLENBQUMsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLENBQUMsQ0FBQyxJQUFJLENBQUMsU0FBUyxDQUFDLEdBQUcsQ0FBQyxJQUFJLElBQUksRUFBRSxDQUFDLENBQUM7WUFDdEYsSUFBSSxDQUFDLEdBQUcsQ0FBQyxLQUFLLENBQ1osb0JBQW9CLElBQUksV0FBVyxHQUFHLENBQUMsVUFBVSxTQUFTLElBQUksQ0FBQyxLQUFLLENBQUMsQ0FBQyxFQUFFLEdBQUcsQ0FBQyxFQUFFLENBQy9FLENBQUM7WUFDRixNQUFNLElBQUksb0NBQTJCLENBQ25DLHVCQUF1QixJQUFJLFVBQVUsR0FBRyxDQUFDLFVBQVUsSUFBSSxHQUFHLE1BQU0sSUFBSSxDQUFDLEtBQUssQ0FBQyxDQUFDLEVBQUUsR0FBRyxDQUFDLEVBQUUsQ0FDckYsQ0FBQztRQUNKLENBQUM7UUFDRCxNQUFNLE9BQU8sR0FBRyxHQUFHLFlBQVksS0FBSyxDQUFDLENBQUMsQ0FBQyxHQUFHLENBQUMsT0FBTyxDQUFDLENBQUMsQ0FBQyxNQUFNLENBQUMsR0FBRyxDQUFDLENBQUM7UUFDakUsSUFBSSxDQUFDLEdBQUcsQ0FBQyxLQUFLLENBQUMsMEJBQTBCLElBQUksVUFBVSxPQUFPLEVBQUUsQ0FBQyxDQUFDO1FBQ2xFLE1BQU0sSUFBSSxvQ0FBMkIsQ0FBQyxrQ0FBa0MsSUFBSSxLQUFLLE9BQU8sRUFBRSxDQUFDLENBQUM7SUFDOUYsQ0FBQztJQUVELFVBQVUsQ0FBQyxHQUFZO1FBQ3JCLE9BQU8sR0FBRyxZQUFZLHdCQUFlLElBQUksR0FBRyxDQUFDLFVBQVUsS0FBSyxHQUFHLENBQUM7SUFDbEUsQ0FBQztDQUNGLENBQUE7QUFuRlksc0NBQWE7d0JBQWIsYUFBYTtJQUR6QixJQUFBLG1CQUFVLEdBQUU7R0FDQSxhQUFhLENBbUZ6QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL2FnZW50LXRvb2xzL2VsZXZlbmxhYnMtY2xpZW50LnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8qKlxuICogT25lIHBsYWNlIHRvIGJ1aWxkIGFuIEVsZXZlbkxhYnMgY2xpZW50IGFuZCBvbmUgcGxhY2UgdG8gdHVybiBpdHMgZmFpbHVyZXNcbiAqIGludG8gb3Vycy5cbiAqXG4gKiBUaGUgZXJyb3IgdHJhbnNsYXRpb24gaXMgdGhlIHJlYXNvbiB0aGlzIGlzIHNoYXJlZCByYXRoZXIgdGhhbiBjb3BpZWQuIFRoaXNcbiAqIHBsYXRmb3JtJ3MgcnVsZSBpcyB0aGF0IGEgcHJvdmlkZXIgZmFpbHVyZSBzdXJmYWNlcyB3aXRoIHRoZSBwcm92aWRlcidzIG93blxuICogcmVhc29uIGF0dGFjaGVkIOKAlCBuZXZlciBhIGdlbmVyaWMgXCJzb21ldGhpbmcgd2VudCB3cm9uZ1wiLCBhbmQgbmV2ZXIgYSBzdWNjZXNzXG4gKiBzaGFwZSB3aXRoIGVtcHR5IGZpZWxkcy4gVHdvIHNlcnZpY2VzIGNhbGxpbmcgdGhlIHNhbWUgQVBJIHNob3VsZCBub3QgaGF2ZVxuICogdHdvIGRpZmZlcmVudCBpZGVhcyBvZiB3aGF0IGEgNDIyIG1lYW5zLlxuICovXG5pbXBvcnQge1xuICBCYWRSZXF1ZXN0RXhjZXB0aW9uLFxuICBJbmplY3RhYmxlLFxuICBMb2dnZXIsXG4gIFNlcnZpY2VVbmF2YWlsYWJsZUV4Y2VwdGlvbixcbn0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgRWxldmVuTGFic0NsaWVudCB9IGZyb20gJ0BlbGV2ZW5sYWJzL2VsZXZlbmxhYnMtanMnO1xuaW1wb3J0IHsgRWxldmVuTGFic0Vycm9yIH0gZnJvbSAnQGVsZXZlbmxhYnMvZWxldmVubGFicy1qcy9lcnJvcnMnO1xuaW1wb3J0IHsgZGVjcnlwdFNlY3JldCB9IGZyb20gJ0BhY2UvZGF0YWJhc2UnO1xuaW1wb3J0IHtcbiAgc2hhcmVkV29ya3NwYWNlQWxsb3dlZCxcbiAgc2hhcmVkV29ya3NwYWNlUmVmdXNhbCxcbiAgdHlwZSBXb3Jrc3BhY2VSZXNvbHV0aW9uLFxufSBmcm9tICcuL2VsZXZlbmxhYnMtd29ya3NwYWNlJztcblxuQEluamVjdGFibGUoKVxuZXhwb3J0IGNsYXNzIEVsZXZlbkxhYnNBcGkge1xuICBwcml2YXRlIHJlYWRvbmx5IGxvZyA9IG5ldyBMb2dnZXIoJ0VsZXZlbkxhYnNBcGknKTtcblxuICAvKipcbiAgICogVGhlIHdvcmtzcGFjZSBrZXkgdG8gYWN0IGFzLCBmb3Igb25lIG9yZ2FuaXphdGlvbi5cbiAgICpcbiAgICogVGhlIHRlbmFudCdzIG93biBrZXkgaXMgc3RvcmVkIGVuY3J5cHRlZCAoc2VlIEBhY2UvZGF0YWJhc2Ugc2VjcmV0LWJveCkgYW5kIGlzXG4gICAqIGRlY3J5cHRlZCBoZXJlIOKAlCBpbiBvbmUgcGxhY2UsIHNvIGEgY2FsbGVyIGNhbm5vdCBhY2NpZGVudGFsbHkgaGFuZCB0aGVcbiAgICogY2lwaGVydGV4dCB0byB0aGUgU0RLIGFuZCBnZXQgYW4gYXV0aGVudGljYXRpb24gZmFpbHVyZSB0aGF0IGxvb2tzIGxpa2UgYVxuICAgKiByZXZva2VkIGtleSByYXRoZXIgdGhhbiBhIGRlY3J5cHRpb24gcHJvYmxlbS5cbiAgICpcbiAgICogQSB0ZW5hbnQgd2l0aCBubyBrZXkgb2YgaXRzIG93biBpcyBSRUZVU0VEIHVubGVzcyB0aGUgZGVwbG95bWVudCBoYXMgb3B0ZWRcbiAgICogaW50byBzaGFyaW5nLiBTZWUgZWxldmVubGFicy13b3Jrc3BhY2UudHM6IGFuIEVsZXZlbkxhYnMgd29ya3NwYWNlIGhhcyBub1xuICAgKiB0ZW5hbmN5IG9mIGl0cyBvd24sIHNvIHNoYXJpbmcgb25lIHB1dHMgZXZlcnkgdGVuYW50J3MgbnVtYmVycywgV2hhdHNBcHBcbiAgICogbGluZXMgYW5kIGNvbnZlcnNhdGlvbiB0cmFuc2NyaXB0cyBpbiBhIHNpbmdsZSBidWNrZXQga2VwdCBhcGFydCBvbmx5IGJ5XG4gICAqIG91ciBvd24gZmlsdGVyaW5nIGJlaW5nIHJpZ2h0IGV2ZXJ5IHRpbWUuXG4gICAqL1xuICBrZXlGb3Iob3JnYW5pemF0aW9uSWQ6IHN0cmluZywgc3RvcmVkOiBzdHJpbmcgfCBudWxsIHwgdW5kZWZpbmVkKTogc3RyaW5nIHtcbiAgICByZXR1cm4gdGhpcy53b3Jrc3BhY2VGb3Iob3JnYW5pemF0aW9uSWQsIHN0b3JlZCkuYXBpS2V5O1xuICB9XG5cbiAgLyoqIFRoZSBrZXksIGFuZCB3aGV0aGVyIGl0IGlzIHRoaXMgdGVuYW50J3Mgb3duIG9yIHRoZSBzaGFyZWQgb25lLiAqL1xuICB3b3Jrc3BhY2VGb3IoXG4gICAgb3JnYW5pemF0aW9uSWQ6IHN0cmluZyxcbiAgICBzdG9yZWQ6IHN0cmluZyB8IG51bGwgfCB1bmRlZmluZWRcbiAgKTogV29ya3NwYWNlUmVzb2x1dGlvbiB7XG4gICAgaWYgKHN0b3JlZCkge1xuICAgICAgcmV0dXJuIHtcbiAgICAgICAgYXBpS2V5OiBkZWNyeXB0U2VjcmV0KHN0b3JlZCwgYEhvc3RlZEFnZW50Q29uZmlnLmFwaUtleSBvcmc9JHtvcmdhbml6YXRpb25JZH1gKSxcbiAgICAgICAgbW9kZTogJ2RlZGljYXRlZCcsXG4gICAgICB9O1xuICAgIH1cblxuICAgIGNvbnN0IHNoYXJlZCA9IHByb2Nlc3MuZW52LkVMRVZFTkxBQlNfQVBJX0tFWTtcbiAgICBpZiAoIXNoYXJlZCkge1xuICAgICAgdGhyb3cgbmV3IEJhZFJlcXVlc3RFeGNlcHRpb24oXG4gICAgICAgIGBObyBFbGV2ZW5MYWJzIEFQSSBrZXkgaXMgY29uZmlndXJlZCBmb3IgdGhpcyBvcmdhbml6YXRpb24sIGFuZCBFTEVWRU5MQUJTX0FQSV9LRVkgaXMgdW5zZXQuIE9yZ2FuaXphdGlvbjogJHtvcmdhbml6YXRpb25JZH0uYFxuICAgICAgKTtcbiAgICB9XG4gICAgaWYgKCFzaGFyZWRXb3Jrc3BhY2VBbGxvd2VkKCkpIHRocm93IHNoYXJlZFdvcmtzcGFjZVJlZnVzYWwob3JnYW5pemF0aW9uSWQpO1xuXG4gICAgLy8gQWxsb3dlZCwgYnV0IG5ldmVyIHNpbGVudDogYW4gb3BlcmF0b3IgcmVhZGluZyBsb2dzIHNob3VsZCBiZSBhYmxlIHRvIHNlZVxuICAgIC8vIHRoYXQgYSB0ZW5hbnQgaXMgcnVubmluZyBpbiB0aGUgc2hhcmVkIHdvcmtzcGFjZSB3aXRob3V0IGdvaW5nIGxvb2tpbmcuXG4gICAgdGhpcy5sb2cud2FybihcbiAgICAgIGBzaGFyZWRfd29ya3NwYWNlIG9yZz0ke29yZ2FuaXphdGlvbklkfSDigJQgbm8gcGVyLXRlbmFudCBrZXk7IHJ1bm5pbmcgaW4gdGhlIHNoYXJlZCBFbGV2ZW5MYWJzIHdvcmtzcGFjZWBcbiAgICApO1xuICAgIHJldHVybiB7IGFwaUtleTogc2hhcmVkLCBtb2RlOiAnc2hhcmVkJyB9O1xuICB9XG5cbiAgLyoqXG4gICAqIEEgY2xpZW50IGJvdW5kIHRvIG9uZSB0ZW5hbnQncyBrZXkuXG4gICAqXG4gICAqIEJ1aWx0IHBlciBjYWxsIHJhdGhlciB0aGFuIGNhY2hlZDogdGhlIGtleSBpcyBwZXIgb3JnYW5pemF0aW9uLCBhbmQgYVxuICAgKiBjYWNoZWQgY2xpZW50IGtleWVkIG9uIG5vdGhpbmcgaXMgaG93IG9uZSB0ZW5hbnQgZW5kcyB1cCBtYWtpbmcgcmVxdWVzdHNcbiAgICogYWdhaW5zdCBhbm90aGVyIHRlbmFudCdzIHdvcmtzcGFjZS5cbiAgICovXG4gIGZvcihhcGlLZXk6IHN0cmluZyk6IEVsZXZlbkxhYnNDbGllbnQge1xuICAgIC8vIERhdGEtcmVzaWRlbmN5IGRlcGxveW1lbnRzIHVzZSBhIGRpZmZlcmVudCBob3N0IChhcGkuZXUucmVzaWRlbmN54oCmLFxuICAgIC8vIGFwaS5pbi5yZXNpZGVuY3nigKYpLiBDb25maWd1cmFibGUgc28gYSB0ZW5hbnQgYm91bmQgdG8gYSBqdXJpc2RpY3Rpb24gaXNcbiAgICAvLyBub3Qgc2lsZW50bHkgcm91dGVkIHRocm91Z2ggdGhlIGRlZmF1bHQgVVMgZW5kcG9pbnQuXG4gICAgY29uc3QgYmFzZVVybCA9IHByb2Nlc3MuZW52LkVMRVZFTkxBQlNfQkFTRV9VUkw/LnJlcGxhY2UoL1xcLyskLywgJycpO1xuICAgIHJldHVybiBuZXcgRWxldmVuTGFic0NsaWVudCh7IGFwaUtleSwgLi4uKGJhc2VVcmwgPyB7IGJhc2VVcmwgfSA6IHt9KSB9KTtcbiAgfVxuXG4gIC8qKiBSZXRocm93IGEgcHJvdmlkZXIgZmFpbHVyZSB3aXRoIHRoZSBwcm92aWRlciBuYW1lZCBhbmQgaXRzIHJlYXNvbiBrZXB0LiAqL1xuICBmYWlsKHdoYXQ6IHN0cmluZywgZXJyOiB1bmtub3duKTogbmV2ZXIge1xuICAgIGlmIChlcnIgaW5zdGFuY2VvZiBFbGV2ZW5MYWJzRXJyb3IpIHtcbiAgICAgIGNvbnN0IGJvZHkgPSB0eXBlb2YgZXJyLmJvZHkgPT09ICdzdHJpbmcnID8gZXJyLmJvZHkgOiBKU09OLnN0cmluZ2lmeShlcnIuYm9keSA/PyB7fSk7XG4gICAgICB0aGlzLmxvZy5lcnJvcihcbiAgICAgICAgYGVsZXZlbmxhYnNfZXJyb3IgJHt3aGF0fSBzdGF0dXM9JHtlcnIuc3RhdHVzQ29kZX0gYm9keT0ke2JvZHkuc2xpY2UoMCwgNDAwKX1gXG4gICAgICApO1xuICAgICAgdGhyb3cgbmV3IFNlcnZpY2VVbmF2YWlsYWJsZUV4Y2VwdGlvbihcbiAgICAgICAgYEVsZXZlbkxhYnMgcmVqZWN0ZWQgJHt3aGF0fSAoSFRUUCAke2Vyci5zdGF0dXNDb2RlID8/ICc/J30pOiAke2JvZHkuc2xpY2UoMCwgMzAwKX1gXG4gICAgICApO1xuICAgIH1cbiAgICBjb25zdCBtZXNzYWdlID0gZXJyIGluc3RhbmNlb2YgRXJyb3IgPyBlcnIubWVzc2FnZSA6IFN0cmluZyhlcnIpO1xuICAgIHRoaXMubG9nLmVycm9yKGBlbGV2ZW5sYWJzX3VucmVhY2hhYmxlICR7d2hhdH0gZXJyb3I9JHttZXNzYWdlfWApO1xuICAgIHRocm93IG5ldyBTZXJ2aWNlVW5hdmFpbGFibGVFeGNlcHRpb24oYENvdWxkIG5vdCByZWFjaCBFbGV2ZW5MYWJzIGZvciAke3doYXR9OiAke21lc3NhZ2V9YCk7XG4gIH1cblxuICBpc05vdEZvdW5kKGVycjogdW5rbm93bik6IGJvb2xlYW4ge1xuICAgIHJldHVybiBlcnIgaW5zdGFuY2VvZiBFbGV2ZW5MYWJzRXJyb3IgJiYgZXJyLnN0YXR1c0NvZGUgPT09IDQwNDtcbiAgfVxufVxuIl0sInZlcnNpb24iOjN9

@@ -1,0 +1,32 @@
+ca6bd40812afb68668d4638b82ed103b
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.EventsModule = void 0;
+const common_1 = require("@nestjs/common");
+const auth_module_1 = require("../auth/auth.module");
+const whatsapp_module_1 = require("../whatsapp/whatsapp.module");
+const agent_tools_module_1 = require("../agent-tools/agent-tools.module");
+const agent_console_gateway_1 = require("./agent-console.gateway");
+const conversations_controller_1 = require("./conversations.controller");
+let EventsModule = class EventsModule {
+};
+exports.EventsModule = EventsModule;
+exports.EventsModule = EventsModule = __decorate([
+    (0, common_1.Module)({
+        // AuthModule exports JwtModule's JwtService, which the gateway uses to verify the
+        // handshake token. WhatsappModule provides the outbound send path so an agent's
+        // reply actually reaches the customer instead of only being written to the DB.
+        // AgentToolsModule provides the live poller the console subscribes to.
+        imports: [auth_module_1.AuthModule, whatsapp_module_1.WhatsappModule, agent_tools_module_1.AgentToolsModule],
+        controllers: [conversations_controller_1.ConversationsController],
+        providers: [agent_console_gateway_1.AgentConsoleGateway],
+        exports: [agent_console_gateway_1.AgentConsoleGateway],
+    })
+], EventsModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9ldmVudHMvZXZlbnRzLm1vZHVsZS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBd0M7QUFDeEMscURBQWlEO0FBQ2pELGlFQUE2RDtBQUM3RCwwRUFBcUU7QUFDckUsbUVBQThEO0FBQzlELHlFQUFxRTtBQVk5RCxJQUFNLFlBQVksR0FBbEIsTUFBTSxZQUFZO0NBQUcsQ0FBQTtBQUFmLG9DQUFZO3VCQUFaLFlBQVk7SUFWeEIsSUFBQSxlQUFNLEVBQUM7UUFDTixrRkFBa0Y7UUFDbEYsZ0ZBQWdGO1FBQ2hGLCtFQUErRTtRQUMvRSx1RUFBdUU7UUFDdkUsT0FBTyxFQUFFLENBQUMsd0JBQVUsRUFBRSxnQ0FBYyxFQUFFLHFDQUFnQixDQUFDO1FBQ3ZELFdBQVcsRUFBRSxDQUFDLGtEQUF1QixDQUFDO1FBQ3RDLFNBQVMsRUFBRSxDQUFDLDJDQUFtQixDQUFDO1FBQ2hDLE9BQU8sRUFBRSxDQUFDLDJDQUFtQixDQUFDO0tBQy9CLENBQUM7R0FDVyxZQUFZLENBQUciLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9ldmVudHMvZXZlbnRzLm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBBdXRoTW9kdWxlIH0gZnJvbSAnLi4vYXV0aC9hdXRoLm1vZHVsZSc7XG5pbXBvcnQgeyBXaGF0c2FwcE1vZHVsZSB9IGZyb20gJy4uL3doYXRzYXBwL3doYXRzYXBwLm1vZHVsZSc7XG5pbXBvcnQgeyBBZ2VudFRvb2xzTW9kdWxlIH0gZnJvbSAnLi4vYWdlbnQtdG9vbHMvYWdlbnQtdG9vbHMubW9kdWxlJztcbmltcG9ydCB7IEFnZW50Q29uc29sZUdhdGV3YXkgfSBmcm9tICcuL2FnZW50LWNvbnNvbGUuZ2F0ZXdheSc7XG5pbXBvcnQgeyBDb252ZXJzYXRpb25zQ29udHJvbGxlciB9IGZyb20gJy4vY29udmVyc2F0aW9ucy5jb250cm9sbGVyJztcblxuQE1vZHVsZSh7XG4gIC8vIEF1dGhNb2R1bGUgZXhwb3J0cyBKd3RNb2R1bGUncyBKd3RTZXJ2aWNlLCB3aGljaCB0aGUgZ2F0ZXdheSB1c2VzIHRvIHZlcmlmeSB0aGVcbiAgLy8gaGFuZHNoYWtlIHRva2VuLiBXaGF0c2FwcE1vZHVsZSBwcm92aWRlcyB0aGUgb3V0Ym91bmQgc2VuZCBwYXRoIHNvIGFuIGFnZW50J3NcbiAgLy8gcmVwbHkgYWN0dWFsbHkgcmVhY2hlcyB0aGUgY3VzdG9tZXIgaW5zdGVhZCBvZiBvbmx5IGJlaW5nIHdyaXR0ZW4gdG8gdGhlIERCLlxuICAvLyBBZ2VudFRvb2xzTW9kdWxlIHByb3ZpZGVzIHRoZSBsaXZlIHBvbGxlciB0aGUgY29uc29sZSBzdWJzY3JpYmVzIHRvLlxuICBpbXBvcnRzOiBbQXV0aE1vZHVsZSwgV2hhdHNhcHBNb2R1bGUsIEFnZW50VG9vbHNNb2R1bGVdLFxuICBjb250cm9sbGVyczogW0NvbnZlcnNhdGlvbnNDb250cm9sbGVyXSxcbiAgcHJvdmlkZXJzOiBbQWdlbnRDb25zb2xlR2F0ZXdheV0sXG4gIGV4cG9ydHM6IFtBZ2VudENvbnNvbGVHYXRld2F5XSxcbn0pXG5leHBvcnQgY2xhc3MgRXZlbnRzTW9kdWxlIHt9XG4iXSwidmVyc2lvbiI6M30=

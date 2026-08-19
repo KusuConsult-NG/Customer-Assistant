@@ -31,6 +31,7 @@ import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
 
 export interface ToolResult {
   ok: boolean;
@@ -76,7 +77,8 @@ export class AgentToolsService {
     private knowledge: KnowledgeService,
     // One implementation of "move the call", shared with the console's takeover
     // button. A second would be a second thing that can silently stop moving it.
-    private takeover: ElevenLabsTakeoverService
+    private takeover: ElevenLabsTakeoverService,
+    private onboarding: OnboardingService
   ) {}
 
   /**
@@ -531,6 +533,130 @@ export class AgentToolsService {
         handoff: true,
         data: { transferred: false, ticketId: null },
       };
+    }
+  }
+
+  // ── PLASCHEMA enrollment registration ──────────────────────────────────────
+  /**
+   * Creates (or updates) a contact record with enrollment details collected
+   * during the call, then fires the selfie-capture link to their WhatsApp.
+   *
+   * Sarah calls this once she has collected: full name, LGA, phone (caller
+   * phone is injected by the platform), NIN, and plan type. The tool creates
+   * the contact, stores the enrollment details, and triggers the onboarding
+   * service to send a one-time selfie link via WhatsApp. Sarah then tells the
+   * caller to check their WhatsApp for the photo link to complete registration online.
+   */
+  async registerEnrollee(
+    organizationId: string,
+    input: {
+      phoneNumber: string;
+      fullName: string;
+      lga: string;
+      nin?: string;
+      planType: string;
+      notes?: string;
+    }
+  ): Promise<ToolResult> {
+    try {
+      const existing = await prisma.contact.findFirst({
+        where: { organizationId, phoneNumber: { in: phoneNumberVariants(input.phoneNumber) } },
+      });
+
+      const enrollmentDetails = [
+        `LGA: ${input.lga}`,
+        `Plan: ${input.planType}`,
+        input.nin ? `NIN: ${input.nin}` : null,
+        input.notes || null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      let contact;
+      if (existing) {
+        contact = await prisma.contact.update({
+          where: { id: existing.id },
+          data: {
+            fullName: input.fullName.trim(),
+            city: input.lga.trim(),
+            metadata: {
+              ...(typeof existing.metadata === 'object' && existing.metadata !== null ? (existing.metadata as Record<string, unknown>) : {}),
+              lga: input.lga,
+              nin: input.nin,
+              planType: input.planType,
+              enrollmentStatus: 'PENDING_SELFIE',
+              registeredAt: new Date().toISOString(),
+            },
+            tags: existing.tags.includes('enrollment-pending')
+              ? existing.tags
+              : [...existing.tags, 'enrollment-pending'],
+          },
+        });
+      } else {
+        contact = await prisma.contact.create({
+          data: {
+            organizationId,
+            phoneNumber: normalizePhoneNumber(input.phoneNumber),
+            fullName: input.fullName.trim(),
+            city: input.lga.trim(),
+            metadata: {
+              lga: input.lga,
+              nin: input.nin,
+              planType: input.planType,
+              enrollmentStatus: 'PENDING_SELFIE',
+              registeredAt: new Date().toISOString(),
+            },
+            tags: ['enrollment-pending'],
+          },
+        });
+      }
+
+      // Save a note for audit/record keeping
+      await prisma.note.create({
+        data: {
+          contactId: contact.id,
+          content: `Helpline Enrollment Registration: ${enrollmentDetails}`,
+        },
+      }).catch(() => {});
+
+      // Send the selfie link via WhatsApp
+      const selfieResult = await this.onboarding.requestSelfie(organizationId, {
+        contactId: contact.id,
+        channel: 'VOICE',
+        purpose: 'PLASCHEMA health plan registration',
+        expiresInHours: 48,
+      });
+
+      const refId = contact.id.slice(0, 8).toUpperCase();
+      const selfieDelivered = selfieResult.delivery?.delivered ?? false;
+
+      if (selfieDelivered) {
+        return {
+          ok: true,
+          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your details for the PLASCHEMA ${input.planType} plan in ${input.lga}. Your enrollment reference is ${refId}. I have just sent a secure photo link to your WhatsApp. Please open WhatsApp, tap the link, and take a quick selfie to complete your online profile. Our team will verify it and activate your health coverage within 2 business days. Is there anything else I can help you with today?`,
+          data: {
+            contactId: contact.id,
+            refId,
+            selfieRequestId: selfieResult.id,
+            selfieDelivered: true,
+            uploadUrl: selfieResult.uploadUrl,
+          },
+        };
+      } else {
+        return {
+          ok: true,
+          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your details for the PLASCHEMA ${input.planType} plan in ${input.lga}. Your enrollment reference is ${refId}. You can complete your photo upload online at enrollments dot plaschema dot app, or visit any PLASCHEMA office in ${input.lga} with your reference number and a valid ID. Is there anything else I can assist you with?`,
+          data: {
+            contactId: contact.id,
+            refId,
+            selfieRequestId: selfieResult.id,
+            selfieDelivered: false,
+            uploadUrl: selfieResult.uploadUrl,
+          },
+        };
+      }
+    } catch (e) {
+      return this.failed('register_enrollee', e);
     }
   }
 }

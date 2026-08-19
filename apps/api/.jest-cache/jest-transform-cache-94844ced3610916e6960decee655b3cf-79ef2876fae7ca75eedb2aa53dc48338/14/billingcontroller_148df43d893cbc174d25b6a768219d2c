@@ -1,0 +1,131 @@
+e0330a98f13c17ffe4f662a5f1c02c8d
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BillingController = void 0;
+const common_1 = require("@nestjs/common");
+const throttler_1 = require("@nestjs/throttler");
+const billing_service_1 = require("./billing.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const roles_guard_1 = require("../common/guards/roles.guard");
+const roles_decorator_1 = require("../common/decorators/roles.decorator");
+const billing_dto_1 = require("./billing.dto");
+let BillingController = class BillingController {
+    billingService;
+    constructor(billingService) {
+        this.billingService = billingService;
+    }
+    async getSubscription(req) {
+        return this.billingService.getSubscriptionDetails(req.user.organizationId);
+    }
+    // RolesGuard must come *after* JwtAuthGuard in this list — guards run in order and
+    // RolesGuard reads request.user, which JwtAuthGuard populates. (It used to be
+    // registered as a global APP_GUARD, which runs before controller guards, so these
+    // endpoints rejected every caller with 403.)
+    async checkout(req, body) {
+        return this.billingService.initializePaystackTransaction(req.user.organizationId, body.plan, req.user.email);
+    }
+    /**
+     * Activates a plan from a Paystack payment reference.
+     *
+     * For the case where a customer paid but the webhook never arrived. The reference is
+     * verified against Paystack — that it succeeded, that it belongs to this
+     * organization, and that the amount covers the plan.
+     *
+     * This route previously took only a plan name and activated it outright. @Roles
+     * ('OWNER') was doing nothing useful, because the first user of every organization
+     * IS its owner: any person who signed up could grant themselves the ENTERPRISE plan
+     * (₦1,000,000/month) with one request and no payment.
+     */
+    async activate(req, body) {
+        return this.billingService.activateFromPaymentReference(req.user.organizationId, body.plan, body.reference);
+    }
+    async getServicePaymentGuidance(req, body) {
+        return this.billingService.generateServicePaymentGuidance(req.user.organizationId, body.serviceName, body.amountNgn);
+    }
+    /**
+     * Paystack webhook.
+     *
+     * The signature is an HMAC-SHA256 over the EXACT bytes Paystack sent, so this must
+     * read `req.rawBody` (enabled by `rawBody: true` in main.ts). The previous version
+     * passed the JSON-parsed `@Body()` object into `createHmac().update()`, which throws
+     * a TypeError on a plain object — every webhook 500'd, so Paystack retried and then
+     * disabled the endpoint, and no successful payment ever activated a subscription.
+     *
+     * @SkipThrottle: Paystack bursts retries and treats a 429 as a delivery failure.
+     * Authenticity is established by the signature, not by rate limiting.
+     */
+    async handleWebhook(req, signature) {
+        if (!req.rawBody) {
+            throw new common_1.BadRequestException('Raw request body unavailable — Paystack signature cannot be verified.');
+        }
+        const result = await this.billingService.handlePaystackWebhook(req.rawBody, signature);
+        // A rejected signature is reported as rejected rather than as `{status:'success'}`.
+        // Returning 200 keeps Paystack from retrying a request that will never verify.
+        return { status: result.processed ? 'success' : 'rejected', event: result.event };
+    }
+};
+exports.BillingController = BillingController;
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Get)('subscription'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BillingController.prototype, "getSubscription", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Post)('checkout'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, billing_dto_1.CheckoutDto]),
+    __metadata("design:returntype", Promise)
+], BillingController.prototype, "checkout", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('OWNER'),
+    (0, common_1.Post)('activate'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, billing_dto_1.ActivatePlanDto]),
+    __metadata("design:returntype", Promise)
+], BillingController.prototype, "activate", null);
+__decorate([
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    (0, common_1.Post)('service-payment-guidance'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, billing_dto_1.ServicePaymentGuidanceDto]),
+    __metadata("design:returntype", Promise)
+], BillingController.prototype, "getServicePaymentGuidance", null);
+__decorate([
+    (0, throttler_1.SkipThrottle)(),
+    (0, common_1.Post)('paystack-webhook'),
+    (0, common_1.HttpCode)(200),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Headers)('x-paystack-signature')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], BillingController.prototype, "handleWebhook", null);
+exports.BillingController = BillingController = __decorate([
+    (0, common_1.Controller)('api/billing'),
+    __metadata("design:paramtypes", [billing_service_1.BillingService])
+], BillingController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9iaWxsaW5nL2JpbGxpbmcuY29udHJvbGxlci50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7Ozs7QUFBQSwyQ0FXd0I7QUFDeEIsaURBQWlEO0FBRWpELHVEQUFxRTtBQUNyRSwyREFBc0Q7QUFDdEQsOERBQTBEO0FBQzFELDBFQUE2RDtBQUU3RCwrQ0FBd0Y7QUFHakYsSUFBTSxpQkFBaUIsR0FBdkIsTUFBTSxpQkFBaUI7SUFDUjtJQUFwQixZQUFvQixjQUE4QjtRQUE5QixtQkFBYyxHQUFkLGNBQWMsQ0FBZ0I7SUFBRyxDQUFDO0lBSWhELEFBQU4sS0FBSyxDQUFDLGVBQWUsQ0FBUSxHQUF1QjtRQUNsRCxPQUFPLElBQUksQ0FBQyxjQUFjLENBQUMsc0JBQXNCLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLENBQUMsQ0FBQztJQUM3RSxDQUFDO0lBRUQsbUZBQW1GO0lBQ25GLDhFQUE4RTtJQUM5RSxrRkFBa0Y7SUFDbEYsNkNBQTZDO0lBSXZDLEFBQU4sS0FBSyxDQUFDLFFBQVEsQ0FBUSxHQUF1QixFQUFVLElBQWlCO1FBQ3RFLE9BQU8sSUFBSSxDQUFDLGNBQWMsQ0FBQyw2QkFBNkIsQ0FDdEQsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQ3ZCLElBQUksQ0FBQyxJQUFJLEVBQ1QsR0FBRyxDQUFDLElBQUksQ0FBQyxLQUFLLENBQ2YsQ0FBQztJQUNKLENBQUM7SUFFRDs7Ozs7Ozs7Ozs7T0FXRztJQUlHLEFBQU4sS0FBSyxDQUFDLFFBQVEsQ0FBUSxHQUF1QixFQUFVLElBQXFCO1FBQzFFLE9BQU8sSUFBSSxDQUFDLGNBQWMsQ0FBQyw0QkFBNEIsQ0FDckQsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQ3ZCLElBQUksQ0FBQyxJQUFJLEVBQ1QsSUFBSSxDQUFDLFNBQVMsQ0FDZixDQUFDO0lBQ0osQ0FBQztJQUlLLEFBQU4sS0FBSyxDQUFDLHlCQUF5QixDQUN0QixHQUF1QixFQUN0QixJQUErQjtRQUV2QyxPQUFPLElBQUksQ0FBQyxjQUFjLENBQUMsOEJBQThCLENBQ3ZELEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxFQUN2QixJQUFJLENBQUMsV0FBVyxFQUNoQixJQUFJLENBQUMsU0FBUyxDQUNmLENBQUM7SUFDSixDQUFDO0lBRUQ7Ozs7Ozs7Ozs7O09BV0c7SUFJRyxBQUFOLEtBQUssQ0FBQyxhQUFhLENBQ1YsR0FBNEIsRUFDRixTQUFpQjtRQUVsRCxJQUFJLENBQUMsR0FBRyxDQUFDLE9BQU8sRUFBRSxDQUFDO1lBQ2pCLE1BQU0sSUFBSSw0QkFBbUIsQ0FDM0IsdUVBQXVFLENBQ3hFLENBQUM7UUFDSixDQUFDO1FBRUQsTUFBTSxNQUFNLEdBQUcsTUFBTSxJQUFJLENBQUMsY0FBYyxDQUFDLHFCQUFxQixDQUFDLEdBQUcsQ0FBQyxPQUFPLEVBQUUsU0FBUyxDQUFDLENBQUM7UUFFdkYsb0ZBQW9GO1FBQ3BGLCtFQUErRTtRQUMvRSxPQUFPLEVBQUUsTUFBTSxFQUFFLE1BQU0sQ0FBQyxTQUFTLENBQUMsQ0FBQyxDQUFDLFNBQVMsQ0FBQyxDQUFDLENBQUMsVUFBVSxFQUFFLEtBQUssRUFBRSxNQUFNLENBQUMsS0FBSyxFQUFFLENBQUM7SUFDcEYsQ0FBQztDQUNGLENBQUE7QUEzRlksOENBQWlCO0FBS3RCO0lBRkwsSUFBQSxrQkFBUyxFQUFDLDZCQUFZLENBQUM7SUFDdkIsSUFBQSxZQUFHLEVBQUMsY0FBYyxDQUFDO0lBQ0csV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBOzs7O3dEQUUzQjtBQVNLO0lBSEwsSUFBQSxrQkFBUyxFQUFDLDZCQUFZLEVBQUUsd0JBQVUsQ0FBQztJQUNuQyxJQUFBLHVCQUFLLEVBQUMsT0FBTyxFQUFFLE9BQU8sQ0FBQztJQUN2QixJQUFBLGFBQUksRUFBQyxVQUFVLENBQUM7SUFDRCxXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFBMkIsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOzs2Q0FBTyx5QkFBVzs7aURBTXZFO0FBaUJLO0lBSEwsSUFBQSxrQkFBUyxFQUFDLDZCQUFZLEVBQUUsd0JBQVUsQ0FBQztJQUNuQyxJQUFBLHVCQUFLLEVBQUMsT0FBTyxDQUFDO0lBQ2QsSUFBQSxhQUFJLEVBQUMsVUFBVSxDQUFDO0lBQ0QsV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBO0lBQTJCLFdBQUEsSUFBQSxhQUFJLEdBQUUsQ0FBQTs7NkNBQU8sNkJBQWU7O2lEQU0zRTtBQUlLO0lBRkwsSUFBQSxrQkFBUyxFQUFDLDZCQUFZLENBQUM7SUFDdkIsSUFBQSxhQUFJLEVBQUMsMEJBQTBCLENBQUM7SUFFOUIsV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBO0lBQ0wsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOzs2Q0FBTyx1Q0FBeUI7O2tFQU94QztBQWlCSztJQUhMLElBQUEsd0JBQVksR0FBRTtJQUNkLElBQUEsYUFBSSxFQUFDLGtCQUFrQixDQUFDO0lBQ3hCLElBQUEsaUJBQVEsRUFBQyxHQUFHLENBQUM7SUFFWCxXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFDTCxXQUFBLElBQUEsZ0JBQU8sRUFBQyxzQkFBc0IsQ0FBQyxDQUFBOzs7O3NEQWFqQzs0QkExRlUsaUJBQWlCO0lBRDdCLElBQUEsbUJBQVUsRUFBQyxhQUFhLENBQUM7cUNBRVksZ0NBQWM7R0FEdkMsaUJBQWlCLENBMkY3QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL2JpbGxpbmcvYmlsbGluZy5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7XG4gIEJhZFJlcXVlc3RFeGNlcHRpb24sXG4gIEJvZHksXG4gIENvbnRyb2xsZXIsXG4gIEdldCxcbiAgSGVhZGVycyxcbiAgSHR0cENvZGUsXG4gIFBvc3QsXG4gIFJhd0JvZHlSZXF1ZXN0LFxuICBSZXEsXG4gIFVzZUd1YXJkcyxcbn0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgU2tpcFRocm90dGxlIH0gZnJvbSAnQG5lc3Rqcy90aHJvdHRsZXInO1xuaW1wb3J0IHR5cGUgeyBSZXF1ZXN0IH0gZnJvbSAnZXhwcmVzcyc7XG5pbXBvcnQgeyBCaWxsaW5nU2VydmljZSwgU3Vic2NyaXB0aW9uUGxhbiB9IGZyb20gJy4vYmlsbGluZy5zZXJ2aWNlJztcbmltcG9ydCB7IEp3dEF1dGhHdWFyZCB9IGZyb20gJy4uL2F1dGgvand0LWF1dGguZ3VhcmQnO1xuaW1wb3J0IHsgUm9sZXNHdWFyZCB9IGZyb20gJy4uL2NvbW1vbi9ndWFyZHMvcm9sZXMuZ3VhcmQnO1xuaW1wb3J0IHsgUm9sZXMgfSBmcm9tICcuLi9jb21tb24vZGVjb3JhdG9ycy9yb2xlcy5kZWNvcmF0b3InO1xuaW1wb3J0IHsgQXV0aFVzZXIgfSBmcm9tICdAYWNlL3NoYXJlZC10eXBlcyc7XG5pbXBvcnQgeyBBY3RpdmF0ZVBsYW5EdG8sIENoZWNrb3V0RHRvLCBTZXJ2aWNlUGF5bWVudEd1aWRhbmNlRHRvIH0gZnJvbSAnLi9iaWxsaW5nLmR0byc7XG5cbkBDb250cm9sbGVyKCdhcGkvYmlsbGluZycpXG5leHBvcnQgY2xhc3MgQmlsbGluZ0NvbnRyb2xsZXIge1xuICBjb25zdHJ1Y3Rvcihwcml2YXRlIGJpbGxpbmdTZXJ2aWNlOiBCaWxsaW5nU2VydmljZSkge31cblxuICBAVXNlR3VhcmRzKEp3dEF1dGhHdWFyZClcbiAgQEdldCgnc3Vic2NyaXB0aW9uJylcbiAgYXN5bmMgZ2V0U3Vic2NyaXB0aW9uKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSkge1xuICAgIHJldHVybiB0aGlzLmJpbGxpbmdTZXJ2aWNlLmdldFN1YnNjcmlwdGlvbkRldGFpbHMocmVxLnVzZXIub3JnYW5pemF0aW9uSWQpO1xuICB9XG5cbiAgLy8gUm9sZXNHdWFyZCBtdXN0IGNvbWUgKmFmdGVyKiBKd3RBdXRoR3VhcmQgaW4gdGhpcyBsaXN0IOKAlCBndWFyZHMgcnVuIGluIG9yZGVyIGFuZFxuICAvLyBSb2xlc0d1YXJkIHJlYWRzIHJlcXVlc3QudXNlciwgd2hpY2ggSnd0QXV0aEd1YXJkIHBvcHVsYXRlcy4gKEl0IHVzZWQgdG8gYmVcbiAgLy8gcmVnaXN0ZXJlZCBhcyBhIGdsb2JhbCBBUFBfR1VBUkQsIHdoaWNoIHJ1bnMgYmVmb3JlIGNvbnRyb2xsZXIgZ3VhcmRzLCBzbyB0aGVzZVxuICAvLyBlbmRwb2ludHMgcmVqZWN0ZWQgZXZlcnkgY2FsbGVyIHdpdGggNDAzLilcbiAgQFVzZUd1YXJkcyhKd3RBdXRoR3VhcmQsIFJvbGVzR3VhcmQpXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBAUG9zdCgnY2hlY2tvdXQnKVxuICBhc3luYyBjaGVja291dChAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sIEBCb2R5KCkgYm9keTogQ2hlY2tvdXREdG8pIHtcbiAgICByZXR1cm4gdGhpcy5iaWxsaW5nU2VydmljZS5pbml0aWFsaXplUGF5c3RhY2tUcmFuc2FjdGlvbihcbiAgICAgIHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLFxuICAgICAgYm9keS5wbGFuLFxuICAgICAgcmVxLnVzZXIuZW1haWxcbiAgICApO1xuICB9XG5cbiAgLyoqXG4gICAqIEFjdGl2YXRlcyBhIHBsYW4gZnJvbSBhIFBheXN0YWNrIHBheW1lbnQgcmVmZXJlbmNlLlxuICAgKlxuICAgKiBGb3IgdGhlIGNhc2Ugd2hlcmUgYSBjdXN0b21lciBwYWlkIGJ1dCB0aGUgd2ViaG9vayBuZXZlciBhcnJpdmVkLiBUaGUgcmVmZXJlbmNlIGlzXG4gICAqIHZlcmlmaWVkIGFnYWluc3QgUGF5c3RhY2sg4oCUIHRoYXQgaXQgc3VjY2VlZGVkLCB0aGF0IGl0IGJlbG9uZ3MgdG8gdGhpc1xuICAgKiBvcmdhbml6YXRpb24sIGFuZCB0aGF0IHRoZSBhbW91bnQgY292ZXJzIHRoZSBwbGFuLlxuICAgKlxuICAgKiBUaGlzIHJvdXRlIHByZXZpb3VzbHkgdG9vayBvbmx5IGEgcGxhbiBuYW1lIGFuZCBhY3RpdmF0ZWQgaXQgb3V0cmlnaHQuIEBSb2xlc1xuICAgKiAoJ09XTkVSJykgd2FzIGRvaW5nIG5vdGhpbmcgdXNlZnVsLCBiZWNhdXNlIHRoZSBmaXJzdCB1c2VyIG9mIGV2ZXJ5IG9yZ2FuaXphdGlvblxuICAgKiBJUyBpdHMgb3duZXI6IGFueSBwZXJzb24gd2hvIHNpZ25lZCB1cCBjb3VsZCBncmFudCB0aGVtc2VsdmVzIHRoZSBFTlRFUlBSSVNFIHBsYW5cbiAgICogKOKCpjEsMDAwLDAwMC9tb250aCkgd2l0aCBvbmUgcmVxdWVzdCBhbmQgbm8gcGF5bWVudC5cbiAgICovXG4gIEBVc2VHdWFyZHMoSnd0QXV0aEd1YXJkLCBSb2xlc0d1YXJkKVxuICBAUm9sZXMoJ09XTkVSJylcbiAgQFBvc3QoJ2FjdGl2YXRlJylcbiAgYXN5bmMgYWN0aXZhdGUoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LCBAQm9keSgpIGJvZHk6IEFjdGl2YXRlUGxhbkR0bykge1xuICAgIHJldHVybiB0aGlzLmJpbGxpbmdTZXJ2aWNlLmFjdGl2YXRlRnJvbVBheW1lbnRSZWZlcmVuY2UoXG4gICAgICByZXEudXNlci5vcmdhbml6YXRpb25JZCxcbiAgICAgIGJvZHkucGxhbixcbiAgICAgIGJvZHkucmVmZXJlbmNlLFxuICAgICk7XG4gIH1cblxuICBAVXNlR3VhcmRzKEp3dEF1dGhHdWFyZClcbiAgQFBvc3QoJ3NlcnZpY2UtcGF5bWVudC1ndWlkYW5jZScpXG4gIGFzeW5jIGdldFNlcnZpY2VQYXltZW50R3VpZGFuY2UoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBCb2R5KCkgYm9keTogU2VydmljZVBheW1lbnRHdWlkYW5jZUR0b1xuICApIHtcbiAgICByZXR1cm4gdGhpcy5iaWxsaW5nU2VydmljZS5nZW5lcmF0ZVNlcnZpY2VQYXltZW50R3VpZGFuY2UoXG4gICAgICByZXEudXNlci5vcmdhbml6YXRpb25JZCxcbiAgICAgIGJvZHkuc2VydmljZU5hbWUsXG4gICAgICBib2R5LmFtb3VudE5nblxuICAgICk7XG4gIH1cblxuICAvKipcbiAgICogUGF5c3RhY2sgd2ViaG9vay5cbiAgICpcbiAgICogVGhlIHNpZ25hdHVyZSBpcyBhbiBITUFDLVNIQTI1NiBvdmVyIHRoZSBFWEFDVCBieXRlcyBQYXlzdGFjayBzZW50LCBzbyB0aGlzIG11c3RcbiAgICogcmVhZCBgcmVxLnJhd0JvZHlgIChlbmFibGVkIGJ5IGByYXdCb2R5OiB0cnVlYCBpbiBtYWluLnRzKS4gVGhlIHByZXZpb3VzIHZlcnNpb25cbiAgICogcGFzc2VkIHRoZSBKU09OLXBhcnNlZCBgQEJvZHkoKWAgb2JqZWN0IGludG8gYGNyZWF0ZUhtYWMoKS51cGRhdGUoKWAsIHdoaWNoIHRocm93c1xuICAgKiBhIFR5cGVFcnJvciBvbiBhIHBsYWluIG9iamVjdCDigJQgZXZlcnkgd2ViaG9vayA1MDAnZCwgc28gUGF5c3RhY2sgcmV0cmllZCBhbmQgdGhlblxuICAgKiBkaXNhYmxlZCB0aGUgZW5kcG9pbnQsIGFuZCBubyBzdWNjZXNzZnVsIHBheW1lbnQgZXZlciBhY3RpdmF0ZWQgYSBzdWJzY3JpcHRpb24uXG4gICAqXG4gICAqIEBTa2lwVGhyb3R0bGU6IFBheXN0YWNrIGJ1cnN0cyByZXRyaWVzIGFuZCB0cmVhdHMgYSA0MjkgYXMgYSBkZWxpdmVyeSBmYWlsdXJlLlxuICAgKiBBdXRoZW50aWNpdHkgaXMgZXN0YWJsaXNoZWQgYnkgdGhlIHNpZ25hdHVyZSwgbm90IGJ5IHJhdGUgbGltaXRpbmcuXG4gICAqL1xuICBAU2tpcFRocm90dGxlKClcbiAgQFBvc3QoJ3BheXN0YWNrLXdlYmhvb2snKVxuICBASHR0cENvZGUoMjAwKVxuICBhc3luYyBoYW5kbGVXZWJob29rKFxuICAgIEBSZXEoKSByZXE6IFJhd0JvZHlSZXF1ZXN0PFJlcXVlc3Q+LFxuICAgIEBIZWFkZXJzKCd4LXBheXN0YWNrLXNpZ25hdHVyZScpIHNpZ25hdHVyZTogc3RyaW5nXG4gICkge1xuICAgIGlmICghcmVxLnJhd0JvZHkpIHtcbiAgICAgIHRocm93IG5ldyBCYWRSZXF1ZXN0RXhjZXB0aW9uKFxuICAgICAgICAnUmF3IHJlcXVlc3QgYm9keSB1bmF2YWlsYWJsZSDigJQgUGF5c3RhY2sgc2lnbmF0dXJlIGNhbm5vdCBiZSB2ZXJpZmllZC4nXG4gICAgICApO1xuICAgIH1cblxuICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IHRoaXMuYmlsbGluZ1NlcnZpY2UuaGFuZGxlUGF5c3RhY2tXZWJob29rKHJlcS5yYXdCb2R5LCBzaWduYXR1cmUpO1xuXG4gICAgLy8gQSByZWplY3RlZCBzaWduYXR1cmUgaXMgcmVwb3J0ZWQgYXMgcmVqZWN0ZWQgcmF0aGVyIHRoYW4gYXMgYHtzdGF0dXM6J3N1Y2Nlc3MnfWAuXG4gICAgLy8gUmV0dXJuaW5nIDIwMCBrZWVwcyBQYXlzdGFjayBmcm9tIHJldHJ5aW5nIGEgcmVxdWVzdCB0aGF0IHdpbGwgbmV2ZXIgdmVyaWZ5LlxuICAgIHJldHVybiB7IHN0YXR1czogcmVzdWx0LnByb2Nlc3NlZCA/ICdzdWNjZXNzJyA6ICdyZWplY3RlZCcsIGV2ZW50OiByZXN1bHQuZXZlbnQgfTtcbiAgfVxufVxuIl0sInZlcnNpb24iOjN9

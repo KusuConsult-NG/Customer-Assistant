@@ -1,0 +1,29 @@
+31e3bc784787b4395d0919d4ef80faf9
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OnboardingModule = void 0;
+const common_1 = require("@nestjs/common");
+const onboarding_controller_1 = require("./onboarding.controller");
+const onboarding_service_1 = require("./onboarding.service");
+/**
+ * Global so the WhatsApp pipeline and the workflow engine can attach or request a
+ * selfie without importing this module (and without a circular graph).
+ */
+let OnboardingModule = class OnboardingModule {
+};
+exports.OnboardingModule = OnboardingModule;
+exports.OnboardingModule = OnboardingModule = __decorate([
+    (0, common_1.Global)(),
+    (0, common_1.Module)({
+        controllers: [onboarding_controller_1.OnboardingController, onboarding_controller_1.PublicSelfieController],
+        providers: [onboarding_service_1.OnboardingService],
+        exports: [onboarding_service_1.OnboardingService],
+    })
+], OnboardingModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9vbmJvYXJkaW5nL29uYm9hcmRpbmcubW9kdWxlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUFBLDJDQUFnRDtBQUNoRCxtRUFBdUY7QUFDdkYsNkRBQXlEO0FBRXpEOzs7R0FHRztBQU9JLElBQU0sZ0JBQWdCLEdBQXRCLE1BQU0sZ0JBQWdCO0NBQUcsQ0FBQTtBQUFuQiw0Q0FBZ0I7MkJBQWhCLGdCQUFnQjtJQU41QixJQUFBLGVBQU0sR0FBRTtJQUNSLElBQUEsZUFBTSxFQUFDO1FBQ04sV0FBVyxFQUFFLENBQUMsNENBQW9CLEVBQUUsOENBQXNCLENBQUM7UUFDM0QsU0FBUyxFQUFFLENBQUMsc0NBQWlCLENBQUM7UUFDOUIsT0FBTyxFQUFFLENBQUMsc0NBQWlCLENBQUM7S0FDN0IsQ0FBQztHQUNXLGdCQUFnQixDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvb25ib2FyZGluZy9vbmJvYXJkaW5nLm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBHbG9iYWwsIE1vZHVsZSB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IE9uYm9hcmRpbmdDb250cm9sbGVyLCBQdWJsaWNTZWxmaWVDb250cm9sbGVyIH0gZnJvbSAnLi9vbmJvYXJkaW5nLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgT25ib2FyZGluZ1NlcnZpY2UgfSBmcm9tICcuL29uYm9hcmRpbmcuc2VydmljZSc7XG5cbi8qKlxuICogR2xvYmFsIHNvIHRoZSBXaGF0c0FwcCBwaXBlbGluZSBhbmQgdGhlIHdvcmtmbG93IGVuZ2luZSBjYW4gYXR0YWNoIG9yIHJlcXVlc3QgYVxuICogc2VsZmllIHdpdGhvdXQgaW1wb3J0aW5nIHRoaXMgbW9kdWxlIChhbmQgd2l0aG91dCBhIGNpcmN1bGFyIGdyYXBoKS5cbiAqL1xuQEdsb2JhbCgpXG5ATW9kdWxlKHtcbiAgY29udHJvbGxlcnM6IFtPbmJvYXJkaW5nQ29udHJvbGxlciwgUHVibGljU2VsZmllQ29udHJvbGxlcl0sXG4gIHByb3ZpZGVyczogW09uYm9hcmRpbmdTZXJ2aWNlXSxcbiAgZXhwb3J0czogW09uYm9hcmRpbmdTZXJ2aWNlXSxcbn0pXG5leHBvcnQgY2xhc3MgT25ib2FyZGluZ01vZHVsZSB7fVxuIl0sInZlcnNpb24iOjN9

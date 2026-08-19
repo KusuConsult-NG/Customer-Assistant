@@ -1,0 +1,29 @@
+1efa623be55a67ebd05392efb143a348
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WidgetModule = void 0;
+const common_1 = require("@nestjs/common");
+const widget_controller_1 = require("./widget.controller");
+/**
+ * The retired web chat channel.
+ *
+ * Only the controller remains, and it answers 410 to everything. The service
+ * that ran the orchestrator for widget visitors, and the DTO it validated, are
+ * gone — see widget.controller.ts for why the routes still answer at all
+ * rather than being deleted with them.
+ */
+let WidgetModule = class WidgetModule {
+};
+exports.WidgetModule = WidgetModule;
+exports.WidgetModule = WidgetModule = __decorate([
+    (0, common_1.Module)({
+        controllers: [widget_controller_1.WidgetController],
+    })
+], WidgetModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93aWRnZXQvd2lkZ2V0Lm1vZHVsZS50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBQSwyQ0FBd0M7QUFDeEMsMkRBQXVEO0FBRXZEOzs7Ozs7O0dBT0c7QUFJSSxJQUFNLFlBQVksR0FBbEIsTUFBTSxZQUFZO0NBQUcsQ0FBQTtBQUFmLG9DQUFZO3VCQUFaLFlBQVk7SUFIeEIsSUFBQSxlQUFNLEVBQUM7UUFDTixXQUFXLEVBQUUsQ0FBQyxvQ0FBZ0IsQ0FBQztLQUNoQyxDQUFDO0dBQ1csWUFBWSxDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvd2lkZ2V0L3dpZGdldC5tb2R1bGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgTW9kdWxlIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgV2lkZ2V0Q29udHJvbGxlciB9IGZyb20gJy4vd2lkZ2V0LmNvbnRyb2xsZXInO1xuXG4vKipcbiAqIFRoZSByZXRpcmVkIHdlYiBjaGF0IGNoYW5uZWwuXG4gKlxuICogT25seSB0aGUgY29udHJvbGxlciByZW1haW5zLCBhbmQgaXQgYW5zd2VycyA0MTAgdG8gZXZlcnl0aGluZy4gVGhlIHNlcnZpY2VcbiAqIHRoYXQgcmFuIHRoZSBvcmNoZXN0cmF0b3IgZm9yIHdpZGdldCB2aXNpdG9ycywgYW5kIHRoZSBEVE8gaXQgdmFsaWRhdGVkLCBhcmVcbiAqIGdvbmUg4oCUIHNlZSB3aWRnZXQuY29udHJvbGxlci50cyBmb3Igd2h5IHRoZSByb3V0ZXMgc3RpbGwgYW5zd2VyIGF0IGFsbFxuICogcmF0aGVyIHRoYW4gYmVpbmcgZGVsZXRlZCB3aXRoIHRoZW0uXG4gKi9cbkBNb2R1bGUoe1xuICBjb250cm9sbGVyczogW1dpZGdldENvbnRyb2xsZXJdLFxufSlcbmV4cG9ydCBjbGFzcyBXaWRnZXRNb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

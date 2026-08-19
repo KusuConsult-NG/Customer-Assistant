@@ -1,0 +1,206 @@
+38977876ad30e6b091236d6fbc26e026
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SchedulingController = void 0;
+const common_1 = require("@nestjs/common");
+const scheduling_service_1 = require("./scheduling.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+let SchedulingController = class SchedulingController {
+    schedulingService;
+    constructor(schedulingService) {
+        this.schedulingService = schedulingService;
+    }
+    // ─── Bookings ─────────────────────────────────────────────────────────────────
+    getBookings(req) {
+        return this.schedulingService.getBookings(req.user.organizationId);
+    }
+    createBooking(req, body) {
+        return this.schedulingService.createBooking(req.user.organizationId, body);
+    }
+    /**
+     * Cancel a booking.
+     * Body: { reason?: string }
+     * The booking is marked CANCELLED and a note is attached.
+     */
+    cancelBooking(req, id, body) {
+        return this.schedulingService.cancelBooking(req.user.organizationId, id, body.reason);
+    }
+    /**
+     * Reschedule a booking to a new start time.
+     * Body: { newStartTime: string (ISO 8601); durationMinutes?: number }
+     */
+    rescheduleBooking(req, id, body) {
+        return this.schedulingService.rescheduleBooking(req.user.organizationId, id, body.newStartTime, body.durationMinutes);
+    }
+    /**
+     * Request a refund for a booking.
+     * Creates a HIGH-priority support ticket with prefix REF-BK-*.
+     * Also cancels the booking automatically so the slot is freed.
+     * Body: { reason: string }
+     */
+    requestBookingRefund(req, id, body) {
+        return this.schedulingService.requestBookingRefund(req.user.organizationId, id, body.reason);
+    }
+    /** Legacy: direct status override (admin use). */
+    updateBookingStatus(req, id, body) {
+        return this.schedulingService.updateBookingStatus(id, body.status, req.user.organizationId);
+    }
+    // ─── Reservations ─────────────────────────────────────────────────────────────
+    getReservations(req) {
+        return this.schedulingService.getReservations(req.user.organizationId);
+    }
+    createReservation(req, body) {
+        return this.schedulingService.createReservation(req.user.organizationId, body);
+    }
+    /**
+     * Cancel a reservation.
+     * Body: { reason?: string }
+     */
+    cancelReservation(req, id, body) {
+        return this.schedulingService.cancelReservation(req.user.organizationId, id, body.reason);
+    }
+    /**
+     * Reschedule a reservation to a new time.
+     * Body: { newReservationTime: string (ISO 8601) }
+     */
+    rescheduleReservation(req, id, body) {
+        return this.schedulingService.rescheduleReservation(req.user.organizationId, id, body.newReservationTime);
+    }
+    /**
+     * Request a refund for a reservation.
+     * Creates a HIGH-priority support ticket with prefix REF-RS-*.
+     * Also cancels the reservation automatically.
+     * Body: { reason: string }
+     */
+    requestReservationRefund(req, id, body) {
+        return this.schedulingService.requestReservationRefund(req.user.organizationId, id, body.reason);
+    }
+    // ─── Refund Queue (Admin) ──────────────────────────────────────────────────────
+    /**
+     * List all pending refund requests across bookings and reservations.
+     * Filters tickets by REF-BK-* and REF-RS-* ticket number prefixes.
+     * Only admins and owners should access this in production (enforced by RolesGuard).
+     */
+    getRefundRequests(req) {
+        return this.schedulingService.getRefundRequests(req.user.organizationId);
+    }
+};
+exports.SchedulingController = SchedulingController;
+__decorate([
+    (0, common_1.Get)('bookings'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "getBookings", null);
+__decorate([
+    (0, common_1.Post)('bookings'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "createBooking", null);
+__decorate([
+    (0, common_1.Patch)('bookings/:id/cancel'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "cancelBooking", null);
+__decorate([
+    (0, common_1.Patch)('bookings/:id/reschedule'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "rescheduleBooking", null);
+__decorate([
+    (0, common_1.Post)('bookings/:id/refund-request'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "requestBookingRefund", null);
+__decorate([
+    (0, common_1.Patch)('bookings/:id/status'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "updateBookingStatus", null);
+__decorate([
+    (0, common_1.Get)('reservations'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "getReservations", null);
+__decorate([
+    (0, common_1.Post)('reservations'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "createReservation", null);
+__decorate([
+    (0, common_1.Patch)('reservations/:id/cancel'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "cancelReservation", null);
+__decorate([
+    (0, common_1.Patch)('reservations/:id/reschedule'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "rescheduleReservation", null);
+__decorate([
+    (0, common_1.Post)('reservations/:id/refund-request'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "requestReservationRefund", null);
+__decorate([
+    (0, common_1.Get)('refund-requests'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], SchedulingController.prototype, "getRefundRequests", null);
+exports.SchedulingController = SchedulingController = __decorate([
+    (0, common_1.Controller)('api/scheduling'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __metadata("design:paramtypes", [scheduling_service_1.SchedulingService])
+], SchedulingController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9zY2hlZHVsaW5nL3NjaGVkdWxpbmcuY29udHJvbGxlci50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7Ozs7QUFBQSwyQ0FFd0I7QUFDeEIsNkRBQXlEO0FBQ3pELDJEQUFzRDtBQUsvQyxJQUFNLG9CQUFvQixHQUExQixNQUFNLG9CQUFvQjtJQUNYO0lBQXBCLFlBQW9CLGlCQUFvQztRQUFwQyxzQkFBaUIsR0FBakIsaUJBQWlCLENBQW1CO0lBQUcsQ0FBQztJQUU1RCxpRkFBaUY7SUFHakYsV0FBVyxDQUFRLEdBQXVCO1FBQ3hDLE9BQU8sSUFBSSxDQUFDLGlCQUFpQixDQUFDLFdBQVcsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO0lBQ3JFLENBQUM7SUFHRCxhQUFhLENBQ0osR0FBdUIsRUFDdEIsSUFBdUc7UUFFL0csT0FBTyxJQUFJLENBQUMsaUJBQWlCLENBQUMsYUFBYSxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxFQUFFLElBQUksQ0FBQyxDQUFDO0lBQzdFLENBQUM7SUFFRDs7OztPQUlHO0lBRUgsYUFBYSxDQUNKLEdBQXVCLEVBQ2pCLEVBQVUsRUFDZixJQUF5QjtRQUVqQyxPQUFPLElBQUksQ0FBQyxpQkFBaUIsQ0FBQyxhQUFhLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUUsRUFBRSxFQUFFLElBQUksQ0FBQyxNQUFNLENBQUMsQ0FBQztJQUN4RixDQUFDO0lBRUQ7OztPQUdHO0lBRUgsaUJBQWlCLENBQ1IsR0FBdUIsRUFDakIsRUFBVSxFQUNmLElBQXdEO1FBRWhFLE9BQU8sSUFBSSxDQUFDLGlCQUFpQixDQUFDLGlCQUFpQixDQUM3QyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsRUFDdkIsRUFBRSxFQUNGLElBQUksQ0FBQyxZQUFZLEVBQ2pCLElBQUksQ0FBQyxlQUFlLENBQ3JCLENBQUM7SUFDSixDQUFDO0lBRUQ7Ozs7O09B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QVVEO0lBREMsSUFBQSxZQUFHLEVBQUMsaUJBQWlCLENBQUM7SUFDSixXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7Ozs7NkRBRXZCOytCQTNKVSxvQkFBb0I7SUFGaEMsSUFBQSxtQkFBVSxFQUFDLGdCQUFnQixDQUFDO0lBQzVCLElBQUEsa0JBQVMsRUFBQyw2QkFBWSxDQUFDO3FDQUVpQixzQ0FBaUI7R0FEN0Msb0JBQW9CLENBNEpoQyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL3NjaGVkdWxpbmcvc2NoZWR1bGluZy5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7XG4gIENvbnRyb2xsZXIsIEdldCwgUG9zdCwgUGF0Y2gsIEJvZHksIFBhcmFtLCBSZXEsIFVzZUd1YXJkcyxcbn0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgU2NoZWR1bGluZ1NlcnZpY2UgfSBmcm9tICcuL3NjaGVkdWxpbmcuc2VydmljZSc7XG5pbXBvcnQgeyBKd3RBdXRoR3VhcmQgfSBmcm9tICcuLi9hdXRoL2p3dC1hdXRoLmd1YXJkJztcbmltcG9ydCB7IEF1dGhVc2VyLCBCb29raW5nU3RhdHVzIH0gZnJvbSAnQGFjZS9zaGFyZWQtdHlwZXMnO1xuXG5AQ29udHJvbGxlcignYXBpL3NjaGVkdWxpbmcnKVxuQFVzZUd1YXJkcyhKd3RBdXRoR3VhcmQpXG5leHBvcnQgY2xhc3MgU2NoZWR1bGluZ0NvbnRyb2xsZXIge1xuICBjb25zdHJ1Y3Rvcihwcml2YXRlIHNjaGVkdWxpbmdTZXJ2aWNlOiBTY2hlZHVsaW5nU2VydmljZSkge31cblxuICAvLyDilIDilIDilIAgQm9va2luZ3Mg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAXG5cbiAgQEdldCgnYm9va2luZ3MnKVxuICBnZXRCb29raW5ncyhAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0pIHtcbiAgICByZXR1cm4gdGhpcy5zY2hlZHVsaW5nU2VydmljZS5nZXRCb29raW5ncyhyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICBAUG9zdCgnYm9va2luZ3MnKVxuICBjcmVhdGVCb29raW5nKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAQm9keSgpIGJvZHk6IHsgY29udGFjdElkOiBzdHJpbmc7IHNlcnZpY2VOYW1lOiBzdHJpbmc7IHN0YWZmTmFtZT86IHN0cmluZzsgc3RhcnRUaW1lOiBzdHJpbmc7IG5vdGVzPzogc3RyaW5nIH1cbiAgKSB7XG4gICAgcmV0dXJuIHRoaXMuc2NoZWR1bGluZ1NlcnZpY2UuY3JlYXRlQm9va2luZyhyZXEudXNlci5vcmdhbml6YXRpb25JZCwgYm9keSk7XG4gIH1cblxuICAvKipcbiAgICogQ2FuY2VsIGEgYm9va2luZy5cbiAgICogQm9keTogeyByZWFzb24/OiBzdHJpbmcgfVxuICAgKiBUaGUgYm9va2luZyBpcyBtYXJrZWQgQ0FOQ0VMTEVEIGFuZCBhIG5vdGUgaXMgYXR0YWNoZWQuXG4gICAqL1xuICBAUGF0Y2goJ2Jvb2tpbmdzLzppZC9jYW5jZWwnKVxuICBjYW5jZWxCb29raW5nKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZyxcbiAgICBAQm9keSgpIGJvZHk6IHsgcmVhc29uPzogc3RyaW5nIH1cbiAgKSB7XG4gICAgcmV0dXJuIHRoaXMuc2NoZWR1bGluZ1NlcnZpY2UuY2FuY2VsQm9va2luZyhyZXEudXNlci5vcmdhbml6YXRpb25JZCwgaWQsIGJvZHkucmVhc29uKTtcbiAgfVxuXG4gIC8qKlxuICAgKiBSZXNjaGVkdWxlIGEgYm9va2luZyB0byBhIG5ldyBzdGFydCB0aW1lLlxuICAgKiBCb2R5OiB7IG5ld1N0YXJ0VGltZTogc3RyaW5nIChJU08gODYwMSk7IGR1cmF0aW9uTWludXRlcz86IG51bWJlciB9XG4gICAqL1xuICBAUGF0Y2goJ2Jvb2tpbmdzLzppZC9yZXNjaGVkdWxlJylcbiAgcmVzY2hlZHVsZUJvb2tpbmcoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBQYXJhbSgnaWQnKSBpZDogc3RyaW5nLFxuICAgIEBCb2R5KCkgYm9keTogeyBuZXdTdGFydFRpbWU6IHN0cmluZzsgZHVyYXRpb25NaW51dGVzPzogbnVtYmVyIH1cbiAgKSB7XG4gICAgcmV0dXJuIHRoaXMuc2NoZWR1bGluZ1NlcnZpY2UucmVzY2hlZHVsZUJvb2tpbmcoXG4gICAgICByZXEudXNlci5vcmdhbml6YXRpb25JZCxcbiAgICAgIGlkLFxuICAgICAgYm9keS5uZXdTdGFydFRpbWUsXG4gICAgICBib2R5LmR1cmF0aW9uTWludXRlc1xuICAgICk7XG4gIH1cblxuICAvKipcbiAgICogUmVxdWVzdCBhIHJlZnVuZCBmb3IgYSBib29raW5nLlxuICAgKiBDcmVhdGVzIGEgSElHSC1wcmlvcml0eSBzdXBwb3J0IHRpY2tldCB3aXRoIHByZWZpeCBSRUYtQkstKi5cbiAgICogQWxzbyBjYW5jZWxzIHRoZSBib29raW5nIGF1dG9tYXRpY2FsbHkgc28gdGhlIHNsb3QgaXMgZnJlZWQuXG4gICAqIEJvZHk6IHsgcmVhc29uOiBzdHJpbmcgfVxuICAgKi9cbiAgQFBvc3QoJ2Jvb2tpbmdzLzppZC9yZWZ1bmQtcmVxdWVzdCcpXG4gIHJlcXVlc3RCb29raW5nUmVmdW5kKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZyxcbiAgICBAQm9keSgpIGJvZHk6IHsgcmVhc29uOiBzdHJpbmcgfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5zY2hlZHVsaW5nU2VydmljZS5yZXF1ZXN0Qm9va2luZ1JlZnVuZChcbiAgICAgIHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLFxuICAgICAgaWQsXG4gICAgICBib2R5LnJlYXNvblxuICAgICk7XG4gIH1cblxuICAvKiogTGVnYWN5OiBkaXJlY3Qgc3RhdHVzIG92ZXJyaWRlIChhZG1pbiB1c2UpLiAqL1xuICBAUGF0Y2goJ2Jvb2tpbmdzLzppZC9zdGF0dXMnKVxuICB1cGRhdGVCb29raW5nU3RhdHVzKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSwgQFBhcmFtKCdpZCcpIGlkOiBzdHJpbmcsIEBCb2R5KCkgYm9keTogeyBzdGF0dXM6IEJvb2tpbmdTdGF0dXMgfSkge1xuICAgIHJldHVybiB0aGlzLnNjaGVkdWxpbmdTZXJ2aWNlLnVwZGF0ZUJvb2tpbmdTdGF0dXMoaWQsIGJvZHkuc3RhdHVzLCByZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICAvLyDilIDilIDilIAgUmVzZXJ2YXRpb25zIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuXG4gIEBHZXQoJ3Jlc2VydmF0aW9ucycpXG4gIGdldFJlc2VydmF0aW9ucyhAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0pIHtcbiAgICByZXR1cm4gdGhpcy5zY2hlZHVsaW5nU2VydmljZS5nZXRSZXNlcnZhdGlvbnMocmVxLnVzZXIub3JnYW5pemF0aW9uSWQpO1xuICB9XG5cbiAgQFBvc3QoJ3Jlc2VydmF0aW9ucycpXG4gIGNyZWF0ZVJlc2VydmF0aW9uKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAQm9keSgpIGJvZHk6IHtcbiAgICAgIGNvbnRhY3RJZDogc3RyaW5nO1xuICAgICAgcGFydHlTaXplOiBudW1iZXI7XG4gICAgICByZXNlcnZhdGlvblRpbWU6IHN0cmluZztcbiAgICAgIHRhYmxlT3JSb29tTnVtYmVyPzogc3RyaW5nO1xuICAgICAgc3BlY2lhbFJlcXVlc3RzPzogc3RyaW5nO1xuICAgIH1cbiAgKSB7XG4gICAgcmV0dXJuIHRoaXMuc2NoZWR1bGluZ1NlcnZpY2UuY3JlYXRlUmVzZXJ2YXRpb24ocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIGJvZHkpO1xuICB9XG5cbiAgLyoqXG4gICAqIENhbmNlbCBhIHJlc2VydmF0aW9uLlxuICAgKiBCb2R5OiB7IHJlYXNvbj86IHN0cmluZyB9XG4gICAqL1xuICBAUGF0Y2goJ3Jlc2VydmF0aW9ucy86aWQvY2FuY2VsJylcbiAgY2FuY2VsUmVzZXJ2YXRpb24oXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBQYXJhbSgnaWQnKSBpZDogc3RyaW5nLFxuICAgIEBCb2R5KCkgYm9keTogeyByZWFzb24/OiBzdHJpbmcgfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5zY2hlZHVsaW5nU2VydmljZS5jYW5jZWxSZXNlcnZhdGlvbihyZXEudXNlci5vcmdhbml6YXRpb25JZCwgaWQsIGJvZHkucmVhc29uKTtcbiAgfVxuXG4gIC8qKlxuICAgKiBSZXNjaGVkdWxlIGEgcmVzZXJ2YXRpb24gdG8gYSBuZXcgdGltZS5cbiAgICogQm9keTogeyBuZXdSZXNlcnZhdGlvblRpbWU6IHN0cmluZyAoSVNPIDg2MDEpIH1cbiAgICovXG4gIEBQYXRjaCgncmVzZXJ2YXRpb25zLzppZC9yZXNjaGVkdWxlJylcbiAgcmVzY2hlZHVsZVJlc2VydmF0aW9uKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZyxcbiAgICBAQm9keSgpIGJvZHk6IHsgbmV3UmVzZXJ2YXRpb25UaW1lOiBzdHJpbmcgfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5zY2hlZHVsaW5nU2VydmljZS5yZXNjaGVkdWxlUmVzZXJ2YXRpb24oXG4gICAgICByZXEudXNlci5vcmdhbml6YXRpb25JZCxcbiAgICAgIGlkLFxuICAgICAgYm9keS5uZXdSZXNlcnZhdGlvblRpbWVcbiAgICApO1xuICB9XG5cbiAgLyoqXG4gICAqIFJlcXVlc3QgYSByZWZ1bmQgZm9yIGEgcmVzZXJ2YXRpb24uXG4gICAqIENyZWF0ZXMgYSBISUdILXByaW9yaXR5IHN1cHBvcnQgdGlja2V0IHdpdGggcHJlZml4IFJFRi1SUy0qLlxuICAgKiBBbHNvIGNhbmNlbHMgdGhlIHJlc2VydmF0aW9uIGF1dG9tYXRpY2FsbHkuXG4gICAqIEJvZHk6IHsgcmVhc29uOiBzdHJpbmcgfVxuICAgKi9cbiAgQFBvc3QoJ3Jlc2VydmF0aW9ucy86aWQvcmVmdW5kLXJlcXVlc3QnKVxuICByZXF1ZXN0UmVzZXJ2YXRpb25SZWZ1bmQoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBQYXJhbSgnaWQnKSBpZDogc3RyaW5nLFxuICAgIEBCb2R5KCkgYm9keTogeyByZWFzb246IHN0cmluZyB9XG4gICkge1xuICAgIHJldHVybiB0aGlzLnNjaGVkdWxpbmdTZXJ2aWNlLnJlcXVlc3RSZXNlcnZhdGlvblJlZnVuZChcbiAgICAgIHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLFxuICAgICAgaWQsXG4gICAgICBib2R5LnJlYXNvblxuICAgICk7XG4gIH1cblxuICAvLyDilIDilIDilIAgUmVmdW5kIFF1ZXVlIChBZG1pbikg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAXG5cbiAgLyoqXG4gICAqIExpc3QgYWxsIHBlbmRpbmcgcmVmdW5kIHJlcXVlc3RzIGFjcm9zcyBib29raW5ncyBhbmQgcmVzZXJ2YXRpb25zLlxuICAgKiBGaWx0ZXJzIHRpY2tldHMgYnkgUkVGLUJLLSogYW5kIFJFRi1SUy0qIHRpY2tldCBudW1iZXIgcHJlZml4ZXMuXG4gICAqIE9ubHkgYWRtaW5zIGFuZCBvd25lcnMgc2hvdWxkIGFjY2VzcyB0aGlzIGluIHByb2R1Y3Rpb24gKGVuZm9yY2VkIGJ5IFJvbGVzR3VhcmQpLlxuICAgKi9cbiAgQEdldCgncmVmdW5kLXJlcXVlc3RzJylcbiAgZ2V0UmVmdW5kUmVxdWVzdHMoQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9KSB7XG4gICAgcmV0dXJuIHRoaXMuc2NoZWR1bGluZ1NlcnZpY2UuZ2V0UmVmdW5kUmVxdWVzdHMocmVxLnVzZXIub3JnYW5pemF0aW9uSWQpO1xuICB9XG59XG4iXSwidmVyc2lvbiI6M30=

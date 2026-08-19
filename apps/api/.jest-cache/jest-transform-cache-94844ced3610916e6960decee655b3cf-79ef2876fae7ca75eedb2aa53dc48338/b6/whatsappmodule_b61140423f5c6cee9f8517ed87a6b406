@@ -1,0 +1,26 @@
+8c68aa09cb7281fa11f486339625d703
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WhatsappModule = void 0;
+const common_1 = require("@nestjs/common");
+const whatsapp_service_1 = require("./whatsapp.service");
+const whatsapp_controller_1 = require("./whatsapp.controller");
+const webhooks_module_1 = require("../webhooks/webhooks.module");
+let WhatsappModule = class WhatsappModule {
+};
+exports.WhatsappModule = WhatsappModule;
+exports.WhatsappModule = WhatsappModule = __decorate([
+    (0, common_1.Module)({
+        imports: [webhooks_module_1.WebhooksModule],
+        providers: [whatsapp_service_1.WhatsappService],
+        controllers: [whatsapp_controller_1.WhatsappController],
+        exports: [whatsapp_service_1.WhatsappService],
+    })
+], WhatsappModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93aGF0c2FwcC93aGF0c2FwcC5tb2R1bGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7O0FBQUEsMkNBQXdDO0FBQ3hDLHlEQUFxRDtBQUNyRCwrREFBMkQ7QUFDM0QsaUVBQTZEO0FBUXRELElBQU0sY0FBYyxHQUFwQixNQUFNLGNBQWM7Q0FBRyxDQUFBO0FBQWpCLHdDQUFjO3lCQUFkLGNBQWM7SUFOMUIsSUFBQSxlQUFNLEVBQUM7UUFDTixPQUFPLEVBQUUsQ0FBQyxnQ0FBYyxDQUFDO1FBQ3pCLFNBQVMsRUFBRSxDQUFDLGtDQUFlLENBQUM7UUFDNUIsV0FBVyxFQUFFLENBQUMsd0NBQWtCLENBQUM7UUFDakMsT0FBTyxFQUFFLENBQUMsa0NBQWUsQ0FBQztLQUMzQixDQUFDO0dBQ1csY0FBYyxDQUFHIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvd2hhdHNhcHAvd2hhdHNhcHAubW9kdWxlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IE1vZHVsZSB9IGZyb20gJ0BuZXN0anMvY29tbW9uJztcbmltcG9ydCB7IFdoYXRzYXBwU2VydmljZSB9IGZyb20gJy4vd2hhdHNhcHAuc2VydmljZSc7XG5pbXBvcnQgeyBXaGF0c2FwcENvbnRyb2xsZXIgfSBmcm9tICcuL3doYXRzYXBwLmNvbnRyb2xsZXInO1xuaW1wb3J0IHsgV2ViaG9va3NNb2R1bGUgfSBmcm9tICcuLi93ZWJob29rcy93ZWJob29rcy5tb2R1bGUnO1xuXG5ATW9kdWxlKHtcbiAgaW1wb3J0czogW1dlYmhvb2tzTW9kdWxlXSxcbiAgcHJvdmlkZXJzOiBbV2hhdHNhcHBTZXJ2aWNlXSxcbiAgY29udHJvbGxlcnM6IFtXaGF0c2FwcENvbnRyb2xsZXJdLFxuICBleHBvcnRzOiBbV2hhdHNhcHBTZXJ2aWNlXSxcbn0pXG5leHBvcnQgY2xhc3MgV2hhdHNhcHBNb2R1bGUge31cbiJdLCJ2ZXJzaW9uIjozfQ==

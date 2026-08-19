@@ -1,0 +1,22 @@
+7b0f3b177994c132ca5c3426251c4b4b
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WebhooksModule = void 0;
+const common_1 = require("@nestjs/common");
+const webhook_dispatcher_service_1 = require("./webhook-dispatcher.service");
+let WebhooksModule = class WebhooksModule {
+};
+exports.WebhooksModule = WebhooksModule;
+exports.WebhooksModule = WebhooksModule = __decorate([
+    (0, common_1.Module)({
+        providers: [webhook_dispatcher_service_1.WebhookDispatcherService],
+        exports: [webhook_dispatcher_service_1.WebhookDispatcherService],
+    })
+], WebhooksModule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93ZWJob29rcy93ZWJob29rcy5tb2R1bGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7O0FBQUEsMkNBQXdDO0FBQ3hDLDZFQUF3RTtBQU1qRSxJQUFNLGNBQWMsR0FBcEIsTUFBTSxjQUFjO0NBQUcsQ0FBQTtBQUFqQix3Q0FBYzt5QkFBZCxjQUFjO0lBSjFCLElBQUEsZUFBTSxFQUFDO1FBQ04sU0FBUyxFQUFFLENBQUMscURBQXdCLENBQUM7UUFDckMsT0FBTyxFQUFFLENBQUMscURBQXdCLENBQUM7S0FDcEMsQ0FBQztHQUNXLGNBQWMsQ0FBRyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL3dlYmhvb2tzL3dlYmhvb2tzLm1vZHVsZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBNb2R1bGUgfSBmcm9tICdAbmVzdGpzL2NvbW1vbic7XG5pbXBvcnQgeyBXZWJob29rRGlzcGF0Y2hlclNlcnZpY2UgfSBmcm9tICcuL3dlYmhvb2stZGlzcGF0Y2hlci5zZXJ2aWNlJztcblxuQE1vZHVsZSh7XG4gIHByb3ZpZGVyczogW1dlYmhvb2tEaXNwYXRjaGVyU2VydmljZV0sXG4gIGV4cG9ydHM6IFtXZWJob29rRGlzcGF0Y2hlclNlcnZpY2VdLFxufSlcbmV4cG9ydCBjbGFzcyBXZWJob29rc01vZHVsZSB7fVxuIl0sInZlcnNpb24iOjN9

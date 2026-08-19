@@ -1,0 +1,63 @@
+cc1ce39a2ca6c570e24498ef0993e345
+"use strict";
+/**
+ * Rate-limit storage must fail OPEN, and must fail open FAST.
+ *
+ * ThrottlerGuard is registered globally, so every request to the API waits on
+ * this class. node-redis does not error when the server is gone — `connect()`
+ * stays pending for as long as its reconnectStrategy keeps returning a delay,
+ * and commands sent while the socket is down sit in the offline queue. An
+ * unbounded wait here therefore does not degrade rate limiting, it hangs the
+ * entire API: every route, including /api/health, accepts the connection and
+ * never answers. That shipped once — with REDIS_URL set and Redis unreachable
+ * the process looked healthy in its logs and served nothing.
+ *
+ * These tests point the storage at a port with nothing on it, which is exactly
+ * what an outage (or a developer without Redis) looks like.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+const redis_throttler_storage_1 = require("../src/config/redis-throttler-storage");
+// Reserved-by-convention port; nothing listens here.
+const DEAD_REDIS = 'redis://127.0.0.1:6399';
+// The class allows 2s to connect and 1s per command. Anything under this ceiling
+// proves the wait is bounded; the point is not the exact number.
+const MUST_ANSWER_WITHIN_MS = 6_000;
+describe('RedisThrottlerStorage with Redis unreachable', () => {
+    let storage;
+    beforeEach(() => {
+        storage = new redis_throttler_storage_1.RedisThrottlerStorage(DEAD_REDIS);
+    });
+    afterEach(async () => {
+        await storage.onApplicationShutdown();
+    });
+    it('resolves instead of hanging, and allows the request', async () => {
+        const startedAt = Date.now();
+        const record = await storage.increment('ip:1.2.3.4', 60_000, 100, 0, 'default');
+        const elapsed = Date.now() - startedAt;
+        expect(elapsed).toBeLessThan(MUST_ANSWER_WITHIN_MS);
+        // Fail OPEN: a rate-limiter outage must not reject traffic either.
+        expect(record.isBlocked).toBe(false);
+        expect(record.totalHits).toBeLessThanOrEqual(100);
+    }, 20_000);
+    it('does not pay the connect timeout again on every subsequent request', async () => {
+        await storage.increment('ip:1.2.3.4', 60_000, 100, 0, 'default');
+        // Once it knows Redis is down it short-circuits for a cooldown window,
+        // otherwise every request in an outage adds the full connect timeout.
+        const startedAt = Date.now();
+        for (let i = 0; i < 5; i++) {
+            const record = await storage.increment(`ip:1.2.3.${i}`, 60_000, 100, 0, 'default');
+            expect(record.isBlocked).toBe(false);
+        }
+        const elapsed = Date.now() - startedAt;
+        expect(elapsed).toBeLessThan(500);
+    }, 20_000);
+    it('never blocks, even past the configured limit', async () => {
+        // With storage unavailable there are no counters, so nothing can legitimately
+        // conclude a client is over its limit.
+        for (let i = 0; i < 10; i++) {
+            const record = await storage.increment('ip:9.9.9.9', 60_000, 2, 60_000, 'auth');
+            expect(record.isBlocked).toBe(false);
+        }
+    }, 20_000);
+});
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3Rlc3QvcmVkaXMtdGhyb3R0bGVyLXN0b3JhZ2Uuc3BlYy50cyIsIm1hcHBpbmdzIjoiO0FBQUE7Ozs7Ozs7Ozs7Ozs7O0dBY0c7O0FBRUgsbUZBQThFO0FBRTlFLHFEQUFxRDtBQUNyRCxNQUFNLFVBQVUsR0FBRyx3QkFBd0IsQ0FBQztBQUU1QyxpRkFBaUY7QUFDakYsaUVBQWlFO0FBQ2pFLE1BQU0scUJBQXFCLEdBQUcsS0FBSyxDQUFDO0FBRXBDLFFBQVEsQ0FBQyw4Q0FBOEMsRUFBRSxHQUFHLEVBQUU7SUFDNUQsSUFBSSxPQUE4QixDQUFDO0lBRW5DLFVBQVUsQ0FBQyxHQUFHLEVBQUU7UUFDZCxPQUFPLEdBQUcsSUFBSSwrQ0FBcUIsQ0FBQyxVQUFVLENBQUMsQ0FBQztJQUNsRCxDQUFDLENBQUMsQ0FBQztJQUVILFNBQVMsQ0FBQyxLQUFLLElBQUksRUFBRTtRQUNuQixNQUFNLE9BQU8sQ0FBQyxxQkFBcUIsRUFBRSxDQUFDO0lBQ3hDLENBQUMsQ0FBQyxDQUFDO0lBRUgsRUFBRSxDQUFDLHFEQUFxRCxFQUFFLEtBQUssSUFBSSxFQUFFO1FBQ25FLE1BQU0sU0FBUyxHQUFHLElBQUksQ0FBQyxHQUFHLEVBQUUsQ0FBQztRQUM3QixNQUFNLE1BQU0sR0FBRyxNQUFNLE9BQU8sQ0FBQyxTQUFTLENBQUMsWUFBWSxFQUFFLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxFQUFFLFNBQVMsQ0FBQyxDQUFDO1FBQ2hGLE1BQU0sT0FBTyxHQUFHLElBQUksQ0FBQyxHQUFHLEVBQUUsR0FBRyxTQUFTLENBQUM7UUFFdkMsTUFBTSxDQUFDLE9BQU8sQ0FBQyxDQUFDLFlBQVksQ0FBQyxxQkFBcUIsQ0FBQyxDQUFDO1FBQ3BELG1FQUFtRTtRQUNuRSxNQUFNLENBQUMsTUFBTSxDQUFDLFNBQVMsQ0FBQyxDQUFDLElBQUksQ0FBQyxLQUFLLENBQUMsQ0FBQztRQUNyQyxNQUFNLENBQUMsTUFBTSxDQUFDLFNBQVMsQ0FBQyxDQUFDLG1CQUFtQixDQUFDLEdBQUcsQ0FBQyxDQUFDO0lBQ3BELENBQUMsRUFBRSxNQUFNLENBQUMsQ0FBQztJQUVYLEVBQUUsQ0FBQyxvRUFBb0UsRUFBRSxLQUFLLElBQUksRUFBRTtRQUNsRixNQUFNLE9BQU8sQ0FBQyxTQUFTLENBQUMsWUFBWSxFQUFFLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxFQUFFLFNBQVMsQ0FBQyxDQUFDO1FBRWpFLHVFQUF1RTtRQUN2RSxzRUFBc0U7UUFDdEUsTUFBTSxTQUFTLEdBQUcsSUFBSSxDQUFDLEdBQUcsRUFBRSxDQUFDO1FBQzdCLEtBQUssSUFBSSxDQUFDLEdBQUcsQ0FBQyxFQUFFLENBQUMsR0FBRyxDQUFDLEVBQUUsQ0FBQyxFQUFFLEVBQUUsQ0FBQztZQUMzQixNQUFNLE1BQU0sR0FBRyxNQUFNLE9BQU8sQ0FBQyxTQUFTLENBQUMsWUFBWSxDQUFDLEVBQUUsRUFBRSxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsRUFBRSxTQUFTLENBQUMsQ0FBQztZQUNuRixNQUFNLENBQUMsTUFBTSxDQUFDLFNBQVMsQ0FBQyxDQUFDLElBQUksQ0FBQyxLQUFLLENBQUMsQ0FBQztRQUN2QyxDQUFDO1FBQ0QsTUFBTSxPQUFPLEdBQUcsSUFBSSxDQUFDLEdBQUcsRUFBRSxHQUFHLFNBQVMsQ0FBQztRQUV2QyxNQUFNLENBQUMsT0FBTyxDQUFDLENBQUMsWUFBWSxDQUFDLEdBQUcsQ0FBQyxDQUFDO0lBQ3BDLENBQUMsRUFBRSxNQUFNLENBQUMsQ0FBQztJQUVYLEVBQUUsQ0FBQyw4Q0FBOEMsRUFBRSxLQUFLLElBQUksRUFBRTtRQUM1RCw4RUFBOEU7UUFDOUUsdUNBQXVDO1FBQ3ZDLEtBQUssSUFBSSxDQUFDLEdBQUcsQ0FBQyxFQUFFLENBQUMsR0FBRyxFQUFFLEVBQUUsQ0FBQyxFQUFFLEVBQUUsQ0FBQztZQUM1QixNQUFNLE1BQU0sR0FBRyxNQUFNLE9BQU8sQ0FBQyxTQUFTLENBQUMsWUFBWSxFQUFFLE1BQU0sRUFBRSxDQUFDLEVBQUUsTUFBTSxFQUFFLE1BQU0sQ0FBQyxDQUFDO1lBQ2hGLE1BQU0sQ0FBQyxNQUFNLENBQUMsU0FBUyxDQUFDLENBQUMsSUFBSSxDQUFDLEtBQUssQ0FBQyxDQUFDO1FBQ3ZDLENBQUM7SUFDSCxDQUFDLEVBQUUsTUFBTSxDQUFDLENBQUM7QUFDYixDQUFDLENBQUMsQ0FBQyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvdGVzdC9yZWRpcy10aHJvdHRsZXItc3RvcmFnZS5zcGVjLnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8qKlxuICogUmF0ZS1saW1pdCBzdG9yYWdlIG11c3QgZmFpbCBPUEVOLCBhbmQgbXVzdCBmYWlsIG9wZW4gRkFTVC5cbiAqXG4gKiBUaHJvdHRsZXJHdWFyZCBpcyByZWdpc3RlcmVkIGdsb2JhbGx5LCBzbyBldmVyeSByZXF1ZXN0IHRvIHRoZSBBUEkgd2FpdHMgb25cbiAqIHRoaXMgY2xhc3MuIG5vZGUtcmVkaXMgZG9lcyBub3QgZXJyb3Igd2hlbiB0aGUgc2VydmVyIGlzIGdvbmUg4oCUIGBjb25uZWN0KClgXG4gKiBzdGF5cyBwZW5kaW5nIGZvciBhcyBsb25nIGFzIGl0cyByZWNvbm5lY3RTdHJhdGVneSBrZWVwcyByZXR1cm5pbmcgYSBkZWxheSxcbiAqIGFuZCBjb21tYW5kcyBzZW50IHdoaWxlIHRoZSBzb2NrZXQgaXMgZG93biBzaXQgaW4gdGhlIG9mZmxpbmUgcXVldWUuIEFuXG4gKiB1bmJvdW5kZWQgd2FpdCBoZXJlIHRoZXJlZm9yZSBkb2VzIG5vdCBkZWdyYWRlIHJhdGUgbGltaXRpbmcsIGl0IGhhbmdzIHRoZVxuICogZW50aXJlIEFQSTogZXZlcnkgcm91dGUsIGluY2x1ZGluZyAvYXBpL2hlYWx0aCwgYWNjZXB0cyB0aGUgY29ubmVjdGlvbiBhbmRcbiAqIG5ldmVyIGFuc3dlcnMuIFRoYXQgc2hpcHBlZCBvbmNlIOKAlCB3aXRoIFJFRElTX1VSTCBzZXQgYW5kIFJlZGlzIHVucmVhY2hhYmxlXG4gKiB0aGUgcHJvY2VzcyBsb29rZWQgaGVhbHRoeSBpbiBpdHMgbG9ncyBhbmQgc2VydmVkIG5vdGhpbmcuXG4gKlxuICogVGhlc2UgdGVzdHMgcG9pbnQgdGhlIHN0b3JhZ2UgYXQgYSBwb3J0IHdpdGggbm90aGluZyBvbiBpdCwgd2hpY2ggaXMgZXhhY3RseVxuICogd2hhdCBhbiBvdXRhZ2UgKG9yIGEgZGV2ZWxvcGVyIHdpdGhvdXQgUmVkaXMpIGxvb2tzIGxpa2UuXG4gKi9cblxuaW1wb3J0IHsgUmVkaXNUaHJvdHRsZXJTdG9yYWdlIH0gZnJvbSAnLi4vc3JjL2NvbmZpZy9yZWRpcy10aHJvdHRsZXItc3RvcmFnZSc7XG5cbi8vIFJlc2VydmVkLWJ5LWNvbnZlbnRpb24gcG9ydDsgbm90aGluZyBsaXN0ZW5zIGhlcmUuXG5jb25zdCBERUFEX1JFRElTID0gJ3JlZGlzOi8vMTI3LjAuMC4xOjYzOTknO1xuXG4vLyBUaGUgY2xhc3MgYWxsb3dzIDJzIHRvIGNvbm5lY3QgYW5kIDFzIHBlciBjb21tYW5kLiBBbnl0aGluZyB1bmRlciB0aGlzIGNlaWxpbmdcbi8vIHByb3ZlcyB0aGUgd2FpdCBpcyBib3VuZGVkOyB0aGUgcG9pbnQgaXMgbm90IHRoZSBleGFjdCBudW1iZXIuXG5jb25zdCBNVVNUX0FOU1dFUl9XSVRISU5fTVMgPSA2XzAwMDtcblxuZGVzY3JpYmUoJ1JlZGlzVGhyb3R0bGVyU3RvcmFnZSB3aXRoIFJlZGlzIHVucmVhY2hhYmxlJywgKCkgPT4ge1xuICBsZXQgc3RvcmFnZTogUmVkaXNUaHJvdHRsZXJTdG9yYWdlO1xuXG4gIGJlZm9yZUVhY2goKCkgPT4ge1xuICAgIHN0b3JhZ2UgPSBuZXcgUmVkaXNUaHJvdHRsZXJTdG9yYWdlKERFQURfUkVESVMpO1xuICB9KTtcblxuICBhZnRlckVhY2goYXN5bmMgKCkgPT4ge1xuICAgIGF3YWl0IHN0b3JhZ2Uub25BcHBsaWNhdGlvblNodXRkb3duKCk7XG4gIH0pO1xuXG4gIGl0KCdyZXNvbHZlcyBpbnN0ZWFkIG9mIGhhbmdpbmcsIGFuZCBhbGxvd3MgdGhlIHJlcXVlc3QnLCBhc3luYyAoKSA9PiB7XG4gICAgY29uc3Qgc3RhcnRlZEF0ID0gRGF0ZS5ub3coKTtcbiAgICBjb25zdCByZWNvcmQgPSBhd2FpdCBzdG9yYWdlLmluY3JlbWVudCgnaXA6MS4yLjMuNCcsIDYwXzAwMCwgMTAwLCAwLCAnZGVmYXVsdCcpO1xuICAgIGNvbnN0IGVsYXBzZWQgPSBEYXRlLm5vdygpIC0gc3RhcnRlZEF0O1xuXG4gICAgZXhwZWN0KGVsYXBzZWQpLnRvQmVMZXNzVGhhbihNVVNUX0FOU1dFUl9XSVRISU5fTVMpO1xuICAgIC8vIEZhaWwgT1BFTjogYSByYXRlLWxpbWl0ZXIgb3V0YWdlIG11c3Qgbm90IHJlamVjdCB0cmFmZmljIGVpdGhlci5cbiAgICBleHBlY3QocmVjb3JkLmlzQmxvY2tlZCkudG9CZShmYWxzZSk7XG4gICAgZXhwZWN0KHJlY29yZC50b3RhbEhpdHMpLnRvQmVMZXNzVGhhbk9yRXF1YWwoMTAwKTtcbiAgfSwgMjBfMDAwKTtcblxuICBpdCgnZG9lcyBub3QgcGF5IHRoZSBjb25uZWN0IHRpbWVvdXQgYWdhaW4gb24gZXZlcnkgc3Vic2VxdWVudCByZXF1ZXN0JywgYXN5bmMgKCkgPT4ge1xuICAgIGF3YWl0IHN0b3JhZ2UuaW5jcmVtZW50KCdpcDoxLjIuMy40JywgNjBfMDAwLCAxMDAsIDAsICdkZWZhdWx0Jyk7XG5cbiAgICAvLyBPbmNlIGl0IGtub3dzIFJlZGlzIGlzIGRvd24gaXQgc2hvcnQtY2lyY3VpdHMgZm9yIGEgY29vbGRvd24gd2luZG93LFxuICAgIC8vIG90aGVyd2lzZSBldmVyeSByZXF1ZXN0IGluIGFuIG91dGFnZSBhZGRzIHRoZSBmdWxsIGNvbm5lY3QgdGltZW91dC5cbiAgICBjb25zdCBzdGFydGVkQXQgPSBEYXRlLm5vdygpO1xuICAgIGZvciAobGV0IGkgPSAwOyBpIDwgNTsgaSsrKSB7XG4gICAgICBjb25zdCByZWNvcmQgPSBhd2FpdCBzdG9yYWdlLmluY3JlbWVudChgaXA6MS4yLjMuJHtpfWAsIDYwXzAwMCwgMTAwLCAwLCAnZGVmYXVsdCcpO1xuICAgICAgZXhwZWN0KHJlY29yZC5pc0Jsb2NrZWQpLnRvQmUoZmFsc2UpO1xuICAgIH1cbiAgICBjb25zdCBlbGFwc2VkID0gRGF0ZS5ub3coKSAtIHN0YXJ0ZWRBdDtcblxuICAgIGV4cGVjdChlbGFwc2VkKS50b0JlTGVzc1RoYW4oNTAwKTtcbiAgfSwgMjBfMDAwKTtcblxuICBpdCgnbmV2ZXIgYmxvY2tzLCBldmVuIHBhc3QgdGhlIGNvbmZpZ3VyZWQgbGltaXQnLCBhc3luYyAoKSA9PiB7XG4gICAgLy8gV2l0aCBzdG9yYWdlIHVuYXZhaWxhYmxlIHRoZXJlIGFyZSBubyBjb3VudGVycywgc28gbm90aGluZyBjYW4gbGVnaXRpbWF0ZWx5XG4gICAgLy8gY29uY2x1ZGUgYSBjbGllbnQgaXMgb3ZlciBpdHMgbGltaXQuXG4gICAgZm9yIChsZXQgaSA9IDA7IGkgPCAxMDsgaSsrKSB7XG4gICAgICBjb25zdCByZWNvcmQgPSBhd2FpdCBzdG9yYWdlLmluY3JlbWVudCgnaXA6OS45LjkuOScsIDYwXzAwMCwgMiwgNjBfMDAwLCAnYXV0aCcpO1xuICAgICAgZXhwZWN0KHJlY29yZC5pc0Jsb2NrZWQpLnRvQmUoZmFsc2UpO1xuICAgIH1cbiAgfSwgMjBfMDAwKTtcbn0pO1xuIl0sInZlcnNpb24iOjN9

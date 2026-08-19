@@ -102,6 +102,7 @@ export const TOOL_NAMES = [
   'create-ticket',
   'payment-details',
   'search-knowledge',
+  'register-enrollee',
   'handoff',
 ] as const;
 
@@ -243,6 +244,20 @@ export function agentToolCatalog(
       'Answer a question about the business, its services, hours, or policies. Use this rather than answering from your own knowledge.',
       { query: askedOf('string', "The customer's question, in their own words.") },
       ['query']
+    ),
+
+    'register-enrollee': build(
+      'register-enrollee',
+      'Register a new PLASCHEMA enrollee online. Call this once you have collected the caller\'s full name, LGA, plan type, and optionally NIN. The tool creates their official registration record and automatically delivers a secure selfie upload link to their WhatsApp so they can complete photo capture online without an office visit.',
+      {
+        phoneNumber: callerPhone,
+        fullName: askedOf('string', "The caller's full name as they stated it."),
+        lga: askedOf('string', 'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu).'),
+        nin: askedOf('string', "The caller's National Identification Number (NIN), if provided."),
+        planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
+        notes: askedOf('string', 'Any additional notes, such as family size or employer name.'),
+      },
+      ['phoneNumber', 'fullName', 'lga', 'planType']
     ),
 
     handoff: build(

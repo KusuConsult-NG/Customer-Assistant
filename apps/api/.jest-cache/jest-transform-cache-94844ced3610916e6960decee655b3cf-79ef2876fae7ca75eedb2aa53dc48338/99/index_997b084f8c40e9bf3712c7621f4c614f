@@ -1,0 +1,86 @@
+c6c8f6e17f23e9a9588c5a83478cb31f
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.prisma = void 0;
+exports.getPrismaClient = getPrismaClient;
+const client_1 = require("@prisma/client");
+__exportStar(require("@prisma/client"), exports);
+/**
+ * Connection pool sizing.
+ *
+ * Load testing the running API found this to be the single hardest capacity limit
+ * in the product: with `connection_limit=10` on DATABASE_URL, 100 concurrent
+ * authenticated readers produced ~5% HTTP 500s and a p95 of 60 seconds, all from
+ * `Timed out fetching a new connection from the connection pool`.
+ *
+ * Two things drive pool pressure per request:
+ *   1. JwtStrategy re-checks the user on every authenticated request (so that
+ *      logout, deactivation and role changes take effect immediately rather than
+ *      whenever a token happens to expire). That is one extra primary-key lookup.
+ *   2. The handler's own queries.
+ *
+ * So budget roughly 2–3 connections per concurrent in-flight request, and size the
+ * pool per PROCESS: total connections = connection_limit × number of app instances,
+ * which must stay under what the database (or its pooler) will accept.
+ *
+ * Set DATABASE_CONNECTION_LIMIT to override. It is applied here rather than by
+ * hand-editing the URL so the value is visible, documented and consistent across
+ * every process that imports this client.
+ */
+const DEFAULT_CONNECTION_LIMIT = 25;
+const DEFAULT_POOL_TIMEOUT_SECONDS = 20;
+function buildDatabaseUrl() {
+    const raw = process.env.DATABASE_URL;
+    if (!raw)
+        return undefined;
+    try {
+        const url = new URL(raw);
+        if (!url.searchParams.has('connection_limit')) {
+            url.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT ?? String(DEFAULT_CONNECTION_LIMIT));
+        }
+        else if (process.env.DATABASE_CONNECTION_LIMIT) {
+            url.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT);
+        }
+        if (!url.searchParams.has('pool_timeout')) {
+            url.searchParams.set('pool_timeout', process.env.DATABASE_POOL_TIMEOUT ?? String(DEFAULT_POOL_TIMEOUT_SECONDS));
+        }
+        return url.toString();
+    }
+    catch {
+        // A URL we cannot parse (unencoded characters in the password, for instance) is
+        // passed through untouched rather than dropped.
+        return raw;
+    }
+}
+let globalPrisma;
+function getPrismaClient() {
+    if (!globalPrisma) {
+        const url = buildDatabaseUrl();
+        globalPrisma = new client_1.PrismaClient({
+            log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+            ...(url ? { datasources: { db: { url } } } : {}),
+        });
+    }
+    return globalPrisma;
+}
+exports.prisma = getPrismaClient();
+__exportStar(require("./selfie-request"), exports);
+__exportStar(require("./secret-box"), exports);
+__exportStar(require("./credentials"), exports);
+__exportStar(require("./phone-number"), exports);
+__exportStar(require("./ticket-number"), exports);
+//# sourceMappingURL=index.js.map

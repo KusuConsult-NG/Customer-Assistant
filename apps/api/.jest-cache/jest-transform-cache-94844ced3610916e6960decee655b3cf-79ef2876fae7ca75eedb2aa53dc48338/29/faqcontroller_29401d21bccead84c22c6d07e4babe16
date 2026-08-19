@@ -1,0 +1,87 @@
+56d27c1872d83d793ddb123ccee36c6f
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.FaqController = void 0;
+const common_1 = require("@nestjs/common");
+const faq_service_1 = require("./faq.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+let FaqController = class FaqController {
+    faqService;
+    constructor(faqService) {
+        this.faqService = faqService;
+    }
+    async getFaqs(req) {
+        return this.faqService.getFaqs(req.user.organizationId);
+    }
+    async createFaq(req, body) {
+        return this.faqService.createFaq(req.user.organizationId, body);
+    }
+    async reorderFaqs(req, body) {
+        return this.faqService.reorderFaqs(req.user.organizationId, body.ids);
+    }
+    async updateFaq(req, id, body) {
+        return this.faqService.updateFaq(req.user.organizationId, id, body);
+    }
+    async deleteFaq(req, id) {
+        return this.faqService.deleteFaq(req.user.organizationId, id);
+    }
+};
+exports.FaqController = FaqController;
+__decorate([
+    (0, common_1.Get)(),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], FaqController.prototype, "getFaqs", null);
+__decorate([
+    (0, common_1.Post)(),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], FaqController.prototype, "createFaq", null);
+__decorate([
+    (0, common_1.Patch)('reorder'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], FaqController.prototype, "reorderFaqs", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], FaqController.prototype, "updateFaq", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], FaqController.prototype, "deleteFaq", null);
+exports.FaqController = FaqController = __decorate([
+    (0, common_1.Controller)('api/knowledge/faqs'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __metadata("design:paramtypes", [faq_service_1.FaqService])
+], FaqController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9rbm93bGVkZ2UvZmFxLmNvbnRyb2xsZXIudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7Ozs7O0FBQUEsMkNBQW1HO0FBQ25HLCtDQUEyQztBQUMzQywyREFBc0Q7QUFLL0MsSUFBTSxhQUFhLEdBQW5CLE1BQU0sYUFBYTtJQUNKO0lBQXBCLFlBQW9CLFVBQXNCO1FBQXRCLGVBQVUsR0FBVixVQUFVLENBQVk7SUFBRyxDQUFDO0lBR3hDLEFBQU4sS0FBSyxDQUFDLE9BQU8sQ0FBUSxHQUF1QjtRQUMxQyxPQUFPLElBQUksQ0FBQyxVQUFVLENBQUMsT0FBTyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxDQUFDLENBQUM7SUFDMUQsQ0FBQztJQUdLLEFBQU4sS0FBSyxDQUFDLFNBQVMsQ0FDTixHQUF1QixFQUN0QixJQUE2RDtRQUVyRSxPQUFPLElBQUksQ0FBQyxVQUFVLENBQUMsU0FBUyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsY0FBYyxFQUFFLElBQUksQ0FBQyxDQUFDO0lBQ2xFLENBQUM7SUFHSyxBQUFOLEtBQUssQ0FBQyxXQUFXLENBQ1IsR0FBdUIsRUFDdEIsSUFBdUI7UUFFL0IsT0FBTyxJQUFJLENBQUMsVUFBVSxDQUFDLFdBQVcsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsRUFBRSxJQUFJLENBQUMsR0FBRyxDQUFDLENBQUM7SUFDeEUsQ0FBQztJQUdLLEFBQU4sS0FBSyxDQUFDLFNBQVMsQ0FDTixHQUF1QixFQUNqQixFQUFVLEVBQ2YsSUFBK0Q7UUFFdkUsT0FBTyxJQUFJLENBQUMsVUFBVSxDQUFDLFNBQVMsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLGNBQWMsRUFBRSxFQUFFLEVBQUUsSUFBSSxDQUFDLENBQUM7SUFDdEUsQ0FBQztJQUdLLEFBQU4sS0FBSyxDQUFDLFNBQVMsQ0FDTixHQUF1QixFQUNqQixFQUFVO1FBRXZCLE9BQU8sSUFBSSxDQUFDLFVBQVUsQ0FBQyxTQUFTLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUUsRUFBRSxDQUFDLENBQUM7SUFDaEUsQ0FBQztDQUNGLENBQUE7QUF4Q1ksc0NBQWE7QUFJbEI7SUFETCxJQUFBLFlBQUcsR0FBRTtJQUNTLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTs7Ozs0Q0FFbkI7QUFHSztJQURMLElBQUEsYUFBSSxHQUFFO0lBRUosV0FBQSxJQUFBLFlBQUcsR0FBRSxDQUFBO0lBQ0wsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOzs7OzhDQUdSO0FBR0s7SUFETCxJQUFBLGNBQUssRUFBQyxTQUFTLENBQUM7SUFFZCxXQUFBLElBQUEsWUFBRyxHQUFFLENBQUE7SUFDTCxXQUFBLElBQUEsYUFBSSxHQUFFLENBQUE7Ozs7Z0RBR1I7QUFHSztJQURMLElBQUEsY0FBSyxFQUFDLEtBQUssQ0FBQztJQUVWLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTtJQUNMLFdBQUEsSUFBQSxjQUFLLEVBQUMsSUFBSSxDQUFDLENBQUE7SUFDWCxXQUFBLElBQUEsYUFBSSxHQUFFLENBQUE7Ozs7OENBR1I7QUFHSztJQURMLElBQUEsZUFBTSxFQUFDLEtBQUssQ0FBQztJQUVYLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTtJQUNMLFdBQUEsSUFBQSxjQUFLLEVBQUMsSUFBSSxDQUFDLENBQUE7Ozs7OENBR2I7d0JBdkNVLGFBQWE7SUFGekIsSUFBQSxtQkFBVSxFQUFDLG9CQUFvQixDQUFDO0lBQ2hDLElBQUEsa0JBQVMsRUFBQyw2QkFBWSxDQUFDO3FDQUVVLHdCQUFVO0dBRC9CLGFBQWEsQ0F3Q3pCIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMva25vd2xlZGdlL2ZhcS5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IENvbnRyb2xsZXIsIEdldCwgUG9zdCwgUGF0Y2gsIERlbGV0ZSwgUGFyYW0sIEJvZHksIFVzZUd1YXJkcywgUmVxIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgRmFxU2VydmljZSB9IGZyb20gJy4vZmFxLnNlcnZpY2UnO1xuaW1wb3J0IHsgSnd0QXV0aEd1YXJkIH0gZnJvbSAnLi4vYXV0aC9qd3QtYXV0aC5ndWFyZCc7XG5pbXBvcnQgeyBBdXRoVXNlciB9IGZyb20gJ0BhY2Uvc2hhcmVkLXR5cGVzJztcblxuQENvbnRyb2xsZXIoJ2FwaS9rbm93bGVkZ2UvZmFxcycpXG5AVXNlR3VhcmRzKEp3dEF1dGhHdWFyZClcbmV4cG9ydCBjbGFzcyBGYXFDb250cm9sbGVyIHtcbiAgY29uc3RydWN0b3IocHJpdmF0ZSBmYXFTZXJ2aWNlOiBGYXFTZXJ2aWNlKSB7fVxuXG4gIEBHZXQoKVxuICBhc3luYyBnZXRGYXFzKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSkge1xuICAgIHJldHVybiB0aGlzLmZhcVNlcnZpY2UuZ2V0RmFxcyhyZXEudXNlci5vcmdhbml6YXRpb25JZCk7XG4gIH1cblxuICBAUG9zdCgpXG4gIGFzeW5jIGNyZWF0ZUZhcShcbiAgICBAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sXG4gICAgQEJvZHkoKSBib2R5OiB7IHF1ZXN0aW9uOiBzdHJpbmc7IGFuc3dlcjogc3RyaW5nOyBjYXRlZ29yeT86IHN0cmluZyB9XG4gICkge1xuICAgIHJldHVybiB0aGlzLmZhcVNlcnZpY2UuY3JlYXRlRmFxKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBib2R5KTtcbiAgfVxuXG4gIEBQYXRjaCgncmVvcmRlcicpXG4gIGFzeW5jIHJlb3JkZXJGYXFzKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAQm9keSgpIGJvZHk6IHsgaWRzOiBzdHJpbmdbXSB9XG4gICkge1xuICAgIHJldHVybiB0aGlzLmZhcVNlcnZpY2UucmVvcmRlckZhcXMocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIGJvZHkuaWRzKTtcbiAgfVxuXG4gIEBQYXRjaCgnOmlkJylcbiAgYXN5bmMgdXBkYXRlRmFxKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZyxcbiAgICBAQm9keSgpIGJvZHk6IHsgcXVlc3Rpb24/OiBzdHJpbmc7IGFuc3dlcj86IHN0cmluZzsgY2F0ZWdvcnk/OiBzdHJpbmcgfVxuICApIHtcbiAgICByZXR1cm4gdGhpcy5mYXFTZXJ2aWNlLnVwZGF0ZUZhcShyZXEudXNlci5vcmdhbml6YXRpb25JZCwgaWQsIGJvZHkpO1xuICB9XG5cbiAgQERlbGV0ZSgnOmlkJylcbiAgYXN5bmMgZGVsZXRlRmFxKFxuICAgIEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSxcbiAgICBAUGFyYW0oJ2lkJykgaWQ6IHN0cmluZ1xuICApIHtcbiAgICByZXR1cm4gdGhpcy5mYXFTZXJ2aWNlLmRlbGV0ZUZhcShyZXEudXNlci5vcmdhbml6YXRpb25JZCwgaWQpO1xuICB9XG59XG4iXSwidmVyc2lvbiI6M30=

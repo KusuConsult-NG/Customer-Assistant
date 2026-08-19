@@ -1,0 +1,63 @@
+aa4f5c0f543fa0883aab52c861b80dbc
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SELFIE_MAX_UPLOAD_ATTEMPTS = exports.SELFIE_MAX_EXPIRY_HOURS = exports.SELFIE_DEFAULT_EXPIRY_HOURS = void 0;
+exports.hashSelfieToken = hashSelfieToken;
+exports.createSelfieRequest = createSelfieRequest;
+exports.selfieUploadUrl = selfieUploadUrl;
+const crypto_1 = require("crypto");
+const index_1 = require("./index");
+/**
+ * Selfie-request creation, shared by the API's OnboardingService and the conversation
+ * orchestrator.
+ *
+ * It lives here, next to Prisma, because both callers need identical token semantics
+ * and there is exactly one safe way to get them:
+ *
+ *   The raw token is returned once and never stored. The row holds only its SHA-256.
+ *   That means a link genuinely cannot be recovered — not by an operator, not by the
+ *   AI, not by anyone with database access. The cost is that "resend my link" has to
+ *   mint a new request; the benefit is that a database leak does not hand an attacker
+ *   the ability to upload a photo as any customer being onboarded.
+ */
+exports.SELFIE_DEFAULT_EXPIRY_HOURS = 24;
+exports.SELFIE_MAX_EXPIRY_HOURS = 72;
+exports.SELFIE_MAX_UPLOAD_ATTEMPTS = 5;
+function hashSelfieToken(token) {
+    return (0, crypto_1.createHash)('sha256').update(token).digest('hex');
+}
+/**
+ * Creates a request and supersedes any other pending one for the same contact.
+ *
+ * The supersede is not tidiness: with two pending requests, an inbound photo matches
+ * both and which one it closes is arbitrary.
+ */
+async function createSelfieRequest(input) {
+    const hours = Math.min(Math.max(input.expiresInHours ?? exports.SELFIE_DEFAULT_EXPIRY_HOURS, 1), exports.SELFIE_MAX_EXPIRY_HOURS);
+    const expiresAt = new Date(Date.now() + hours * 3600 * 1000);
+    await index_1.prisma.selfieRequest.updateMany({
+        where: { contactId: input.contactId, organizationId: input.organizationId, status: 'PENDING' },
+        data: { status: 'CANCELLED', rejectionReason: 'Superseded by a newer request.' },
+    });
+    const token = (0, crypto_1.randomBytes)(32).toString('base64url');
+    const request = await index_1.prisma.selfieRequest.create({
+        data: {
+            organizationId: input.organizationId,
+            contactId: input.contactId,
+            channel: input.channel,
+            purpose: input.purpose?.slice(0, 200) ?? null,
+            conversationId: input.conversationId ?? null,
+            callSid: input.callSid ?? null,
+            tokenHash: hashSelfieToken(token),
+            expiresAt,
+            requestedByUserId: input.requestedByUserId ?? null,
+        },
+    });
+    return { id: request.id, expiresAt: request.expiresAt, token };
+}
+/** Public base URL of the customer-facing web app, where the upload page lives. */
+function selfieUploadUrl(token) {
+    const base = (process.env.WEB_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    return `${base}/selfie/${token}`;
+}
+//# sourceMappingURL=selfie-request.js.map

@@ -1,0 +1,49 @@
+fbd544cb2b0aed6c8aee77ffa3c2755e
+"use strict";
+/**
+ * CallBroadcastService
+ *
+ * A shared singleton that decouples the Twilio Media Stream handler (plain `ws`)
+ * from the Socket.IO agent-console gateway.
+ *
+ * Why a shared service:
+ *   - TwilioMediaStreamHandler processes audio on a raw WebSocket connection.
+ *   - VoiceStreamGateway holds the Socket.IO server that pushes live events
+ *     to the agent console browser tab.
+ *   - Neither can directly import the other without circular dependencies.
+ *   - This service is the bridge: the gateway calls setServer() once on init,
+ *     and the handler calls emit() to broadcast to any room.
+ */
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CallBroadcastService = void 0;
+const common_1 = require("@nestjs/common");
+let CallBroadcastService = class CallBroadcastService {
+    server = null;
+    /** Called by VoiceStreamGateway.afterInit() once Socket.IO is ready. */
+    setServer(server) {
+        this.server = server;
+    }
+    /**
+     * Broadcast any event to all agent-console clients monitoring a call.
+     * Silently no-ops if the server is not yet initialised.
+     */
+    emit(callSid, event, data) {
+        try {
+            this.server?.to(`call_${callSid}`).emit(event, data);
+        }
+        catch {
+            // Never crash the call because a broadcast failed
+        }
+    }
+};
+exports.CallBroadcastService = CallBroadcastService;
+exports.CallBroadcastService = CallBroadcastService = __decorate([
+    (0, common_1.Injectable)()
+], CallBroadcastService);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy90ZWxlcGhvbnkvY2FsbC1icm9hZGNhc3Quc2VydmljZS50cyIsIm1hcHBpbmdzIjoiO0FBQUE7Ozs7Ozs7Ozs7Ozs7R0FhRzs7Ozs7Ozs7O0FBRUgsMkNBQTRDO0FBSXJDLElBQU0sb0JBQW9CLEdBQTFCLE1BQU0sb0JBQW9CO0lBQ3ZCLE1BQU0sR0FBa0IsSUFBSSxDQUFDO0lBRXJDLHdFQUF3RTtJQUN4RSxTQUFTLENBQUMsTUFBYztRQUN0QixJQUFJLENBQUMsTUFBTSxHQUFHLE1BQU0sQ0FBQztJQUN2QixDQUFDO0lBRUQ7OztPQUdHO0lBQ0gsSUFBSSxDQUFDLE9BQWUsRUFBRSxLQUFhLEVBQUUsSUFBYTtRQUNoRCxJQUFJLENBQUM7WUFDSCxJQUFJLENBQUMsTUFBTSxFQUFFLEVBQUUsQ0FBQyxRQUFRLE9BQU8sRUFBRSxDQUFDLENBQUMsSUFBSSxDQUFDLEtBQUssRUFBRSxJQUFJLENBQUMsQ0FBQztRQUN2RCxDQUFDO1FBQUMsTUFBTSxDQUFDO1lBQ1Asa0RBQWtEO1FBQ3BELENBQUM7SUFDSCxDQUFDO0NBQ0YsQ0FBQTtBQW5CWSxvREFBb0I7K0JBQXBCLG9CQUFvQjtJQURoQyxJQUFBLG1CQUFVLEdBQUU7R0FDQSxvQkFBb0IsQ0FtQmhDIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvdGVsZXBob255L2NhbGwtYnJvYWRjYXN0LnNlcnZpY2UudHMiXSwic291cmNlc0NvbnRlbnQiOlsiLyoqXG4gKiBDYWxsQnJvYWRjYXN0U2VydmljZVxuICpcbiAqIEEgc2hhcmVkIHNpbmdsZXRvbiB0aGF0IGRlY291cGxlcyB0aGUgVHdpbGlvIE1lZGlhIFN0cmVhbSBoYW5kbGVyIChwbGFpbiBgd3NgKVxuICogZnJvbSB0aGUgU29ja2V0LklPIGFnZW50LWNvbnNvbGUgZ2F0ZXdheS5cbiAqXG4gKiBXaHkgYSBzaGFyZWQgc2VydmljZTpcbiAqICAgLSBUd2lsaW9NZWRpYVN0cmVhbUhhbmRsZXIgcHJvY2Vzc2VzIGF1ZGlvIG9uIGEgcmF3IFdlYlNvY2tldCBjb25uZWN0aW9uLlxuICogICAtIFZvaWNlU3RyZWFtR2F0ZXdheSBob2xkcyB0aGUgU29ja2V0LklPIHNlcnZlciB0aGF0IHB1c2hlcyBsaXZlIGV2ZW50c1xuICogICAgIHRvIHRoZSBhZ2VudCBjb25zb2xlIGJyb3dzZXIgdGFiLlxuICogICAtIE5laXRoZXIgY2FuIGRpcmVjdGx5IGltcG9ydCB0aGUgb3RoZXIgd2l0aG91dCBjaXJjdWxhciBkZXBlbmRlbmNpZXMuXG4gKiAgIC0gVGhpcyBzZXJ2aWNlIGlzIHRoZSBicmlkZ2U6IHRoZSBnYXRld2F5IGNhbGxzIHNldFNlcnZlcigpIG9uY2Ugb24gaW5pdCxcbiAqICAgICBhbmQgdGhlIGhhbmRsZXIgY2FsbHMgZW1pdCgpIHRvIGJyb2FkY2FzdCB0byBhbnkgcm9vbS5cbiAqL1xuXG5pbXBvcnQgeyBJbmplY3RhYmxlIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgU2VydmVyIH0gZnJvbSAnc29ja2V0LmlvJztcblxuQEluamVjdGFibGUoKVxuZXhwb3J0IGNsYXNzIENhbGxCcm9hZGNhc3RTZXJ2aWNlIHtcbiAgcHJpdmF0ZSBzZXJ2ZXI6IFNlcnZlciB8IG51bGwgPSBudWxsO1xuXG4gIC8qKiBDYWxsZWQgYnkgVm9pY2VTdHJlYW1HYXRld2F5LmFmdGVySW5pdCgpIG9uY2UgU29ja2V0LklPIGlzIHJlYWR5LiAqL1xuICBzZXRTZXJ2ZXIoc2VydmVyOiBTZXJ2ZXIpOiB2b2lkIHtcbiAgICB0aGlzLnNlcnZlciA9IHNlcnZlcjtcbiAgfVxuXG4gIC8qKlxuICAgKiBCcm9hZGNhc3QgYW55IGV2ZW50IHRvIGFsbCBhZ2VudC1jb25zb2xlIGNsaWVudHMgbW9uaXRvcmluZyBhIGNhbGwuXG4gICAqIFNpbGVudGx5IG5vLW9wcyBpZiB0aGUgc2VydmVyIGlzIG5vdCB5ZXQgaW5pdGlhbGlzZWQuXG4gICAqL1xuICBlbWl0KGNhbGxTaWQ6IHN0cmluZywgZXZlbnQ6IHN0cmluZywgZGF0YTogdW5rbm93bik6IHZvaWQge1xuICAgIHRyeSB7XG4gICAgICB0aGlzLnNlcnZlcj8udG8oYGNhbGxfJHtjYWxsU2lkfWApLmVtaXQoZXZlbnQsIGRhdGEpO1xuICAgIH0gY2F0Y2gge1xuICAgICAgLy8gTmV2ZXIgY3Jhc2ggdGhlIGNhbGwgYmVjYXVzZSBhIGJyb2FkY2FzdCBmYWlsZWRcbiAgICB9XG4gIH1cbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

@@ -1,0 +1,79 @@
+0eedf28793b1996bdd5f1ba3a5d70a96
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WidgetController = void 0;
+const common_1 = require("@nestjs/common");
+const throttler_1 = require("@nestjs/throttler");
+/**
+ * The embedded web chat widget, retired.
+ *
+ * Customers reach this platform by phone and WhatsApp. Web is the staff
+ * dashboard. A third customer-facing channel meant a third place for the AI to
+ * say something wrong, with its own tenant-resolution rules and its own
+ * unauthenticated, model-billing endpoint — and it was the only channel the
+ * hosted-agent work was never going to cover.
+ *
+ * ── Why this answers instead of simply being deleted ────────────────────────
+ *
+ * The embed snippet is a <script> tag on tenants' own websites, which we cannot
+ * reach in to remove. Deleting the routes would make those pages 404 against
+ * this API — ambiguous, because a 404 also describes an outage, a bad URL, or a
+ * misconfigured proxy. Somebody would spend an afternoon on it.
+ *
+ * 410 Gone says exactly one thing and says it permanently, and the body names
+ * the replacement. Paired with the inert public/widget.js, an old embed now
+ * renders nothing and explains itself in the console rather than showing a
+ * visitor a chat window that never answers.
+ *
+ * ── What was kept ───────────────────────────────────────────────────────────
+ *
+ * Everything already said. ChannelType.WEBCHAT stays in the enum and existing
+ * WEBCHAT conversations and messages stay in the database: they are the record
+ * of what this business told its customers, and retiring a channel is not a
+ * reason to destroy it. The dashboard still renders those threads.
+ *
+ * ── Safe to delete outright once ────────────────────────────────────────────
+ *
+ * no tenant site still carries the snippet. Until then this file is the thing
+ * telling them why it stopped.
+ */
+let WidgetController = class WidgetController {
+    /**
+     * @SkipThrottle — a retired endpoint does no work and touches no database.
+     * Rate limiting it would only add storage lookups to a request whose entire
+     * job is to answer "gone" as cheaply as possible, and a stale embed on a busy
+     * site can call it a lot.
+     */
+    retired(res) {
+        res.status(410).json({
+            error: 'gone',
+            message: 'The embedded web chat widget has been retired. This platform serves customers on WhatsApp and by phone; the web app is the staff dashboard. Remove the widget script tag from your site.',
+            retired: true,
+        });
+    }
+};
+exports.WidgetController = WidgetController;
+__decorate([
+    (0, throttler_1.SkipThrottle)(),
+    (0, common_1.All)('*'),
+    __param(0, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], WidgetController.prototype, "retired", null);
+exports.WidgetController = WidgetController = __decorate([
+    (0, common_1.Controller)('api/widget')
+], WidgetController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy93aWRnZXQvd2lkZ2V0LmNvbnRyb2xsZXIudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7Ozs7O0FBQUEsMkNBQXNEO0FBRXRELGlEQUFpRDtBQUVqRDs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7R0FnQ0c7QUFFSSxJQUFNLGdCQUFnQixHQUF0QixNQUFNLGdCQUFnQjtJQUMzQjs7Ozs7T0FLRztJQUdILE9BQU8sQ0FBUSxHQUFhO1FBQzFCLEdBQUcsQ0FBQyxNQUFNLENBQUMsR0FBRyxDQUFDLENBQUMsSUFBSSxDQUFDO1lBQ25CLEtBQUssRUFBRSxNQUFNO1lBQ2IsT0FBTyxFQUNMLDBMQUEwTDtZQUM1TCxPQUFPLEVBQUUsSUFBSTtTQUNkLENBQUMsQ0FBQztJQUNMLENBQUM7Q0FDRixDQUFBO0FBakJZLDRDQUFnQjtBQVMzQjtJQUZDLElBQUEsd0JBQVksR0FBRTtJQUNkLElBQUEsWUFBRyxFQUFDLEdBQUcsQ0FBQztJQUNBLFdBQUEsSUFBQSxZQUFHLEdBQUUsQ0FBQTs7OzsrQ0FPYjsyQkFoQlUsZ0JBQWdCO0lBRDVCLElBQUEsbUJBQVUsRUFBQyxZQUFZLENBQUM7R0FDWixnQkFBZ0IsQ0FpQjVCIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9Vc2Vycy9tYWMvQ3VzdG9tZXIgQXNzaXN0YW5jZS9hcHBzL2FwaS9zcmMvd2lkZ2V0L3dpZGdldC5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IEFsbCwgQ29udHJvbGxlciwgUmVzIH0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgUmVzcG9uc2UgfSBmcm9tICdleHByZXNzJztcbmltcG9ydCB7IFNraXBUaHJvdHRsZSB9IGZyb20gJ0BuZXN0anMvdGhyb3R0bGVyJztcblxuLyoqXG4gKiBUaGUgZW1iZWRkZWQgd2ViIGNoYXQgd2lkZ2V0LCByZXRpcmVkLlxuICpcbiAqIEN1c3RvbWVycyByZWFjaCB0aGlzIHBsYXRmb3JtIGJ5IHBob25lIGFuZCBXaGF0c0FwcC4gV2ViIGlzIHRoZSBzdGFmZlxuICogZGFzaGJvYXJkLiBBIHRoaXJkIGN1c3RvbWVyLWZhY2luZyBjaGFubmVsIG1lYW50IGEgdGhpcmQgcGxhY2UgZm9yIHRoZSBBSSB0b1xuICogc2F5IHNvbWV0aGluZyB3cm9uZywgd2l0aCBpdHMgb3duIHRlbmFudC1yZXNvbHV0aW9uIHJ1bGVzIGFuZCBpdHMgb3duXG4gKiB1bmF1dGhlbnRpY2F0ZWQsIG1vZGVsLWJpbGxpbmcgZW5kcG9pbnQg4oCUIGFuZCBpdCB3YXMgdGhlIG9ubHkgY2hhbm5lbCB0aGVcbiAqIGhvc3RlZC1hZ2VudCB3b3JrIHdhcyBuZXZlciBnb2luZyB0byBjb3Zlci5cbiAqXG4gKiDilIDilIAgV2h5IHRoaXMgYW5zd2VycyBpbnN0ZWFkIG9mIHNpbXBseSBiZWluZyBkZWxldGVkIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuICpcbiAqIFRoZSBlbWJlZCBzbmlwcGV0IGlzIGEgPHNjcmlwdD4gdGFnIG9uIHRlbmFudHMnIG93biB3ZWJzaXRlcywgd2hpY2ggd2UgY2Fubm90XG4gKiByZWFjaCBpbiB0byByZW1vdmUuIERlbGV0aW5nIHRoZSByb3V0ZXMgd291bGQgbWFrZSB0aG9zZSBwYWdlcyA0MDQgYWdhaW5zdFxuICogdGhpcyBBUEkg4oCUIGFtYmlndW91cywgYmVjYXVzZSBhIDQwNCBhbHNvIGRlc2NyaWJlcyBhbiBvdXRhZ2UsIGEgYmFkIFVSTCwgb3IgYVxuICogbWlzY29uZmlndXJlZCBwcm94eS4gU29tZWJvZHkgd291bGQgc3BlbmQgYW4gYWZ0ZXJub29uIG9uIGl0LlxuICpcbiAqIDQxMCBHb25lIHNheXMgZXhhY3RseSBvbmUgdGhpbmcgYW5kIHNheXMgaXQgcGVybWFuZW50bHksIGFuZCB0aGUgYm9keSBuYW1lc1xuICogdGhlIHJlcGxhY2VtZW50LiBQYWlyZWQgd2l0aCB0aGUgaW5lcnQgcHVibGljL3dpZGdldC5qcywgYW4gb2xkIGVtYmVkIG5vd1xuICogcmVuZGVycyBub3RoaW5nIGFuZCBleHBsYWlucyBpdHNlbGYgaW4gdGhlIGNvbnNvbGUgcmF0aGVyIHRoYW4gc2hvd2luZyBhXG4gKiB2aXNpdG9yIGEgY2hhdCB3aW5kb3cgdGhhdCBuZXZlciBhbnN3ZXJzLlxuICpcbiAqIOKUgOKUgCBXaGF0IHdhcyBrZXB0IOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuICpcbiAqIEV2ZXJ5dGhpbmcgYWxyZWFkeSBzYWlkLiBDaGFubmVsVHlwZS5XRUJDSEFUIHN0YXlzIGluIHRoZSBlbnVtIGFuZCBleGlzdGluZ1xuICogV0VCQ0hBVCBjb252ZXJzYXRpb25zIGFuZCBtZXNzYWdlcyBzdGF5IGluIHRoZSBkYXRhYmFzZTogdGhleSBhcmUgdGhlIHJlY29yZFxuICogb2Ygd2hhdCB0aGlzIGJ1c2luZXNzIHRvbGQgaXRzIGN1c3RvbWVycywgYW5kIHJldGlyaW5nIGEgY2hhbm5lbCBpcyBub3QgYVxuICogcmVhc29uIHRvIGRlc3Ryb3kgaXQuIFRoZSBkYXNoYm9hcmQgc3RpbGwgcmVuZGVycyB0aG9zZSB0aHJlYWRzLlxuICpcbiAqIOKUgOKUgCBTYWZlIHRvIGRlbGV0ZSBvdXRyaWdodCBvbmNlIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuICpcbiAqIG5vIHRlbmFudCBzaXRlIHN0aWxsIGNhcnJpZXMgdGhlIHNuaXBwZXQuIFVudGlsIHRoZW4gdGhpcyBmaWxlIGlzIHRoZSB0aGluZ1xuICogdGVsbGluZyB0aGVtIHdoeSBpdCBzdG9wcGVkLlxuICovXG5AQ29udHJvbGxlcignYXBpL3dpZGdldCcpXG5leHBvcnQgY2xhc3MgV2lkZ2V0Q29udHJvbGxlciB7XG4gIC8qKlxuICAgKiBAU2tpcFRocm90dGxlIOKAlCBhIHJldGlyZWQgZW5kcG9pbnQgZG9lcyBubyB3b3JrIGFuZCB0b3VjaGVzIG5vIGRhdGFiYXNlLlxuICAgKiBSYXRlIGxpbWl0aW5nIGl0IHdvdWxkIG9ubHkgYWRkIHN0b3JhZ2UgbG9va3VwcyB0byBhIHJlcXVlc3Qgd2hvc2UgZW50aXJlXG4gICAqIGpvYiBpcyB0byBhbnN3ZXIgXCJnb25lXCIgYXMgY2hlYXBseSBhcyBwb3NzaWJsZSwgYW5kIGEgc3RhbGUgZW1iZWQgb24gYSBidXN5XG4gICAqIHNpdGUgY2FuIGNhbGwgaXQgYSBsb3QuXG4gICAqL1xuICBAU2tpcFRocm90dGxlKClcbiAgQEFsbCgnKicpXG4gIHJldGlyZWQoQFJlcygpIHJlczogUmVzcG9uc2UpIHtcbiAgICByZXMuc3RhdHVzKDQxMCkuanNvbih7XG4gICAgICBlcnJvcjogJ2dvbmUnLFxuICAgICAgbWVzc2FnZTpcbiAgICAgICAgJ1RoZSBlbWJlZGRlZCB3ZWIgY2hhdCB3aWRnZXQgaGFzIGJlZW4gcmV0aXJlZC4gVGhpcyBwbGF0Zm9ybSBzZXJ2ZXMgY3VzdG9tZXJzIG9uIFdoYXRzQXBwIGFuZCBieSBwaG9uZTsgdGhlIHdlYiBhcHAgaXMgdGhlIHN0YWZmIGRhc2hib2FyZC4gUmVtb3ZlIHRoZSB3aWRnZXQgc2NyaXB0IHRhZyBmcm9tIHlvdXIgc2l0ZS4nLFxuICAgICAgcmV0aXJlZDogdHJ1ZSxcbiAgICB9KTtcbiAgfVxufVxuIl0sInZlcnNpb24iOjN9

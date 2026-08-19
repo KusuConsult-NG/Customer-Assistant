@@ -1,0 +1,161 @@
+a4bd428de71931617dd4a0dad73dad54
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PublicSelfieController = exports.OnboardingController = void 0;
+const common_1 = require("@nestjs/common");
+const throttler_1 = require("@nestjs/throttler");
+const onboarding_service_1 = require("./onboarding.service");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const roles_guard_1 = require("../common/guards/roles.guard");
+const roles_decorator_1 = require("../common/decorators/roles.decorator");
+const CHANNELS = ['WHATSAPP', 'VOICE', 'WEB'];
+/** Operator-facing endpoints. Authenticated and tenant-scoped. */
+let OnboardingController = class OnboardingController {
+    onboarding;
+    constructor(onboarding) {
+        this.onboarding = onboarding;
+    }
+    async request(req, body) {
+        if (!body?.contactId)
+            throw new common_1.BadRequestException('contactId is required');
+        if (body.channel && !CHANNELS.includes(body.channel.toUpperCase())) {
+            throw new common_1.BadRequestException(`channel must be one of ${CHANNELS.join(', ')}`);
+        }
+        return this.onboarding.requestSelfie(req.user.organizationId, {
+            contactId: body.contactId,
+            channel: body.channel?.toUpperCase(),
+            purpose: body.purpose,
+            expiresInHours: body.expiresInHours,
+            conversationId: body.conversationId,
+            callSid: body.callSid,
+            requestedByUserId: req.user.userId,
+        });
+    }
+    async list(req, contactId, limit) {
+        return this.onboarding.listRequests(req.user.organizationId, contactId, parseInt(limit ?? '50', 10) || 50);
+    }
+    /** Short-lived signed URL for the stored photo. */
+    async image(req, id) {
+        return this.onboarding.getImageUrl(req.user.organizationId, id);
+    }
+    // Cancelling creates nothing, so it answers 200 rather than Nest's POST default of 201.
+    async cancel(req, id) {
+        return this.onboarding.cancelRequest(req.user.organizationId, id);
+    }
+    /** Erases the request and the stored image. Restricted: this destroys personal data. */
+    async remove(req, id) {
+        return this.onboarding.deleteRequest(req.user.organizationId, id);
+    }
+};
+exports.OnboardingController = OnboardingController;
+__decorate([
+    (0, common_1.Post)('selfie-requests'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], OnboardingController.prototype, "request", null);
+__decorate([
+    (0, common_1.Get)('selfie-requests'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Query)('contactId')),
+    __param(2, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, String]),
+    __metadata("design:returntype", Promise)
+], OnboardingController.prototype, "list", null);
+__decorate([
+    (0, common_1.Get)('selfie-requests/:id/image'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], OnboardingController.prototype, "image", null);
+__decorate([
+    (0, common_1.HttpCode)(200),
+    (0, common_1.Post)('selfie-requests/:id/cancel'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], OnboardingController.prototype, "cancel", null);
+__decorate([
+    (0, roles_decorator_1.Roles)('OWNER', 'ADMIN'),
+    (0, common_1.Delete)('selfie-requests/:id'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], OnboardingController.prototype, "remove", null);
+exports.OnboardingController = OnboardingController = __decorate([
+    (0, common_1.Controller)('api/onboarding'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __metadata("design:paramtypes", [onboarding_service_1.OnboardingService])
+], OnboardingController);
+/**
+ * Customer-facing upload endpoints.
+ *
+ * Unauthenticated by necessity — the customer has a link, not an account — so the
+ * one-time token is the entire credential. Everything that follows from that:
+ *
+ *  - Tight throttling, because the token is the only thing standing between the
+ *    internet and an upload endpoint.
+ *  - No tenant or contact identifiers in the response, so a stolen link leaks a first
+ *    name and a company name and nothing else.
+ *  - Attempts counted server-side against the token, not the IP.
+ */
+let PublicSelfieController = class PublicSelfieController {
+    onboarding;
+    constructor(onboarding) {
+        this.onboarding = onboarding;
+    }
+    async describe(token) {
+        return this.onboarding.describeUploadLink(token);
+    }
+    // Enough headroom for a customer retaking a photo several times on a bad
+    // connection; still far too tight to be useful as an open upload endpoint.
+    async submit(token, body) {
+        if (!body?.imageBase64)
+            throw new common_1.BadRequestException('No image was received. Please take the photo again.');
+        return this.onboarding.submitViaLink(token, body.imageBase64);
+    }
+};
+exports.PublicSelfieController = PublicSelfieController;
+__decorate([
+    (0, throttler_1.Throttle)({ default: { limit: 20, ttl: 60_000 } }),
+    (0, common_1.Get)(':token'),
+    __param(0, (0, common_1.Param)('token')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], PublicSelfieController.prototype, "describe", null);
+__decorate([
+    (0, throttler_1.Throttle)({ default: { limit: 15, ttl: 60_000 } }),
+    (0, common_1.Post)(':token'),
+    __param(0, (0, common_1.Param)('token')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], PublicSelfieController.prototype, "submit", null);
+exports.PublicSelfieController = PublicSelfieController = __decorate([
+    (0, common_1.Controller)('api/public/selfie'),
+    __metadata("design:paramtypes", [onboarding_service_1.OnboardingService])
+], PublicSelfieController);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL1VzZXJzL21hYy9DdXN0b21lciBBc3Npc3RhbmNlL2FwcHMvYXBpL3NyYy9vbmJvYXJkaW5nL29uYm9hcmRpbmcuY29udHJvbGxlci50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7Ozs7QUFBQSwyQ0FZd0I7QUFDeEIsaURBQTZDO0FBQzdDLDZEQUF3RTtBQUN4RSwyREFBc0Q7QUFDdEQsOERBQTBEO0FBQzFELDBFQUE2RDtBQUc3RCxNQUFNLFFBQVEsR0FBb0IsQ0FBQyxVQUFVLEVBQUUsT0FBTyxFQUFFLEtBQUssQ0FBQyxDQUFDO0FBRS9ELGtFQUFrRTtBQUczRCxJQUFNLG9CQUFvQixHQUExQixNQUFNLG9CQUFvQjtJQUNGO0lBQTdCLFlBQTZCLFVBQTZCO1FBQTdCLGVBQVUsR0FBVixVQUFVLENBQW1CO0lBQUcsQ0FBQztJQUd4RCxBQUFOLEtBQUssQ0FBQyxPQUFPLENBQ0osR0FBdUIsRUFDdEIsSUFPUDtRQUVELElBQUksQ0FBQyxJQUFJLEVBQUUsU0FBUztZQUFFLE1BQU0sSUFBSSw0QkFBbUIsQ0FBQyx1QkFBdUIsQ0FBQyxDQUFDO1FBQzdFLElBQUksSUFBSSxDQUFDLE9BQU8sSUFBSSxDQUFDLFFBQVEsQ0FBQyxRQUFRLENBQUMsSUFBSSxDQUFDLE9BQU8sQ0FBQyxXQUFXLEVBQW1CLENBQUMsRUFBRSxDQUFDO1lBQ3BGLE1BQU0sSUFBSSw0QkFBbUIsQ0FBQywwQkFBMEIsUUFBUSxDQUFDLElBQUksQ0FBQyxJQUFJLENBQUMsRUFBRSxDQUFDLENBQUM7UUFDakYsQ0FBQztRQUNELE9BQU8sSUFBSSxDQUFDLFVBQVUsQ0FBQyxhQUFhLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxjQUFjLEVBQUU7WUFDNUQsU0FBUyxFQUFFLElBQUksQ0FBQyxTQUFTO1lBQ3pCLE9BQU8sRUFBRSxJQUFJLENBQUMsT0FBTyxFQUFFLFdBQVcsRUFBK0I7WUFDakUsT0FBTyxFQUFFLElBQUksQ0FBQyxPQUFPO1lBQ3JCLGNBQWMsRUFBRSxJQUFJLENBQUMsY0FBYztZQUNuQyxjQUFj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MUMsT0FBTyxJQUFJLENBQUMsVUFBVSxDQUFDLGtCQUFrQixDQUFDLEtBQUssQ0FBQyxDQUFDO0lBQ25ELENBQUM7SUFFRCx5RUFBeUU7SUFDekUsMkVBQTJFO0lBR3JFLEFBQU4sS0FBSyxDQUFDLE1BQU0sQ0FBaUIsS0FBYSxFQUFVLElBQThCO1FBQ2hGLElBQUksQ0FBQyxJQUFJLEVBQUUsV0FBVztZQUFFLE1BQU0sSUFBSSw0QkFBbUIsQ0FBQyxxREFBcUQsQ0FBQyxDQUFDO1FBQzdHLE9BQU8sSUFBSSxDQUFDLFVBQVUsQ0FBQyxhQUFhLENBQUMsS0FBSyxFQUFFLElBQUksQ0FBQyxXQUFXLENBQUMsQ0FBQztJQUNoRSxDQUFDO0NBQ0YsQ0FBQTtBQWpCWSx3REFBc0I7QUFLM0I7SUFGTCxJQUFBLG9CQUFRLEVBQUMsRUFBRSxPQUFPLEVBQUUsRUFBRSxLQUFLLEVBQUUsRUFBRSxFQUFFLEdBQUcsRUFBRSxNQUFNLEVBQUUsRUFBRSxDQUFDO0lBQ2pELElBQUEsWUFBRyxFQUFDLFFBQVEsQ0FBQztJQUNFLFdBQUEsSUFBQSxjQUFLLEVBQUMsT0FBTyxDQUFDLENBQUE7Ozs7c0RBRTdCO0FBTUs7SUFGTCxJQUFBLG9CQUFRLEVBQUMsRUFBRSxPQUFPLEVBQUUsRUFBRSxLQUFLLEVBQUUsRUFBRSxFQUFFLEdBQUcsRUFBRSxNQUFNLEVBQUUsRUFBRSxDQUFDO0lBQ2pELElBQUEsYUFBSSxFQUFDLFFBQVEsQ0FBQztJQUNELFdBQUEsSUFBQSxjQUFLLEVBQUMsT0FBTyxDQUFDLENBQUE7SUFBaUIsV0FBQSxJQUFBLGFBQUksR0FBRSxDQUFBOzs7O29EQUdsRDtpQ0FoQlUsc0JBQXNCO0lBRGxDLElBQUEsbUJBQVUsRUFBQyxtQkFBbUIsQ0FBQztxQ0FFVyxzQ0FBaUI7R0FEL0Msc0JBQXNCLENBaUJsQyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvVXNlcnMvbWFjL0N1c3RvbWVyIEFzc2lzdGFuY2UvYXBwcy9hcGkvc3JjL29uYm9hcmRpbmcvb25ib2FyZGluZy5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7XG4gIEJhZFJlcXVlc3RFeGNlcHRpb24sXG4gIEh0dHBDb2RlLFxuICBCb2R5LFxuICBDb250cm9sbGVyLFxuICBEZWxldGUsXG4gIEdldCxcbiAgUGFyYW0sXG4gIFBvc3QsXG4gIFF1ZXJ5LFxuICBSZXEsXG4gIFVzZUd1YXJkcyxcbn0gZnJvbSAnQG5lc3Rqcy9jb21tb24nO1xuaW1wb3J0IHsgVGhyb3R0bGUgfSBmcm9tICdAbmVzdGpzL3Rocm90dGxlcic7XG5pbXBvcnQgeyBPbmJvYXJkaW5nU2VydmljZSwgU2VsZmllQ2hhbm5lbCB9IGZyb20gJy4vb25ib2FyZGluZy5zZXJ2aWNlJztcbmltcG9ydCB7IEp3dEF1dGhHdWFyZCB9IGZyb20gJy4uL2F1dGgvand0LWF1dGguZ3VhcmQnO1xuaW1wb3J0IHsgUm9sZXNHdWFyZCB9IGZyb20gJy4uL2NvbW1vbi9ndWFyZHMvcm9sZXMuZ3VhcmQnO1xuaW1wb3J0IHsgUm9sZXMgfSBmcm9tICcuLi9jb21tb24vZGVjb3JhdG9ycy9yb2xlcy5kZWNvcmF0b3InO1xuaW1wb3J0IHsgQXV0aFVzZXIgfSBmcm9tICdAYWNlL3NoYXJlZC10eXBlcyc7XG5cbmNvbnN0IENIQU5ORUxTOiBTZWxmaWVDaGFubmVsW10gPSBbJ1dIQVRTQVBQJywgJ1ZPSUNFJywgJ1dFQiddO1xuXG4vKiogT3BlcmF0b3ItZmFjaW5nIGVuZHBvaW50cy4gQXV0aGVudGljYXRlZCBhbmQgdGVuYW50LXNjb3BlZC4gKi9cbkBDb250cm9sbGVyKCdhcGkvb25ib2FyZGluZycpXG5AVXNlR3VhcmRzKEp3dEF1dGhHdWFyZCwgUm9sZXNHdWFyZClcbmV4cG9ydCBjbGFzcyBPbmJvYXJkaW5nQ29udHJvbGxlciB7XG4gIGNvbnN0cnVjdG9yKHByaXZhdGUgcmVhZG9ubHkgb25ib2FyZGluZzogT25ib2FyZGluZ1NlcnZpY2UpIHt9XG5cbiAgQFBvc3QoJ3NlbGZpZS1yZXF1ZXN0cycpXG4gIGFzeW5jIHJlcXVlc3QoXG4gICAgQFJlcSgpIHJlcTogeyB1c2VyOiBBdXRoVXNlciB9LFxuICAgIEBCb2R5KCkgYm9keToge1xuICAgICAgY29udGFjdElkOiBzdHJpbmc7XG4gICAgICBjaGFubmVsPzogc3RyaW5nO1xuICAgICAgcHVycG9zZT86IHN0cmluZztcbiAgICAgIGV4cGlyZXNJbkhvdXJzPzogbnVtYmVyO1xuICAgICAgY29udmVyc2F0aW9uSWQ/OiBzdHJpbmc7XG4gICAgICBjYWxsU2lkPzogc3RyaW5nO1xuICAgIH1cbiAgKSB7XG4gICAgaWYgKCFib2R5Py5jb250YWN0SWQpIHRocm93IG5ldyBCYWRSZXF1ZXN0RXhjZXB0aW9uKCdjb250YWN0SWQgaXMgcmVxdWlyZWQnKTtcbiAgICBpZiAoYm9keS5jaGFubmVsICYmICFDSEFOTkVMUy5pbmNsdWRlcyhib2R5LmNoYW5uZWwudG9VcHBlckNhc2UoKSBhcyBTZWxmaWVDaGFubmVsKSkge1xuICAgICAgdGhyb3cgbmV3IEJhZFJlcXVlc3RFeGNlcHRpb24oYGNoYW5uZWwgbXVzdCBiZSBvbmUgb2YgJHtDSEFOTkVMUy5qb2luKCcsICcpfWApO1xuICAgIH1cbiAgICByZXR1cm4gdGhpcy5vbmJvYXJkaW5nLnJlcXVlc3RTZWxmaWUocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIHtcbiAgICAgIGNvbnRhY3RJZDogYm9keS5jb250YWN0SWQsXG4gICAgICBjaGFubmVsOiBib2R5LmNoYW5uZWw/LnRvVXBwZXJDYXNlKCkgYXMgU2VsZmllQ2hhbm5lbCB8IHVuZGVmaW5lZCxcbiAgICAgIHB1cnBvc2U6IGJvZHkucHVycG9zZSxcbiAgICAgIGV4cGlyZXNJbkhvdXJzOiBib2R5LmV4cGlyZXNJbkhvdXJzLFxuICAgICAgY29udmVyc2F0aW9uSWQ6IGJvZHkuY29udmVyc2F0aW9uSWQsXG4gICAgICBjYWxsU2lkOiBib2R5LmNhbGxTaWQsXG4gICAgICByZXF1ZXN0ZWRCeVVzZXJJZDogcmVxLnVzZXIudXNlcklkLFxuICAgIH0pO1xuICB9XG5cbiAgQEdldCgnc2VsZmllLXJlcXVlc3RzJylcbiAgYXN5bmMgbGlzdChcbiAgICBAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sXG4gICAgQFF1ZXJ5KCdjb250YWN0SWQnKSBjb250YWN0SWQ/OiBzdHJpbmcsXG4gICAgQFF1ZXJ5KCdsaW1pdCcpIGxpbWl0Pzogc3RyaW5nXG4gICkge1xuICAgIHJldHVybiB0aGlzLm9uYm9hcmRpbmcubGlzdFJlcXVlc3RzKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBjb250YWN0SWQsIHBhcnNlSW50KGxpbWl0ID8/ICc1MCcsIDEwKSB8fCA1MCk7XG4gIH1cblxuICAvKiogU2hvcnQtbGl2ZWQgc2lnbmVkIFVSTCBmb3IgdGhlIHN0b3JlZCBwaG90by4gKi9cbiAgQEdldCgnc2VsZmllLXJlcXVlc3RzLzppZC9pbWFnZScpXG4gIGFzeW5jIGltYWdlKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSwgQFBhcmFtKCdpZCcpIGlkOiBzdHJpbmcpIHtcbiAgICByZXR1cm4gdGhpcy5vbmJvYXJkaW5nLmdldEltYWdlVXJsKHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBpZCk7XG4gIH1cblxuICAvLyBDYW5jZWxsaW5nIGNyZWF0ZXMgbm90aGluZywgc28gaXQgYW5zd2VycyAyMDAgcmF0aGVyIHRoYW4gTmVzdCdzIFBPU1QgZGVmYXVsdCBvZiAyMDEuXG4gIEBIdHRwQ29kZSgyMDApXG4gIEBQb3N0KCdzZWxmaWUtcmVxdWVzdHMvOmlkL2NhbmNlbCcpXG4gIGFzeW5jIGNhbmNlbChAUmVxKCkgcmVxOiB7IHVzZXI6IEF1dGhVc2VyIH0sIEBQYXJhbSgnaWQnKSBpZDogc3RyaW5nKSB7XG4gICAgcmV0dXJuIHRoaXMub25ib2FyZGluZy5jYW5jZWxSZXF1ZXN0KHJlcS51c2VyLm9yZ2FuaXphdGlvbklkLCBpZCk7XG4gIH1cblxuICAvKiogRXJhc2VzIHRoZSByZXF1ZXN0IGFuZCB0aGUgc3RvcmVkIGltYWdlLiBSZXN0cmljdGVkOiB0aGlzIGRlc3Ryb3lzIHBlcnNvbmFsIGRhdGEuICovXG4gIEBSb2xlcygnT1dORVInLCAnQURNSU4nKVxuICBARGVsZXRlKCdzZWxmaWUtcmVxdWVzdHMvOmlkJylcbiAgYXN5bmMgcmVtb3ZlKEBSZXEoKSByZXE6IHsgdXNlcjogQXV0aFVzZXIgfSwgQFBhcmFtKCdpZCcpIGlkOiBzdHJpbmcpIHtcbiAgICByZXR1cm4gdGhpcy5vbmJvYXJkaW5nLmRlbGV0ZVJlcXVlc3QocmVxLnVzZXIub3JnYW5pemF0aW9uSWQsIGlkKTtcbiAgfVxufVxuXG4vKipcbiAqIEN1c3RvbWVyLWZhY2luZyB1cGxvYWQgZW5kcG9pbnRzLlxuICpcbiAqIFVuYXV0aGVudGljYXRlZCBieSBuZWNlc3NpdHkg4oCUIHRoZSBjdXN0b21lciBoYXMgYSBsaW5rLCBub3QgYW4gYWNjb3VudCDigJQgc28gdGhlXG4gKiBvbmUtdGltZSB0b2tlbiBpcyB0aGUgZW50aXJlIGNyZWRlbnRpYWwuIEV2ZXJ5dGhpbmcgdGhhdCBmb2xsb3dzIGZyb20gdGhhdDpcbiAqXG4gKiAgLSBUaWdodCB0aHJvdHRsaW5nLCBiZWNhdXNlIHRoZSB0b2tlbiBpcyB0aGUgb25seSB0aGluZyBzdGFuZGluZyBiZXR3ZWVuIHRoZVxuICogICAgaW50ZXJuZXQgYW5kIGFuIHVwbG9hZCBlbmRwb2ludC5cbiAqICAtIE5vIHRlbmFudCBvciBjb250YWN0IGlkZW50aWZpZXJzIGluIHRoZSByZXNwb25zZSwgc28gYSBzdG9sZW4gbGluayBsZWFrcyBhIGZpcnN0XG4gKiAgICBuYW1lIGFuZCBhIGNvbXBhbnkgbmFtZSBhbmQgbm90aGluZyBlbHNlLlxuICogIC0gQXR0ZW1wdHMgY291bnRlZCBzZXJ2ZXItc2lkZSBhZ2FpbnN0IHRoZSB0b2tlbiwgbm90IHRoZSBJUC5cbiAqL1xuQENvbnRyb2xsZXIoJ2FwaS9wdWJsaWMvc2VsZmllJylcbmV4cG9ydCBjbGFzcyBQdWJsaWNTZWxmaWVDb250cm9sbGVyIHtcbiAgY29uc3RydWN0b3IocHJpdmF0ZSByZWFkb25seSBvbmJvYXJkaW5nOiBPbmJvYXJkaW5nU2VydmljZSkge31cblxuICBAVGhyb3R0bGUoeyBkZWZhdWx0OiB7IGxpbWl0OiAyMCwgdHRsOiA2MF8wMDAgfSB9KVxuICBAR2V0KCc6dG9rZW4nKVxuICBhc3luYyBkZXNjcmliZShAUGFyYW0oJ3Rva2VuJykgdG9rZW46IHN0cmluZykge1xuICAgIHJldHVybiB0aGlzLm9uYm9hcmRpbmcuZGVzY3JpYmVVcGxvYWRMaW5rKHRva2VuKTtcbiAgfVxuXG4gIC8vIEVub3VnaCBoZWFkcm9vbSBmb3IgYSBjdXN0b21lciByZXRha2luZyBhIHBob3RvIHNldmVyYWwgdGltZXMgb24gYSBiYWRcbiAgLy8gY29ubmVjdGlvbjsgc3RpbGwgZmFyIHRvbyB0aWdodCB0byBiZSB1c2VmdWwgYXMgYW4gb3BlbiB1cGxvYWQgZW5kcG9pbnQuXG4gIEBUaHJvdHRsZSh7IGRlZmF1bHQ6IHsgbGltaXQ6IDE1LCB0dGw6IDYwXzAwMCB9IH0pXG4gIEBQb3N0KCc6dG9rZW4nKVxuICBhc3luYyBzdWJtaXQoQFBhcmFtKCd0b2tlbicpIHRva2VuOiBzdHJpbmcsIEBCb2R5KCkgYm9keTogeyBpbWFnZUJhc2U2ND86IHN0cmluZyB9KSB7XG4gICAgaWYgKCFib2R5Py5pbWFnZUJhc2U2NCkgdGhyb3cgbmV3IEJhZFJlcXVlc3RFeGNlcHRpb24oJ05vIGltYWdlIHdhcyByZWNlaXZlZC4gUGxlYXNlIHRha2UgdGhlIHBob3RvIGFnYWluLicpO1xuICAgIHJldHVybiB0aGlzLm9uYm9hcmRpbmcuc3VibWl0VmlhTGluayh0b2tlbiwgYm9keS5pbWFnZUJhc2U2NCk7XG4gIH1cbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

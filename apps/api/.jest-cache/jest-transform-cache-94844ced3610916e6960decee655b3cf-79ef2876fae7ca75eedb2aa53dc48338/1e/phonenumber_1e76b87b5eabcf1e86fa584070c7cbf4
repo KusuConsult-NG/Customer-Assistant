@@ -1,0 +1,122 @@
+c6ecd132c5a80eda39f806021da593bc
+"use strict";
+/**
+ * One phone number, one contact.
+ *
+ * The same customer arrives in three different shapes depending on how they
+ * reached the business:
+ *
+ *   Twilio (voice)       +2348012345678     E.164, with the plus
+ *   Meta (WhatsApp)       2348012345678     E.164, without it
+ *   a staff member typing 08012345678       the local form everyone in Nigeria
+ *                                           actually uses
+ *
+ * `Contact` is unique on `[organizationId, phoneNumber]` and every lookup was
+ * an exact string match, so those three were three different people. A caller
+ * whose booking was made over WhatsApp got "I can't find an appointment for
+ * this number" on the phone — and `lookup-customer` told the agent it had never
+ * heard of a customer whose whole history was sitting one plus sign away.
+ *
+ * ── Canonical form ──────────────────────────────────────────────────────────
+ *
+ * E.164 with the leading plus. It is what Twilio uses, what the ITU defines,
+ * and the only one of the three that is unambiguous on its own.
+ *
+ * ── The local-number rule, and its limit ────────────────────────────────────
+ *
+ * `08012345678` → `+2348012345678` assumes Nigeria. That is right for this
+ * platform — it exists for Nigerian businesses and MDAs, and `Organization`
+ * defaults `country` to Nigeria — but it is an assumption, not a fact, so the
+ * country code is a parameter. Pass the tenant's own if you have it.
+ *
+ * A number this cannot confidently interpret is returned cleaned but otherwise
+ * UNCHANGED. Guessing at a shape we do not recognise would turn one findable
+ * contact into one unfindable one, which is worse than the duplicate.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DEFAULT_COUNTRY_CODE = void 0;
+exports.normalizePhoneNumber = normalizePhoneNumber;
+exports.phoneNumberVariants = phoneNumberVariants;
+exports.samePhoneNumber = samePhoneNumber;
+/** Nigeria. The default because this platform's tenants are Nigerian. */
+exports.DEFAULT_COUNTRY_CODE = '234';
+/** Strip everything a human or a provider might decorate a number with. */
+function clean(raw) {
+    return (raw ?? '').trim().replace(/[\s()\-.]/g, '');
+}
+/**
+ * The canonical form: E.164 with a leading plus.
+ *
+ * Returns the cleaned input untouched when the shape is not recognisable, so a
+ * number this does not understand stays exactly as findable as it was.
+ */
+function normalizePhoneNumber(raw, countryCode = exports.DEFAULT_COUNTRY_CODE) {
+    const value = clean(raw);
+    if (!value)
+        return value;
+    // Already canonical.
+    if (value.startsWith('+')) {
+        const digits = value.slice(1).replace(/\D/g, '');
+        return digits ? `+${digits}` : value;
+    }
+    const digits = value.replace(/\D/g, '');
+    if (!digits)
+        return value;
+    // International prefix dialled the old way: 002348012345678.
+    if (digits.startsWith('00') && digits.length > 4)
+        return `+${digits.slice(2)}`;
+    // The local form. 11 digits beginning 0 is the Nigerian mobile shape; the
+    // leading 0 is the trunk prefix and is replaced by the country code.
+    if (digits.startsWith('0') && digits.length === 11) {
+        return `+${countryCode}${digits.slice(1)}`;
+    }
+    // Bare E.164 — what Meta sends. Long enough to carry a country code, so the
+    // plus is the only thing missing.
+    if (digits.length >= 10 && digits.length <= 15)
+        return `+${digits}`;
+    // Too short to be a phone number in any country: an extension, a partial
+    // entry, or something that is not a number at all. Left alone.
+    return value;
+}
+/**
+ * Every stored form the same human might already be recorded under.
+ *
+ * Lookups match on this list rather than on the canonical form alone, because
+ * rows written before normalisation existed are still in whichever shape their
+ * channel used. Without it, fixing new writes would leave every existing
+ * customer exactly as unfindable as before.
+ *
+ * Ordered canonical-first, and deduplicated.
+ */
+function phoneNumberVariants(raw, countryCode = exports.DEFAULT_COUNTRY_CODE) {
+    const canonical = normalizePhoneNumber(raw, countryCode);
+    const variants = new Set();
+    if (canonical) {
+        variants.add(canonical);
+        if (canonical.startsWith('+')) {
+            const digits = canonical.slice(1);
+            // What Meta stores.
+            variants.add(digits);
+            // The local form, for rows a staff member typed in by hand.
+            if (digits.startsWith(countryCode)) {
+                variants.add(`0${digits.slice(countryCode.length)}`);
+            }
+        }
+    }
+    // The caller's own string, in case it is stored in a shape none of the rules
+    // above produce. Costs one more value in an IN clause and covers the rows
+    // nobody predicted.
+    const raw_ = clean(raw);
+    if (raw_)
+        variants.add(raw_);
+    if (raw)
+        variants.add(raw);
+    return [...variants].filter(Boolean);
+}
+/** True when two numbers identify the same subscriber. */
+function samePhoneNumber(a, b, countryCode = exports.DEFAULT_COUNTRY_CODE) {
+    if (!a || !b)
+        return false;
+    return normalizePhoneNumber(a, countryCode) === normalizePhoneNumber(b, countryCode);
+}
+//# sourceMappingURL=phone-number.js.map
