@@ -410,6 +410,8 @@ export class CrmService {
       policyId,
       fullName: contact.fullName,
       phoneNumber: contact.phoneNumber,
+      residentialAddress: meta.residentialAddress || contact.address || undefined,
+      ageOrDob: meta.ageOrDob || undefined,
       planType: meta.planType || 'Formal / Informal Sector',
       lga: meta.lga || contact.city || 'Plateau State',
       preferredHospital: meta.preferredHospital || 'Accredited Primary Healthcare Provider',

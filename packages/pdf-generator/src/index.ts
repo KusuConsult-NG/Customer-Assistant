@@ -23,6 +23,8 @@ export interface EnrolleeCardData {
   policyId: string;
   fullName: string;
   phoneNumber: string;
+  residentialAddress?: string;
+  ageOrDob?: string;
   planType: string;
   lga: string;
   preferredHospital: string;
@@ -170,11 +172,11 @@ export class PdfGeneratorService {
             <div>
               <div class="info-row">
                 <span class="info-label">Plan Type</span>
-                ${data.planType}
+                ${data.planType} ${data.ageOrDob ? `• Age: ${data.ageOrDob}` : ''}
               </div>
               <div class="info-row">
-                <span class="info-label">LGA of Residence</span>
-                ${data.lga} ${data.nin ? `• NIN: ${data.nin.slice(0, 4)}***` : ''}
+                <span class="info-label">Address & LGA</span>
+                ${data.residentialAddress ? `${data.residentialAddress}, ` : ''}${data.lga} ${data.nin ? `• NIN: ${data.nin.slice(0, 4)}***` : ''}
               </div>
             </div>
           </div>

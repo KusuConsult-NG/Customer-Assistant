@@ -176,12 +176,21 @@ export function agentDefinition(spec: AgentSpec) {
           timezone: spec.timezone,
         },
       },
+      asr: {
+        quality: 'high',
+        userInputAudioFormat: 'pcm_16000',
+      },
+      turn: {
+        turnTimeout: 7,
+        mode: 'turn',
+      },
       tts: {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
       },
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,
+        clientEvents: ['interruption', 'agent_response', 'user_transcript'],
       },
     },
   };

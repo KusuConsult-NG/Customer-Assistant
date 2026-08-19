@@ -114,7 +114,9 @@ export class AgentToolsController {
     body: {
       phoneNumber: string;
       fullName: string;
+      residentialAddress?: string;
       lga: string;
+      ageOrDob?: string;
       nin?: string;
       planType: string;
       preferredHospital?: string;

@@ -574,7 +574,9 @@ export class AgentToolsService {
     input: {
       phoneNumber?: string;
       fullName: string;
+      residentialAddress?: string;
       lga: string;
+      ageOrDob?: string;
       nin?: string;
       planType: string;
       preferredHospital?: string;
@@ -612,7 +614,9 @@ export class AgentToolsService {
       });
 
       const enrollmentDetails = [
+        `Address: ${input.residentialAddress || 'N/A'}`,
         `LGA: ${input.lga}`,
+        input.ageOrDob ? `Age/DOB: ${input.ageOrDob}` : null,
         `Plan: ${normalizedPlan}`,
         `Primary Facility: ${selectedFacility}`,
         input.nin ? `NIN: ${input.nin}` : null,
@@ -628,10 +632,13 @@ export class AgentToolsService {
           where: { id: existing.id },
           data: {
             fullName: input.fullName.trim(),
+            address: input.residentialAddress?.trim() || existing.address,
             city: input.lga.trim(),
             metadata: {
               ...(typeof existing.metadata === 'object' && existing.metadata !== null ? (existing.metadata as Record<string, unknown>) : {}),
+              residentialAddress: input.residentialAddress,
               lga: input.lga,
+              ageOrDob: input.ageOrDob,
               nin: input.nin,
               planType: normalizedPlan,
               preferredHospital: selectedFacility,
@@ -651,9 +658,12 @@ export class AgentToolsService {
             organizationId,
             phoneNumber: cleanPhone,
             fullName: input.fullName.trim(),
+            address: input.residentialAddress?.trim(),
             city: input.lga.trim(),
             metadata: {
+              residentialAddress: input.residentialAddress,
               lga: input.lga,
+              ageOrDob: input.ageOrDob,
               nin: input.nin,
               planType: normalizedPlan,
               preferredHospital: selectedFacility,

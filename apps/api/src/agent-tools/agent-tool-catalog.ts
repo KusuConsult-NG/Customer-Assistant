@@ -96,12 +96,17 @@ If a tool returns an error or no result, be honest and helpful: "I wasn't able t
 
 When a caller wants to join PLASCHEMA or asks about enrollment, collect these details ONE AT A TIME before calling register-enrollee:
 1. Full name (as it will appear on their health ID card)
-2. LGA (Local Government Area they live in — see approved list below)
-3. Health plan type — ask: "Are you employed formally, self-employed / trader / farmer, or do you qualify for the free BHCPF or Equity Programme? (e.g. pregnant woman, elder over 65, person living with disability, orphan)"
-4. Preferred healthcare facility — ONLY suggest facilities from the approved list below for their LGA. Do NOT accept or record any facility not on the list. Say: "In [LGA], your approved PLASCHEMA healthcare facilities are: [list them]. Which one would you prefer?"
-5. NIN (National Identification Number — optional but encouraged)
+2. Age or Date of Birth (e.g. "How old are you, or what is your date of birth?")
+3. Residential address (e.g. "What is your residential street address or area where you live?")
+4. LGA (Local Government Area in Plateau State — see approved list below)
+5. Health plan type — ask: "Are you employed formally, self-employed / trader / farmer, or do you qualify for the free BHCPF or Equity Programme? (e.g. pregnant woman, elder over 65, person living with disability, orphan)"
+6. Preferred healthcare facility — ONLY suggest facilities from the approved list below for their LGA. Do NOT accept or record any facility not on the list. Say: "In [LGA], your approved PLASCHEMA healthcare facilities are: [list them]. Which one would you prefer?"
+7. NIN (National Identification Number — optional but encouraged)
 
-Once you have name, LGA, plan, and facility, call register-enrollee. Do not call it before then.
+Once you have name, age, address, LGA, plan, and preferred facility, call register-enrollee. Do not call it before then.
+
+## Interruption & Flow Control
+If the caller interrupts you or corrects any detail (such as spelling of their name, their address, or their hospital), immediately stop speaking, acknowledge their correction warmly ("Thank you for that correction", "Got it"), update the information in your mind, and proceed smoothly. Never talk over the caller.
 
 ## Approved PLASCHEMA Healthcare Plans
 
@@ -291,11 +296,13 @@ export function agentToolCatalog(
 
     'register-enrollee': build(
       'register-enrollee',
-      'Register a new PLASCHEMA enrollee online. Call this once you have collected the caller\'s full name, LGA, plan type, preferred primary healthcare facility (hospital/clinic), and optionally NIN. The tool creates their official registration record and automatically delivers a secure selfie upload link and payment info to their WhatsApp/SMS so they can complete photo capture online without an office visit.',
+      'Register a new PLASCHEMA enrollee online. Call this once you have collected the caller\'s full name, residential address, LGA, age/date of birth, plan type, preferred primary healthcare facility (hospital/clinic), and optionally NIN. The tool creates their official registration record and automatically delivers a secure selfie upload link and payment info to their WhatsApp/SMS.',
       {
         phoneNumber: callerPhone,
         fullName: askedOf('string', "The caller's full name as they stated it."),
+        residentialAddress: askedOf('string', "The caller's street address, neighbourhood, or village."),
         lga: askedOf('string', 'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu).'),
+        ageOrDob: askedOf('string', "The caller's age in years or date of birth (e.g. '34 years' or '12 May 1990')."),
         preferredHospital: askedOf('string', 'The primary hospital or healthcare facility in their LGA where they prefer to access care.'),
         nin: askedOf('string', "The caller's National Identification Number (NIN), if provided."),
         planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
