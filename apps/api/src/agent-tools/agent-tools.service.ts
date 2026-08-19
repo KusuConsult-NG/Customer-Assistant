@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -586,15 +586,37 @@ export class AgentToolsService {
         ? normalizePhoneNumber(input.phoneNumber)
         : `+23480${Math.floor(10000000 + Math.random() * 90000000)}`;
 
+      // Resolve accredited facility for this LGA
+      const lgaFacilities = getFacilitiesForLGA(input.lga);
+      let selectedFacility = input.preferredHospital?.trim();
+      if (selectedFacility && lgaFacilities.length > 0) {
+        const matched = lgaFacilities.find(
+          (f) => f.name.toLowerCase() === selectedFacility!.toLowerCase() || f.name.toLowerCase().includes(selectedFacility!.toLowerCase())
+        );
+        if (matched) selectedFacility = matched.name;
+      }
+      if (!selectedFacility && lgaFacilities.length > 0) {
+        selectedFacility = lgaFacilities[0].name;
+      }
+      if (!selectedFacility) {
+        selectedFacility = 'Accredited Primary Healthcare Provider';
+      }
+
+      const isEquity = /equity|bhcpf|vulnerable|free/i.test(input.planType);
+      const normalizedPlan = isEquity
+        ? 'Equity / BHCPF Subsidized Plan'
+        : input.planType;
+
       const existing = await prisma.contact.findFirst({
         where: { organizationId, phoneNumber: { in: phoneNumberVariants(cleanPhone) } },
       });
 
       const enrollmentDetails = [
         `LGA: ${input.lga}`,
-        `Plan: ${input.planType}`,
-        input.preferredHospital ? `Primary Facility: ${input.preferredHospital}` : null,
+        `Plan: ${normalizedPlan}`,
+        `Primary Facility: ${selectedFacility}`,
         input.nin ? `NIN: ${input.nin}` : null,
+        isEquity ? 'Status: 100% State Subsidized (₦0)' : null,
         input.notes || null,
       ]
         .filter(Boolean)
@@ -611,9 +633,11 @@ export class AgentToolsService {
               ...(typeof existing.metadata === 'object' && existing.metadata !== null ? (existing.metadata as Record<string, unknown>) : {}),
               lga: input.lga,
               nin: input.nin,
-              planType: input.planType,
-              preferredHospital: input.preferredHospital || 'General Hospital / Nearest Primary Health Centre',
-              enrollmentStatus: 'PENDING_SELFIE',
+              planType: normalizedPlan,
+              preferredHospital: selectedFacility,
+              isEquity,
+              enrollmentStatus: isEquity ? 'PENDING_EQUITY_REVIEW' : 'PENDING_SELFIE',
+              paymentStatus: isEquity ? 'WAIVED_SUBSIDIZED' : 'PENDING',
               registeredAt: new Date().toISOString(),
             },
             tags: existing.tags.includes('enrollment-pending')
@@ -631,9 +655,11 @@ export class AgentToolsService {
             metadata: {
               lga: input.lga,
               nin: input.nin,
-              planType: input.planType,
-              preferredHospital: input.preferredHospital || 'General Hospital / Nearest Primary Health Centre',
-              enrollmentStatus: 'PENDING_SELFIE',
+              planType: normalizedPlan,
+              preferredHospital: selectedFacility,
+              isEquity,
+              enrollmentStatus: isEquity ? 'PENDING_EQUITY_REVIEW' : 'PENDING_SELFIE',
+              paymentStatus: isEquity ? 'WAIVED_SUBSIDIZED' : 'PENDING',
               registeredAt: new Date().toISOString(),
             },
             tags: ['enrollment-pending'],
@@ -642,41 +668,58 @@ export class AgentToolsService {
       }
 
       // Save a note for audit/record keeping
-      await prisma.note.create({
-        data: {
-          contactId: contact.id,
-          content: `Helpline Enrollment Registration: ${enrollmentDetails}`,
-        },
-      }).catch(() => {});
+      await prisma.note
+        .create({
+          data: {
+            contactId: contact.id,
+            content: `Helpline Enrollment Registration: ${enrollmentDetails}`,
+          },
+        })
+        .catch(() => {});
 
       // Send the selfie link via WhatsApp/SMS
       const selfieResult = await this.onboarding.requestSelfie(organizationId, {
         contactId: contact.id,
         channel: 'VOICE',
-        purpose: 'PLASCHEMA health plan registration',
+        purpose: isEquity ? 'PLASCHEMA Equity free coverage verification' : 'PLASCHEMA health plan registration',
         expiresInHours: 48,
       });
 
       const refId = contact.id.slice(0, 8).toUpperCase();
       const selfieDelivered = selfieResult.delivery?.delivered ?? false;
-      const hospitalMention = input.preferredHospital ? ` with ${input.preferredHospital} as your primary facility` : '';
+      const firstName = input.fullName.split(' ')[0];
 
       if (selfieDelivered) {
-        return {
-          ok: true,
-          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your profile for the PLASCHEMA ${input.planType} plan in ${input.lga}${hospitalMention}. Your enrollment reference is ${refId}. I have just sent a secure photo link and payment details to your phone. Please open WhatsApp or SMS, tap the link, and take a quick selfie to complete your online profile. Our team will verify it and activate your health coverage within 2 business days. Is there anything else I can help you with today?`,
-          data: {
-            contactId: contact.id,
-            refId,
-            selfieRequestId: selfieResult.id,
-            selfieDelivered: true,
-            uploadUrl: selfieResult.uploadUrl,
-          },
-        };
+        if (isEquity) {
+          return {
+            ok: true,
+            speak: `Thank you, ${firstName}. I have registered your profile for the free PLASCHEMA Equity Programme in ${input.lga} with ${selectedFacility} as your primary facility. Because you qualify for the state-subsidized programme, you do NOT need to pay any premium. Your enrollment reference is ${refId}. I have just sent a secure photo link to your phone. Please open WhatsApp or SMS, tap the link, and take a quick selfie to finish your registration. Our team will verify your eligibility and issue your health card within 2 business days. Is there anything else I can assist you with?`,
+            data: {
+              contactId: contact.id,
+              refId,
+              selfieRequestId: selfieResult.id,
+              selfieDelivered: true,
+              uploadUrl: selfieResult.uploadUrl,
+              isEquity: true,
+            },
+          };
+        } else {
+          return {
+            ok: true,
+            speak: `Thank you, ${firstName}. I have registered your profile for the PLASCHEMA ${input.planType} plan in ${input.lga} with ${selectedFacility} as your primary healthcare facility. Your enrollment reference is ${refId}. I have just sent a secure photo and payment link to your phone. Please open WhatsApp or SMS, tap the link, and take a quick selfie to complete your profile. Our team will activate your health coverage within 2 business days. Is there anything else I can help you with today?`,
+            data: {
+              contactId: contact.id,
+              refId,
+              selfieRequestId: selfieResult.id,
+              selfieDelivered: true,
+              uploadUrl: selfieResult.uploadUrl,
+            },
+          };
+        }
       } else {
         return {
           ok: true,
-          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your profile for the PLASCHEMA ${input.planType} plan in ${input.lga}${hospitalMention}. Your enrollment reference is ${refId}. You can complete your photo upload online at enrollments dot plaschema dot app, or visit any PLASCHEMA office in ${input.lga} with your reference number and a valid ID. Is there anything else I can assist you with?`,
+          speak: `Thank you, ${firstName}. I have registered your profile for the PLASCHEMA ${normalizedPlan} in ${input.lga} with ${selectedFacility} as your primary facility. Your enrollment reference is ${refId}. You can complete your photo upload online at enrollments dot plaschema dot app, or visit any PLASCHEMA desk in ${input.lga} with your reference number. Is there anything else I can assist you with?`,
           data: {
             contactId: contact.id,
             refId,

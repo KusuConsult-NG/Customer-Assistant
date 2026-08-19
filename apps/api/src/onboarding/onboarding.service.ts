@@ -478,8 +478,9 @@ export class OnboardingService {
 
     const meta = (contact.metadata as Record<string, any>) || {};
     const planType = meta.planType || 'Informal Sector Individual Plan';
+    const isEquity = Boolean(meta.isEquity || /equity|bhcpf|vulnerable|free/i.test(planType));
     const isFamily = planType.toLowerCase().includes('family');
-    const amount = isFamily ? 50000 : 12000;
+    const amount = isEquity ? 0 : isFamily ? 50000 : 12000;
     const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
 
     return {
@@ -487,45 +488,69 @@ export class OnboardingService {
       fullName: contact.fullName,
       phoneNumber: contact.phoneNumber,
       planType,
+      isEquity,
       lga: meta.lga || contact.city || 'Plateau State',
       preferredHospital: meta.preferredHospital || 'General Hospital Jos',
       policyId,
       amount,
-      paymentStatus: meta.paymentStatus || 'PENDING',
-      enrollmentStatus: meta.enrollmentStatus || (contact.tags.includes('enrolled-active') ? 'ENROLLED_ACTIVE' : 'PENDING_REVIEW'),
+      paymentStatus: meta.paymentStatus || (isEquity ? 'WAIVED_SUBSIDIZED' : 'PENDING'),
+      enrollmentStatus: meta.enrollmentStatus || (contact.tags.includes('enrolled-active') ? 'ENROLLED_ACTIVE' : isEquity ? 'PENDING_EQUITY_REVIEW' : 'PENDING_REVIEW'),
       hasPhoto: contact.selfieRequests.length > 0,
       dependents: meta.dependents || [],
     };
   }
 
-  async confirmEnrolleePayment(contactId: string, paymentReference: string, amount: number) {
+  async confirmEnrolleePayment(
+    contactId: string,
+    paymentReference: string,
+    amount: number,
+    equityCategory?: string
+  ) {
     const contact = await prisma.contact.findUnique({ where: { id: contactId } });
     if (!contact) throw new NotFoundException('Enrollee not found.');
 
     const meta = (contact.metadata as Record<string, any>) || {};
     const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+    const isEquity = amount === 0 || Boolean(meta.isEquity) || Boolean(equityCategory);
+
+    const newTags = Array.from(
+      new Set([
+        ...(contact.tags || []),
+        isEquity ? 'equity-applicant' : 'enrolled-active',
+        isEquity ? 'equity-subsidized' : 'paid-enrollee',
+      ])
+    );
+
+    const enrollmentStatus = isEquity ? 'PENDING_EQUITY_REVIEW' : 'ENROLLED_ACTIVE';
+    const paymentStatus = isEquity ? 'WAIVED_SUBSIDIZED' : 'PAID';
 
     await prisma.contact.update({
       where: { id: contact.id },
       data: {
-        tags: Array.from(new Set([...(contact.tags || []), 'enrolled-active', 'paid-enrollee'])),
+        tags: newTags,
         metadata: {
           ...meta,
           policyId,
-          paymentStatus: 'PAID',
+          isEquity,
+          equityCategory: equityCategory || meta.equityCategory || null,
+          paymentStatus,
           paidAmount: amount,
           paymentReference,
           paidAt: new Date().toISOString(),
-          enrollmentStatus: 'ENROLLED_ACTIVE',
+          enrollmentStatus,
         },
       },
     });
+
+    const noteContent = isEquity
+      ? `PLASCHEMA Equity Free Coverage Application: Qualifying Category "${equityCategory || 'Vulnerable Group'}" (₦0 Subsidized). Awaiting verification at CRM desk.`
+      : `Online Premium Payment Confirmed: ₦${amount.toLocaleString()} (Ref: ${paymentReference}). Policy ID issued: ${policyId}`;
 
     await prisma.note
       .create({
         data: {
           contactId: contact.id,
-          content: `Online Premium Payment Confirmed: ₦${amount.toLocaleString()} (Ref: ${paymentReference}). Policy ID issued: ${policyId}`,
+          content: noteContent,
         },
       })
       .catch(() => {});
@@ -534,8 +559,11 @@ export class OnboardingService {
       success: true,
       policyId,
       fullName: contact.fullName,
-      status: 'ENROLLED_ACTIVE',
-      message: `Premium payment of ₦${amount.toLocaleString()} confirmed. Policy ID: ${policyId}`,
+      status: enrollmentStatus,
+      isEquity,
+      message: isEquity
+        ? `Free Equity Plan registered successfully. Your profile has been sent to the PLASCHEMA verification desk.`
+        : `Premium payment of ₦${amount.toLocaleString()} confirmed. Policy ID: ${policyId}`,
     };
   }
 }

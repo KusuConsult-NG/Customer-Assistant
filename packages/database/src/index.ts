@@ -73,3 +73,4 @@ export * from './secret-box';
 export * from './credentials';
 export * from './phone-number';
 export * from './ticket-number';
+export * from './plaschema-facilities';

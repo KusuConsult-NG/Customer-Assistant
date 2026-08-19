@@ -137,11 +137,12 @@ export class PublicPaymentController {
       contactId: string;
       paymentReference: string;
       amount: number;
+      equityCategory?: string;
     }
   ) {
-    if (!body?.contactId || !body?.paymentReference || !body?.amount) {
-      throw new BadRequestException('contactId, paymentReference, and amount are required.');
+    if (!body?.contactId || !body?.paymentReference || typeof body?.amount !== 'number') {
+      throw new BadRequestException('contactId, paymentReference, and amount (number) are required.');
     }
-    return this.onboarding.confirmEnrolleePayment(body.contactId, body.paymentReference, body.amount);
+    return this.onboarding.confirmEnrolleePayment(body.contactId, body.paymentReference, body.amount, body.equityCategory);
   }
 }

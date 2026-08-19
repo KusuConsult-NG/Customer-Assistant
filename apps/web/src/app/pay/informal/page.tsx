@@ -29,9 +29,10 @@ export default function InformalPaymentPage() {
   const [error, setError] = useState<string | null>(null);
   const [enrollee, setEnrollee] = useState<EnrolleeData | null>(null);
 
-  const [selectedPlan, setSelectedPlan] = useState<'INDIVIDUAL' | 'FAMILY'>('INDIVIDUAL');
+  const [selectedPlan, setSelectedPlan] = useState<'INDIVIDUAL' | 'FAMILY' | 'EQUITY'>('INDIVIDUAL');
+  const [equityCategory, setEquityCategory] = useState('Pregnant Mother / Maternal Care');
   const [paying, setPaying] = useState(false);
-  const [paidResult, setPaidResult] = useState<{ policyId: string; fullName: string } | null>(null);
+  const [paidResult, setPaidResult] = useState<{ policyId: string; fullName: string; isEquity?: boolean } | null>(null);
 
   const handleLookup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -50,13 +51,15 @@ export default function InformalPaymentPage() {
         setEnrollee(null);
       } else {
         setEnrollee(data);
-        if (data.planType?.toLowerCase().includes('family') || data.dependents?.length > 0) {
+        if (data.isEquity || data.planType?.toLowerCase().includes('equity') || data.planType?.toLowerCase().includes('bhcpf')) {
+          setSelectedPlan('EQUITY');
+        } else if (data.planType?.toLowerCase().includes('family') || data.dependents?.length > 0) {
           setSelectedPlan('FAMILY');
         } else {
           setSelectedPlan('INDIVIDUAL');
         }
-        if (data.paymentStatus === 'PAID') {
-          setPaidResult({ policyId: data.policyId, fullName: data.fullName });
+        if (data.paymentStatus === 'PAID' || data.paymentStatus === 'WAIVED_SUBSIDIZED') {
+          setPaidResult({ policyId: data.policyId, fullName: data.fullName, isEquity: data.isEquity });
         }
       }
     } catch {
@@ -70,8 +73,11 @@ export default function InformalPaymentPage() {
     if (!enrollee) return;
     setPaying(true);
     setError(null);
-    const amount = selectedPlan === 'FAMILY' ? 50000 : 12000;
-    const ref = `PAY-PLS-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const isEquity = selectedPlan === 'EQUITY';
+    const amount = isEquity ? 0 : selectedPlan === 'FAMILY' ? 50000 : 12000;
+    const ref = isEquity
+      ? `EQUITY-PLS-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+      : `PAY-PLS-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
     try {
       const res = await fetch(`${API_URL}/api/public/pay/confirm`, {
@@ -81,16 +87,17 @@ export default function InformalPaymentPage() {
           contactId: enrollee.contactId,
           paymentReference: ref,
           amount,
+          equityCategory: isEquity ? equityCategory : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.message || 'Payment confirmation failed.');
       } else {
-        setPaidResult({ policyId: data.policyId, fullName: data.fullName });
+        setPaidResult({ policyId: data.policyId, fullName: data.fullName, isEquity });
       }
     } catch {
-      setError('Failed to confirm payment with the server.');
+      setError('Failed to confirm application with the server.');
     } finally {
       setPaying(false);
     }
@@ -119,9 +126,13 @@ export default function InformalPaymentPage() {
               ✓
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900 dark:text-white">Coverage Activated!</h2>
+              <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                {paidResult.isEquity ? 'Equity Application Filed!' : 'Coverage Activated!'}
+              </h2>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                Your annual premium has been confirmed and registered with Plateau State Government.
+                {paidResult.isEquity
+                  ? 'Your zero-cost Equity Program application has been registered with Plateau State Government for verification.'
+                  : 'Your annual premium has been confirmed and registered with Plateau State Government.'}
               </p>
             </div>
 
@@ -139,7 +150,17 @@ export default function InformalPaymentPage() {
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500 dark:text-slate-400">Plan Category:</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {selectedPlan === 'FAMILY' ? 'Informal Sector Family Plan (6 People)' : 'Informal Sector Individual Plan'}
+                  {selectedPlan === 'EQUITY'
+                    ? `Equity / BHCPF Free Plan (${equityCategory})`
+                    : selectedPlan === 'FAMILY'
+                    ? 'Informal Sector Family Plan (6 People)'
+                    : 'Informal Sector Individual Plan'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 dark:text-slate-400">Cost:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {selectedPlan === 'EQUITY' ? '₦0 (100% State Subsidized)' : selectedPlan === 'FAMILY' ? '₦50,000 / Year (PAID)' : '₦12,000 / Year (PAID)'}
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs">
@@ -163,7 +184,7 @@ export default function InformalPaymentPage() {
                 }}
                 className="w-full py-3 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
               >
-                ← Pay For Another Enrollee
+                ← Pay / Apply For Another Enrollee
               </button>
             </div>
           </div>
@@ -242,50 +263,104 @@ export default function InformalPaymentPage() {
                   <label className="block text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
                     Step 2: Select Coverage Plan
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div
                       onClick={() => setSelectedPlan('INDIVIDUAL')}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                      className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
                         selectedPlan === 'INDIVIDUAL'
                           ? 'border-[#74BA03] bg-[#74BA03]/10 shadow-sm'
                           : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                       }`}
                     >
-                      <div className="font-bold text-slate-900 dark:text-white text-sm">Individual Plan</div>
-                      <div className="text-xl font-black text-[#558A02] dark:text-[#74BA03] mt-1">₦12,000</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      <div className="font-bold text-slate-900 dark:text-white text-xs">Individual Plan</div>
+                      <div className="text-lg font-black text-[#558A02] dark:text-[#74BA03] mt-1">₦12,000</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                         1 Year Full Coverage for 1 person.
                       </div>
                     </div>
 
                     <div
                       onClick={() => setSelectedPlan('FAMILY')}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                      className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
                         selectedPlan === 'FAMILY'
                           ? 'border-[#74BA03] bg-[#74BA03]/10 shadow-sm'
                           : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                       }`}
                     >
-                      <div className="font-bold text-slate-900 dark:text-white text-sm">Family Plan (Up to 6)</div>
-                      <div className="text-xl font-black text-[#558A02] dark:text-[#74BA03] mt-1">₦50,000</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      <div className="font-bold text-slate-900 dark:text-white text-xs">Family Plan (Up to 6)</div>
+                      <div className="text-lg font-black text-[#558A02] dark:text-[#74BA03] mt-1">₦50,000</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                         Principal + Spouse + 4 Children.
                       </div>
                     </div>
+
+                    <div
+                      onClick={() => setSelectedPlan('EQUITY')}
+                      className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                        selectedPlan === 'EQUITY'
+                          ? 'border-emerald-500 bg-emerald-500/10 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-emerald-500" /> Equity / BHCPF
+                      </div>
+                      <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-1">₦0 Free</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                        100% State Subsidized for vulnerable persons.
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Equity Category Picker */}
+                  {selectedPlan === 'EQUITY' && (
+                    <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 space-y-2 animate-fadeIn">
+                      <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                        Select Qualifying Vulnerability Category:
+                      </label>
+                      <select
+                        value={equityCategory}
+                        onChange={(e) => setEquityCategory(e.target.value)}
+                        className="w-full p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-500/30 text-slate-900 dark:text-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="Pregnant Mother / Maternal Care">Pregnant Mother / Maternal Care</option>
+                        <option value="Child Under 5 Years">Child Under 5 Years</option>
+                        <option value="Senior Citizen (Aged 65+)">Senior Citizen (Aged 65+)</option>
+                        <option value="Person Living with Disability (PWD)">Person Living with Disability (PWD)</option>
+                        <option value="Orphan / Vulnerable Child">Orphan / Vulnerable Child</option>
+                        <option value="Indigent / Destitute Resident">Indigent / Destitute Resident</option>
+                      </select>
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                        Zero premium required. Our CRM desk will verify your eligibility and issue your Digital Card.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Step 4: Pay Button */}
+                {/* Step 4: Action Button */}
                 <div className="space-y-3 pt-2">
                   <button
                     onClick={handlePay}
                     disabled={paying}
-                    className="w-full py-4 px-6 rounded-2xl text-white font-black text-base shadow-lg bg-[#558A02] hover:bg-[#74BA03] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                    className={`w-full py-4 px-6 rounded-2xl text-white font-black text-base shadow-lg transition-all disabled:opacity-60 flex items-center justify-center gap-2 ${
+                      selectedPlan === 'EQUITY'
+                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                        : 'bg-[#558A02] hover:bg-[#74BA03]'
+                    }`}
                   >
-                    <CreditCard className="w-5 h-5" />
-                    {paying
-                      ? 'Processing Secure Payment…'
-                      : `Pay ₦${(selectedPlan === 'FAMILY' ? 50000 : 12000).toLocaleString()} via Paystack / Card / USSD`}
+                    {selectedPlan === 'EQUITY' ? (
+                      <>
+                        <ShieldCheck className="w-5 h-5" />
+                        {paying ? 'Submitting Free Application…' : 'Submit ₦0 Equity Application'}
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-5 h-5" />
+                        {paying
+                          ? 'Processing Secure Payment…'
+                          : `Pay ₦${(selectedPlan === 'FAMILY' ? 50000 : 12000).toLocaleString()} via Paystack / Card / USSD`}
+                      </>
+                    )}
                   </button>
 
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center flex items-center justify-center gap-1">
