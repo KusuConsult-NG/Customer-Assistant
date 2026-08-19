@@ -186,6 +186,11 @@ export function agentDefinition(spec: AgentSpec) {
       },
       tts: {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
+        modelId: 'eleven_turbo_v2',
+        agentOutputAudioFormat: 'pcm_44100',
+        stability: 0.5,
+        similarityBoost: 0.8,
+        speed: 1.0,
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
       },
       conversation: {
