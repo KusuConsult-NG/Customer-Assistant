@@ -79,13 +79,18 @@ const parseError = async (res: Response) => {
   return Array.isArray(message) ? message.join(" ") : message || `Request failed (${res.status})`;
 };
 
-const handleResponse = async (res: Response) => {
+const handleResponse = async (res: Response, retryFn?: () => Promise<Response>) => {
   if (!res.ok) {
-    const msg = await parseError(res);
     if (res.status === 401 && typeof window !== "undefined") {
+      const refreshed = await refreshSession();
+      if (refreshed && retryFn) {
+        const retryRes = await retryFn();
+        if (retryRes.ok) return retryRes.json();
+      }
       clearSession();
       window.location.replace("/login");
     }
+    const msg = await parseError(res);
     throw new Error(msg);
   }
   return res.json();
