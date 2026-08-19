@@ -24,11 +24,20 @@ type Stage = 'loading' | 'invalid' | 'ready' | 'captured' | 'uploading' | 'done'
 
 interface LinkInfo {
   firstName: string;
+  fullName?: string;
   organizationName: string;
   organizationLogoUrl: string | null;
   purpose: string | null;
+  planType?: string;
+  isFamilyPlan?: boolean;
   expiresAt: string;
   maxBytes: number;
+}
+
+interface Dependent {
+  fullName: string;
+  relationship: string;
+  dob?: string;
 }
 
 /** Longest edge of the uploaded image. Plenty for a face; a fraction of the bytes. */
@@ -44,6 +53,12 @@ export default function SelfieUploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Family Dependents state
+  const [showDependents, setShowDependents] = useState(false);
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [newDepName, setNewDepName] = useState('');
+  const [newDepRel, setNewDepRel] = useState('Spouse');
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -62,6 +77,9 @@ export default function SelfieUploadPage() {
           return;
         }
         setInfo(body);
+        if (body.isFamilyPlan) {
+          setShowDependents(true);
+        }
         setStage('ready');
       } catch {
         setError('We could not reach the server. Check your connection and try again.');
@@ -88,8 +106,6 @@ export default function SelfieUploadPage() {
         await videoRef.current.play().catch(() => {});
       }
     } catch {
-      // Denied, unavailable, or an in-app browser that blocks it. The file input
-      // still works, so this is a downgrade rather than a dead end.
       setCameraError('We could not open your camera. Use the button below to take a photo instead.');
     }
   }, []);
@@ -149,6 +165,20 @@ export default function SelfieUploadPage() {
     setStage('ready');
   };
 
+  const addDependent = () => {
+    if (!newDepName.trim()) return;
+    if (dependents.length >= 5) {
+      setError('Family plans cover a maximum of 5 dependents (Spouse + 4 children).');
+      return;
+    }
+    setDependents([...dependents, { fullName: newDepName.trim(), relationship: newDepRel }]);
+    setNewDepName('');
+  };
+
+  const removeDependent = (idx: number) => {
+    setDependents(dependents.filter((_, i) => i !== idx));
+  };
+
   const upload = async () => {
     if (!preview) return;
     setStage('uploading');
@@ -157,7 +187,10 @@ export default function SelfieUploadPage() {
       const res = await fetch(`${API_URL}/api/public/selfie/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: preview }),
+        body: JSON.stringify({
+          imageBase64: preview,
+          dependents: dependents.length > 0 ? dependents : undefined,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -172,25 +205,21 @@ export default function SelfieUploadPage() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+      <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-6 pb-4 text-center border-b border-slate-100 dark:border-slate-800">
-          {info?.organizationLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={info.organizationLogoUrl} alt="" className="h-8 mx-auto mb-3 object-contain" />
-          ) : null}
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-[#74BA03]/15 text-[#558A02] dark:text-[#74BA03] font-black text-base mb-2 border border-[#74BA03]/30">
+            PLS
+          </div>
           <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-            {stage === 'done' ? 'All done' : 'Take a quick selfie'}
+            {stage === 'done' ? 'Enrollment Received' : 'PLASCHEMA Photo & Verification'}
           </h1>
           {info && stage !== 'done' && (
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              {info.firstName ? `Hi ${info.firstName} — ` : ''}
-              {info.organizationName} needs a photo of you
-              {info.purpose ? ` for ${info.purpose}` : ''}.
+              {info.firstName ? `Hello ${info.firstName} — ` : ''}
+              Please take a clear selfie photo for your official PLASCHEMA Digital ID Card.
             </p>
           )}
         </div>
@@ -202,33 +231,53 @@ export default function SelfieUploadPage() {
 
           {stage === 'invalid' && (
             <div className="text-center space-y-3 py-6">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto text-2xl">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto text-2xl font-bold">
                 !
               </div>
-              <p className="text-sm text-slate-700 dark:text-slate-300">{error}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-300 font-semibold">{error}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Reply to the chat you received this from and we will send a new link.
+                Call the PLASCHEMA Helpline on <strong>0700-700-1111</strong> or WhatsApp us to get a new link.
               </p>
             </div>
           )}
 
           {stage === 'done' && (
-            <div className="text-center space-y-3 py-6">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl">
+            <div className="text-center space-y-4 py-4">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl font-bold border border-emerald-300 dark:border-emerald-500/30">
                 ✓
               </div>
-              <p className="text-sm text-slate-700 dark:text-slate-300">
-                Thank you — we have received your photo.
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                You can close this page. A member of the team will continue from here.
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">Photo &amp; Details Submitted!</h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  Your photo has been attached to your enrollment file. You can now complete your premium payment online.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#74BA03]/10 border border-[#74BA03]/30 text-left space-y-2">
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
+                  <span>Informal Sector Premium</span>
+                  <span className="text-[#558A02] dark:text-[#74BA03] font-black">₦12,000 / ₦50,000</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Instant activation upon online payment with immediate digital card issuance.
+                </p>
+                <a
+                  href="/pay/informal"
+                  className="block text-center w-full py-2.5 px-4 rounded-xl text-white font-bold text-xs shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
+                >
+                  Pay Premium Online Now →
+                </a>
+              </div>
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Emergency or inquiries? Call PLASCHEMA on <strong>0700-700-1111</strong>.
               </p>
             </div>
           )}
 
           {(stage === 'ready' || stage === 'captured' || stage === 'uploading') && (
             <>
-              <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[3/4]">
+              <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[3/4] shadow-inner">
                 {preview ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={preview} alt="Your photo" className="w-full h-full object-cover" />
@@ -238,7 +287,6 @@ export default function SelfieUploadPage() {
                     playsInline
                     muted
                     autoPlay
-                    // Mirrored so it behaves like a mirror, which is what people expect.
                     className="w-full h-full object-cover scale-x-[-1]"
                   />
                 )}
@@ -261,16 +309,16 @@ export default function SelfieUploadPage() {
                   {!cameraError && (
                     <button
                       onClick={capture}
-                      className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm"
+                      className="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
                     >
-                      Take photo
+                      Snap Photo
                     </button>
                   )}
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-sm"
+                    className="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
                   >
-                    {cameraError ? 'Take photo' : 'Choose from your phone'}
+                    {cameraError ? 'Snap Photo' : 'Upload From Phone'}
                   </button>
                   <input
                     ref={fileInputRef}
@@ -284,33 +332,99 @@ export default function SelfieUploadPage() {
               )}
 
               {(stage === 'captured' || stage === 'uploading') && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={retake}
-                    disabled={stage === 'uploading'}
-                    className="flex-1 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-sm disabled:opacity-50"
-                  >
-                    Retake
-                  </button>
-                  <button
-                    onClick={upload}
-                    disabled={stage === 'uploading'}
-                    className="flex-1 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-60"
-                  >
-                    {stage === 'uploading' ? 'Sending…' : 'Send photo'}
-                  </button>
+                <div className="space-y-3">
+                  {/* Family Dependents Section */}
+                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        Family Dependents ({dependents.length}/5)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDependents(!showDependents)}
+                        className="text-[11px] font-semibold text-[#558A02] dark:text-[#74BA03]"
+                      >
+                        {showDependents ? 'Hide' : '+ Add Family Member'}
+                      </button>
+                    </div>
+
+                    {showDependents && (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Full name (e.g. Mary Pam)"
+                            value={newDepName}
+                            onChange={(e) => setNewDepName(e.target.value)}
+                            className="flex-1 px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400"
+                          />
+                          <select
+                            value={newDepRel}
+                            onChange={(e) => setNewDepRel(e.target.value)}
+                            className="px-2 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                          >
+                            <option value="Spouse">Spouse</option>
+                            <option value="Child">Child</option>
+                            <option value="Ward">Ward</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={addDependent}
+                            className="px-3 py-1.5 rounded-xl bg-[#558A02] text-white text-xs font-bold"
+                          >
+                            Add
+                          </button>
+                        </div>
+
+                        {dependents.map((dep, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-xs border border-slate-200 dark:border-slate-800"
+                          >
+                            <span className="font-medium text-slate-800 dark:text-slate-200">
+                              {dep.fullName} <span className="text-slate-400">({dep.relationship})</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeDependent(i)}
+                              className="text-red-500 font-bold hover:text-red-600"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={retake}
+                      disabled={stage === 'uploading'}
+                      className="flex-1 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-sm disabled:opacity-50"
+                    >
+                      Retake
+                    </button>
+                    <button
+                      onClick={upload}
+                      disabled={stage === 'uploading'}
+                      className="flex-1 py-3 rounded-2xl text-white font-bold text-sm shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all disabled:opacity-60"
+                    >
+                      {stage === 'uploading' ? 'Sending…' : 'Submit Photo & Enrol'}
+                    </button>
+                  </div>
                 </div>
               )}
             </>
           )}
         </div>
 
-        {/* Anti-phishing footer. Anyone can send a link; say plainly what we never ask for. */}
+        {/* Footer */}
         {stage !== 'done' && stage !== 'invalid' && (
           <div className="px-6 pb-6">
             <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400 text-center">
-              We will never ask for your PIN, password, or card details on this page.
-              {info ? ` This link expires on ${new Date(info.expiresAt).toLocaleString()}.` : ''}
+              Plateau State Contributory Healthcare Management Agency (PLASCHEMA).
+              {info ? ` This photo link expires on ${new Date(info.expiresAt).toLocaleDateString()}.` : ''}
             </p>
           </div>
         )}

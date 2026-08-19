@@ -415,6 +415,7 @@ export class CrmService {
       preferredHospital: meta.preferredHospital || 'Accredited Primary Healthcare Provider',
       nin: meta.nin,
       photoUrl,
+      dependents: meta.dependents || undefined,
       issuedAt: meta.approvedAt ? new Date(meta.approvedAt).toLocaleDateString('en-NG') : new Date().toLocaleDateString('en-NG'),
       expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-NG'),
       organizationName: contact.organization?.name || 'PLASCHEMA',

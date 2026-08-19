@@ -28,6 +28,7 @@ export interface EnrolleeCardData {
   preferredHospital: string;
   nin?: string;
   photoUrl?: string;
+  dependents?: Array<{ fullName: string; relationship: string }>;
   issuedAt: string;
   expiresAt: string;
   organizationName?: string;
@@ -178,6 +179,19 @@ export class PdfGeneratorService {
             </div>
           </div>
         </div>
+
+        ${
+          data.dependents && data.dependents.length > 0
+            ? `
+        <div style="background: rgba(116, 186, 3, 0.08); border: 1px dashed rgba(116, 186, 3, 0.3); border-radius: 14px; padding: 10px 14px; margin-bottom: 16px; font-size: 11px;">
+          <div style="font-size: 9px; text-transform: uppercase; color: #74BA03; font-weight: 700; margin-bottom: 4px;">Covered Family Dependents (${data.dependents.length})</div>
+          <div style="color: #e2e8f0; font-size: 10px; line-height: 1.4;">
+            ${data.dependents.map((d) => `• <strong>${d.fullName}</strong> (${d.relationship})`).join('<br/>')}
+          </div>
+        </div>
+        `
+            : ''
+        }
 
         <div class="facility-box">
           <div class="facility-title">Primary Healthcare Provider (PHCP)</div>

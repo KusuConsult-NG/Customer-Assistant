@@ -109,8 +109,39 @@ export class PublicSelfieController {
   // connection; still far too tight to be useful as an open upload endpoint.
   @Throttle({ default: { limit: 15, ttl: 60_000 } })
   @Post(':token')
-  async submit(@Param('token') token: string, @Body() body: { imageBase64?: string }) {
+  async submit(
+    @Param('token') token: string,
+    @Body() body: { imageBase64?: string; dependents?: Array<{ fullName: string; relationship: string; dob?: string }> }
+  ) {
     if (!body?.imageBase64) throw new BadRequestException('No image was received. Please take the photo again.');
-    return this.onboarding.submitViaLink(token, body.imageBase64);
+    return this.onboarding.submitViaLink(token, body.imageBase64, body.dependents);
+  }
+}
+
+/** Public payment lookup & confirmation for PLASCHEMA enrollee premiums. */
+@Controller('api/public/pay')
+export class PublicPaymentController {
+  constructor(private readonly onboarding: OnboardingService) {}
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('lookup')
+  async lookup(@Body() body: { query: string }) {
+    return this.onboarding.lookupEnrolleeForPayment(body.query);
+  }
+
+  @Throttle({ default: { limit: 15, ttl: 60_000 } })
+  @Post('confirm')
+  async confirm(
+    @Body()
+    body: {
+      contactId: string;
+      paymentReference: string;
+      amount: number;
+    }
+  ) {
+    if (!body?.contactId || !body?.paymentReference || !body?.amount) {
+      throw new BadRequestException('contactId, paymentReference, and amount are required.');
+    }
+    return this.onboarding.confirmEnrolleePayment(body.contactId, body.paymentReference, body.amount);
   }
 }

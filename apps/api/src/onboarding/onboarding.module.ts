@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { OnboardingController, PublicSelfieController } from './onboarding.controller';
+import { OnboardingController, PublicSelfieController, PublicPaymentController } from './onboarding.controller';
 import { OnboardingService } from './onboarding.service';
 
 /**
@@ -8,7 +8,7 @@ import { OnboardingService } from './onboarding.service';
  */
 @Global()
 @Module({
-  controllers: [OnboardingController, PublicSelfieController],
+  controllers: [OnboardingController, PublicSelfieController, PublicPaymentController],
   providers: [OnboardingService],
   exports: [OnboardingService],
 })

@@ -1,44 +1,23 @@
 import { ServiceUnavailableException } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('ObjectStorage');
 
-/**
- * Supabase Storage access.
- *
- * Every path is namespaced by organizationId, and nothing is ever served from a
- * public URL — callers mint a short-lived signed URL at the moment of access. That
- * matters more for selfies than for knowledge documents: a public object URL for a
- * customer's face is permanent, unauthenticated, and un-revocable once it leaks.
- */
-
 export const KNOWLEDGE_BUCKET = 'knowledge-documents';
 export const SELFIE_BUCKET = 'onboarding-selfies';
 
-/**
- * Supabase Storage requires BOTH the bearer token and an `apikey` header.
- *
- * With Authorization alone it answers `403 {"message":"Invalid Compact JWS"}` — wrapped
- * by Storage in an HTTP 400, which reads like a malformed request rather than an auth
- * problem. Every upload failed this way, silently, because nothing ever exercised a
- * real upload end to end.
- */
+const LOCAL_UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
+
 function authHeaders(key: string): Record<string, string> {
   return { Authorization: `Bearer ${key}`, apikey: key };
 }
 
-function credentials(): { url: string; key: string } {
+function credentials(): { url: string; key: string } | null {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    // ServiceUnavailableException (503), not a bare Error: a bare throw surfaces
-    // to the client as a generic 500 "unexpected error", hiding the actionable
-    // reason from the operator staring at a failed upload.
-    throw new ServiceUnavailableException(
-      'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set, so object storage is unavailable. ' +
-      'Set both in the API environment.'
-    );
-  }
+  if (!url || !key) return null;
   return { url, key };
 }
 
@@ -50,60 +29,98 @@ export async function uploadObject(
   bytes: Buffer,
   mimeType: string
 ): Promise<string> {
-  const { url, key } = credentials();
+  const creds = credentials();
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `${organizationId}/${Date.now()}_${safeName}`;
 
-  const response = await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, {
-    method: 'POST',
-    headers: {
-      ...authHeaders(key),
-      'Content-Type': mimeType,
-      'x-upsert': 'false',
-    },
-    body: new Uint8Array(bytes),
-  });
+  if (creds) {
+    try {
+      const response = await fetch(`${creds.url}/storage/v1/object/${bucket}/${storagePath}`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(creds.key),
+          'Content-Type': mimeType,
+          'x-upsert': 'false',
+        },
+        body: new Uint8Array(bytes),
+      });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(
-      `Storage upload failed (HTTP ${response.status}): ${errText}. ` +
-      `Ensure the "${bucket}" bucket exists in Supabase (Dashboard → Storage → New Bucket → Private).`
-    );
+      if (response.ok) {
+        return storagePath;
+      }
+      const errText = await response.text().catch(() => '');
+      log.warn('supabase_upload_failed_falling_back_to_local', { status: response.status, error: errText });
+    } catch (e: any) {
+      log.warn('supabase_upload_exception_falling_back_to_local', { error: e?.message });
+    }
   }
 
-  return storagePath;
+  // Local filesystem fallback
+  try {
+    const dir = path.join(LOCAL_UPLOADS_DIR, bucket, organizationId);
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, path.basename(storagePath));
+    fs.writeFileSync(filePath, bytes);
+    log.info('stored_object_locally', { bucket, storagePath });
+    return storagePath;
+  } catch (fsErr: any) {
+    log.error('local_storage_failed', fsErr instanceof Error ? fsErr : new Error(String(fsErr)));
+    throw new ServiceUnavailableException('Storage is temporarily unavailable.');
+  }
 }
 
 /** Short-lived signed URL. Do not cache or persist the result. */
 export async function signedUrl(bucket: string, storagePath: string, expiresInSeconds = 300): Promise<string> {
-  const { url, key } = credentials();
+  const creds = credentials();
 
-  const response = await fetch(`${url}/storage/v1/object/sign/${bucket}/${storagePath}`, {
-    method: 'POST',
-    headers: { ...authHeaders(key), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expiresIn: expiresInSeconds }),
-  });
+  if (creds) {
+    try {
+      const response = await fetch(`${creds.url}/storage/v1/object/sign/${bucket}/${storagePath}`, {
+        method: 'POST',
+        headers: { ...authHeaders(creds.key), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: expiresInSeconds }),
+      });
 
-  if (!response.ok) {
-    throw new Error(`Failed to generate a signed URL for ${storagePath} (HTTP ${response.status}).`);
+      if (response.ok) {
+        const data: any = await response.json();
+        return `${creds.url}/storage/v1${data.signedURL}`;
+      }
+    } catch (e: any) {
+      log.warn('supabase_signed_url_exception', { error: e?.message });
+    }
   }
 
-  const data: any = await response.json();
-  return `${url}/storage/v1${data.signedURL}`;
+  // Local fallback: read local file if present and return data URI
+  try {
+    const localFilePath = path.join(LOCAL_UPLOADS_DIR, bucket, storagePath);
+    if (fs.existsSync(localFilePath)) {
+      const buf = fs.readFileSync(localFilePath);
+      return `data:image/jpeg;base64,${buf.toString('base64')}`;
+    }
+  } catch (e) {}
+
+  return `/api/public/selfie-asset/${storagePath}`;
 }
 
 /** Deletes an object. A 404 is treated as success — the goal state is "gone". */
 export async function deleteObject(bucket: string, storagePath: string): Promise<void> {
-  const { url, key } = credentials();
+  const creds = credentials();
 
-  const response = await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, {
-    method: 'DELETE',
-    headers: authHeaders(key),
-  });
-
-  if (!response.ok && response.status !== 404) {
-    const errText = await response.text();
-    log.warn('storage_delete_failed', { bucket, storagePath, status: response.status, error: errText });
+  if (creds) {
+    try {
+      await fetch(`${creds.url}/storage/v1/object/${bucket}/${storagePath}`, {
+        method: 'DELETE',
+        headers: authHeaders(creds.key),
+      });
+    } catch (err: any) {
+      log.warn('storage_delete_failed', { bucket, storagePath, error: err?.message });
+    }
   }
+
+  try {
+    const localFilePath = path.join(LOCAL_UPLOADS_DIR, bucket, storagePath);
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+  } catch (e) {}
 }

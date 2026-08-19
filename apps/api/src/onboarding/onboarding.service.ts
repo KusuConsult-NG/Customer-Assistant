@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { SELFIE_MAX_UPLOAD_ATTEMPTS, createSelfieRequest, hashSelfieToken, prisma, selfieUploadUrl, withWhatsAppCredentials } from '@ace/database';
+import { SELFIE_MAX_UPLOAD_ATTEMPTS, createSelfieRequest, hashSelfieToken, prisma, selfieUploadUrl, withWhatsAppCredentials, phoneNumberVariants } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { MessageSender } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
@@ -102,14 +102,17 @@ export class OnboardingService {
     const firstName = contact.fullName.split(' ')[0] || 'there';
     const reason = purpose ? ` for ${purpose}` : '';
 
+    const webBase = (process.env.WEB_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const payUrl = `${webBase}/pay/informal`;
+
     const body =
       channel === 'WHATSAPP'
         ? `Hi ${firstName}, welcome to PLASCHEMA! To finish setting up your healthcare coverage${reason}, please complete your photo upload:\n\n` +
-          `📷 Take your selfie here:\n${uploadUrl}\n\n` +
-          `💳 Informal Sector Payment:\nhttps://enrollments.plaschema.app/pay/informal\n\n` +
+          `📷 Take your selfie & add family members here:\n${uploadUrl}\n\n` +
+          `💳 Pay Informal Sector Premium (₦12,000 / ₦50,000):\n${payUrl}\n\n` +
           `Helpline: 0700-700-1111 (Plateau State Contributory Healthcare Agency)`
-        : `Hi ${firstName}, welcome to PLASCHEMA! To complete your health coverage${reason}, please upload your selfie here:\n${uploadUrl}\n\n` +
-          `Payment link: https://enrollments.plaschema.app/pay/informal\n` +
+        : `Hi ${firstName}, welcome to PLASCHEMA! To complete your health coverage${reason}, please upload your selfie:\n${uploadUrl}\n\n` +
+          `Online Payment: ${payUrl}\n` +
           `Helpline: 0700-700-1111`;
 
     // 1. Try WhatsApp first
@@ -233,7 +236,7 @@ export class OnboardingService {
 
     const request = await prisma.selfieRequest.findUnique({
       where: { tokenHash: hashSelfieToken(token) },
-      include: { contact: { select: { fullName: true } }, organization: { select: { name: true, logoUrl: true } } },
+      include: { contact: { select: { fullName: true, metadata: true } }, organization: { select: { name: true, logoUrl: true } } },
     });
     if (!request) throw new NotFoundException('This upload link is not valid.');
 
@@ -260,19 +263,27 @@ export class OnboardingService {
   /** What the public upload page needs to render. Deliberately minimal. */
   async describeUploadLink(token: string) {
     const request = await this.resolveToken(token);
+    const meta = (request.contact.metadata as Record<string, any>) || {};
     return {
       // First name only: the page is reachable by anyone holding the link.
       firstName: request.contact.fullName.split(' ')[0] ?? '',
+      fullName: request.contact.fullName,
       organizationName: request.organization.name,
       organizationLogoUrl: request.organization.logoUrl ?? null,
       purpose: request.purpose,
+      planType: meta.planType || 'Healthcare Plan',
+      isFamilyPlan: (meta.planType || '').toLowerCase().includes('family') || (meta.planType || '').toLowerCase().includes('informal'),
       expiresAt: request.expiresAt,
       maxBytes: MAX_IMAGE_BYTES,
     };
   }
 
-  /** Accepts an upload from the public page. */
-  async submitViaLink(token: string, imageBase64: string) {
+  /** Accepts an upload from the public page with optional family dependents. */
+  async submitViaLink(
+    token: string,
+    imageBase64: string,
+    dependents?: Array<{ fullName: string; relationship: string; dob?: string }>
+  ) {
     const request = await this.resolveToken(token);
 
     // Count the attempt before validating, so a loop of malformed uploads still
@@ -297,7 +308,33 @@ export class OnboardingService {
 
     await this.store(request.id, request.organizationId, request.contactId, bytes, inspection.mimeType!, 'WEB');
 
-    return { accepted: true, message: 'Thank you — we have received your photo.' };
+    // If dependents were provided, store them in contact metadata
+    if (Array.isArray(dependents) && dependents.length > 0) {
+      const contact = await prisma.contact.findUnique({ where: { id: request.contactId } });
+      if (contact) {
+        const meta = (contact.metadata as Record<string, any>) || {};
+        await prisma.contact.update({
+          where: { id: contact.id },
+          data: {
+            metadata: {
+              ...meta,
+              dependents,
+              enrollmentStatus: 'PENDING_REVIEW',
+            },
+          },
+        });
+        await prisma.note
+          .create({
+            data: {
+              contactId: contact.id,
+              content: `Family members registered: ${dependents.map((d) => `${d.fullName} (${d.relationship})`).join(', ')}`,
+            },
+          })
+          .catch(() => {});
+      }
+    }
+
+    return { accepted: true, message: 'Thank you — your photo and registration details have been received.' };
   }
 
   /** Persists the image and closes the request. */
@@ -415,5 +452,90 @@ export class OnboardingService {
 
     log.info('selfie_deleted', { organizationId, requestId, hadImage: Boolean(request.storagePath) });
     return { deleted: true, imageRemoved: Boolean(request.storagePath) };
+  }
+
+  // ── Public Online Payment Processing ─────────────────────────────────────
+  async lookupEnrolleeForPayment(query: string) {
+    if (!query || query.trim().length < 3) {
+      throw new BadRequestException('Please provide a valid phone number or reference ID.');
+    }
+    const q = query.trim();
+    const contact = await prisma.contact.findFirst({
+      where: {
+        OR: [
+          { phoneNumber: { in: phoneNumberVariants(q) } },
+          { id: { startsWith: q.toLowerCase() } },
+        ],
+      },
+      include: {
+        selfieRequests: { where: { status: 'RECEIVED' }, orderBy: { updatedAt: 'desc' }, take: 1 },
+      },
+    });
+
+    if (!contact) {
+      throw new NotFoundException('No enrollee found with that phone number or reference ID.');
+    }
+
+    const meta = (contact.metadata as Record<string, any>) || {};
+    const planType = meta.planType || 'Informal Sector Individual Plan';
+    const isFamily = planType.toLowerCase().includes('family');
+    const amount = isFamily ? 50000 : 12000;
+    const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+
+    return {
+      contactId: contact.id,
+      fullName: contact.fullName,
+      phoneNumber: contact.phoneNumber,
+      planType,
+      lga: meta.lga || contact.city || 'Plateau State',
+      preferredHospital: meta.preferredHospital || 'General Hospital Jos',
+      policyId,
+      amount,
+      paymentStatus: meta.paymentStatus || 'PENDING',
+      enrollmentStatus: meta.enrollmentStatus || (contact.tags.includes('enrolled-active') ? 'ENROLLED_ACTIVE' : 'PENDING_REVIEW'),
+      hasPhoto: contact.selfieRequests.length > 0,
+      dependents: meta.dependents || [],
+    };
+  }
+
+  async confirmEnrolleePayment(contactId: string, paymentReference: string, amount: number) {
+    const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+    if (!contact) throw new NotFoundException('Enrollee not found.');
+
+    const meta = (contact.metadata as Record<string, any>) || {};
+    const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: {
+        tags: Array.from(new Set([...(contact.tags || []), 'enrolled-active', 'paid-enrollee'])),
+        metadata: {
+          ...meta,
+          policyId,
+          paymentStatus: 'PAID',
+          paidAmount: amount,
+          paymentReference,
+          paidAt: new Date().toISOString(),
+          enrollmentStatus: 'ENROLLED_ACTIVE',
+        },
+      },
+    });
+
+    await prisma.note
+      .create({
+        data: {
+          contactId: contact.id,
+          content: `Online Premium Payment Confirmed: ₦${amount.toLocaleString()} (Ref: ${paymentReference}). Policy ID issued: ${policyId}`,
+        },
+      })
+      .catch(() => {});
+
+    return {
+      success: true,
+      policyId,
+      fullName: contact.fullName,
+      status: 'ENROLLED_ACTIVE',
+      message: `Premium payment of ₦${amount.toLocaleString()} confirmed. Policy ID: ${policyId}`,
+    };
   }
 }
