@@ -399,41 +399,39 @@ export default function DashboardPage() {
               value={aiResolutionRate === null
                 ? 'No tickets recorded yet'
                 : `${aiResolutionRate}% of support tickets resolved`}
-              color="bg-emerald-500"
+              color="bg-[#74BA03]"
             />
             <ProgressMetric
-              label="AI Reply Share"
+              label="Helpline AI Reply Share"
               percentage={aiReplyRate ?? 'N/A'}
               value={aiReplyRate === null
                 ? 'No messages recorded yet'
-                : `${aiReplyRate}% of all replies written by AI`}
-              color="bg-indigo-500"
+                : `${aiReplyRate}% of all replies handled by Sarah`}
+              color="bg-[#558A02]"
             />
             <ProgressMetric
               label="Knowledge Retrieval Accuracy"
               percentage={'N/A'}
               value="Not measured — retrieval scoring is not instrumented"
-              color="bg-purple-500"
+              color="bg-[#74BA03]"
             />
             <ProgressMetric
-              label="Human Handover Rate"
+              label="Human Desk Handover Rate"
               percentage={handoverRate ?? 'N/A'}
               value={handoverRate === null
                 ? 'No conversations recorded yet'
-                : `${handoverRate}% of conversations escalated to a human`}
+                : `${handoverRate}% of conversations escalated to a desk officer`}
               color="bg-amber-500"
             />
           </div>
 
-          <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-gradient-to-r from-[#74BA03]/10 to-[#558A02]/10 border border-[#74BA03]/30 dark:border-[#74BA03]/20 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${dashboardData ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
+              <div className={`w-3 h-3 rounded-full ${dashboardData ? 'bg-[#74BA03] animate-ping' : 'bg-amber-500'}`} />
               <div>
-                {/* Reflects whether analytics actually loaded. This used to read
-                    "System Status: Optimal" unconditionally — including while the API
-                    was unreachable and every tile showed zero. */}
+                {/* Reflects whether analytics actually loaded. */}
                 <p className="text-xs font-bold text-slate-900 dark:text-white">
-                  {dashboardData ? 'Analytics: Connected' : 'Analytics: Unavailable'}
+                  {dashboardData ? 'Helpline Analytics: Connected' : 'Analytics: Unavailable'}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   {dashboardData
@@ -551,17 +549,17 @@ export default function DashboardPage() {
         {/* Quick Launch & System Shortcuts */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
-            <Layers className="w-4 h-4 text-purple-500" /> Platform Shortcuts
+            <Layers className="w-4 h-4 text-[#74BA03]" /> Helpline Shortcuts
           </h3>
 
           <div className="space-y-2">
             {[
-              { label: 'Agent Console', href: '/agent-console', desc: 'Real-time conversation management', color: 'text-indigo-600 dark:text-indigo-400' },
-              { label: 'CRM Pipeline', href: '/crm', desc: 'Manage contacts, leads & deals', color: 'text-purple-600 dark:text-purple-400' },
-              { label: 'Knowledge Base', href: '/knowledge', desc: 'Sync website & upload documents', color: 'text-emerald-600 dark:text-emerald-400' },
-              { label: 'Voice AI Telephony', href: '/telephony', desc: 'Configure carrier & demo call', color: 'text-amber-600 dark:text-amber-400' },
-              { label: 'Scheduling', href: '/scheduling', desc: 'Manage bookings & reservations', color: 'text-cyan-600 dark:text-cyan-400' },
-              { label: 'Settings & Integrations', href: '/settings', desc: 'WhatsApp & Voice credentials', color: 'text-pink-600 dark:text-pink-400' },
+              { label: 'Agent Console', href: '/agent-console', desc: 'Real-time conversation management', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Enrollee Database', href: '/crm', desc: 'Manage beneficiaries & contacts', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Knowledge Base', href: '/knowledge', desc: 'Healthcare plans & facility directory', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Helpline & Telephony', href: '/telephony', desc: 'Carrier setup & test call', color: 'text-amber-600 dark:text-amber-400' },
+              { label: 'Appointments', href: '/scheduling', desc: 'Enrolment clinic bookings', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'System Settings', href: '/settings', desc: 'Helpline credentials & prompt', color: 'text-slate-600 dark:text-slate-400' },
             ].map(s => (
               <Link
                 key={s.href}
@@ -572,7 +570,7 @@ export default function DashboardPage() {
                   <p className={`text-xs font-bold ${s.color}`}>{s.label}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.desc}</p>
                 </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-slate-900 dark:hover:text-white transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#74BA03] dark:group-hover:text-white transition-colors" />
               </Link>
             ))}
           </div>

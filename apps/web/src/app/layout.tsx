@@ -218,10 +218,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {!mounted ? (
           <div className="flex min-h-screen items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 animate-pulse">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shadow-[#74BA03]/30 animate-pulse" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
-              <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+              <div className="w-6 h-6 rounded-full border-2 border-[#74BA03] border-t-transparent animate-spin" />
             </div>
           </div>
         ) : isAuthPage ? (
@@ -231,8 +231,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         ) : (
           <div className="flex h-screen overflow-hidden relative">
             {/* Ambient Background Glows */}
-            <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 dark:bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 dark:bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#74BA03]/10 dark:bg-[#558A02]/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#558A02]/10 dark:bg-[#74BA03]/5 rounded-full blur-3xl pointer-events-none" />
 
             {/* Sidebar Mobile Overlay */}
             {sidebarOpen && (
@@ -278,9 +278,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     : 'bg-slate-100/80 border-slate-200'
                 }`}>
                   <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                    <Building2 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                    <Building2 className="w-4 h-4 text-[#74BA03] flex-shrink-0" />
                     <span className={`text-xs font-semibold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
-                      {user?.organizationName || 'My Organization'}
+                      {user?.organizationName || 'PLASCHEMA'}
                     </span>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2 border border-emerald-500/20">LIVE</span>
@@ -358,19 +358,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     onClick={toggleTheme}
                     className={`p-2 rounded-xl border transition-all flex items-center gap-2 text-xs font-semibold ${
                       theme === 'dark'
-                        ? 'bg-slate-800/80 border-slate-700 text-amber-300 hover:bg-slate-700'
-                        : 'bg-slate-100 border-slate-300 text-indigo-600 hover:bg-slate-200'
+                        ? 'bg-slate-800/80 border-slate-700 text-[#74BA03] hover:bg-slate-700'
+                        : 'bg-slate-100 border-slate-300 text-[#558A02] hover:bg-slate-200'
                     }`}
                     title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                   >
                     {theme === 'dark' ? (
                       <>
-                        <Sun className="w-4 h-4 text-amber-400" />
+                        <Sun className="w-4 h-4 text-[#74BA03]" />
                         <span className="hidden sm:inline text-slate-200">Light Mode</span>
                       </>
                     ) : (
                       <>
-                        <Moon className="w-4 h-4 text-indigo-600" />
+                        <Moon className="w-4 h-4 text-[#558A02]" />
                         <span className="hidden sm:inline text-slate-700">Dark Mode</span>
                       </>
                     )}
@@ -387,7 +387,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       onClick={() => setShowNotifications(!showNotifications)}
                     >
                       <Bell className="w-4 h-4" />
-                      {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-indigo-500" />}
+                      {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#74BA03] ring-2 ring-[#558A02]" />}
                     </button>
                     {showNotifications && (
                       <div className={`absolute right-0 mt-2 w-80 border rounded-2xl shadow-2xl z-50 backdrop-blur-2xl ${
@@ -397,15 +397,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       }`}>
                         <div className="p-4 border-b border-slate-700/50 flex justify-between items-center">
                           <span className="text-sm font-bold">Notifications</span>
-                          <button onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))} className="text-xs text-indigo-500 hover:underline font-semibold">Mark all read</button>
+                          <button onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))} className="text-xs text-[#74BA03] hover:underline font-semibold">Mark all read</button>
                         </div>
                         <div className="max-h-72 overflow-y-auto">
                           {notifications.length === 0 ? (
                             <div className="p-6 text-sm text-slate-400 text-center">No new notifications</div>
                           ) : (
                             notifications.map((n, i) => (
-                              <div key={i} className="p-3.5 border-b border-slate-700/30 flex items-start gap-3 hover:bg-indigo-500/5">
-                                <div className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 flex-shrink-0" style={{ opacity: n.read ? 0.3 : 1 }} />
+                              <div key={i} className="p-3.5 border-b border-slate-700/30 flex items-start gap-3 hover:bg-[#74BA03]/5">
+                                <div className="w-2 h-2 mt-1.5 rounded-full bg-[#74BA03] flex-shrink-0" style={{ opacity: n.read ? 0.3 : 1 }} />
                                 <div>
                                   <div className="text-xs font-medium">{n.text}</div>
                                   <div className="text-[10px] text-slate-400 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</div>
@@ -418,7 +418,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     )}
                   </div>
 
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center text-xs shadow-md">
+                  <div className="w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center text-xs shadow-md" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
                     {initials}
                   </div>
                 </div>
@@ -445,8 +445,8 @@ function SidebarLink({ href, icon, label, pathname, theme, onClick }: { href: st
       className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
         isActive
           ? theme === 'dark'
-            ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 shadow-md shadow-indigo-500/10'
-            : 'bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-sm'
+            ? 'bg-[#74BA03]/20 text-[#74BA03] border border-[#74BA03]/30 shadow-md shadow-[#74BA03]/10'
+            : 'bg-emerald-50 text-[#558A02] border border-[#74BA03]/30 shadow-sm'
           : theme === 'dark'
             ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border border-transparent'
             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
@@ -454,8 +454,8 @@ function SidebarLink({ href, icon, label, pathname, theme, onClick }: { href: st
     >
       <span className={`transition-transform duration-200 group-hover:scale-110 ${
         isActive 
-          ? 'text-indigo-500 dark:text-indigo-400' 
-          : 'text-slate-400 group-hover:text-indigo-500'
+          ? 'text-[#74BA03] dark:text-[#74BA03]' 
+          : 'text-slate-400 group-hover:text-[#74BA03]'
       }`}>
         {icon}
       </span>
