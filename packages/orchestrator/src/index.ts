@@ -568,7 +568,8 @@ export class QdrantRAGService {
     topK: number
   ): Promise<QdrantSearchResult[]> {
     try {
-      const docChunks = await prisma.documentChunk.findMany({
+      // First try exact phrase match
+      let docChunks = await prisma.documentChunk.findMany({
         where: {
           organizationId,
           content: { contains: query, mode: 'insensitive' },
@@ -576,6 +577,28 @@ export class QdrantRAGService {
         take: topK,
         orderBy: { chunkIndex: 'asc' },
       });
+
+      // Fallback: if no exact phrase match, search for meaningful keywords (≥4 chars)
+      // using OR — any chunk containing at least one keyword is a candidate.
+      if (docChunks.length === 0) {
+        const stopWords = new Set(['what', 'does', 'how', 'much', 'the', 'for', 'and', 'that', 'this', 'with', 'have', 'will', 'are', 'can', 'from', 'your', 'which', 'about', 'into', 'than', 'more', 'also']);
+        const keywords = query
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .split(/\s+/)
+          .filter((w) => w.length >= 4 && !stopWords.has(w));
+
+        if (keywords.length > 0) {
+          docChunks = await prisma.documentChunk.findMany({
+            where: {
+              organizationId,
+              OR: keywords.map((kw) => ({ content: { contains: kw, mode: 'insensitive' } })),
+            },
+            take: topK,
+            orderBy: { chunkIndex: 'asc' },
+          });
+        }
+      }
 
       return docChunks.map((chunk: any, idx: number) => ({
         chunkId: chunk.id,
