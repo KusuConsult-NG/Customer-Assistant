@@ -234,7 +234,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Use this key in the <code className="text-blue-600 dark:text-blue-400">Authorization: Bearer sk-ace-...</code> header to call the Customer Care Agent REST API.
+                  Use this key in the <code className="text-[#558A02] dark:text-[#74BA03]">Authorization: Bearer sk-plaschema-...</code> header to call the PLASCHEMA REST API.
                 </p>
               </div>
             </div>

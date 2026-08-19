@@ -173,10 +173,10 @@ export default function TelephonyPage() {
             onClick={() => {
               setActiveLiveCall({
                 callSid: `WEB_CALL_${Date.now()}`,
-                toNumber: 'Kusu Consult Web Voice Support',
+                toNumber: 'PLASCHEMA 0700-700-1111 Helpline Voice Support',
                 status: 'RINGING',
                 transcript: [
-                  { speaker: 'AI', text: "Hello! Welcome to Kusu Consult Customer Care. My name is Alex. How can I assist you today?", time: '00:01' }
+                  { speaker: 'AI', text: "Hello! Welcome to the PLASCHEMA Helpline — Plateau State Contributory Healthcare Management Agency. My name is Sarah. How can I assist you with your health coverage today?", time: '00:01' }
                 ]
               });
               setTimeout(() => {
@@ -452,8 +452,8 @@ export default function TelephonyPage() {
                 {activeLiveCall.transcript.map((t, idx) => (
                   <div key={idx} className="flex flex-col space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                      <span className={t.speaker === 'AI' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
-                        {t.speaker === 'AI' ? 'AI Voice Agent (Alex)' : 'Customer'}
+                      <span className={t.speaker === 'AI' ? 'text-[#558A02] dark:text-[#74BA03] font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
+                        {t.speaker === 'AI' ? 'AI Helpline Officer (Sarah)' : 'Enrollee'}
                       </span>
                       <span>{t.time}</span>
                     </div>

@@ -154,7 +154,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md space-y-6 py-6">
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Create Account</h2>
-            <p className="text-slate-600 dark:text-slate-400">Join thousands of businesses growing with Customer Care Agent</p>
+            <p className="text-slate-600 dark:text-slate-400">Register as a PLASCHEMA official or healthcare provider desk</p>
           </div>
 
           {status === 'success' && (

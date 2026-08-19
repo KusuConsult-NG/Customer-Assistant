@@ -232,10 +232,10 @@ export default function BillingPage() {
             </div>
             <div>
               <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                Billing & Subscription Plans
+                Billing &amp; Subscription Plans
               </h1>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-                Scale your AI Customer Care operations with high-throughput WhatsApp and Voice AI infrastructure.
+                Manage your agency voice telephony capacity and WhatsApp helpline infrastructure.
               </p>
             </div>
           </div>
