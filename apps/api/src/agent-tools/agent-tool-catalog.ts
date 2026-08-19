@@ -248,11 +248,12 @@ export function agentToolCatalog(
 
     'register-enrollee': build(
       'register-enrollee',
-      'Register a new PLASCHEMA enrollee online. Call this once you have collected the caller\'s full name, LGA, plan type, and optionally NIN. The tool creates their official registration record and automatically delivers a secure selfie upload link to their WhatsApp so they can complete photo capture online without an office visit.',
+      'Register a new PLASCHEMA enrollee online. Call this once you have collected the caller\'s full name, LGA, plan type, preferred primary healthcare facility (hospital/clinic), and optionally NIN. The tool creates their official registration record and automatically delivers a secure selfie upload link and payment info to their WhatsApp/SMS so they can complete photo capture online without an office visit.',
       {
         phoneNumber: callerPhone,
         fullName: askedOf('string', "The caller's full name as they stated it."),
         lga: askedOf('string', 'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu).'),
+        preferredHospital: askedOf('string', 'The primary hospital or healthcare facility in their LGA where they prefer to access care.'),
         nin: askedOf('string', "The caller's National Identification Number (NIN), if provided."),
         planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
         notes: askedOf('string', 'Any additional notes, such as family size or employer name.'),

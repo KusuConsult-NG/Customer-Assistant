@@ -104,58 +104,98 @@ export class OnboardingService {
 
     const body =
       channel === 'WHATSAPP'
-        ? `Hi ${firstName}, to finish setting up your account${reason} we need a quick selfie.\n\n` +
-          `You can reply to this chat with a photo of yourself, or use this secure link:\n${uploadUrl}\n\n` +
-          `The link works once and expires soon. We will never ask you for your PIN or password.`
-        : `Hi ${firstName}, thanks for your call. To finish setting up your account${reason} we need a quick selfie.\n\n` +
-          `Please use this secure link:\n${uploadUrl}\n\n` +
-          `The link works once and expires soon. We will never ask you for your PIN or password.`;
+        ? `Hi ${firstName}, welcome to PLASCHEMA! To finish setting up your healthcare coverage${reason}, please complete your photo upload:\n\n` +
+          `📷 Take your selfie here:\n${uploadUrl}\n\n` +
+          `💳 Informal Sector Payment:\nhttps://enrollments.plaschema.app/pay/informal\n\n` +
+          `Helpline: 0700-700-1111 (Plateau State Contributory Healthcare Agency)`
+        : `Hi ${firstName}, welcome to PLASCHEMA! To complete your health coverage${reason}, please upload your selfie here:\n${uploadUrl}\n\n` +
+          `Payment link: https://enrollments.plaschema.app/pay/informal\n` +
+          `Helpline: 0700-700-1111`;
 
+    // 1. Try WhatsApp first
     const config = withWhatsAppCredentials(
       await prisma.whatsAppConfig.findFirst({ where: { organizationId, isActive: true } })
     );
-    if (!config?.phoneNumberId || !config?.accessToken) {
-      return {
-        delivered: false,
-        via: null,
-        note:
-          'WhatsApp is not configured for this organization, so the customer was not messaged. ' +
-          'Send them the upload link yourself, or configure WhatsApp under Settings → Integrations.',
-      };
-    }
 
-    try {
-      const client = new WhatsAppCloudClient({
-        phoneNumberId: config.phoneNumberId,
-        accessToken: config.accessToken,
-        verifyToken: config.webhookVerifyToken ?? '',
-      });
-      await client.sendTextMessage(contact.phoneNumber, body);
+    if (config?.phoneNumberId && config?.accessToken) {
+      try {
+        const client = new WhatsAppCloudClient({
+          phoneNumberId: config.phoneNumberId,
+          accessToken: config.accessToken,
+          verifyToken: config.webhookVerifyToken ?? '',
+        });
+        await client.sendTextMessage(contact.phoneNumber, body);
 
-      // Mirror it into the transcript so the agent sees what the customer was asked.
-      const conversation = await prisma.conversation.findFirst({
-        where: { organizationId, contactId: contact.id },
-        orderBy: { updatedAt: 'desc' },
-      });
-      if (conversation) {
-        await prisma.message.create({
-          data: {
-            conversationId: conversation.id,
-            sender: MessageSender.SYSTEM,
-            content: body,
-          },
-        }).catch(() => {});
+        // Mirror into conversation transcript
+        const conversation = await prisma.conversation.findFirst({
+          where: { organizationId, contactId: contact.id },
+          orderBy: { updatedAt: 'desc' },
+        });
+        if (conversation) {
+          await prisma.message
+            .create({
+              data: {
+                conversationId: conversation.id,
+                sender: MessageSender.SYSTEM,
+                content: body,
+              },
+            })
+            .catch(() => {});
+        }
+
+        return { delivered: true, via: 'WHATSAPP', note: 'Sent via WhatsApp.' };
+      } catch (err: any) {
+        log.warn('whatsapp_delivery_failed_falling_back_to_sms', {
+          organizationId,
+          requestId,
+          error: err?.message,
+        });
       }
-
-      return { delivered: true, via: 'WHATSAPP', note: 'Sent on WhatsApp.' };
-    } catch (err: any) {
-      log.warn('selfie_request_delivery_failed', { organizationId, requestId, error: err?.message });
-      return {
-        delivered: false,
-        via: null,
-        note: `WhatsApp delivery failed: ${err?.message ?? 'unknown error'}. Share the upload link manually.`,
-      };
     }
+
+    // 2. Fallback to SMS via Twilio if WhatsApp failed or is not configured
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+
+    if (twilioSid && twilioToken && twilioFrom) {
+      try {
+        const params = new URLSearchParams({
+          To: contact.phoneNumber,
+          From: twilioFrom,
+          Body: body,
+        });
+
+        const authHeader = 'Basic ' + Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
+        const smsRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: authHeader,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params.toString(),
+          }
+        );
+
+        if (smsRes.ok) {
+          log.info('selfie_link_sent_via_sms', { organizationId, contactId: contact.id, to: contact.phoneNumber });
+          return { delivered: true, via: 'SMS' as any, note: 'Sent via SMS.' };
+        } else {
+          const errDetail = await smsRes.text().catch(() => '');
+          log.warn('twilio_sms_delivery_failed', { status: smsRes.status, detail: errDetail });
+        }
+      } catch (smsErr: any) {
+        log.warn('sms_delivery_exception', { error: smsErr?.message });
+      }
+    }
+
+    return {
+      delivered: false,
+      via: null,
+      note: 'WhatsApp and SMS dispatch were unavailable. Link generated for manual share.',
+    };
   }
 
   // ── Receiving ─────────────────────────────────────────────────────────────

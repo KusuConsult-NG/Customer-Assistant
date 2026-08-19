@@ -122,6 +122,16 @@ export class CrmController {
     return this.crmService.getContactById(id, req.user.organizationId);
   }
 
+  @Get('contacts/:id/digital-card')
+  async getDigitalCard(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    return this.crmService.getDigitalCardData(id, req.user.organizationId);
+  }
+
+  @Post('contacts/:id/approve-enrollee')
+  async approveEnrollee(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    return this.crmService.approveEnrollee(id, req.user.organizationId);
+  }
+
   @Get('deals/:id/quotation')
   async getQuotation(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.getQuotationData(id, req.user.organizationId);

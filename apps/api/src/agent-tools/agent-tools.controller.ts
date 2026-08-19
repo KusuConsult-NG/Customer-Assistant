@@ -117,6 +117,7 @@ export class AgentToolsController {
       lga: string;
       nin?: string;
       planType: string;
+      preferredHospital?: string;
       notes?: string;
     }
   ): Promise<ToolResult> {

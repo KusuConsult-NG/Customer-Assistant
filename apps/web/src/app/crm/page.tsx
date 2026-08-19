@@ -14,7 +14,7 @@ import {
   Download, ArrowRight, FileText, ExternalLink, ShieldCheck, Target, DollarSign
 } from 'lucide-react';
 
-type Tab = 'contacts' | 'leads' | 'deals' | 'tickets';
+type Tab = 'enrollees' | 'contacts' | 'leads' | 'deals' | 'tickets';
 type ViewMode = 'table' | 'kanban';
 
 const DEAL_STAGES = ['LEAD', 'PROSPECT', 'PROPOSAL', 'NEGOTIATION', 'CLOSED_WON', 'CLOSED_LOST'];
@@ -52,7 +52,7 @@ function statusColor(status: string) {
 
 export default function CrmPage() {
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>('contacts');
+  const [tab, setTab] = useState<Tab>('enrollees');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [contacts, setContacts] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
@@ -65,6 +65,43 @@ export default function CrmPage() {
   const [modalType, setModalType] = useState<'contact' | 'lead' | 'deal' | 'ticket' | null>(null);
   const [selectedContact, setSelectedContact] = useState<any | null>(null);
   const [quoteData, setQuoteData] = useState<any | null>(null);
+  const [cardHtml, setCardHtml] = useState<string | null>(null);
+
+  const handleFetchDigitalCard = async (contactId: string) => {
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await fetch(`${API_URL}/api/crm/contacts/${contactId}/digital-card`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCardHtml(data.html);
+      } else {
+        toast.error('Could not generate the digital ID card.');
+      }
+    } catch {
+      toast.error('Could not reach the server to generate the card.');
+    }
+  };
+
+  const handleApproveEnrollee = async (contactId: string) => {
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await fetch(`${API_URL}/api/crm/contacts/${contactId}/approve-enrollee`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(`Enrollee approved! Policy ID: ${data.policyId}`);
+        fetchAll();
+      } else {
+        toast.error('Could not approve enrollee.');
+      }
+    } catch {
+      toast.error('Failed to communicate with the verification server.');
+    }
+  };
 
   const handleFetchQuotation = async (dealId: string) => {
     try {
@@ -164,7 +201,8 @@ export default function CrmPage() {
   };
 
   const tabs = [
-    { id: 'contacts' as Tab, label: 'Enrollees & Beneficiaries', count: contacts.length, icon: <Users className="w-4 h-4" /> },
+    { id: 'enrollees' as Tab, label: 'Enrollee Verification Desk', count: contacts.filter(c => (c.tags || []).includes('enrollment-pending') || (c.tags || []).includes('enrolled-active') || c.metadata?.planType).length, icon: <ShieldCheck className="w-4 h-4 text-emerald-500" /> },
+    { id: 'contacts' as Tab, label: 'All Contacts & Directory', count: contacts.length, icon: <Users className="w-4 h-4" /> },
     { id: 'leads' as Tab, label: 'Prospects & Inquiries', count: leads.length, icon: <TrendingUp className="w-4 h-4" /> },
     { id: 'deals' as Tab, label: 'Premiums & Plans', count: deals.length, icon: <Briefcase className="w-4 h-4" /> },
     { id: 'tickets' as Tab, label: 'Facility Grievances & Tickets', count: tickets.length, icon: <TicketCheck className="w-4 h-4" /> },
@@ -258,9 +296,15 @@ export default function CrmPage() {
 
       {/* Content Area */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900/80 shadow-sm">
-        {/* Each table now owns its own loading state, so the tab you are on decides
-            what the skeleton looks like instead of a generic block of grey bars. */}
-        {tab === 'contacts' ? (
+        {tab === 'enrollees' ? (
+          <EnrolleesDeskTable
+            searchQuery={search}
+            onSelectContact={(c) => setSelectedContact(c)}
+            onApprove={(id) => handleApproveEnrollee(id)}
+            onViewCard={(id) => handleFetchDigitalCard(id)}
+            onRefresh={fetchAll}
+          />
+        ) : tab === 'contacts' ? (
           <ContactsTable
             searchQuery={search}
             onAdd={() => setModalType('contact')}
@@ -309,6 +353,42 @@ export default function CrmPage() {
         />
       )}
       
+      {/* Digital ID Card Preview Modal */}
+      {cardHtml && (
+        <ModalWrapper title="PLASCHEMA Digital ID & Proof of Coverage" onClose={() => setCardHtml(null)}>
+          <div className="space-y-4 py-2">
+            <div className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 p-2 shadow-2xl flex justify-center">
+              <iframe
+                srcDoc={cardHtml}
+                title="PLASCHEMA Digital ID"
+                className="w-full h-[520px] rounded-xl border-0"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  const printWin = window.open('', '_blank');
+                  if (printWin) {
+                    printWin.document.write(cardHtml);
+                    printWin.document.close();
+                    printWin.print();
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
+              >
+                Print / Download Card
+              </button>
+              <button
+                onClick={() => setCardHtml(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </ModalWrapper>
+      )}
+
       {/* Real Quotation Preview Modal */}
       {quoteData && (
         <ModalWrapper title={`Quotation Preview — ${quoteData.quotationNumber}`} onClose={() => setQuoteData(null)}>
@@ -1201,6 +1281,199 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────── Enrollee Verification Desk Table ────────────────────────────
+function EnrolleesDeskTable({
+  searchQuery,
+  onSelectContact,
+  onApprove,
+  onViewCard,
+  onRefresh,
+}: {
+  searchQuery: string;
+  onSelectContact: (c: any) => void;
+  onApprove: (id: string) => void;
+  onViewCard: (id: string) => void;
+  onRefresh: () => void;
+}) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadEnrollees = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await fetch(`${API_URL}/api/crm/contacts?limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      const raw = Array.isArray(json) ? json : json.data || [];
+      // Filter contacts who are registered enrollees or pending enrollment
+      const enrolleesList = raw.filter((c: any) => {
+        const tags = c.tags || [];
+        const meta = c.metadata || {};
+        return (
+          tags.includes('enrollment-pending') ||
+          tags.includes('enrolled-active') ||
+          Boolean(meta.planType || meta.lga || meta.policyId)
+        );
+      });
+      setData(enrolleesList.length > 0 ? enrolleesList : raw);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load enrollees');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEnrollees();
+  }, [loadEnrollees]);
+
+  const filteredEnrollees = data.filter((c) => {
+    const q = (searchQuery || '').toLowerCase();
+    const meta = c.metadata || {};
+    return (
+      (c.fullName || '').toLowerCase().includes(q) ||
+      (c.phoneNumber || '').includes(q) ||
+      (meta.planType || '').toLowerCase().includes(q) ||
+      (meta.lga || c.city || '').toLowerCase().includes(q) ||
+      (meta.preferredHospital || '').toLowerCase().includes(q) ||
+      (meta.nin || '').includes(q)
+    );
+  });
+
+  return (
+    <div className="p-4">
+      {loading ? (
+        <TableSkeleton rows={6} columns={6} />
+      ) : error ? (
+        <SharedEmptyState
+          icon={ShieldCheck}
+          title="Could not load enrollees"
+          description={error}
+          actions={[{ label: 'Try again', primary: true, onClick: loadEnrollees }]}
+        />
+      ) : filteredEnrollees.length === 0 ? (
+        <SharedEmptyState
+          icon={ShieldCheck}
+          title="No enrollees registered yet"
+          description="When citizens call Sarah on the helpline (0700-700-1111) to register, their online profile, photo status, and plan details will appear here for staff verification."
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+              <tr>
+                <th className="px-5 py-3.5">Citizen / Enrollee</th>
+                <th className="px-5 py-3.5">Plan &amp; LGA</th>
+                <th className="px-5 py-3.5">Primary Facility</th>
+                <th className="px-5 py-3.5">NIN / Ref</th>
+                <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5 text-right">Verification Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
+              {filteredEnrollees.map((c) => {
+                const meta = c.metadata || {};
+                const isApproved =
+                  (c.tags || []).includes('enrolled-active') || meta.enrollmentStatus === 'ENROLLED_ACTIVE';
+                const hasSelfie = meta.enrollmentStatus === 'PENDING_REVIEW' || isApproved;
+
+                return (
+                  <tr
+                    key={c.id}
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                    onClick={() => onSelectContact(c)}
+                  >
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#74BA03]/15 text-[#558A02] dark:text-[#74BA03] font-black text-sm flex items-center justify-center flex-shrink-0 border border-[#74BA03]/30">
+                          {(c.fullName || 'U')[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#74BA03] transition-colors">
+                            {c.fullName}
+                          </div>
+                          <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                            {c.phoneNumber}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        {meta.planType || 'Standard Plan'}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {meta.lga || c.city || 'Plateau State'}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">
+                      {meta.preferredHospital || 'General Hospital (Default)'}
+                    </td>
+                    <td className="px-5 py-4 text-xs font-mono">
+                      {meta.nin ? (
+                        <span className="text-slate-800 dark:text-slate-200 font-semibold">{meta.nin}</span>
+                      ) : (
+                        <span className="text-slate-400">Ref: {c.id.slice(0, 8).toUpperCase()}</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      {isApproved ? (
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold text-xs border border-emerald-300 dark:border-emerald-500/30 flex items-center gap-1 w-fit">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Enrolled Active
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 font-bold text-xs border border-amber-300 dark:border-amber-500/30 flex items-center gap-1 w-fit">
+                          <Clock className="w-3.5 h-3.5" /> Pending Verification
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-right space-x-2">
+                      {!isApproved ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onApprove(c.id);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-[#558A02] hover:bg-[#74BA03] text-white text-xs font-bold shadow-sm transition-all"
+                        >
+                          Approve &amp; Issue ID
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewCard(c.id);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all inline-flex items-center gap-1"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#74BA03]" /> View Digital ID
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectContact(c);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs font-bold transition-all"
+                      >
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -294,16 +294,38 @@ export class AgentToolsService {
   ): Promise<ToolResult> {
     try {
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
+      const text = `${input.subject} ${input.description}`.toLowerCase();
+      const isHospitalMisconduct =
+        /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|no drug|medicine|mistreat/i.test(text);
+
+      const priority = isHospitalMisconduct ? TicketPriority.URGENT : TicketPriority.HIGH;
+      const subject = isHospitalMisconduct
+        ? `[QA ESCALATION] ${input.subject}`
+        : input.subject;
+
       const ticket = await this.crm.createTicket(organizationId, {
         contactId: contact.id,
-        subject: input.subject,
+        subject,
         description: input.description,
-        priority: TicketPriority.HIGH,
+        priority,
       });
+
+      // If it is hospital misconduct, add an audit note
+      if (isHospitalMisconduct) {
+        await prisma.note.create({
+          data: {
+            contactId: contact.id,
+            content: `🚨 URGENT HOSPITAL GRIEVANCE LOGGED: ${input.subject} — Escalated to PLASCHEMA Quality Assurance & Standards Division.`,
+          },
+        }).catch(() => {});
+      }
+
       return {
         ok: true,
-        speak: `I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will come back to you on this number.`,
-        data: { ticketId: ticket.id },
+        speak: isHospitalMisconduct
+          ? `I have logged this as an urgent grievance for our Quality Assurance desk. Your complaint reference number is ${ticket.id.slice(0, 8)}. Our team will investigate with the hospital medical director immediately. Please keep your PLASCHEMA card with you, and call us back on 0700-700-1111 if you need immediate assistance.`
+          : `I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will come back to you on this number.`,
+        data: { ticketId: ticket.id, isEscalated: isHospitalMisconduct },
       };
     } catch (e) {
       return this.failed('create_ticket', e);
@@ -555,6 +577,7 @@ export class AgentToolsService {
       lga: string;
       nin?: string;
       planType: string;
+      preferredHospital?: string;
       notes?: string;
     }
   ): Promise<ToolResult> {
@@ -566,6 +589,7 @@ export class AgentToolsService {
       const enrollmentDetails = [
         `LGA: ${input.lga}`,
         `Plan: ${input.planType}`,
+        input.preferredHospital ? `Primary Facility: ${input.preferredHospital}` : null,
         input.nin ? `NIN: ${input.nin}` : null,
         input.notes || null,
       ]
@@ -584,6 +608,7 @@ export class AgentToolsService {
               lga: input.lga,
               nin: input.nin,
               planType: input.planType,
+              preferredHospital: input.preferredHospital || 'General Hospital / Nearest Primary Health Centre',
               enrollmentStatus: 'PENDING_SELFIE',
               registeredAt: new Date().toISOString(),
             },
@@ -603,6 +628,7 @@ export class AgentToolsService {
               lga: input.lga,
               nin: input.nin,
               planType: input.planType,
+              preferredHospital: input.preferredHospital || 'General Hospital / Nearest Primary Health Centre',
               enrollmentStatus: 'PENDING_SELFIE',
               registeredAt: new Date().toISOString(),
             },
@@ -619,7 +645,7 @@ export class AgentToolsService {
         },
       }).catch(() => {});
 
-      // Send the selfie link via WhatsApp
+      // Send the selfie link via WhatsApp/SMS
       const selfieResult = await this.onboarding.requestSelfie(organizationId, {
         contactId: contact.id,
         channel: 'VOICE',
@@ -629,11 +655,12 @@ export class AgentToolsService {
 
       const refId = contact.id.slice(0, 8).toUpperCase();
       const selfieDelivered = selfieResult.delivery?.delivered ?? false;
+      const hospitalMention = input.preferredHospital ? ` with ${input.preferredHospital} as your primary facility` : '';
 
       if (selfieDelivered) {
         return {
           ok: true,
-          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your details for the PLASCHEMA ${input.planType} plan in ${input.lga}. Your enrollment reference is ${refId}. I have just sent a secure photo link to your WhatsApp. Please open WhatsApp, tap the link, and take a quick selfie to complete your online profile. Our team will verify it and activate your health coverage within 2 business days. Is there anything else I can help you with today?`,
+          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your profile for the PLASCHEMA ${input.planType} plan in ${input.lga}${hospitalMention}. Your enrollment reference is ${refId}. I have just sent a secure photo link and payment details to your phone. Please open WhatsApp or SMS, tap the link, and take a quick selfie to complete your online profile. Our team will verify it and activate your health coverage within 2 business days. Is there anything else I can help you with today?`,
           data: {
             contactId: contact.id,
             refId,
@@ -645,7 +672,7 @@ export class AgentToolsService {
       } else {
         return {
           ok: true,
-          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your details for the PLASCHEMA ${input.planType} plan in ${input.lga}. Your enrollment reference is ${refId}. You can complete your photo upload online at enrollments dot plaschema dot app, or visit any PLASCHEMA office in ${input.lga} with your reference number and a valid ID. Is there anything else I can assist you with?`,
+          speak: `Thank you, ${input.fullName.split(' ')[0]}. I have registered your profile for the PLASCHEMA ${input.planType} plan in ${input.lga}${hospitalMention}. Your enrollment reference is ${refId}. You can complete your photo upload online at enrollments dot plaschema dot app, or visit any PLASCHEMA office in ${input.lga} with your reference number and a valid ID. Is there anything else I can assist you with?`,
           data: {
             contactId: contact.id,
             refId,

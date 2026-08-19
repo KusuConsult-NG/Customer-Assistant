@@ -5,6 +5,7 @@ import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { LeadStatus, DealStage, TicketStatus, TicketPriority } from '@ace/shared-types';
+import { PdfGeneratorService } from '@ace/pdf-generator';
 
 @Injectable()
 export class CrmService {
@@ -372,33 +373,88 @@ export class CrmService {
       include: { contact: true, organization: true },
     });
 
-    // No invented fallback.
-    //
-    // When the deal id did not resolve, this used to return a quotation for
-    // "Service & Operations Retainer" at a flat ₦150,000 with a placeholder customer
-    // name and phone number — a document that looks official, is addressed to nobody,
-    // and quotes a price the business never set. A missing deal is a 404.
     if (!deal) {
       throw new NotFoundException('Deal not found');
     }
 
-    {
-      return {
-        quotationNumber: `QUO-${deal.id.slice(0, 8).toUpperCase()}`,
-        organizationName: deal.organization?.name || 'ACE Customer Care',
-        organizationPhone: deal.organization?.phone || '+234 1 700 8000',
-        customerName: deal.contact?.fullName || 'Valued Customer',
-        customerPhone: deal.contact?.phoneNumber || '+234 800 000 0000',
-        items: [
-          { description: deal.title || 'Service Quotation', quantity: 1, unitPrice: deal.amount, totalPrice: deal.amount },
-        ],
-        subtotal: deal.amount,
-        tax: 0,
-        grandTotal: deal.amount,
-        currency: 'NGN',
-        validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      };
-    }
+    return {
+      quotationNumber: `QUO-${deal.id.slice(0, 8).toUpperCase()}`,
+      organizationName: deal.organization?.name || 'ACE Customer Care',
+      organizationPhone: deal.organization?.phone || '+234 1 700 8000',
+      customerName: deal.contact?.fullName || 'Valued Customer',
+      customerPhone: deal.contact?.phoneNumber || '+234 800 000 0000',
+      items: [
+        { description: deal.title || 'Service Quotation', quantity: 1, unitPrice: deal.amount, totalPrice: deal.amount },
+      ],
+      subtotal: deal.amount,
+      tax: 0,
+      grandTotal: deal.amount,
+      currency: 'NGN',
+      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    };
+  }
+
+  async getDigitalCardData(contactId: string, organizationId: string) {
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, organizationId },
+      include: { organization: true, selfieRequests: { where: { status: 'RECEIVED' }, orderBy: { updatedAt: 'desc' } } },
+    });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    const meta = (contact.metadata as Record<string, any>) || {};
+    const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+    const selfie = contact.selfieRequests[0];
+    const photoUrl = selfie?.storagePath ? `/api/onboarding/selfies/${selfie.id}` : undefined;
+
+    return PdfGeneratorService.generateEnrolleeDigitalCard({
+      policyId,
+      fullName: contact.fullName,
+      phoneNumber: contact.phoneNumber,
+      planType: meta.planType || 'Formal / Informal Sector',
+      lga: meta.lga || contact.city || 'Plateau State',
+      preferredHospital: meta.preferredHospital || 'Accredited Primary Healthcare Provider',
+      nin: meta.nin,
+      photoUrl,
+      issuedAt: meta.approvedAt ? new Date(meta.approvedAt).toLocaleDateString('en-NG') : new Date().toLocaleDateString('en-NG'),
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-NG'),
+      organizationName: contact.organization?.name || 'PLASCHEMA',
+    });
+  }
+
+  async approveEnrollee(contactId: string, organizationId: string) {
+    const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    const meta = (contact.metadata as Record<string, any>) || {};
+    const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+
+    const updated = await prisma.contact.update({
+      where: { id: contactId },
+      data: {
+        metadata: {
+          ...meta,
+          policyId,
+          enrollmentStatus: 'ENROLLED_ACTIVE',
+          approvedAt: new Date().toISOString(),
+        },
+        tags: contact.tags.includes('enrolled-active')
+          ? contact.tags.filter((t) => t !== 'enrollment-pending')
+          : [...contact.tags.filter((t) => t !== 'enrollment-pending'), 'enrolled-active'],
+      },
+    });
+
+    await prisma.note.create({
+      data: {
+        contactId: contact.id,
+        content: `🎉 ENROLLEE APPROVED & ACTIVATED: Policy ID issued: ${policyId}. Coverage active across accredited facilities.`,
+      },
+    }).catch(() => {});
+
+    return {
+      success: true,
+      policyId,
+      enrollee: updated,
+    };
   }
 }
 
