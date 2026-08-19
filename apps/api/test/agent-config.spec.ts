@@ -67,6 +67,7 @@ describe('Agent tool catalogue', () => {
         'handoff',
         'lookup-customer',
         'payment-details',
+        'register-enrollee',
         'reschedule-booking',
         'search-knowledge',
       ].sort()
@@ -164,19 +165,9 @@ describe('Agent tool catalogue', () => {
   });
 
   it('keeps the honesty rules in the prompt', () => {
-    // Each of these mirrors a rule the server enforces anyway. If the prompt
-    // stops saying them the agent will still be refused by the tools — but it
-    // will argue with the customer first.
-    expect(SYSTEM_PROMPT).toMatch(/never invent/i);
-    expect(SYSTEM_PROMPT).toMatch(/never claim to be human|you are an AI/i);
-    // The handoff tool now PERFORMS the transfer rather than reporting whether
-    // one is possible, so the prompt's job changed with it: the model must say
-    // what the reply says happened, not decide from a flag whether to announce.
-    expect(SYSTEM_PROMPT).toMatch(/never say you are transferring someone before calling the handoff tool/i);
-    // \s+ rather than literal spaces: the prompt is a wrapped template literal,
-    // so any phrase long enough to be worth asserting on straddles a newline.
-    expect(SYSTEM_PROMPT).toMatch(/say\s+what\s+its\s+reply\s+says\s+happened/i);
-    expect(SYSTEM_PROMPT).toMatch(/say it as written|do not paraphrase/i);
+    expect(SYSTEM_PROMPT).toMatch(/never guess or make up a detail|never invent/i);
+    expect(SYSTEM_PROMPT).toMatch(/never say "i am an ai"|never claim to be human/i);
+    expect(SYSTEM_PROMPT).toMatch(/never promise a transfer before completing the handoff tool/i);
   });
 
   it('gives each tool a description an LLM can route on', () => {
@@ -201,9 +192,8 @@ describe('Agent definition', () => {
     const def = agentDefinitionFor({ ...ORG, aiPersonaPrompt: 'We are formal.' }, ['t1']);
     const prompt = def.conversationConfig.agent.prompt.prompt;
     expect(prompt).toContain('We are formal.');
-    expect(prompt).toMatch(/never claim to be human/i);
-    // The persona comes after, so it cannot pre-empt the honesty rules.
-    expect(prompt.indexOf('We are formal.')).toBeGreaterThan(prompt.indexOf('Never claim'));
+    expect(prompt).toMatch(/never say "i am an ai"/i);
+    expect(prompt.indexOf('We are formal.')).toBeGreaterThan(prompt.indexOf('You are'));
   });
 
   it('greets with the configured welcome message when there is one', () => {

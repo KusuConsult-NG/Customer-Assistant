@@ -409,8 +409,10 @@ export function agentNameFor(org: AgentOrganization, persona?: TeamPersona): str
 
 export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
-  if (org.welcomeMessage && org.welcomeMessage.includes('{name}')) {
-    return org.welcomeMessage.replace('{name}', resolved.name);
+  if (org.welcomeMessage) {
+    return org.welcomeMessage.includes('{name}')
+      ? org.welcomeMessage.replace('{name}', resolved.name)
+      : org.welcomeMessage;
   }
   return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. How can I help you today?`;
 }
