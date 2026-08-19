@@ -35,10 +35,12 @@ import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
  * serves every channel; nothing has been cut over. See CLAUDE.md — "TWO
  * conversation engines exist right now, and only one is live."
  */
+import { OnboardingModule } from '../onboarding/onboarding.module';
+
 @Module({
   // TelephonyModule exports VoiceAiService, whose transferCallToHuman is what
   // actually moves a live call — the same one the orchestrator path uses.
-  imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule],
+  imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule, OnboardingModule],
   controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController],
   providers: [
     AgentToolsService,
