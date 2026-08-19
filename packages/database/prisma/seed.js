@@ -32,8 +32,8 @@ async function main() {
         country: 'Nigeria',
         timezone: 'Africa/Lagos',
         phone: '+17372212163',
-        welcomeMessage: 'Hello! 👋 Welcome to Kusu Consult. I am your AI Assistant. How can I help you today?',
-        aiPersonaPrompt: 'You are a polite, highly knowledgeable customer service AI assistant for Kusu Consult. Answer queries about consulting services, scheduling, and pricing accurately.',
+        welcomeMessage: 'Hello! Welcome to Kusu Consult. How can I help you today?',
+        aiPersonaPrompt: 'You speak naturally, warmly, conversationally, and professionally like an experienced customer service team member at Kusu Consult. Answer questions about our consulting services, scheduling, and pricing directly and helpfully.',
         updatedAt: new Date(),
       },
     });
@@ -44,8 +44,8 @@ async function main() {
       data: {
         name: 'Kusu Consult',
         phone: '+17372212163',
-        welcomeMessage: 'Hello! 👋 Welcome to Kusu Consult. I am your AI Assistant. How can I help you today?',
-        aiPersonaPrompt: 'You are a polite, highly knowledgeable customer service AI assistant for Kusu Consult. Answer queries about consulting services, scheduling, and pricing accurately.',
+        welcomeMessage: 'Hello! Welcome to Kusu Consult. How can I help you today?',
+        aiPersonaPrompt: 'You speak naturally, warmly, conversationally, and professionally like an experienced customer service team member at Kusu Consult. Answer questions about our consulting services, scheduling, and pricing directly and helpfully.',
       },
     });
     console.log(`✅ Using Organization: ${org.name} (${org.id})`);
