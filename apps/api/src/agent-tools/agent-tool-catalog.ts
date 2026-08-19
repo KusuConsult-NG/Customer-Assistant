@@ -363,6 +363,14 @@ export function agentDefinitionFor(org: AgentOrganization, toolIds: string[], cu
   const persona = customPersona || resolvePersona(org.persona);
   const voiceId = org.voiceId || persona.voiceId;
 
+  // Pronunciation dictionary — kept in env so it survives every sync without
+  // being hardcoded into source. Set by scripts/setup-plaschema.js on first run.
+  const dictId = process.env.ELEVENLABS_PRONUNCIATION_DICT_ID;
+  const dictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
+  const pronunciationDictionaryLocators = dictId && dictVer
+    ? [{ pronunciationDictionaryId: dictId, versionId: dictVer }]
+    : [];
+
   return agentDefinition({
     name: agentNameFor(org, persona),
     firstMessage: firstMessageFor(org, persona),
@@ -370,6 +378,7 @@ export function agentDefinitionFor(org: AgentOrganization, toolIds: string[], cu
     voiceId,
     toolIds,
     timezone: org.timezone,
+    pronunciationDictionaryLocators,
   });
 }
 

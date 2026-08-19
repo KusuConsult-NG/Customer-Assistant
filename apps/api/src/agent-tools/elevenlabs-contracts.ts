@@ -145,6 +145,12 @@ export interface AgentSpec {
   voiceId?: string;
   llm?: ElevenLabs.PromptAgentApiModelInput['llm'];
   maxDurationSeconds?: number;
+  /**
+   * Pronunciation dictionary locators to attach to the TTS engine.
+   * Each entry ties a specific dictionary version to this agent so custom
+   * phoneme rules (e.g. PLASCHEMA → PLAS-CHEH-MA) survive every sync.
+   */
+  pronunciationDictionaryLocators?: Array<{ pronunciationDictionaryId: string; versionId: string }>;
 }
 
 /** Build the request for `conversationalAi.agents.create`. */
@@ -170,13 +176,10 @@ export function agentDefinition(spec: AgentSpec) {
           timezone: spec.timezone,
         },
       },
-      ...(spec.voiceId
-        ? {
-            tts: {
-              voiceId: spec.voiceId,
-            },
-          }
-        : {}),
+      tts: {
+        ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
+        pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
+      },
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,
       },
