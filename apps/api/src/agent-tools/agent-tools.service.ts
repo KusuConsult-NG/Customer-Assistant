@@ -227,8 +227,8 @@ export class AgentToolsService {
       const booking = await this.scheduling.getActiveBookingByPhone(organizationId, phoneNumber);
       if (!booking) {
         return {
-          ok: true,
-          speak: "I can't find an upcoming appointment under this number to cancel.",
+          ok: false,
+          speak: "I can't find an upcoming appointment under this number. Are you sure you have a booking with us?",
           data: { found: false },
         };
       }
@@ -252,8 +252,8 @@ export class AgentToolsService {
       const booking = await this.scheduling.getActiveBookingByPhone(organizationId, phoneNumber);
       if (!booking) {
         return {
-          ok: true,
-          speak: "I can't find an upcoming appointment under this number to move.",
+          ok: false,
+          speak: "I can't find an upcoming appointment under this number. Are you sure you have a booking with us?",
           data: { found: false },
         };
       }
@@ -378,8 +378,9 @@ export class AgentToolsService {
 
   // ── Knowledge ──────────────────────────────────────────────────────────────
   /**
-   * FAQs first, then the knowledge base. Returns the stored answer verbatim so
-   * the agent repeats what the business wrote rather than a paraphrase of it.
+   * FAQs first (keyword-scored), then the knowledge base.
+   * Markdown is stripped from chunk content — a voice agent must never read
+   * '#', '**', or '---' aloud.
    */
   async searchKnowledge(organizationId: string, query: string): Promise<ToolResult> {
     try {
@@ -388,36 +389,59 @@ export class AgentToolsService {
         return { ok: true, speak: 'Could you tell me a little more about what you need?', data: {} };
       }
 
+      /** Strip markdown so Sarah speaks clean plain-English sentences */
+      const stripMd = (text: string): string =>
+        text
+          .replace(/^#{1,6}\s+/gm, '')
+          .replace(/\*\*(.+?)\*\*/g, '$1')
+          .replace(/\*(.+?)\*/g, '$1')
+          .replace(/^[-*]\s+/gm, '')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/`{1,3}[^`]*`{1,3}/g, '')
+          .replace(/---+/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+
+      // Score every active FAQ by keyword overlap with the query
       const faqs = await prisma.faqEntry.findMany({
-        where: { organizationId },
+        where: { organizationId, isActive: true },
         select: { question: true, answer: true },
       });
       const needle = q.toLowerCase();
-      const hit = faqs.find(
-        (f) =>
-          f.question.toLowerCase().includes(needle) || needle.includes(f.question.toLowerCase())
-      );
-      if (hit) return { ok: true, speak: hit.answer, data: { source: 'faq' } };
+      const needleWords = needle.split(/\s+/).filter((w) => w.length > 3);
 
+      const scored = faqs
+        .map((f) => {
+          const qLower = f.question.toLowerCase();
+          if (qLower.includes(needle) || needle.includes(qLower)) return { f, score: 100 };
+          const hits = needleWords.filter((w) => qLower.includes(w)).length;
+          return { f, score: hits };
+        })
+        .filter((s) => s.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      if (scored.length > 0) {
+        return { ok: true, speak: scored[0].f.answer, data: { source: 'faq' } };
+      }
+
+      // Knowledge base fallback — strip markdown before speaking
       const results = await this.knowledge.searchPlayground(organizationId, q).catch(() => null);
       const top = Array.isArray(results) ? results[0] : null;
       if (top?.content) {
-        return { ok: true, speak: String(top.content).slice(0, 600), data: { source: 'knowledge' } };
+        const spoken = stripMd(String(top.content)).slice(0, 500);
+        return { ok: true, speak: spoken, data: { source: 'knowledge' } };
       }
 
-      // Saying "I don't know, let me get someone" is a correct answer here. The
-      // alternative — letting the model fill the gap — is how a customer gets
-      // told something the business never said.
       return {
         ok: true,
-        speak:
-          "I don't have that detail to hand. Would you like me to pass you to someone who does?",
+        speak: "I don't have that detail to hand. Would you like me to pass you to someone who does?",
         data: { source: 'none' },
       };
     } catch (e) {
       return this.failed('search_knowledge', e);
     }
   }
+
 
   // ── Handoff ────────────────────────────────────────────────────────────────
   /**
@@ -584,6 +608,16 @@ export class AgentToolsService {
     }
   ): Promise<ToolResult> {
     try {
+      // Guard: fullName must be a non-empty string. The LLM occasionally calls
+      // this tool before collecting the name — return ok: false so Sarah asks again.
+      if (!input.fullName?.trim()) {
+        return {
+          ok: false,
+          speak: 'I still need your full name to complete the registration. Could you tell me your full name please?',
+          data: { reason: 'missing_full_name' },
+        };
+      }
+
       const cleanPhone = input.phoneNumber?.trim()
         ? normalizePhoneNumber(input.phoneNumber)
         : `+23480${Math.floor(10000000 + Math.random() * 90000000)}`;
