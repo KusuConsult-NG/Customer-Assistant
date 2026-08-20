@@ -139,19 +139,24 @@ async function sendPostCallLink(
 }
 
 /**
- * Sends the selfie link via ElevenLabs' WhatsApp channel integration.
+ * Sends the selfie-link template message via ElevenLabs' WhatsApp outbound API.
  *
- * ElevenLabs acts as the WhatsApp Business API gateway — once a WhatsApp
- * Business number is connected in the ElevenLabs dashboard (Conversational AI
- * → Sarah → Channels → WhatsApp), this sends an outbound WhatsApp message
- * through that connected number.
+ * Endpoint: POST /v1/convai/whatsapp/outbound-message
+ * Docs: https://elevenlabs.io/docs/eleven-agents/api-reference/whats-app/outbound-message
  *
- * Returns true if the message was accepted, false if no WhatsApp channel is
- * configured or the send failed (triggers SMS fallback in the caller).
+ * WhatsApp REQUIRES a Meta-approved template for the first message to any user.
+ * Template "plaschema_selfie_request" must be created in WhatsApp Manager with
+ * two named body variables: {{name}} and {{link}}.
+ *
+ * whatsapp_user_id must be digits-only E.164 without the leading + (per ElevenLabs docs).
+ *   +2348033445566 → "2348033445566"
+ *
+ * Returns true if the API accepted the message, false to trigger SMS fallback.
  */
 async function sendViaElevenLabsWhatsApp(
   apiKey: string,
   agentId: string,
+  waPhoneNumberId: string,
   toPhone: string,
   firstName: string,
   uploadUrl: string,
@@ -159,59 +164,122 @@ async function sendViaElevenLabsWhatsApp(
   contactId: string
 ): Promise<boolean> {
   try {
-    // Fetch connected WhatsApp phone numbers from ElevenLabs workspace
-    const numbersResp = await fetch(
-      `https://api.elevenlabs.io/v1/convai/agents/${agentId}/channels`,
-      { headers: { 'xi-api-key': apiKey } }
-    );
-    const channels = await numbersResp.json().catch(() => ({ results: [] }));
-    const waChannel = (channels.results || []).find((ch: any) => ch.type === 'whatsapp' || ch.id === 'whatsapp');
+    // whatsapp_user_id: digits-only, country code, no leading + (ElevenLabs docs requirement)
+    const waUserId = toPhone.replace(/^\+/, '').replace(/\D/g, '');
 
-    if (!waChannel) {
-      log.info('post_call_whatsapp_no_channel', { correlationId, contactId, hint: 'Connect a WhatsApp Business number in the ElevenLabs dashboard → Channels' });
-      return false;
-    }
-
-    const waPhoneNumberId = waChannel.phone_number_id || waChannel.id;
-
-    // Send an outbound WhatsApp message via ElevenLabs
-    // ElevenLabs routes this through the connected WhatsApp Business number
-    const msgBody = {
-      to: toPhone,
+    const payload = {
       agent_id: agentId,
-      message: {
-        type: 'text',
-        text: {
-          body:
-            `Hi ${firstName}! 👋 Your PLASCHEMA registration is confirmed! ✅\n\n` +
-            `To complete your health coverage enrollment, please upload your photo here:\n${uploadUrl}\n\n` +
-            `This link is valid for 48 hours. Once uploaded, our team will activate your coverage within 2 working days.\n\n` +
-            `Questions? Call the PLASCHEMA Helpline: *0700-700-1111*`,
+      whatsapp_phone_number_id: waPhoneNumberId,
+      whatsapp_user_id: waUserId,
+      // Template must be pre-approved in WhatsApp Manager (business.facebook.com)
+      template_name: process.env.ELEVENLABS_WHATSAPP_TEMPLATE_NAME ?? 'plaschema_selfie_request',
+      template_language_code: process.env.ELEVENLABS_WHATSAPP_TEMPLATE_LANG ?? 'en',
+      // template_params: list of component objects. The {type: body} wrapper is required by ElevenLabs.
+      template_params: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', parameter_name: 'name', text: firstName },
+            { type: 'text', parameter_name: 'link', text: uploadUrl },
+          ],
         },
-      },
+      ],
     };
 
-    const sendResp = await fetch(
-      `https://api.elevenlabs.io/v1/convai/whatsapp/send`,
-      {
-        method: 'POST',
-        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify(msgBody),
-      }
-    );
+    const res = await fetch('https://api.elevenlabs.io/v1/convai/whatsapp/outbound-message', {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-    if (sendResp.ok) {
-      const r = await sendResp.json().catch(() => ({}));
-      log.info('post_call_selfie_whatsapp_sent', { correlationId, contactId, to: toPhone, uploadUrl, messageId: (r as any)?.message_id });
+    const body: any = await res.json().catch(() => ({}));
+
+    if (res.ok) {
+      log.info('post_call_selfie_whatsapp_sent', {
+        correlationId, contactId, to: toPhone, waUserId, uploadUrl,
+        messageId: body?.message_id ?? body?.id,
+      });
       return true;
     }
 
-    const errBody = await sendResp.json().catch(() => ({}));
-    log.info('post_call_whatsapp_send_failed', { correlationId, contactId, status: sendResp.status, error: JSON.stringify(errBody).substring(0, 200) });
+    log.warn('post_call_whatsapp_send_failed', {
+      correlationId, contactId, waUserId, status: res.status,
+      error: JSON.stringify(body).substring(0, 300),
+      hint: res.status === 404
+        ? 'Import WhatsApp Business Account at elevenlabs.io/app/agents/whatsapp and set ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID'
+        : res.status === 400
+          ? 'Template not approved or parameter names mismatch — check WhatsApp Manager'
+          : undefined,
+    });
     return false;
   } catch (err: any) {
-    log.info('post_call_whatsapp_exception', { correlationId, contactId, error: err?.message });
+    log.warn('post_call_whatsapp_exception', { correlationId, contactId, error: err?.message });
     return false;
+  }
+}
+
+/**
+ * Initiates an outbound WhatsApp voice call via ElevenLabs.
+ *
+ * Endpoint: POST /v1/convai/whatsapp/outbound-call
+ * Docs: https://elevenlabs.io/docs/eleven-agents/api-reference/whats-app/outbound-call
+ *
+ * Meta requires a pre-approved "call permission request" template to be sent first.
+ * Create template "plaschema_call_request" in WhatsApp Manager (Category: Utility).
+ *
+ * Use this to proactively call a patient via WhatsApp without going through Twilio —
+ * e.g. follow-up after a missed enrollment, appointment reminders, etc.
+ */
+export async function initiateWhatsAppCall(
+  toPhone: string,
+  agentId: string,
+  correlationId: string
+): Promise<{ success: boolean; conversationId?: string; error?: string }> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const waPhoneNumberId = process.env.ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!apiKey || !waPhoneNumberId) {
+    return { success: false, error: 'ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID not configured — import account at elevenlabs.io/app/agents/whatsapp' };
+  }
+
+  const waUserId = toPhone.replace(/^\+/, '').replace(/\D/g, '');
+
+  try {
+    const payload = {
+      agent_id: agentId,
+      whatsapp_phone_number_id: waPhoneNumberId,
+      whatsapp_user_id: waUserId,
+      // Meta requires a pre-approved template to request call permission
+      whatsapp_call_permission_request_template_name:
+        process.env.ELEVENLABS_WHATSAPP_CALL_TEMPLATE_NAME ?? 'plaschema_call_request',
+      whatsapp_call_permission_request_template_language_code:
+        process.env.ELEVENLABS_WHATSAPP_CALL_TEMPLATE_LANG ?? 'en',
+    };
+
+    const res = await fetch('https://api.elevenlabs.io/v1/convai/whatsapp/outbound-call', {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const body: any = await res.json().catch(() => ({}));
+
+    if (res.ok) {
+      log.info('whatsapp_outbound_call_initiated', {
+        correlationId, to: toPhone, waUserId,
+        conversationId: body?.conversation_id,
+      });
+      return { success: true, conversationId: body?.conversation_id };
+    }
+
+    log.warn('whatsapp_outbound_call_failed', {
+      correlationId, waUserId, status: res.status,
+      error: JSON.stringify(body).substring(0, 300),
+    });
+    return { success: false, error: JSON.stringify(body) };
+  } catch (err: any) {
+    log.warn('whatsapp_outbound_call_exception', { correlationId, error: err?.message });
+    return { success: false, error: err?.message };
   }
 }
 
