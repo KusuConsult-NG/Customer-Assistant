@@ -174,13 +174,15 @@ async function sendViaElevenLabsWhatsApp(
       // Template must be pre-approved in WhatsApp Manager (business.facebook.com)
       template_name: process.env.ELEVENLABS_WHATSAPP_TEMPLATE_NAME ?? 'plaschema_selfie_request',
       template_language_code: process.env.ELEVENLABS_WHATSAPP_TEMPLATE_LANG ?? 'en',
-      // template_params: list of component objects. The {type: body} wrapper is required by ElevenLabs.
+      // template_params: positional parameters matching {{1}}, {{2}} in the template body.
+      // Meta ONLY accepts {{1}}, {{2}} numbering — named variables ({{name}}) are rejected.
+      // {{1}} = firstName, {{2}} = uploadUrl (must match the order in the template body)
       template_params: [
         {
           type: 'body',
           parameters: [
-            { type: 'text', parameter_name: 'name', text: firstName },
-            { type: 'text', parameter_name: 'link', text: uploadUrl },
+            { type: 'text', text: firstName },   // maps to {{1}} in template body
+            { type: 'text', text: uploadUrl },    // maps to {{2}} in template body
           ],
         },
       ],
