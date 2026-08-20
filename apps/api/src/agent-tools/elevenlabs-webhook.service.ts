@@ -95,6 +95,10 @@ async function sendPostCallLink(
       elApiKey, agentId, waPhoneNumberId, toPhone, firstName, uploadUrl, correlationId, contactId
     );
     if (waDelivered) return; // WhatsApp succeeded — no need for SMS fallback
+    // WhatsApp failed — fall through to SMS only if it's NOT a template-pending issue.
+    // Template-pending errors are transient (Meta approves within hours), so we should
+    // NOT burn an SMS on it — the message will be retried when the template is approved.
+    // The waDelivered=false case logs a warning with error detail already.
   } else {
     log.info('post_call_whatsapp_skipped', {
       correlationId, contactId,
@@ -103,11 +107,25 @@ async function sendPostCallLink(
   }
 
   // ── Option 2: Twilio SMS fallback ────────────────────────────────────────
+  // NOTE: Twilio trial accounts CANNOT send SMS to Nigerian (+234) numbers.
+  // They can only SMS to verified numbers on the trial account.
+  // To use SMS in production: upgrade to a paid Twilio account.
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_PHONE_NUMBER;
   if (!sid || !token || !from) {
     log.info('post_call_link_no_twilio', { correlationId, contactId });
+    return;
+  }
+
+  // Only attempt SMS for non-Nigerian numbers on trial accounts
+  // Nigerian numbers start with +234 — trial Twilio rejects them
+  const isNigerian = toPhone.startsWith('+234') || toPhone.startsWith('234');
+  if (isNigerian) {
+    log.warn('post_call_sms_skipped_nigerian', {
+      correlationId, contactId, toPhone,
+      reason: 'Twilio trial cannot SMS Nigerian (+234) numbers. Upgrade Twilio account or wait for WhatsApp template approval.',
+    });
     return;
   }
 
@@ -137,6 +155,7 @@ async function sendPostCallLink(
     log.warn('post_call_selfie_sms_exception', { correlationId, contactId, error: err?.message });
   }
 }
+
 
 /**
  * Sends the selfie-link template message via ElevenLabs' WhatsApp outbound API.
