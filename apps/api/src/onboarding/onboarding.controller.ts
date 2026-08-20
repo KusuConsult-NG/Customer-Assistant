@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  Redirect,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -144,5 +145,53 @@ export class PublicPaymentController {
       throw new BadRequestException('contactId, paymentReference, and amount (number) are required.');
     }
     return this.onboarding.confirmEnrolleePayment(body.contactId, body.paymentReference, body.amount, body.equityCategory);
+  }
+}
+
+/**
+ * Server-side proxy for patient-facing web pages.
+ *
+ * The ngrok tunnel only exposes port 4000 (API). Patient-facing pages (selfie
+ * camera, payment) live in the Next.js web app on port 3000, which is only
+ * reachable from localhost — not from a patient's phone.
+ *
+ * These routes fetch the HTML from the local Next.js app and stream it back
+ * so the patient's browser sees it at the public ngrok URL. No second tunnel
+ * is required; a single URL covers everything.
+ *
+ *   GET /selfie/:token  → proxies http://localhost:3000/selfie/:token
+ *   GET /pay            → proxies http://localhost:3000/pay
+ */
+@Controller()
+export class SelfieRedirectController {
+  private get webBase(): string {
+    return (process.env.WEB_INTERNAL_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+  }
+
+  @Get('selfie/:token')
+  async proxySelfie(
+    @Param('token') token: string,
+    @Req() req: any,
+    @Query() query: Record<string, string>
+  ) {
+    return this.proxyToWeb(`/selfie/${token}`, query, req.res);
+  }
+
+  @Get('pay')
+  async proxyPay(@Req() req: any, @Query() query: Record<string, string>) {
+    return this.proxyToWeb('/pay', query, req.res);
+  }
+
+  private async proxyToWeb(path: string, query: Record<string, string>, res: any): Promise<void> {
+    const qs = new URLSearchParams(query).toString();
+    const target = `${this.webBase}${path}${qs ? '?' + qs : ''}`;
+    try {
+      const upstream = await fetch(target);
+      const html = await upstream.text();
+      res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'text/html; charset=utf-8');
+      res.status(upstream.status).send(html);
+    } catch {
+      res.status(502).send('<h1>Service temporarily unavailable</h1>');
+    }
   }
 }

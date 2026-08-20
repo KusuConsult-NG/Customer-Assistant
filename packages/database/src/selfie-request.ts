@@ -78,16 +78,15 @@ export async function createSelfieRequest(input: CreateSelfieRequestInput): Prom
   return { id: request.id, expiresAt: request.expiresAt, token };
 }
 
-/** Public base URL of the customer-facing web app, where the upload page lives. */
+/** Public base URL for the selfie upload link sent to patients. */
 export function selfieUploadUrl(token: string): string {
-  // Prefer API_BASE_URL (the ngrok tunnel) so the link is publicly reachable
-  // even when the web app is only on localhost. Falls back to WEB_BASE_URL for
-  // production deployments where the web app has its own public domain.
+  // The API's /selfie/:token redirects (302) to the web app's camera page.
+  // Using API_BASE_URL (ngrok) means a single public tunnel covers both the API
+  // and the patient-facing selfie UI — no second tunnel needed.
   const base = (
     process.env.API_BASE_URL ||
     process.env.WEB_BASE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
     'http://localhost:4000'
   ).replace(/\/+$/, '');
-  return `${base}/api/public/selfie/${token}`;
+  return `${base}/selfie/${token}`;
 }
