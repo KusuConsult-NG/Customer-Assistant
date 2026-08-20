@@ -42,8 +42,9 @@ export const PLASCHEMA_FACILITIES: Record<string, AccreditedFacility[]> = {
     { name: "Manguna Primary Health Centre", type: "Primary Health Centre", address: "Manguna, Bokkos" },
   ],
   "Kanam": [
-    { name: "Shendam General Hospital", type: "General Hospital", address: "Shendam, Kanam" },
+    { name: "Kanam General Hospital", type: "General Hospital", address: "Kanam LGA Headquarters" },
     { name: "Dengi Primary Health Centre", type: "Primary Health Centre", address: "Dengi, Kanam" },
+    { name: "Shendam General Hospital", type: "General Hospital", address: "Shendam, Kanam" },
   ],
   "Kanke": [
     { name: "Kabwir General Hospital", type: "General Hospital", address: "Kabwir, Kanke" },
@@ -70,6 +71,11 @@ export const PLASCHEMA_FACILITIES: Record<string, AccreditedFacility[]> = {
     { name: "Pankshin General Hospital", type: "General Hospital", address: "Pankshin Town" },
     { name: "Pamtok Primary Health Centre", type: "Primary Health Centre", address: "Pamtok, Pankshin" },
   ],
+  "Qua'an Pan": [
+    { name: "Qua'an Pan General Hospital", type: "General Hospital", address: "Qua'an Pan Town" },
+    { name: "Shendam General Hospital", type: "General Hospital", address: "Shendam" },
+    { name: "Qua'an Pan Primary Health Centre", type: "Primary Health Centre", address: "Qua'an Pan Headquarters" },
+  ],
   "Riyom": [
     { name: "Riyom General Hospital", type: "General Hospital", address: "Riyom Town" },
     { name: "Hoss Primary Health Centre", type: "Primary Health Centre", address: "Hoss, Riyom" },
@@ -88,11 +94,52 @@ export const PLASCHEMA_FACILITIES: Record<string, AccreditedFacility[]> = {
 
 export const PLATEAU_LGAS = Object.keys(PLASCHEMA_FACILITIES).sort();
 
+/**
+ * Find facilities for an LGA, with fuzzy matching for common speech-to-text
+ * misspellings. "Kwan Pan", "Kwan Kwan", "Quan Pan" → "Qua'an Pan".
+ * "Reom", "Riom" → "Riyom". "Wasi", "Wassie" → "Wase".
+ */
 export function getFacilitiesForLGA(lga: string): AccreditedFacility[] {
-  const key = Object.keys(PLASCHEMA_FACILITIES).find(
-    k => k.toLowerCase() === lga.toLowerCase()
+  const normalised = lga.trim().toLowerCase().replace(/['']/g, '').replace(/\s+/g, ' ');
+
+  // Exact match first (case-insensitive)
+  const exactKey = Object.keys(PLASCHEMA_FACILITIES).find(
+    k => k.toLowerCase() === lga.trim().toLowerCase()
   );
-  return key ? PLASCHEMA_FACILITIES[key] : [];
+  if (exactKey) return PLASCHEMA_FACILITIES[exactKey];
+
+  // Fuzzy alias map — covers common STT (speech-to-text) variants heard in calls
+  const ALIASES: Record<string, string> = {
+    'quan pan': "Qua'an Pan",
+    'kwan pan': "Qua'an Pan",
+    'kwan kwan': "Qua'an Pan",
+    'kwanpan': "Qua'an Pan",
+    'quaan pan': "Qua'an Pan",
+    'qua an pan': "Qua'an Pan",
+    'quan an pan': "Qua'an Pan",
+    'reom': 'Riyom',
+    'riom': 'Riyom',
+    'reyom': 'Riyom',
+    'wasi': 'Wase',
+    'wasie': 'Wase',
+    'wassie': 'Wase',
+    'bakin ladi': 'Barkin Ladi',
+    'barking ladi': 'Barkin Ladi',
+    'jos north': 'Jos North',
+    'jos south': 'Jos South',
+    'jos east': 'Jos East',
+    'langtang north': 'Langtang North',
+    'langtang south': 'Langtang South',
+  };
+
+  const aliasKey = ALIASES[normalised];
+  if (aliasKey && PLASCHEMA_FACILITIES[aliasKey]) return PLASCHEMA_FACILITIES[aliasKey];
+
+  // Partial / starts-with match as last resort
+  const partialKey = Object.keys(PLASCHEMA_FACILITIES).find(
+    k => k.toLowerCase().startsWith(normalised) || normalised.startsWith(k.toLowerCase().split(' ')[0])
+  );
+  return partialKey ? PLASCHEMA_FACILITIES[partialKey] : [];
 }
 
 export function isAccreditedFacility(lga: string, hospitalName: string): boolean {
