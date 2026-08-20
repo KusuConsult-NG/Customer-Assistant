@@ -39,18 +39,20 @@ import { AceLogger } from '../config/logger';
 const log = new AceLogger('ElevenLabsWebhook');
 
 /**
- * Delivers the selfie link to the caller immediately after the call ends.
+ * Delivers the selfie link to a caller immediately after the call ends.
  *
  * Delivery priority:
- *   1. ElevenLabs WhatsApp channel — if a WhatsApp Business number is connected
- *      in the ElevenLabs dashboard, this sends a rich WhatsApp message using
- *      ElevenLabs' own messaging API. No WhatsApp Cloud API token management needed.
+ *   1. ElevenLabs WhatsApp outbound message — uses POST /v1/convai/whatsapp/outbound-message.
+ *      Requires: (a) a WhatsApp Business Account imported in the ElevenLabs dashboard
+ *      at elevenlabs.io/app/agents/whatsapp, (b) a Meta-approved message template named
+ *      "plaschema_selfie_request" with body params [name, link], and (c)
+ *      ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID set in .env (copied from ElevenLabs dashboard).
+ *      WhatsApp requires an approved template for the FIRST outbound message to any user;
+ *      once they reply, free-form messages are allowed in the 24-h window.
  *   2. Twilio SMS fallback — uses the same Twilio credentials already in use for
- *      the phone calls. Works on paid Twilio accounts; trial accounts are limited
- *      to verified numbers only.
+ *      telephony. Works on paid Twilio accounts; trial accounts only reach verified numbers.
  *
  * Fire-and-forget: called from ingestCall() after the call log is written.
- * A delivery failure is logged but never surfaces to the webhook ACK.
  */
 async function sendPostCallLink(
   contactId: string,
@@ -59,7 +61,7 @@ async function sendPostCallLink(
   organizationId: string,
   correlationId: string
 ): Promise<void> {
-  // Find the most recent pending selfie request for this contact
+  // Retrieve the pending selfie request for this contact
   const selfieReq = await prisma.selfieRequest.findFirst({
     where: { contactId, status: 'PENDING' },
     orderBy: { createdAt: 'desc' },
@@ -73,18 +75,31 @@ async function sendPostCallLink(
 
   const uploadUrl = selfieReq.uploadUrl;
 
-  // ── Option 1: ElevenLabs WhatsApp channel ────────────────────────────────
-  // If a WhatsApp Business number is connected to this ElevenLabs workspace
-  // (via Conversational AI → Channels → WhatsApp in the dashboard), we use
-  // ElevenLabs' own API to send a WhatsApp message. This avoids needing to
-  // manage a WhatsApp Cloud API token separately.
+  // ── Option 1: ElevenLabs WhatsApp outbound message ───────────────────────
+  // Endpoint: POST /v1/convai/whatsapp/outbound-message
+  // Docs: https://elevenlabs.io/docs/eleven-agents/api-reference/whats-app/outbound-message
+  //
+  // Prerequisites:
+  //  • WhatsApp Business Account imported at elevenlabs.io/app/agents/whatsapp
+  //  • ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID set in .env (from the ElevenLabs dashboard)
+  //  • Meta-approved template "plaschema_selfie_request" (create in WhatsApp Manager)
+  //
+  // WhatsApp only allows template messages for the first contact with a user.
+  // Once the user replies, 24-hour free-form window opens.
   const elApiKey = process.env.ELEVENLABS_API_KEY;
   const agentId = process.env.ELEVENLABS_AGENT_ID;
-  if (elApiKey && agentId) {
+  const waPhoneNumberId = process.env.ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID;
+
+  if (elApiKey && agentId && waPhoneNumberId) {
     const waDelivered = await sendViaElevenLabsWhatsApp(
-      elApiKey, agentId, toPhone, firstName, uploadUrl, correlationId, contactId
+      elApiKey, agentId, waPhoneNumberId, toPhone, firstName, uploadUrl, correlationId, contactId
     );
     if (waDelivered) return; // WhatsApp succeeded — no need for SMS fallback
+  } else {
+    log.info('post_call_whatsapp_skipped', {
+      correlationId, contactId,
+      reason: 'ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID not set — import account at elevenlabs.io/app/agents/whatsapp',
+    });
   }
 
   // ── Option 2: Twilio SMS fallback ────────────────────────────────────────
