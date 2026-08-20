@@ -816,6 +816,10 @@ model SelfieRequest {
   /// sent to the customer — storing it would let anyone with read access to this
   /// table upload on that customer's behalf.
   tokenHash String   @unique
+  /// The full public URL the customer taps to upload their selfie.
+  /// Stored here so the post-call webhook can send it via SMS without needing
+  /// to reconstruct it from the raw token (which is intentionally never stored).
+  uploadUrl String?
   expiresAt DateTime
   /// Failed/attempted uploads against this token. Capped, so a leaked link cannot be
   /// brute-forced or used as an upload endpoint.

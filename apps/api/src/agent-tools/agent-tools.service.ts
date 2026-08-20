@@ -766,7 +766,12 @@ export class AgentToolsService {
         })
         .catch(() => {});
 
-      // Send the selfie link via WhatsApp/SMS
+      // Create the selfie request so the post-call webhook can find it and
+      // send the link via Twilio SMS right after this call ends.
+      // We do NOT attempt delivery during the call — WhatsApp and SMS delivery
+      // during an active voice call is unreliable. Instead, the ElevenLabs
+      // post-call webhook (elevenlabs-webhook.service.ts → sendPostCallSms)
+      // fires the SMS the moment ElevenLabs confirms the call is finished.
       const selfieResult = await this.onboarding.requestSelfie(organizationId, {
         contactId: contact.id,
         channel: 'VOICE',
@@ -775,49 +780,34 @@ export class AgentToolsService {
       });
 
       const refId = contact.id.slice(0, 8).toUpperCase();
-      const selfieDelivered = selfieResult.delivery?.delivered ?? false;
       const firstName = input.fullName.split(' ')[0];
 
-      if (selfieDelivered) {
-        if (isEquity) {
-          return {
-            ok: true,
-            speak: `Thank you, ${firstName}. I have registered your profile for the free PLASCHEMA Equity Programme in ${input.lga} with ${selectedFacility} as your primary facility. Because you qualify for the state-subsidized programme, you do NOT need to pay any premium. Your enrollment reference is ${refId}. I have just sent a secure photo link to your phone. Please open WhatsApp or SMS, tap the link, and take a quick selfie to finish your registration. Our team will verify your eligibility and issue your health card within 2 business days. Is there anything else I can assist you with?`,
-            data: {
-              contactId: contact.id,
-              refId,
-              selfieRequestId: selfieResult.id,
-              selfieDelivered: true,
-              uploadUrl: selfieResult.uploadUrl,
-              isEquity: true,
-            },
-          };
-        } else {
-          return {
-            ok: true,
-            speak: `Thank you, ${firstName}. I have registered your profile for the PLASCHEMA ${input.planType} plan in ${input.lga} with ${selectedFacility} as your primary healthcare facility. Your enrollment reference is ${refId}. I have just sent a secure photo and payment link to your phone. Please open WhatsApp or SMS, tap the link, and take a quick selfie to complete your profile. Our team will activate your health coverage within 2 business days. Is there anything else I can help you with today?`,
-            data: {
-              contactId: contact.id,
-              refId,
-              selfieRequestId: selfieResult.id,
-              selfieDelivered: true,
-              uploadUrl: selfieResult.uploadUrl,
-            },
-          };
-        }
-      } else {
+      if (isEquity) {
         return {
           ok: true,
-          speak: `Thank you, ${firstName}. I have registered your profile for the PLASCHEMA ${normalizedPlan} in ${input.lga} with ${selectedFacility} as your primary facility. Your enrollment reference is ${refId}. You can complete your photo upload online at enrollments dot plaschema dot app, or visit any PLASCHEMA desk in ${input.lga} with your reference number. Is there anything else I can assist you with?`,
+          speak: `Wonderful news, ${firstName} — you are all set! I have registered your profile for the free PLASCHEMA Equity Programme in ${input.lga}, with ${selectedFacility} as your primary facility. Because you qualify for the Equity Programme, there is absolutely no payment required. Your enrollment reference number is ${refId} — please save that. Right after this call, we will send you an SMS with a secure link to complete your photo upload. Our team will verify your eligibility and issue your health card within 2 working days. Is there anything else I can help you with?`,
           data: {
             contactId: contact.id,
             refId,
             selfieRequestId: selfieResult.id,
-            selfieDelivered: false,
             uploadUrl: selfieResult.uploadUrl,
+            postCallSmsScheduled: true,
+            isEquity: true,
           },
         };
       }
+
+      return {
+        ok: true,
+        speak: `You are all registered, ${firstName}! Your PLASCHEMA ${normalizedPlan} profile has been created in ${input.lga}, with ${selectedFacility} as your primary healthcare facility. Your enrollment reference is ${refId} — please keep that safe. Right after this call ends, we will send you an SMS with a link to upload your photo and complete your profile. Our team will activate your health coverage within 2 working days. Is there anything else I can help you with today?`,
+        data: {
+          contactId: contact.id,
+          refId,
+          selfieRequestId: selfieResult.id,
+          uploadUrl: selfieResult.uploadUrl,
+          postCallSmsScheduled: true,
+        },
+      };
     } catch (e) {
       return this.failed('register_enrollee', e);
     }

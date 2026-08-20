@@ -39,6 +39,72 @@ import { AceLogger } from '../config/logger';
 const log = new AceLogger('ElevenLabsWebhook');
 
 /**
+ * Sends the selfie/payment link to a caller via Twilio SMS immediately after
+ * a call ends. Uses the exact same Twilio credentials already configured for
+ * telephony — no separate WhatsApp API token is needed.
+ *
+ * Called from ingestCall() once the contact is resolved. Runs fire-and-forget;
+ * a delivery failure is logged but never surfaces as an error to the webhook
+ * ACK, because the enrollment record is already written — this is just the
+ * notification step.
+ */
+async function sendPostCallSms(
+  contactId: string,
+  toPhone: string,
+  firstName: string,
+  organizationId: string,
+  correlationId: string
+): Promise<void> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_PHONE_NUMBER;
+  if (!sid || !token || !from) {
+    log.info('post_call_sms_skipped_no_twilio', { correlationId, contactId });
+    return;
+  }
+
+  // Find the MOST RECENT pending selfie request for this contact
+  const selfieReq = await prisma.selfieRequest.findFirst({
+    where: { contactId, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, uploadUrl: true },
+  }).catch(() => null);
+
+  if (!selfieReq?.uploadUrl) {
+    log.info('post_call_sms_no_pending_selfie', { correlationId, contactId });
+    return;
+  }
+
+  const uploadUrl = selfieReq.uploadUrl;
+
+  const body =
+    `Hi ${firstName}, your PLASCHEMA registration is confirmed! ✅\n\n` +
+    `Complete your profile by uploading a selfie here:\n${uploadUrl}\n\n` +
+    `Helpline: 0700-700-1111`;
+
+  try {
+    const params = new URLSearchParams({ To: toPhone, From: from, Body: body });
+    const authHeader = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      }
+    );
+    const resp: any = await res.json().catch(() => ({}));
+    if (res.ok) {
+      log.info('post_call_selfie_sms_sent', { correlationId, contactId, to: toPhone, sid: resp.sid, uploadUrl });
+    } else {
+      log.warn('post_call_selfie_sms_failed', { correlationId, contactId, status: res.status, code: resp.code, message: resp.message });
+    }
+  } catch (err: any) {
+    log.warn('post_call_selfie_sms_exception', { correlationId, contactId, error: err?.message });
+  }
+}
+
+/**
  * The post-call payload, in the shape it arrives on the wire.
  *
  * snake_case deliberately: the SDK converts to camelCase for ITS callers, but
@@ -278,6 +344,14 @@ export class ElevenLabsWebhookService {
       durationSeconds,
       turns: data.transcript?.length ?? 0,
     });
+
+    // Fire-and-forget: if a selfie request was created during this call's
+    // register-enrollee tool call, send the link via SMS now that the call
+    // is confirmed ended and the phone number is verified.
+    if (contact) {
+      const firstName = contact.fullName?.split(' ')[0] || 'there';
+      sendPostCallSms(contact.id, customerNumber, firstName, organizationId, correlationId).catch(() => {});
+    }
 
     return { handled: true, kind: 'voice', organizationId, reference: callSid };
   }

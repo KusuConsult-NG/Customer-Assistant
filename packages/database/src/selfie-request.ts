@@ -32,6 +32,8 @@ export interface CreateSelfieRequestInput {
   conversationId?: string;
   callSid?: string;
   requestedByUserId?: string;
+  /** Pre-computed public URL — stored so post-call delivery can retrieve it without the raw token. */
+  uploadUrl?: string;
 }
 
 export interface CreatedSelfieRequest {
@@ -67,6 +69,7 @@ export async function createSelfieRequest(input: CreateSelfieRequestInput): Prom
       conversationId: input.conversationId ?? null,
       callSid: input.callSid ?? null,
       tokenHash: hashSelfieToken(token),
+      uploadUrl: input.uploadUrl ?? null,
       expiresAt,
       requestedByUserId: input.requestedByUserId ?? null,
     },
@@ -77,6 +80,14 @@ export async function createSelfieRequest(input: CreateSelfieRequestInput): Prom
 
 /** Public base URL of the customer-facing web app, where the upload page lives. */
 export function selfieUploadUrl(token: string): string {
-  const base = (process.env.WEB_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
-  return `${base}/selfie/${token}`;
+  // Prefer API_BASE_URL (the ngrok tunnel) so the link is publicly reachable
+  // even when the web app is only on localhost. Falls back to WEB_BASE_URL for
+  // production deployments where the web app has its own public domain.
+  const base = (
+    process.env.API_BASE_URL ||
+    process.env.WEB_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    'http://localhost:4000'
+  ).replace(/\/+$/, '');
+  return `${base}/api/public/selfie/${token}`;
 }

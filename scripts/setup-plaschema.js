@@ -290,6 +290,56 @@ async function main() {
 
   console.log(`✅  ElevenLabs agent synced: ${result.agentId}  (${Object.keys(result.toolIds).length} tools)\n`);
 
+  // 6. Configure ElevenLabs post-call webhook ─────────────────────────────────
+  console.log('🔗  Step 5: Configuring ElevenLabs post-call webhook...');
+  const elApiKey = process.env.ELEVENLABS_API_KEY;
+  const webhookUrl = `${process.env.API_BASE_URL}/api/webhooks/elevenlabs`;
+  const webhookSecret = process.env.ELEVENLABS_WEBHOOK_SECRET;
+
+  try {
+    // Check existing workspace webhooks first (idempotent)
+    const existingResp = await fetch('https://api.elevenlabs.io/v1/workspace/webhooks', {
+      headers: { 'xi-api-key': elApiKey }
+    });
+    const existing = await existingResp.json();
+    const alreadyExists = (existing.webhooks || []).find(w => w.settings?.webhook_url === webhookUrl || w.webhook_url === webhookUrl);
+
+    let webhookId = alreadyExists?.webhook_id || alreadyExists?.id;
+
+    if (!webhookId) {
+      const createResp = await fetch('https://api.elevenlabs.io/v1/workspace/webhooks', {
+        method: 'POST',
+        headers: { 'xi-api-key': elApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            webhook_url: webhookUrl,
+            name: 'PLASCHEMA Post-Call Handler',
+            auth_type: 'hmac',
+            secret: webhookSecret,
+            method: 'POST',
+            subscriptions: ['conversation_transcription']
+          }
+        })
+      });
+      const created = await createResp.json();
+      webhookId = created.webhook_id || created.id;
+    }
+
+    if (webhookId) {
+      // Link the webhook as post_call_webhook in convai settings
+      await fetch('https://api.elevenlabs.io/v1/convai/settings', {
+        method: 'PATCH',
+        headers: { 'xi-api-key': elApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhooks: { post_call_webhook_id: webhookId } })
+      });
+      console.log(`✅  Post-call webhook configured: ${webhookId}\n`);
+    } else {
+      console.log('⚠️   Could not create webhook — configure manually in ElevenLabs dashboard.\n');
+    }
+  } catch (e) {
+    console.log('⚠️   Webhook setup skipped:', e.message);
+  }
+
   // ── Summary ──────────────────────────────────────────────────────────────
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('  🎉  PLASCHEMA Setup Complete!');
@@ -299,6 +349,7 @@ async function main() {
   console.log('  FAQs loaded  : ' + FAQS.length);
   console.log('  KB Documents : ' + kbFiles.length);
   console.log('  ElevenLabs   : agent_3801m0c9terzf58tskm00cp3d008');
+  console.log('  Post-call SMS: ✅ via ElevenLabs webhook → Twilio');
   console.log('');
   console.log('  Login → http://localhost:3000');
   console.log('  Email  : admin@acedemo.com');

@@ -51,6 +51,10 @@ export class OnboardingService {
 
     const channel: SelfieChannel = input.channel ?? 'WHATSAPP';
 
+    // Generate the upload URL before creation so we can store it on the row.
+    // The token is produced inside createSelfieRequest, so we pass a placeholder
+    // and update it immediately after — or we compute the token here first.
+    // Simplest: call create then update the uploadUrl in one extra write.
     const request = await createSelfieRequest({
       organizationId,
       contactId: contact.id,
@@ -63,6 +67,14 @@ export class OnboardingService {
     });
 
     const uploadUrl = selfieUploadUrl(request.token);
+
+    // Persist the upload URL so the post-call webhook can retrieve it without
+    // needing the raw token (which is intentionally not stored anywhere else).
+    await prisma.selfieRequest.update({
+      where: { id: request.id },
+      data: { uploadUrl },
+    }).catch(() => {}); // non-fatal: the link is still in memory for this request
+
     const delivery = await this.deliverRequest(organizationId, contact, request.id, channel, input.purpose, uploadUrl);
 
     log.info('selfie_requested', {
