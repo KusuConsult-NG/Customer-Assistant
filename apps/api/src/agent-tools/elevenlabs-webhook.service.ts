@@ -39,31 +39,27 @@ import { AceLogger } from '../config/logger';
 const log = new AceLogger('ElevenLabsWebhook');
 
 /**
- * Sends the selfie/payment link to a caller via Twilio SMS immediately after
- * a call ends. Uses the exact same Twilio credentials already configured for
- * telephony — no separate WhatsApp API token is needed.
+ * Delivers the selfie link to the caller immediately after the call ends.
  *
- * Called from ingestCall() once the contact is resolved. Runs fire-and-forget;
- * a delivery failure is logged but never surfaces as an error to the webhook
- * ACK, because the enrollment record is already written — this is just the
- * notification step.
+ * Delivery priority:
+ *   1. ElevenLabs WhatsApp channel — if a WhatsApp Business number is connected
+ *      in the ElevenLabs dashboard, this sends a rich WhatsApp message using
+ *      ElevenLabs' own messaging API. No WhatsApp Cloud API token management needed.
+ *   2. Twilio SMS fallback — uses the same Twilio credentials already in use for
+ *      the phone calls. Works on paid Twilio accounts; trial accounts are limited
+ *      to verified numbers only.
+ *
+ * Fire-and-forget: called from ingestCall() after the call log is written.
+ * A delivery failure is logged but never surfaces to the webhook ACK.
  */
-async function sendPostCallSms(
+async function sendPostCallLink(
   contactId: string,
   toPhone: string,
   firstName: string,
   organizationId: string,
   correlationId: string
 ): Promise<void> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_PHONE_NUMBER;
-  if (!sid || !token || !from) {
-    log.info('post_call_sms_skipped_no_twilio', { correlationId, contactId });
-    return;
-  }
-
-  // Find the MOST RECENT pending selfie request for this contact
+  // Find the most recent pending selfie request for this contact
   const selfieReq = await prisma.selfieRequest.findFirst({
     where: { contactId, status: 'PENDING' },
     orderBy: { createdAt: 'desc' },
@@ -71,19 +67,42 @@ async function sendPostCallSms(
   }).catch(() => null);
 
   if (!selfieReq?.uploadUrl) {
-    log.info('post_call_sms_no_pending_selfie', { correlationId, contactId });
+    log.info('post_call_link_no_pending_selfie', { correlationId, contactId });
     return;
   }
 
   const uploadUrl = selfieReq.uploadUrl;
 
-  const body =
+  // ── Option 1: ElevenLabs WhatsApp channel ────────────────────────────────
+  // If a WhatsApp Business number is connected to this ElevenLabs workspace
+  // (via Conversational AI → Channels → WhatsApp in the dashboard), we use
+  // ElevenLabs' own API to send a WhatsApp message. This avoids needing to
+  // manage a WhatsApp Cloud API token separately.
+  const elApiKey = process.env.ELEVENLABS_API_KEY;
+  const agentId = process.env.ELEVENLABS_AGENT_ID;
+  if (elApiKey && agentId) {
+    const waDelivered = await sendViaElevenLabsWhatsApp(
+      elApiKey, agentId, toPhone, firstName, uploadUrl, correlationId, contactId
+    );
+    if (waDelivered) return; // WhatsApp succeeded — no need for SMS fallback
+  }
+
+  // ── Option 2: Twilio SMS fallback ────────────────────────────────────────
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_PHONE_NUMBER;
+  if (!sid || !token || !from) {
+    log.info('post_call_link_no_twilio', { correlationId, contactId });
+    return;
+  }
+
+  const smsBody =
     `Hi ${firstName}, your PLASCHEMA registration is confirmed! ✅\n\n` +
     `Complete your profile by uploading a selfie here:\n${uploadUrl}\n\n` +
     `Helpline: 0700-700-1111`;
 
   try {
-    const params = new URLSearchParams({ To: toPhone, From: from, Body: body });
+    const params = new URLSearchParams({ To: toPhone, From: from, Body: smsBody });
     const authHeader = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
     const res = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
@@ -101,6 +120,83 @@ async function sendPostCallSms(
     }
   } catch (err: any) {
     log.warn('post_call_selfie_sms_exception', { correlationId, contactId, error: err?.message });
+  }
+}
+
+/**
+ * Sends the selfie link via ElevenLabs' WhatsApp channel integration.
+ *
+ * ElevenLabs acts as the WhatsApp Business API gateway — once a WhatsApp
+ * Business number is connected in the ElevenLabs dashboard (Conversational AI
+ * → Sarah → Channels → WhatsApp), this sends an outbound WhatsApp message
+ * through that connected number.
+ *
+ * Returns true if the message was accepted, false if no WhatsApp channel is
+ * configured or the send failed (triggers SMS fallback in the caller).
+ */
+async function sendViaElevenLabsWhatsApp(
+  apiKey: string,
+  agentId: string,
+  toPhone: string,
+  firstName: string,
+  uploadUrl: string,
+  correlationId: string,
+  contactId: string
+): Promise<boolean> {
+  try {
+    // Fetch connected WhatsApp phone numbers from ElevenLabs workspace
+    const numbersResp = await fetch(
+      `https://api.elevenlabs.io/v1/convai/agents/${agentId}/channels`,
+      { headers: { 'xi-api-key': apiKey } }
+    );
+    const channels = await numbersResp.json().catch(() => ({ results: [] }));
+    const waChannel = (channels.results || []).find((ch: any) => ch.type === 'whatsapp' || ch.id === 'whatsapp');
+
+    if (!waChannel) {
+      log.info('post_call_whatsapp_no_channel', { correlationId, contactId, hint: 'Connect a WhatsApp Business number in the ElevenLabs dashboard → Channels' });
+      return false;
+    }
+
+    const waPhoneNumberId = waChannel.phone_number_id || waChannel.id;
+
+    // Send an outbound WhatsApp message via ElevenLabs
+    // ElevenLabs routes this through the connected WhatsApp Business number
+    const msgBody = {
+      to: toPhone,
+      agent_id: agentId,
+      message: {
+        type: 'text',
+        text: {
+          body:
+            `Hi ${firstName}! 👋 Your PLASCHEMA registration is confirmed! ✅\n\n` +
+            `To complete your health coverage enrollment, please upload your photo here:\n${uploadUrl}\n\n` +
+            `This link is valid for 48 hours. Once uploaded, our team will activate your coverage within 2 working days.\n\n` +
+            `Questions? Call the PLASCHEMA Helpline: *0700-700-1111*`,
+        },
+      },
+    };
+
+    const sendResp = await fetch(
+      `https://api.elevenlabs.io/v1/convai/whatsapp/send`,
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgBody),
+      }
+    );
+
+    if (sendResp.ok) {
+      const r = await sendResp.json().catch(() => ({}));
+      log.info('post_call_selfie_whatsapp_sent', { correlationId, contactId, to: toPhone, uploadUrl, messageId: (r as any)?.message_id });
+      return true;
+    }
+
+    const errBody = await sendResp.json().catch(() => ({}));
+    log.info('post_call_whatsapp_send_failed', { correlationId, contactId, status: sendResp.status, error: JSON.stringify(errBody).substring(0, 200) });
+    return false;
+  } catch (err: any) {
+    log.info('post_call_whatsapp_exception', { correlationId, contactId, error: err?.message });
+    return false;
   }
 }
 
@@ -350,7 +446,7 @@ export class ElevenLabsWebhookService {
     // is confirmed ended and the phone number is verified.
     if (contact) {
       const firstName = contact.fullName?.split(' ')[0] || 'there';
-      sendPostCallSms(contact.id, customerNumber, firstName, organizationId, correlationId).catch(() => {});
+      sendPostCallLink(contact.id, customerNumber, firstName, organizationId, correlationId).catch(() => {});
     }
 
     return { handled: true, kind: 'voice', organizationId, reference: callSid };
