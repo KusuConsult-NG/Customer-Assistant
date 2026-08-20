@@ -149,24 +149,29 @@ export class PublicPaymentController {
 }
 
 /**
- * Server-side proxy for patient-facing web pages.
+ * Full reverse-proxy for patient-facing web pages and their assets.
  *
- * The ngrok tunnel only exposes port 4000 (API). Patient-facing pages (selfie
- * camera, payment) live in the Next.js web app on port 3000, which is only
- * reachable from localhost — not from a patient's phone.
+ * The ngrok tunnel only exposes port 4000 (API). The Next.js web app (port 3000)
+ * is only reachable from localhost. This controller proxies ALL traffic that
+ * the patient's browser needs to render the selfie page:
  *
- * These routes fetch the HTML from the local Next.js app and stream it back
- * so the patient's browser sees it at the public ngrok URL. No second tunnel
- * is required; a single URL covers everything.
+ *   GET /selfie/:token        → HTML page from localhost:3000/selfie/:token
+ *   GET /pay                  → HTML page from localhost:3000/pay
+ *   GET /_next/static/*       → JS/CSS chunks served by Next.js
+ *   GET /_next/image/*        → Next.js image optimiser
+ *   GET /icon.svg             → favicon
  *
- *   GET /selfie/:token  → proxies http://localhost:3000/selfie/:token
- *   GET /pay            → proxies http://localhost:3000/pay
+ * Without the static-asset routes, the selfie page renders as a broken white
+ * screen because the browser fetches /_next/static/... from the ngrok URL (the
+ * API) and gets 404s for every chunk and stylesheet.
  */
 @Controller()
 export class SelfieRedirectController {
   private get webBase(): string {
     return (process.env.WEB_INTERNAL_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
   }
+
+  // ── Page routes ────────────────────────────────────────────────────────────
 
   @Get('selfie/:token')
   async proxySelfie(
@@ -182,16 +187,58 @@ export class SelfieRedirectController {
     return this.proxyToWeb('/pay', query, req.res);
   }
 
+  // ── Static asset routes (required for page JS/CSS to load) ─────────────────
+  // Next.js emits chunk URLs relative to the page origin, so when the browser
+  // fetches the HTML from https://ngrok.../selfie/TOKEN it then requests
+  // https://ngrok.../_next/static/css/main.css — which hits this API.
+  // We proxy those straight through to localhost:3000.
+
+  @Get('_next/static/*path')
+  async proxyNextStatic(@Req() req: any) {
+    return this.proxyAsset(req.url, req.res);
+  }
+
+  @Get('_next/image')
+  async proxyNextImage(@Req() req: any) {
+    return this.proxyAsset(req.url, req.res);
+  }
+
+  @Get('icon.svg')
+  async proxyIcon(@Req() req: any) {
+    return this.proxyAsset('/icon.svg', req.res);
+  }
+
+  // ── Shared helpers ─────────────────────────────────────────────────────────
+
   private async proxyToWeb(path: string, query: Record<string, string>, res: any): Promise<void> {
     const qs = new URLSearchParams(query).toString();
     const target = `${this.webBase}${path}${qs ? '?' + qs : ''}`;
     try {
       const upstream = await fetch(target);
-      const html = await upstream.text();
       res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'text/html; charset=utf-8');
+      // Cache-Control: same as what Next.js would send for pages
+      res.setHeader('Cache-Control', upstream.headers.get('cache-control') ?? 'no-store');
+      const html = await upstream.text();
       res.status(upstream.status).send(html);
     } catch {
-      res.status(502).send('<h1>Service temporarily unavailable</h1>');
+      res.status(502).send('<h1>Service temporarily unavailable. Please try again.</h1>');
+    }
+  }
+
+  private async proxyAsset(url: string, res: any): Promise<void> {
+    const target = `${this.webBase}${url}`;
+    try {
+      const upstream = await fetch(target);
+      const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
+      const cacheControl = upstream.headers.get('cache-control') ?? 'public, max-age=31536000, immutable';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', cacheControl);
+      // Use arraybuffer for binary assets (fonts, images); text for JS/CSS
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.status(upstream.status).send(buf);
+    } catch {
+      res.status(502).send('');
     }
   }
 }
+

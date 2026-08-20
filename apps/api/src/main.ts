@@ -150,7 +150,31 @@ async function bootstrap() {
 
   // ── 7. Start listening ────────────────────────────────────────────────────
   // (Body size limits are configured via useBodyParser above — registering a
-  //  second express.json() here would silently disable rawBody capture.)
+  //  second express.json() here would silently disable rawBody capture.)\n
+  // Proxy Next.js static assets to the web app (port 3000).
+  // The patient-facing selfie page is proxied by SelfieRedirectController (HTML),
+  // but the browser then tries to load /_next/static/css/*.css and /_next/static/chunks/*.js
+  // relative to the ngrok URL — hitting this API server, which doesn't have those files.
+  // This middleware catches all /_next/* requests and fetches them from localhost:3000.
+  // Must be registered before app.listen() so Express picks it up correctly.
+  const webInternal = (process.env.WEB_INTERNAL_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+  app.use((req: any, res: any, next: any) => {
+    if (!req.url.startsWith('/_next/') && !req.url.startsWith('/icon.svg')) {
+      return next();
+    }
+    const target = `${webInternal}${req.url}`;
+    fetch(target)
+      .then(async (upstream) => {
+        const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
+        const cacheControl = upstream.headers.get('cache-control') ?? 'public, max-age=31536000, immutable';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', cacheControl);
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.status(upstream.status).send(buf);
+      })
+      .catch(() => res.status(502).send(''));
+  });
+
   const port = parseInt(process.env.PORT ?? '4000', 10);
   await app.listen(port, '0.0.0.0');
 
