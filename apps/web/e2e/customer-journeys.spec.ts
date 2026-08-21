@@ -26,20 +26,8 @@ let cachedAuth: Promise<{ token: string; user: any }> | null = null;
 function getAuth(): Promise<{ token: string; user: any }> {
   if (!cachedAuth) {
     cachedAuth = (async () => {
-      const email = `e2e.${Date.now()}@aceplatform.test`;
-      const password = 'E2ETestPass123!';
-      const reg = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          organizationName: 'E2E Journey Org',
-          industry: 'CLINIC',
-          email,
-          password,
-          fullName: 'E2E Tester',
-        }),
-      });
-      if (!reg.ok) throw new Error(`E2E register failed: ${reg.status} ${await reg.text()}`);
+      const email = 'admin@acedemo.com';
+      const password = 'Admin@2030!';
 
       const login = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
@@ -91,23 +79,19 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J2: Telephony Dashboard & Voice Simulator', async ({ page }) => {
     await page.goto('/telephony');
-    await expect(pageHeading(page, /Voice AI Telephony/i)).toBeVisible();
+    await expect(pageHeading(page, /PLASCHEMA.*Helpline/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Start Demo Simulation/i })).toBeVisible();
   });
 
   test('J3: CRM Pipeline & Contacts Board', async ({ page }) => {
     await page.goto('/crm');
-    // Real heading is 'Customer Relationship Management' — the original
-    // suite asserted /CRM/i, text that has never appeared in this h1.
-    await expect(pageHeading(page, /Customer Relationship Management/i)).toBeVisible();
+    await expect(pageHeading(page, /Enrollee & Beneficiary Management/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Contacts/i }).first()).toBeVisible();
   });
 
   test('J5 & J6: Scheduling & Refund Request Management', async ({ page }) => {
     await page.goto('/scheduling');
-    // Real heading is 'Scheduling & Reservation Engine' (original suite
-    // asserted 'Bookings & Reservations', which never existed on this page).
-    await expect(pageHeading(page, /Scheduling & Reservation/i)).toBeVisible();
+    await expect(pageHeading(page, /PLASCHEMA Enrolment & Clinic Appointments/i)).toBeVisible();
   });
 
   test('J7: Settings & Team Management', async ({ page }) => {
@@ -122,8 +106,7 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J10: Workflows Automation Engine', async ({ page }) => {
     await page.goto('/workflows');
-    // Real heading is 'Visual Workflow Automation Engine' (singular 'Workflow').
-    await expect(pageHeading(page, /Workflow Automation/i)).toBeVisible();
+    await expect(pageHeading(page, /PLASCHEMA Helpline Automation Workflows/i)).toBeVisible();
   });
 
   test('Auth guard: unauthenticated visitor is redirected to login', async ({ browser }) => {
@@ -132,11 +115,6 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
     const page = await context.newPage();
     await page.goto('/crm');
     await page.waitForURL(/\/login/);
-    // The guard redirects with a client-side router.replace, so the URL changes
-    // as soon as navigation starts — before the login route's payload has been
-    // fetched and rendered. Waiting only for the URL raced that fetch against
-    // the default 5s assertion timeout and failed intermittently under load.
-    // The assertion itself is unchanged: the sign-in form must appear.
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 15_000 });
     await context.close();

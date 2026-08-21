@@ -1,14 +1,8 @@
 export const getApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-  // No hardcoded production host fallback: a deployment that forgets to set
-  // NEXT_PUBLIC_API_URL should fail visibly against localhost rather than silently
-  // sending its customers' data to someone else's demo API.
-  if (typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-    console.error(
-      '[ACE] NEXT_PUBLIC_API_URL is not set. API requests will fail. ' +
-      'Set it to your API origin at build time.'
-    );
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'http://localhost:4000';
   }
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
   return 'http://localhost:4000';
 };
 
