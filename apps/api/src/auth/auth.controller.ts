@@ -86,7 +86,9 @@ export class AuthController {
   }
 
   // Sends an email; rate limited to prevent using it as a mail bomb.
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  // 10/min: a legitimate user can request, wait, and re-request without being
+  // blocked, while still preventing automated enumeration at scale.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('forgot-password')
   async forgotPassword(@Body() body: ForgotPasswordDto) {
     return this.authService.forgotPassword(body.email);

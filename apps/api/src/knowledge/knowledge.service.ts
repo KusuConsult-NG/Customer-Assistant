@@ -128,6 +128,22 @@ export class KnowledgeService {
     });
   }
 
+  async getDocumentById(organizationId: string, documentId: string) {
+    const doc = await prisma.knowledgeDocument.findFirst({
+      where: { id: documentId, organizationId },
+      include: {
+        chunks: {
+          orderBy: { chunkIndex: 'asc' },
+          select: { id: true, chunkIndex: true, content: true, qdrantVectorId: true },
+        },
+      },
+    });
+    if (!doc) {
+      throw new NotFoundException(`Knowledge document ${documentId} not found`);
+    }
+    return doc;
+  }
+
   /**
    * Upload a document to Supabase Storage and enqueue it for async processing.
    *

@@ -23,6 +23,70 @@ import { ActivatePlanDto, CheckoutDto, ServicePaymentGuidanceDto } from './billi
 export class BillingController {
   constructor(private billingService: BillingService) {}
 
+  /**
+   * GET /api/billing/plans
+   * Returns all available subscription plans with pricing and feature limits.
+   * Used by the billing upgrade page to render the plan comparison table.
+   * Public endpoint — plan pricing should be visible without authentication.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('plans')
+  async getPlans(@Req() req: { user: AuthUser }) {
+    const subscription = await this.billingService.getSubscriptionDetails(req.user.organizationId);
+    return [
+      {
+        id: 'STARTER',
+        name: 'Starter',
+        monthlyPriceNgn: 50_000,
+        callMinutesIncluded: 500,
+        whatsappMessagesIncluded: 2_000,
+        agentSeats: 3,
+        features: ['AI voice calls', 'WhatsApp integration', 'CRM', 'Knowledge base (5 docs)', 'Email support'],
+        isCurrent: subscription.plan === 'STARTER',
+      },
+      {
+        id: 'PROFESSIONAL',
+        name: 'Professional',
+        monthlyPriceNgn: 150_000,
+        callMinutesIncluded: 2_000,
+        whatsappMessagesIncluded: 10_000,
+        agentSeats: 10,
+        features: ['Everything in Starter', 'Unlimited knowledge docs', 'Broadcasts', 'Workflows automation', 'Priority support'],
+        isCurrent: subscription.plan === 'PROFESSIONAL',
+      },
+      {
+        id: 'BUSINESS',
+        name: 'Business',
+        monthlyPriceNgn: 350_000,
+        callMinutesIncluded: 6_000,
+        whatsappMessagesIncluded: 30_000,
+        agentSeats: 25,
+        features: ['Everything in Professional', 'Custom AI persona', 'Advanced analytics', 'SLA guarantee', 'Dedicated support'],
+        isCurrent: subscription.plan === 'BUSINESS',
+      },
+      {
+        id: 'ENTERPRISE',
+        name: 'Enterprise',
+        monthlyPriceNgn: 1_000_000,
+        callMinutesIncluded: 20_000,
+        whatsappMessagesIncluded: 100_000,
+        agentSeats: -1, // unlimited
+        features: ['Everything in Business', 'Unlimited seats', 'Custom integrations', 'On-premise option', '24/7 support'],
+        isCurrent: subscription.plan === 'ENTERPRISE',
+      },
+    ];
+  }
+
+  /**
+   * GET /api/billing/current
+   * Alias for /subscription — the dashboard billing page calls both paths.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('current')
+  async getCurrent(@Req() req: { user: AuthUser }) {
+    return this.billingService.getSubscriptionDetails(req.user.organizationId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('subscription')
   async getSubscription(@Req() req: { user: AuthUser }) {

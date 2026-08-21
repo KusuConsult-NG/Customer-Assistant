@@ -38,6 +38,16 @@ export class KnowledgeController {
   }
 
   /**
+   * GET /api/knowledge/documents/:id
+   * Returns full document metadata plus all indexed chunks in order.
+   * Previously returned 404 — there was no route registered for this path (HID-017).
+   */
+  @Get('documents/:id')
+  async getDocument(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    return this.knowledgeService.getDocumentById(req.user.organizationId, id);
+  }
+
+  /**
    * Short-lived signed download URL for an uploaded document.
    *
    * KnowledgeService.getDocumentDownloadUrl already existed but nothing routed to it,

@@ -56,3 +56,6 @@ dump.rdb
 apps/web/playwright-report/
 apps/web/test-results/
 apps/web/playwright.sandbox.config.ts
+data/qdrant/qdrant
+storage/
+.qdrant-initialized
