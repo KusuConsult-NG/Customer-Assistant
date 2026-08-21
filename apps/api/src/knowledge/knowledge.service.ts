@@ -346,6 +346,61 @@ export class KnowledgeService {
     return { chunkCount: chunks.length, vectorised };
   }
 
+  /**
+   * Re-vectorise all existing document chunks into Qdrant.
+   *
+   * Documents were previously chunked and stored in PostgreSQL but never embedded
+   * (OpenAI key was invalid / quota exceeded). This method reads the existing
+   * chunks, generates embeddings, and upserts them into Qdrant without
+   * re-downloading or re-chunking the source files.
+   *
+   * Called by POST /api/knowledge/reindex (OWNER/ADMIN only).
+   */
+  async reindexAllDocuments(organizationId: string): Promise<{
+    totalDocs: number;
+    totalChunks: number;
+    vectorised: boolean;
+    message: string;
+  }> {
+    const chunks = await prisma.documentChunk.findMany({
+      where: { organizationId },
+      orderBy: [{ documentId: 'asc' }, { chunkIndex: 'asc' }],
+      select: { id: true, documentId: true, chunkIndex: true, content: true },
+    });
+
+    if (chunks.length === 0) {
+      return { totalDocs: 0, totalChunks: 0, vectorised: false, message: 'No chunks found to index.' };
+    }
+
+    const docIds = [...new Set(chunks.map(c => c.documentId))];
+
+    try {
+      await this.ragService.upsertChunks(
+        organizationId,
+        chunks.map(c => ({
+          chunkId: c.id,
+          documentId: c.documentId,
+          chunkIndex: c.chunkIndex,
+          content: c.content,
+        }))
+      );
+
+      log.info('knowledge_reindex_complete', { organizationId, chunks: chunks.length, docs: docIds.length });
+
+      return {
+        totalDocs: docIds.length,
+        totalChunks: chunks.length,
+        vectorised: true,
+        message: `Successfully vectorised ${chunks.length} chunks from ${docIds.length} documents into Qdrant.`,
+      };
+    } catch (err: any) {
+      log.error(`knowledge_reindex_failed org=${organizationId}: ${err?.message}`);
+      throw new ServiceUnavailableException(
+        `Re-indexing failed: ${err?.message}. ` +
+        `Ensure OPENAI_API_KEY has active credits and Qdrant is running at ${process.env.QDRANT_URL ?? 'http://localhost:6333'}.`
+      );
+    }
+  }
 
   /**
    * Get a short-lived signed URL to download a stored document.

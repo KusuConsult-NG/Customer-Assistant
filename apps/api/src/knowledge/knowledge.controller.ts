@@ -70,6 +70,18 @@ export class KnowledgeController {
     return this.knowledgeService.crawlAndIndexWebsite(req.user.organizationId, body.url);
   }
 
+  /**
+   * POST /api/knowledge/reindex
+   * Re-embeds all existing document chunks into Qdrant.
+   * Use after replacing an expired OPENAI_API_KEY or provisioning a new Qdrant instance.
+   * Does NOT re-chunk documents — reads existing chunks from PostgreSQL and vectorises them.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('reindex')
+  async reindexAll(@Req() req: { user: AuthUser }) {
+    return this.knowledgeService.reindexAllDocuments(req.user.organizationId);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Delete('documents/:id')
   async deleteDocument(@Req() req: { user: AuthUser }, @Param('id') id: string) {
