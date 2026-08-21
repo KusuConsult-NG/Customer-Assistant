@@ -32,6 +32,8 @@ export interface TelephonyProvider {
  * option: a fabricated call ID is worse than an error.
  */
 export class TelephonyNotAvailableError extends Error {
+  /** HTTP status code carried so the global exception filter surfaces the real reason. */
+  readonly status = 503;
   constructor(provider: TelephonyProviderType, reason: string) {
     super(`${provider} cannot place outbound calls: ${reason}`);
     this.name = 'TelephonyNotAvailableError';

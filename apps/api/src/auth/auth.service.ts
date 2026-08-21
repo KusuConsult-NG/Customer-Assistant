@@ -335,7 +335,16 @@ export class AuthService {
         throw new UnauthorizedException('This session has been signed out. Please log in again.');
       }
 
-      const tokens = this.generateTokens(user, user.tokenVersion);
+      // Rotate: bump tokenVersion so this refresh token cannot be reused.
+      // The newly-issued pair carries the incremented version; a second use of
+      // the same old refresh token fails the tokenVersion check, which detects
+      // replay / theft and immediately invalidates the whole session.
+      const updated = await prisma.user.update({
+        where: { id: user.id },
+        data: { tokenVersion: { increment: 1 } },
+      });
+
+      const tokens = this.generateTokens(user, updated.tokenVersion);
       return {
         user: {
           id: user.id,

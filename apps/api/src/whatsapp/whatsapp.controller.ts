@@ -245,6 +245,28 @@ export class WhatsappController {
     return this.whatsappService.getBroadcasts(req.user.organizationId);
   }
 
+  /**
+   * POST /api/whatsapp/broadcasts — primary path used by the frontend dashboard.
+   * POST /api/whatsapp/broadcasts/send — legacy path kept for backwards-compat.
+   * Both delegate to the same handler.
+   */
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @Post('broadcasts')
+  async createBroadcast(
+    @Req() req: { user: AuthUser },
+    @Body() body: {
+      name: string;
+      templateId: string;
+      recipients: string[];
+      variables?: Record<string, string>;
+    }
+  ) {
+    if (!body.name || !body.templateId || !body.recipients || body.recipients.length === 0) {
+      throw new BadRequestException('Campaign name, templateId, and at least one recipient phone number are required');
+    }
+    return this.whatsappService.sendBroadcast(req.user.organizationId, body);
+  }
+
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post('broadcasts/send')
   async sendBroadcast(
