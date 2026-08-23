@@ -83,10 +83,12 @@ const guests = (n: number, lang: Language) =>
 
 export const RESERVATION_FLOW: FlowDefinition = {
   name: RESERVATION_FLOW_NAME,
+  title: 'Reserving a table',
 
   slots: [
     {
       name: 'partySize',
+      label: 'Party size',
       aliases: ['party', 'people', 'guests', 'persons', 'covers'],
       identifies: (text) => /^\d{1,2}$/.test(text.trim()),
       // Skipped only when the message already named a number — never defaulted.
@@ -118,6 +120,8 @@ export const RESERVATION_FLOW: FlowDefinition = {
     },
     {
       name: 'when',
+      label: 'Time',
+      display: (c) => chosenTableSlot(c)?.label ?? '',
       aliases: ['time', 'date', 'day', 'slot'],
       prompt: (c, lang) => {
         const size = partySizeOf(c);

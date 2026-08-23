@@ -71,10 +71,14 @@ export const serviceOf = (collected: Record<string, string>) =>
 
 export const BOOKING_FLOW: FlowDefinition = {
   name: BOOKING_FLOW_NAME,
+  title: 'Booking an appointment',
 
   slots: [
     {
       name: 'when',
+      label: 'Time',
+      // Stores an index into the offered slots; staff need the slot itself.
+      display: (c) => chosenSlot(c)?.label ?? '',
       aliases: ['time', 'date', 'day', 'slot'],
       prompt: (c, lang) =>
         t(lang, 'book_ask', {

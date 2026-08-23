@@ -54,6 +54,7 @@ function canonicalLga(text: string): string | null {
 
 export const ENROLLMENT_FLOW: FlowDefinition = {
   name: ENROLLMENT_FLOW_NAME,
+  title: 'PLASCHEMA enrollment',
 
   slots: [
     {
@@ -77,6 +78,7 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
     },
     {
       name: 'ageOrDob',
+      label: 'Age / date of birth',
       aliases: ['age', 'date of birth', 'dob', 'birthday'],
       identifies: (text) => /^\d{1,3}(\s*years?)?$/i.test(text.trim()),
       prompt: (c, lang) => t(lang, 'enrol_age_ask', { name: firstNameOf(c.fullName, lang) }),
@@ -115,6 +117,7 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
     },
     {
       name: 'lga',
+      label: 'LGA',
       aliases: ['lga', 'local government', 'local government area', 'council'],
       // A Plateau LGA name is unambiguous: no other field in this form takes a
       // value that resolves against the accredited list.
@@ -130,6 +133,7 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
     },
     {
       name: 'planType',
+      label: 'Plan',
       aliases: ['plan', 'programme', 'program', 'category', 'sector'],
       // Deliberately excludes the bare digits the prompt offers: "3" is a valid
       // plan answer AND a valid age, so as a CORRECTION it identifies nothing.
@@ -150,6 +154,7 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
     },
     {
       name: 'preferredHospital',
+      label: 'Preferred facility',
       aliases: ['hospital', 'facility', 'clinic', 'health centre', 'health center', 'primary facility'],
       identifies: (text, c) =>
         getFacilitiesForLGA(c.lga ?? '').some((f) =>
@@ -180,6 +185,7 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
     },
     {
       name: 'nin',
+      label: 'NIN',
       optional: true,
       aliases: ['nin', 'national identification number', 'national id'],
       identifies: (text) => text.replace(/\D/g, '').length === 11,

@@ -80,11 +80,14 @@ export function chosenOption(c: Record<string, string>): RescheduleOption | null
 
 export const RESCHEDULE_FLOW: FlowDefinition = {
   name: RESCHEDULE_FLOW_NAME,
+  title: 'Moving an appointment',
 
   slots: [
     whichSlot('verb_move'),
     {
       name: 'when',
+      label: 'Moving it to',
+      display: (c) => chosenOption(c)?.label ?? '',
       aliases: ['time', 'date', 'day', 'slot'],
       prompt: (c, lang) => {
         const target = chosenTarget(c);
