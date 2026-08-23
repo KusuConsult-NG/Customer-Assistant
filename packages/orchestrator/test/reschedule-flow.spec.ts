@@ -33,10 +33,9 @@ jest.mock('@ace/database', () => ({
 import { ConversationOrchestrator } from '../src/index';
 import { advanceFlow, beginFlow, type FlowState } from '../src/flows';
 import {
-  RESCHEDULE_FLOW, TARGETS_KEY, OPTIONS_KEY,
-  chosenTarget, chosenOption,
-  type RescheduleTarget, type RescheduleOption,
+  RESCHEDULE_FLOW, OPTIONS_KEY, chosenOption, type RescheduleOption,
 } from '../src/reschedule-flow';
+import { TARGETS_KEY, chosenTarget, type AppointmentTarget } from '../src/appointment-targets';
 import { ChannelType } from '@ace/shared-types';
 
 const F = RESCHEDULE_FLOW;
@@ -46,7 +45,7 @@ const CALLER = '+2348031234567';
 const HOUR = 60 * 60 * 1000;
 const soon = (h: number) => new Date(Date.now() + h * HOUR);
 
-const TARGETS: RescheduleTarget[] = [
+const TARGETS: AppointmentTarget[] = [
   {
     id: 'bk_1', kind: 'BOOKING', label: 'your Dental Check-up appointment',
     startIso: soon(48).toISOString(), startLabel: 'Tuesday 25 August, 09:00',

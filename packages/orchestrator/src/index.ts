@@ -23,11 +23,14 @@ export * from './flows';
 import { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
 export { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
 import {
-  RESCHEDULE_FLOW, RESCHEDULE_FLOW_NAME, TARGETS_KEY, OPTIONS_KEY,
-  chosenTarget, chosenOption,
-  type RescheduleTarget, type RescheduleOption,
+  RESCHEDULE_FLOW, RESCHEDULE_FLOW_NAME, OPTIONS_KEY, chosenOption,
+  type RescheduleOption,
 } from './reschedule-flow';
 export * from './reschedule-flow';
+import { CANCEL_FLOW, CANCEL_FLOW_NAME } from './cancel-flow';
+export { CANCEL_FLOW, CANCEL_FLOW_NAME } from './cancel-flow';
+import { TARGETS_KEY, chosenTarget, type AppointmentTarget } from './appointment-targets';
+export * from './appointment-targets';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -685,6 +688,7 @@ export class QdrantRAGService {
 const FLOWS: Record<string, FlowDefinition> = {
   [ENROLLMENT_FLOW_NAME]: ENROLLMENT_FLOW,
   [RESCHEDULE_FLOW_NAME]: RESCHEDULE_FLOW,
+  [CANCEL_FLOW_NAME]: CANCEL_FLOW,
 };
 
 /**
@@ -1070,14 +1074,7 @@ export class ConversationOrchestrator {
     // ── 6. Tool: Cancel Booking / Reservation ─────────────────────────────────
     if (CANCEL_BOOKING_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
-        const result = await this.executeCancelBookingOrReservation(context, lang);
-        return {
-          replyText: result.message,
-          intentDetected: 'CANCEL_BOOKING',
-          confidenceScore: 0.97,
-          shouldHandoff: false,
-          toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
-        };
+        return await this.startCancelFlow(context, lang);
       } catch (err) {
         return this.toolFailureReply('CANCEL_BOOKING', err, lang);
       }
@@ -1521,70 +1518,165 @@ export class ConversationOrchestrator {
   /**
    * Cancel the customer's most recent active booking or reservation.
    */
-  private async executeCancelBookingOrReservation(context: ConversationContext, lang: Language = 'en') {
+  /**
+   * Start the conversation that cancels an appointment.
+   *
+   * This used to cancel one without a conversation: "cancel my appointment"
+   * took the soonest, wrote CANCELLED, and replied that it had been
+   * "successfully cancelled". One message in, one irreversible write out.
+   *
+   * Booking, rescheduling and enrolling all read back before they write. The
+   * only one that did not was the one that cannot be undone — and a customer
+   * with two appointments lost the one they did not mean, discovering it by
+   * turning up for an appointment that no longer existed.
+   *
+   * Nothing here writes.
+   */
+  private async startCancelFlow(
+    context: ConversationContext,
+    lang: Language = 'en'
+  ): Promise<OrchestrationResult> {
     const phone = context.customerPhoneNumber;
     if (!phone) {
-      return { message: 'I need your phone number on file to cancel a booking. Please contact our team directly.' };
+      return {
+        replyText:
+          'I need the number your appointment is under before I can cancel it. ' +
+          'Let me bring in a colleague who can look it up for you.',
+        intentDetected: 'CANCEL_BOOKING',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
     }
 
-    // Try booking first
-    const booking = await prisma.booking.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
-        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-        startTime: { gte: new Date() },
-      },
-      include: { contact: true },
-      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
-    });
+    const targets = await this.upcomingAppointments(context.organizationId, phone);
+    if (targets.length === 0) {
+      return {
+        replyText:
+          lang === 'en'
+            ? `I couldn't find an active booking or reservation to cancel under your number. ` +
+              `If you need help, say *"speak to an agent"* and someone will assist you.`
+            : t(lang, 'no_upcoming_booking'),
+        intentDetected: 'CANCEL_BOOKING',
+        confidenceScore: 0.97,
+        shouldHandoff: false,
+      };
+    }
 
-    if (booking) {
+    const conversationId = await this.ensureConversation(context);
+    if (!conversationId) {
+      // No thread means no memory, so the "yes" would never come back to us.
+      // Naming what we can see is more use than a bare apology.
+      return {
+        replyText:
+          `I can see ${targets[0].label} on ${targets[0].startLabel}. I can't take you through ` +
+          `cancelling it here, so let me bring in a colleague who can do it for you.`,
+        intentDetected: 'CANCEL_BOOKING',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    const state = beginFlow(CANCEL_FLOW);
+    state.collected[TARGETS_KEY] = JSON.stringify(targets);
+
+    return this.runFlow(context, conversationId, CANCEL_FLOW, state, '', lang);
+  }
+
+  /**
+   * Cancel the appointment the customer just confirmed — then say what happened.
+   *
+   * Re-read first, for the same reason rescheduling does: an hour can pass
+   * between the read-back and the "yes", and an appointment that is already
+   * gone must be reported as already gone rather than as newly cancelled.
+   */
+  private async completeCancellation(
+    context: ConversationContext,
+    collected: Record<string, string>,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const target = chosenTarget(collected);
+    if (!target) {
+      return this.toolFailureReply(
+        'CANCEL_BOOKING',
+        new Error('confirmed a cancellation with no appointment selected'),
+        lang
+      );
+    }
+
+    const stillActive = { in: ['CONFIRMED', 'RESCHEDULED'] } as any;
+
+    if (target.kind === 'BOOKING') {
+      const booking = await prisma.booking.findFirst({
+        where: { id: target.id, organizationId: context.organizationId, status: stillActive },
+      });
+      if (!booking) return this.cancellationTargetGone(target);
+
       await prisma.booking.update({
         where: { id: booking.id },
-        data: { status: 'CANCELLED', notes: 'Cancelled by customer via AI assistant', updatedAt: new Date() },
+        data: {
+          status: 'CANCELLED',
+          // APPENDED, not replaced. The original notes say how the booking came
+          // to exist — overwriting them destroys the only record of that at the
+          // exact moment somebody is most likely to ask what happened.
+          notes: [booking.notes, 'Cancelled by customer via AI assistant'].filter(Boolean).join(' | '),
+          updatedAt: new Date(),
+        },
       });
+
       return {
-        bookingId: booking.id,
-        message: t(lang, 'booking_cancelled', {
+        replyText: t(lang, 'booking_cancelled', {
           service: booking.serviceName,
           ref: booking.id.slice(-8).toUpperCase(),
         }),
+        intentDetected: 'CANCEL_BOOKING',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+        toolCallsExecuted: [{ toolName: 'cancel_booking', result: { bookingId: booking.id } }],
       };
     }
 
-    // Try reservation
     const reservation = await prisma.reservation.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
-        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-        reservationTime: { gte: new Date() },
+      where: { id: target.id, organizationId: context.organizationId, status: stillActive },
+    });
+    if (!reservation) return this.cancellationTargetGone(target);
+
+    await prisma.reservation.update({
+      where: { id: reservation.id },
+      data: {
+        status: 'CANCELLED',
+        // Same reasoning as the booking notes — and worse here, because
+        // specialRequests holds what the CUSTOMER asked for, not our own audit
+        // line. Overwriting it threw away an allergy or an access need.
+        specialRequests: [reservation.specialRequests, 'Cancelled by customer via AI assistant']
+          .filter(Boolean)
+          .join(' | '),
+        updatedAt: new Date(),
       },
-      include: { contact: true },
-      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
     });
 
-    if (reservation) {
-      await prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { status: 'CANCELLED', specialRequests: 'Cancelled by customer via AI assistant', updatedAt: new Date() },
-      });
-      return {
-        reservationId: reservation.id,
-        message:
-          `✅ Your reservation for *${reservation.partySize} guest(s)* has been successfully cancelled.\n\n` +
-          `Reference: #${reservation.id.slice(-8).toUpperCase()}\n\n` +
-          `If you paid a deposit and would like a refund, please say *"I need a refund"*.`,
-      };
-    }
-
     return {
-      message:
-        lang === 'en'
-          ? `I couldn't find an active booking or reservation to cancel under your number. ` +
-            `If you need help, say *"speak to an agent"* and someone will assist you.`
-          : t(lang, 'no_upcoming_booking'),
+      replyText:
+        `✅ Your reservation for *${reservation.partySize} guest(s)* has been cancelled.\n\n` +
+        `Reference: #${reservation.id.slice(-8).toUpperCase()}\n\n` +
+        `If you paid a deposit and would like a refund, please say *"I need a refund"*.`,
+      intentDetected: 'CANCEL_BOOKING',
+      confidenceScore: 1.0,
+      shouldHandoff: false,
+      toolCallsExecuted: [{ toolName: 'cancel_booking', result: { reservationId: reservation.id } }],
+    };
+  }
+
+  /** It stopped being cancellable while we were confirming it. */
+  private cancellationTargetGone(target: AppointmentTarget): OrchestrationResult {
+    return {
+      replyText:
+        `${target.label} is no longer active — it looks like it was already cancelled or changed. ` +
+        `Nothing has been altered. Say *"speak to an agent"* if you would like someone to check it with you.`,
+      intentDetected: 'CANCEL_BOOKING',
+      confidenceScore: 0.9,
+      shouldHandoff: false,
     };
   }
 
@@ -1692,7 +1784,7 @@ export class ConversationOrchestrator {
   private async upcomingAppointments(
     organizationId: string,
     phone: string
-  ): Promise<RescheduleTarget[]> {
+  ): Promise<AppointmentTarget[]> {
     const variants = phoneNumberVariants(phone);
     const active = { in: ['CONFIRMED', 'RESCHEDULED'] };
 
@@ -1719,7 +1811,7 @@ export class ConversationOrchestrator {
       }),
     ]);
 
-    const targets: RescheduleTarget[] = [
+    const targets: AppointmentTarget[] = [
       ...bookings.map((b) => ({
         id: b.id,
         kind: 'BOOKING' as const,
@@ -2506,16 +2598,11 @@ export class ConversationOrchestrator {
             toolCallsExecuted: [{ toolName: 'check_booking_status', result }],
           };
         }
-        case 'CANCEL_BOOKING': {
-          const result = await this.executeCancelBookingOrReservation(context, lang);
-          return {
-            replyText: result.message,
-            intentDetected: 'CANCEL_BOOKING',
-            confidenceScore: confidence,
-            shouldHandoff: false,
-            toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
-          };
-        }
+        case 'CANCEL_BOOKING':
+          // The classifier's confidence is discarded here on purpose: this
+          // returns a question, not a cancellation, and a model that misread
+          // the message costs the customer one "no" rather than an appointment.
+          return await this.startCancelFlow(context, lang);
         case 'RESCHEDULE_BOOKING':
           // The classifier's own confidence is discarded here on purpose: what
           // this returns is a question, not an assertion about the booking, and
@@ -2780,6 +2867,14 @@ export class ConversationOrchestrator {
       }
     }
 
+    if (flow.name === CANCEL_FLOW_NAME) {
+      try {
+        return await this.completeCancellation(context, step.state.collected, lang);
+      } catch (err) {
+        return this.toolFailureReply('CANCEL_BOOKING', err, lang);
+      }
+    }
+
     try {
       return await this.completeEnrollment(context, step.state.collected, lang);
     } catch (err) {
@@ -2939,7 +3034,7 @@ export class ConversationOrchestrator {
   }
 
   /** The appointment stopped being movable while we were talking about it. */
-  private rescheduleTargetGone(target: RescheduleTarget, lang: Language): OrchestrationResult {
+  private rescheduleTargetGone(target: AppointmentTarget, lang: Language): OrchestrationResult {
     return {
       replyText:
         `${target.label} is no longer active, so there was nothing for me to move — it may have ` +

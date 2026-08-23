@@ -35,6 +35,11 @@
  * happened — see `completeReschedule`.
  */
 import type { FlowDefinition } from './flows';
+import {
+  TARGETS_KEY, readTargets, chosenTarget, numbered, pickFromList, whichSlot,
+  type AppointmentTarget,
+} from './appointment-targets';
+export { TARGETS_KEY, readTargets, chosenTarget, type AppointmentTarget } from './appointment-targets';
 
 export const RESCHEDULE_FLOW_NAME = 'reschedule-booking';
 
@@ -46,19 +51,7 @@ export const RESCHEDULE_FLOW_NAME = 'reschedule-booking';
  * only looks for slots, so these are inert data that happens to travel in the
  * same bag, which is what keeps the engine free of database access.
  */
-export const TARGETS_KEY = '_targets';
 export const OPTIONS_KEY = '_options';
-
-export interface RescheduleTarget {
-  id: string;
-  kind: 'BOOKING' | 'RESERVATION';
-  /** What to call it when asking — "your Dental Check-up" / "your table for 4". */
-  label: string;
-  /** When it currently is, ISO. */
-  startIso: string;
-  /** Already formatted for the customer, so the engine never needs a timezone. */
-  startLabel: string;
-}
 
 export interface RescheduleOption {
   startIso: string;
@@ -75,17 +68,7 @@ function readJson<T>(collected: Record<string, string>, key: string): T[] {
   }
 }
 
-export const readTargets = (c: Record<string, string>) => readJson<RescheduleTarget>(c, TARGETS_KEY);
 export const readOptions = (c: Record<string, string>) => readJson<RescheduleOption>(c, OPTIONS_KEY);
-
-/** The appointment being moved: the one they picked, or the only one there was. */
-export function chosenTarget(c: Record<string, string>): RescheduleTarget | null {
-  const targets = readTargets(c);
-  if (targets.length === 0) return null;
-  if (targets.length === 1) return targets[0];
-  const index = Number(c.which);
-  return Number.isInteger(index) && targets[index] ? targets[index] : null;
-}
 
 /** The slot they picked. */
 export function chosenOption(c: Record<string, string>): RescheduleOption | null {
@@ -94,78 +77,11 @@ export function chosenOption(c: Record<string, string>): RescheduleOption | null
   return Number.isInteger(index) && options[index] ? options[index] : null;
 }
 
-/**
- * Match a reply against a numbered list of labels.
- *
- * Accepts the number, or enough of the label to be unambiguous — "the 10
- * o'clock one", "Tuesday". Ambiguity returns null rather than picking the
- * first match, because picking wrongly here moves a real appointment.
- */
-function pickFromList(text: string, labels: string[]): number | null {
-  const value = text.trim().toLowerCase();
-  if (!value) return null;
-
-  const asNumber = value.match(/^\s*#?\s*(\d{1,2})\b/);
-  if (asNumber) {
-    const index = Number(asNumber[1]) - 1;
-    if (index >= 0 && index < labels.length) return index;
-    return null;
-  }
-
-  const matches: number[] = [];
-  labels.forEach((label, i) => {
-    if (label.toLowerCase().includes(value)) matches.push(i);
-  });
-  if (matches.length === 1) return matches[0];
-
-  // Fall back to a distinctive fragment: a weekday or a clock time is usually
-  // what somebody types instead of a number.
-  const fragment = value.match(
-    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}[:.]\d{2}|\d{1,2}\s*(am|pm))\b/
-  );
-  if (fragment) {
-    const needle = fragment[0].replace(/\s+/g, '').replace('.', ':');
-    const hits: number[] = [];
-    labels.forEach((label, i) => {
-      if (label.toLowerCase().replace(/\s+/g, '').includes(needle)) hits.push(i);
-    });
-    if (hits.length === 1) return hits[0];
-  }
-  return null;
-}
-
-function numbered(labels: string[]): string {
-  return labels.map((l, i) => `${i + 1} — ${l}`).join('\n');
-}
-
 export const RESCHEDULE_FLOW: FlowDefinition = {
   name: RESCHEDULE_FLOW_NAME,
 
   slots: [
-    {
-      name: 'which',
-      aliases: ['appointment', 'booking', 'reservation'],
-      // Only asked when there is a genuine choice. With one upcoming
-      // appointment there is nothing to disambiguate, and asking would be a
-      // question whose answer we already have.
-      skipIf: (c) => readTargets(c).length <= 1,
-      prompt: (c) =>
-        'You have more than one coming up. Which would you like to move?\n\n' +
-        numbered(readTargets(c).map((t) => `${t.label} — ${t.startLabel}`)) +
-        '\n\nReply with the number.',
-      accept: (text, c) => {
-        const targets = readTargets(c);
-        const index = pickFromList(text, targets.map((t) => `${t.label} ${t.startLabel}`));
-        if (index === null) {
-          return {
-            error:
-              'I did not catch which one. Please reply with the number:\n\n' +
-              numbered(targets.map((t) => `${t.label} — ${t.startLabel}`)),
-          };
-        }
-        return { value: String(index) };
-      },
-    },
+    whichSlot('move'),
     {
       name: 'when',
       aliases: ['time', 'date', 'day', 'slot'],
