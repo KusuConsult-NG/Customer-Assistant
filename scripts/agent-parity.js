@@ -643,6 +643,74 @@ async function main() {
     };
   });
 
+  await compare('Cancelling — neither engine cancels on the asking', async () => {
+    // The orchestrator used to cancel the soonest appointment on the first
+    // message, with no read-back, and reply that it had been "successfully
+    // cancelled". One message in, one irreversible write out.
+    //
+    // The agent path takes a phone number and cancels what it finds, so the
+    // model is the thing that confirms — which is why this is graded on the
+    // shared guarantee rather than on the mechanism: asking to cancel must not,
+    // by itself, cancel.
+    const contact = await prisma.contact.upsert({
+      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
+      create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Caller' },
+      update: {},
+    });
+    const conversation = await prisma.conversation.upsert({
+      where: {
+        organizationId_contactId_channel: {
+          organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP',
+        },
+      },
+      create: { organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP' },
+      update: { flowState: Prisma.DbNull },
+    });
+
+    const start = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    start.setUTCMinutes(0, 0, 0);
+    const booking = await prisma.booking.create({
+      data: {
+        organizationId: org.orgId, contactId: contact.id, serviceName: 'Parity Cancellation Test',
+        startTime: start, endTime: new Date(start.getTime() + 30 * 60 * 1000), status: 'CONFIRMED',
+        notes: 'ORIGINAL NOTE — must survive a cancellation',
+      },
+    });
+
+    const o = await orchestrator.processIncomingMessage(
+      { ...ctx(), conversationId: conversation.id },
+      'please cancel my appointment'
+    );
+    const afterO = await prisma.booking.findUnique({ where: { id: booking.id } });
+    const oHeld = afterO.status === 'CONFIRMED';
+
+    // Now confirm it, and check the audit note survived rather than being
+    // replaced — the record of how the booking came to exist is most wanted at
+    // exactly the moment it is being undone.
+    const yes = await orchestrator.processIncomingMessage(
+      { ...ctx(), conversationId: conversation.id },
+      'yes'
+    );
+    const afterYes = await prisma.booking.findUnique({ where: { id: booking.id } });
+    const cancelledOnConfirm = afterYes.status === 'CANCELLED';
+    const notesKept = (afterYes.notes || '').includes('ORIGINAL NOTE');
+
+    const a = await viaAgent('cancel-booking', { phoneNumber: `+234800${Date.now().toString().slice(-7)}` });
+    const aHeld = a.body?.ok !== true;
+
+    return {
+      orchestrator: {
+        honoured: oHeld && cancelledOnConfirm && notesKept,
+        said: `${o.intentDetected}: ${trim(o.replyText)} [held on ask: ${oHeld}; cancelled on yes: ${cancelledOnConfirm}; notes kept: ${notesKept}]`,
+      },
+      agent: {
+        honoured: aHeld,
+        said: `${trim(a.body?.speak)} [cancelled something it should not have: ${!aHeld}]`,
+      },
+      note: 'asking to cancel must not cancel; confirming must; and the audit trail survives either way',
+    };
+  });
+
   await compareAsymmetric('Registering in Hausa — a form, not a booking', async () => {
     // "I want to register for PLASCHEMA", in Hausa, with no English keyword in
     // it. This used to be BLOCKED here: the orchestrator could only reach a

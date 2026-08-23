@@ -275,15 +275,15 @@ describe('ConversationOrchestrator', () => {
    */
   describe('Finding the booking a customer means', () => {
     /**
-     * Checking and cancelling need ONE booking, so they read one. Rescheduling
-     * needs every candidate — the customer may have two and has to be asked
-     * which — so it reads them all. Both must still ask the same two things of
-     * the database, which is what these assert; the method differs, the
-     * invariant does not.
+     * Checking needs ONE booking, so it reads one. Rescheduling and cancelling
+     * need every candidate — the customer may have two and has to be asked
+     * which — so they read them all. All three must still ask the same two
+     * things of the database, which is what these assert; the method differs,
+     * the invariant does not.
      */
     const CASES: Array<[string, 'findFirst' | 'findMany']> = [
       ['when is my appointment', 'findFirst'],
-      ['cancel my appointment', 'findFirst'],
+      ['cancel my appointment', 'findMany'],
       ['reschedule', 'findMany'],
     ];
 

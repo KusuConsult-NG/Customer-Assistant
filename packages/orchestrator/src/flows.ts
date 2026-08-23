@@ -406,6 +406,17 @@ export function advanceFlow(
   } else if (slot) {
     if (slot.optional && isDecline(message)) {
       collected[slot.name] = '';
+    } else if (isNegation(message)) {
+      // A bare "no" to a question the flow REQUIRES an answer to is somebody
+      // backing out, not an answer. Without this it loops: "no" fails
+      // validation, we re-ask, they say "no" again — and the words that do
+      // escape ("cancel", "stop") are not the ones a person reaches for when
+      // they have just been asked a question.
+      //
+      // Below the optional-decline check on purpose: "no" to "do you have your
+      // NIN?" declines that field and carries on, and must not abandon the form
+      // six answers in.
+      return { kind: 'abandon', reply: t(lang, 'flow_abandoned') };
     } else {
       // "no, Jos South" right after being asked for the LGA is an answer with
       // a correction word stuck to the front of it. Try it verbatim first, and
