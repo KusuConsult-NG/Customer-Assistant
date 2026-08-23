@@ -62,6 +62,7 @@ describe('Agent tool catalogue', () => {
       [
         'book-appointment',
         'cancel-booking',
+        'check-availability',
         'check-booking',
         'create-ticket',
         'handoff',

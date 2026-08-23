@@ -29,6 +29,7 @@ const mockPrisma = {
 
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
+  ...jest.requireActual('../../database/src/availability'),
   prisma: mockPrisma,
 }));
 

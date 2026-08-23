@@ -99,6 +99,14 @@ export class AgentToolsController {
     return this.tools.paymentDetails(this.org(req));
   }
 
+  @Post('check-availability')
+  checkAvailability(
+    @Req() req: AgentRequest,
+    @Body() body: { durationMinutes?: number; limit?: number }
+  ): Promise<ToolResult> {
+    return this.tools.checkAvailability(this.org(req), body ?? {});
+  }
+
   @Post('search-knowledge')
   searchKnowledge(
     @Req() req: AgentRequest,
