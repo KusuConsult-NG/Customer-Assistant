@@ -357,6 +357,35 @@ describe('through the orchestrator', () => {
     expect(res.intentDetected).toBe('FLOW_COLLECTING');
   });
 
+  it('says the form is English-only, in their language, rather than switching silently', async () => {
+    const res = await orchestrator.processIncomingMessage(
+      ctx(),
+      'Ina so in yi rijistar PLASCHEMA don Allah'
+    );
+
+    expect(res.intentDetected).toBe('FLOW_COLLECTING');
+    // The notice comes first, in Hausa, and the English question follows it.
+    expect(res.replyText).toMatch(/Turanci/);
+    expect(res.replyText).toMatch(/full name/i);
+    // Said once at the start, not stapled to every question.
+    expect(res.replyText.match(/Turanci/g)).toHaveLength(1);
+  });
+
+  it('does not repeat the English-only notice on later questions', async () => {
+    mockPrisma.conversation.findUnique.mockResolvedValue({
+      id: CONV,
+      flowState: {
+        flow: 'plaschema-enrollment', collected: { fullName: 'Amina Yusuf' },
+        awaiting: 'ageOrDob', startedAt: Date.now(), updatedAt: Date.now(),
+      },
+    });
+    mockPrisma.contact.findFirst.mockResolvedValue({ id: 'c1', preferredLanguage: 'ha' });
+
+    const res = await orchestrator.processIncomingMessage(ctx(), '34');
+
+    expect(res.replyText).not.toMatch(/Turanci/);
+  });
+
   it('resumes from stored state instead of re-asking', async () => {
     mockPrisma.conversation.findUnique.mockResolvedValue({
       id: CONV,

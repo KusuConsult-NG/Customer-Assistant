@@ -2588,7 +2588,19 @@ export class ConversationOrchestrator {
   ): Promise<OrchestrationResult | null> {
     const conversation = await this.loadConversation(context);
     if (!conversation) return null; // no thread to hang state on — fall through
-    return this.runFlow(context, conversation.id, flow, beginFlow(flow), '', lang);
+    const started = await this.runFlow(context, conversation.id, flow, beginFlow(flow), '', lang);
+
+    // The form's questions are not translated yet. Dropping a Hausa
+    // conversation into English mid-sentence, with no explanation, reads as
+    // having been handed to a different system — and people stop replying to
+    // that. Said ONCE, at the start, with the route to a person who can do it
+    // in their language. Remove this the day the prompts are translated, not
+    // before.
+    const notice = lang === 'en' ? '' : t(lang, 'flow_english_only');
+    if (notice && started.replyText) {
+      return { ...started, replyText: `${notice}\n\n${started.replyText}` };
+    }
+    return started;
   }
 
   /**

@@ -243,7 +243,18 @@ type TemplateKey =
   | 'language_set'
   | 'language_voice_unavailable'
   | 'flow_abandoned'
-  | 'flow_what_to_change';
+  | 'flow_what_to_change'
+  /**
+   * Said once, in the customer's own language, before a form whose questions
+   * are only written in English.
+   *
+   * The registration questions are not translated yet, and switching a Hausa
+   * conversation silently into English mid-sentence is the sort of thing that
+   * makes somebody assume they have been handed to a different system and stop
+   * replying. Saying so — and offering the person who can take them through it
+   * in their language — costs one line and is true.
+   */
+  | 'flow_english_only';
 
 type Params = Record<string, string>;
 
@@ -288,6 +299,7 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       "No problem — I've stopped that. Tell me any time you'd like to start again.",
     flow_what_to_change:
       'No problem. Which part should I change?',
+    flow_english_only: '',
   },
   pcm: {
     ai_disclosure:
@@ -326,6 +338,8 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'No wahala — I don stop am. Tell me anytime wey you wan start again.',
     flow_what_to_change:
       'No wahala. Which one make I change?',
+    flow_english_only:
+      'Small tin: dis registration questions dey for English only for now. If you want person wey go carry you through am for Pidgin, just talk say you want human.',
   },
   ha: {
     ai_disclosure:
@@ -362,6 +376,8 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Babu matsala — na daina. Ka gaya mini duk lokacin da kake son sake farawa.',
     flow_what_to_change:
       'Babu matsala. Wanne bangare zan canza?',
+    flow_english_only:
+      'Abu ɗaya: tambayoyin rijistar suna cikin Turanci kawai a yanzu. Idan kana son mutum ya bi da kai cikin Hausa, ka ce kana son mutum.',
   },
   ig: {
     ai_disclosure:
@@ -398,6 +414,8 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Nsogbu adịghị — akwụsịla m ya. Gwa m mgbe ọ bụla ị chọrọ ịmalitegharịa.',
     flow_what_to_change:
       'Nsogbu adịghị. Kedu akụkụ ka m ga-agbanwe?',
+    flow_english_only:
+      'Otu ihe: ajụjụ ndebanye aha dị naanị n\'Bekee ugbu a. Ọ bụrụ na ị chọrọ mmadụ ga-eduzi gị n\'Igbo, kwuo na ị chọrọ mmadụ.',
   },
   yo: {
     ai_disclosure:
@@ -434,6 +452,9 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Kò sí wàhálà — mo ti dá a dúró. Sọ fún mi nígbàkúgbà tí o bá fẹ́ bẹ̀rẹ̀ lẹ́ẹ̀kansí.',
     flow_what_to_change:
       'Kò sí wàhálà. Apá wo ni kí n yí padà?',
+    flow_english_only:
+      'Ohun kan: àwọn ìbéèrè ìforúkọsílẹ̀ wà ní Gẹ̀ẹ́sì nìkan fún ìsinsìnyí. ' +
+      'Bí o bá fẹ́ ẹnìyàn tí yóò mú ọ la inú rẹ̀ ní Yorùbá, sọ pé o fẹ́ ẹnìyàn.',
   },
 };
 
