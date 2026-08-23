@@ -28,6 +28,13 @@ jest.mock('@ace/database', () => ({
   prisma: mockPrisma,
 }));
 
+// Pinned BEFORE the orchestrators below are constructed. The RAG service
+// captures OPENAI_API_KEY at construction, so an ambient key (CI exports a
+// dummy one) would send its embeddings call through the fetch mock and break
+// the "no fetch when keyless" accounting. The classifier and the synthesis
+// tier both read the env per call, so beforeEach can still enable them.
+delete process.env.OPENAI_API_KEY;
+
 import { ConversationOrchestrator } from '../src/index';
 import { t } from '../src/languages';
 import { ChannelType } from '@ace/shared-types';
