@@ -9,12 +9,52 @@ import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
  * SQLSTATE 23P01 is `exclusion_violation`; Prisma surfaces it without a dedicated
  * error code, so the constraint name is matched as well.
  */
-function isOverlapViolation(err: any): boolean {
+export function isOverlapViolation(err: any): boolean {
   const code = err?.code ?? err?.meta?.code;
   const message = String(err?.message ?? '');
   return code === '23P01'
     || message.includes('bookings_no_staff_overlap')
     || message.includes('exclusion constraint');
+}
+
+/**
+ * True when PostgreSQL aborted the write to break a deadlock (SQLSTATE 40P01).
+ *
+ * Concurrent inserts that must each check the same GiST exclusion constraint can
+ * end up waiting on one another, and PostgreSQL resolves that by killing one of
+ * them. The victim is NOT told the slot is taken — it gets a deadlock error —
+ * so this used to fall past `isOverlapViolation` into the generic failure path,
+ * and a caller whose only problem was arriving at a busy moment was told the
+ * system had broken and offered a human. Eight simultaneous requests reproduced
+ * it: one won, and the other seven got "technical problem" instead of "that
+ * time is taken".
+ */
+export function isDeadlock(err: any): boolean {
+  const code = err?.code ?? err?.meta?.code;
+  const message = String(err?.message ?? '');
+  return code === '40P01' || /deadlock detected/i.test(message);
+}
+
+/**
+ * Run a booking write, retrying only the deadlock case.
+ *
+ * A deadlock abort rolls the whole transaction back, so nothing was written and
+ * re-running is safe — and it is the honest way to answer, because a deadlock
+ * says the row was CONTENDED, not that the slot was taken. Retrying lets the
+ * constraint decide: the attempt either succeeds (the slot really was free) or
+ * raises the exclusion violation the caller should hear about. Every other
+ * error propagates untouched on the first try.
+ */
+export async function withDeadlockRetry<T>(write: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await write();
+    } catch (err: any) {
+      if (!isDeadlock(err) || attempt >= attempts) throw err;
+      // Jittered, so retries of a pile-up do not re-collide in lockstep.
+      await new Promise((r) => setTimeout(r, 15 * attempt + Math.floor(Math.random() * 25)));
+    }
+  }
 }
 
 @Injectable()
@@ -154,7 +194,7 @@ export class SchedulingService {
     // translates its violation into a 409 instead of a 500.
     let booking;
     try {
-      booking = await prisma.booking.create({
+      booking = await withDeadlockRetry(() => prisma.booking.create({
         data: {
           organizationId,
           contactId: data.contactId,
@@ -166,7 +206,7 @@ export class SchedulingService {
           status: BookingStatus.CONFIRMED,
         },
         include: { contact: true },
-      });
+      }));
     } catch (err: any) {
       if (isOverlapViolation(err)) {
         throw new ConflictException(
@@ -294,7 +334,7 @@ export class SchedulingService {
     }
 
     try {
-      return await prisma.booking.update({
+      return await withDeadlockRetry(() => prisma.booking.update({
         where: { id: bookingId },
         data: {
           status: BookingStatus.RESCHEDULED,
@@ -303,7 +343,7 @@ export class SchedulingService {
           updatedAt: new Date(),
         },
         include: { contact: true },
-      });
+      }));
     } catch (err: any) {
       if (isOverlapViolation(err)) {
         throw new ConflictException(

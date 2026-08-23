@@ -193,6 +193,23 @@ export function agentDefinition(spec: AgentSpec) {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
         // eleven_turbo_v2 — lowest-latency model accepted for English agents.
         // (eleven_turbo_v2_5 is rejected by ElevenLabs for English language agents)
+        //
+        // THIS IS WHY THE AGENT DOES NOT SPEAK HAUSA, IGBO OR YORUBA.
+        //
+        // Switching to a multilingual model (eleven_turbo_v2_5 /
+        // eleven_multilingual_v2, with `language` set accordingly) does NOT
+        // unlock them: those models cover roughly 30 languages and the
+        // Nigerian ones are not among them. The capability does not exist
+        // upstream, so changing the model here buys nothing and costs latency.
+        // Verify against `GET /v1/models` (each model reports its own language
+        // list) before assuming otherwise.
+        //
+        // The platform's five-language support is therefore REAL IN TEXT and
+        // English-plus-Pidgin IN SPEECH. The system prompt's Languages section
+        // says exactly that and offers a Hausa/Igbo/Yoruba caller a human
+        // colleague or WhatsApp — keep the two in step. A prompt that promises
+        // speech this engine cannot produce is the fabrication invariant 1
+        // exists to prevent, just aimed at a caller who cannot read the code.
         modelId: 'eleven_turbo_v2',
         // ulaw_8000 = G.711 μ-law 8kHz — the ONLY format phone networks understand.
         // pcm_44100 causes "loud but unintelligible" audio on every PSTN/Twilio call.

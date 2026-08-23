@@ -6,6 +6,7 @@ import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { LeadStatus, DealStage, TicketStatus, TicketPriority } from '@ace/shared-types';
 import { PdfGeneratorService } from '@ace/pdf-generator';
+import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 
 @Injectable()
 export class CrmService {
@@ -284,12 +285,60 @@ export class CrmService {
     return updated;
   }
 
-  async updateContact(contactId: string, data: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }, organizationId: string) {
+  /**
+   * Update a contact's editable fields.
+   *
+   * The field list is applied HERE, at runtime, rather than being left to the
+   * controller's parameter type. TypeScript types are erased before this runs,
+   * and this method used to hand the request body straight to
+   * `prisma.contact.update` — so a body carrying `organizationId` rewrote the
+   * row's tenancy and moved a customer into someone else's CRM, and one
+   * carrying `id` re-pointed the primary key. Neither field is meant to be
+   * writable from here, and nothing in the request path was rejecting them.
+   *
+   * `preferredLanguage` is validated rather than passed through for a smaller
+   * but similar reason: the orchestrator falls back to English on any value it
+   * does not recognise, so storing an unrecognised one is a setting that
+   * appears to save and changes nothing.
+   */
+  async updateContact(
+    contactId: string,
+    data: {
+      fullName?: string; phoneNumber?: string; email?: string; tags?: string[];
+      address?: string; city?: string; state?: string; preferredLanguage?: string | null;
+    },
+    organizationId: string
+  ) {
     const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
     if (!contact) throw new NotFoundException('Contact not found');
+
+    if (
+      data.preferredLanguage !== undefined &&
+      data.preferredLanguage !== null &&
+      data.preferredLanguage !== '' &&
+      !SUPPORTED_LANGUAGES.includes(data.preferredLanguage as Language)
+    ) {
+      throw new BadRequestException(
+        `preferredLanguage must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`
+      );
+    }
+
     return prisma.contact.update({
       where: { id: contactId },
-      data,
+      data: {
+        ...(data.fullName !== undefined && { fullName: data.fullName }),
+        ...(data.phoneNumber !== undefined && { phoneNumber: data.phoneNumber }),
+        ...(data.email !== undefined && { email: data.email }),
+        ...(data.tags !== undefined && { tags: data.tags }),
+        ...(data.address !== undefined && { address: data.address }),
+        ...(data.city !== undefined && { city: data.city }),
+        ...(data.state !== undefined && { state: data.state }),
+        // Empty string clears it back to "not yet known" rather than storing
+        // a value the language resolver would ignore.
+        ...(data.preferredLanguage !== undefined && {
+          preferredLanguage: data.preferredLanguage || null,
+        }),
+      },
     });
   }
 
