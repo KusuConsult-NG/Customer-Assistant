@@ -227,7 +227,15 @@ export interface Correction {
   value: string | null;
 }
 
-export function findCorrection(
+/**
+ * Route 1 only: a correction where the customer NAMED the field.
+ *
+ * Separated because this is the one signal strong enough to outrank the
+ * question we just asked. "Sorry, my name is spelled Musa" while we are asking
+ * for an address is unambiguous; a bare value that merely looks like a name is
+ * not.
+ */
+export function findNamedCorrection(
   flow: FlowDefinition,
   collected: Record<string, string>,
   text: string
@@ -236,8 +244,6 @@ export function findCorrection(
 
   const answered = flow.slots.filter((s) => collected[s.name] !== undefined);
 
-  // ── 1. The customer named the field ──────────────────────────────────────
-  //
   // Longest alias wins, so "the hospital name is wrong" is about the hospital
   // rather than about the name — both aliases are present and only one of them
   // is what the sentence is about.
@@ -251,20 +257,32 @@ export function findCorrection(
       }
     }
   }
-  if (best) {
-    const candidate = stripNoise(best.rest);
-    if (!candidate) return { slot: best.slot, value: null };
-    const parsed = best.slot.accept(candidate, collected);
-    if ('value' in parsed && parsed.value !== collected[best.slot.name]) {
-      return { slot: best.slot, value: parsed.value };
-    }
-    return { slot: best.slot, value: null };
-  }
+  if (!best) return null;
 
-  // ── 2. The value names itself, and only one field can claim it ───────────
+  const candidate = stripNoise(best.rest);
+  if (!candidate) return { slot: best.slot, value: null };
+  const parsed = best.slot.accept(candidate, collected);
+  if ('value' in parsed && parsed.value !== collected[best.slot.name]) {
+    return { slot: best.slot, value: parsed.value };
+  }
+  return { slot: best.slot, value: null };
+}
+
+export function findCorrection(
+  flow: FlowDefinition,
+  collected: Record<string, string>,
+  text: string
+): Correction | null {
+  const named = findNamedCorrection(flow, collected, text);
+  if (named) return named;
+
+  if (!CORRECTION_MARKERS.some((r) => r.test(text))) return null;
+
+  // ── The value names itself, and only one field can claim it ──────────────
   const stripped = stripNoise(text);
   if (!stripped) return null;
 
+  const answered = flow.slots.filter((s) => collected[s.name] !== undefined);
   const claimants = answered.filter((s) => s.identifies?.(stripped, collected));
   if (claimants.length !== 1) return null;
 
@@ -367,33 +385,48 @@ export function advanceFlow(
     };
   }
 
-  // ── A correction to something already answered ───────────────────────────
-  const correction = findCorrection(flow, collected, message);
-  if (correction && correction.value === null) {
-    // Named a field as wrong without saying what it should be: clear it and ask.
-    delete collected[correction.slot.name];
-  } else if (correction) {
-    collected[correction.slot.name] = correction.value as string;
-  } else if (state.awaiting) {
-    // ── The answer to the question we last asked ──────────────────────────
-    const slot = flow.slots.find((s) => s.name === state.awaiting);
-    if (slot) {
-      if (slot.optional && isDecline(message)) {
-        collected[slot.name] = '';
-      } else {
-        // "no, Jos South" right after being asked for the LGA is an answer with
-        // a correction word stuck to the front of it. Try it verbatim first,
-        // and only strip that scaffolding if the verbatim read fails — so an
-        // answer that legitimately contains "not" is never quietly rewritten.
-        let parsed = slot.accept(message, collected);
-        if ('error' in parsed && CORRECTION_MARKERS.some((r) => r.test(message))) {
-          const retry = stripNoise(message);
-          if (retry) {
-            const second = slot.accept(retry, collected);
-            if ('value' in second) parsed = second;
-          }
+  // ── Mid-flow: the answer to the question we asked, or a correction ───────
+  //
+  // The question we just asked has priority, and that ordering matters. A
+  // self-identifying correction is only a guess about what the customer meant;
+  // the pending question is a fact about what we asked them. Consulted the
+  // other way round, somebody answering "what is your street address?" with
+  // "No 12" had their AGE rewritten to 12 — "12" identifies as an age, the
+  // word "no" made it look like a correction, and the address they gave was
+  // never stored. Naming a field explicitly still wins, because that is the
+  // customer telling us which field they mean rather than us inferring it.
+  const slot = state.awaiting
+    ? flow.slots.find((s) => s.name === state.awaiting) ?? null
+    : null;
+
+  const named = findNamedCorrection(flow, collected, message);
+  if (named && named.slot.name !== state.awaiting) {
+    if (named.value === null) delete collected[named.slot.name];
+    else collected[named.slot.name] = named.value;
+  } else if (slot) {
+    if (slot.optional && isDecline(message)) {
+      collected[slot.name] = '';
+    } else {
+      // "no, Jos South" right after being asked for the LGA is an answer with
+      // a correction word stuck to the front of it. Try it verbatim first, and
+      // only strip that scaffolding if the verbatim read fails — so an answer
+      // that legitimately contains "not" is never quietly rewritten.
+      let parsed = slot.accept(message, collected);
+      if ('error' in parsed && CORRECTION_MARKERS.some((r) => r.test(message))) {
+        const retry = stripNoise(message);
+        if (retry) {
+          const second = slot.accept(retry, collected);
+          if ('value' in second) parsed = second;
         }
-        if ('error' in parsed) {
+      }
+      if ('error' in parsed) {
+        // It is not a valid answer to the question we asked. Only now is a
+        // correction to an earlier field the better reading.
+        const correction = findCorrection(flow, collected, message);
+        if (correction) {
+          if (correction.value === null) delete collected[correction.slot.name];
+          else collected[correction.slot.name] = correction.value;
+        } else {
           // Re-ask WITH the reason, so the customer knows what would work.
           return {
             kind: 'ask',
@@ -401,12 +434,18 @@ export function advanceFlow(
             reply: parsed.error,
           };
         }
+      } else {
         collected[slot.name] = parsed.value;
       }
     }
   } else {
-    // Nothing was asked yet — this is the message that started the flow, and
-    // it is not an answer to anything.
+    // Nothing was asked — either the message that started the flow, or one
+    // arriving while every slot is already filled.
+    const correction = findCorrection(flow, collected, message);
+    if (correction) {
+      if (correction.value === null) delete collected[correction.slot.name];
+      else collected[correction.slot.name] = correction.value;
+    }
   }
 
   const next = nextSlot(flow, collected);

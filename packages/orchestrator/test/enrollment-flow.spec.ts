@@ -264,6 +264,32 @@ describe('the ways a form must not trap someone', () => {
     if (step.kind === 'ask') expect(step.reply).toMatch(/which part/i);
   });
 
+  it('does not let a correction steal a message that answers the question asked', () => {
+    // "No 12" is a house number. It is also the digit 12, which identifies as
+    // an age, behind the word "no", which looks like a correction — so the
+    // first implementation rewrote the customer's age to 12 and never stored
+    // the address it had just asked for. The pending question wins.
+    const afterAge = play(GOOD_ANSWERS.slice(0, 2));
+    expect(afterAge.state.awaiting).toBe('residentialAddress');
+
+    const step = advanceFlow(F, afterAge.state, 'No 12', 'en');
+    if (step.kind === 'ask') {
+      expect(step.state.collected.residentialAddress).toBe('No 12');
+      expect(step.state.collected.ageOrDob).toBe('34 years');
+    }
+  });
+
+  it('still applies a correction the customer names, even mid-question', () => {
+    const afterAge = play(GOOD_ANSWERS.slice(0, 2));
+    const step = advanceFlow(F, afterAge.state, 'sorry, my name is Amina Bello', 'en');
+
+    if (step.kind === 'ask') {
+      expect(step.state.collected.fullName).toBe('Amina Bello');
+      // And the address is still what we are waiting for.
+      expect(step.state.awaiting).toBe('residentialAddress');
+    }
+  });
+
   it('takes an answer with a correction word stuck to the front of it', () => {
     // Asked for the LGA, the customer replies "no, Jos South" — a correction
     // word, but there is nothing to correct yet: it is the answer.
