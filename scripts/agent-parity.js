@@ -788,7 +788,20 @@ async function main() {
     );
     const after = await prisma.reservation.count({ where: { organizationId: org.orgId } });
 
-    const asks = /how many people/i.test(o.replyText ?? '') && after === before;
+    // Asserted on the flow's own state, not on English wording. This caller
+    // established Hausa several scenarios ago and the flow prompts are now
+    // translated, so "how many people" stopped matching a reply that was
+    // asking exactly that — a harness failure that reads identically to the
+    // engine having gone back to assuming a table for two.
+    const state = (await prisma.conversation.findUnique({
+      where: { id: conversation.id }, select: { flowState: true },
+    }))?.flowState;
+    const asks =
+      state?.flow === 'make-reservation' &&
+      state?.awaiting === 'partySize' &&
+      !state?.collected?.partySize &&
+      (o.replyText ?? '').trim().length > 0 &&
+      after === before;
 
     const { agentPromptFor } = require(path.join(ROOT, 'apps/api/dist/agent-tools/agent-tool-catalog.js'));
     const prompt = agentPromptFor({ persona: null, aiPersonaPrompt: null });
