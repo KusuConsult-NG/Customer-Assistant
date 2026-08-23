@@ -25,6 +25,7 @@ const mockUpsertEnrollee = jest.fn();
 
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
+  ...jest.requireActual('../../database/src/availability'),
   ...jest.requireActual('../../database/src/plaschema-facilities'),
   prisma: mockPrisma,
   upsertEnrollee: (...args: any[]) => mockUpsertEnrollee(...args),

@@ -584,6 +584,147 @@ async function main() {
     };
   });
 
+  await compare('Booking — the customer picks the time, on both paths', async () => {
+    // The orchestrator used to take the next free slot and write it. It now
+    // offers what is free and books the pick.
+    //
+    // The agent path never wrote a time of its own — it takes startTime from
+    // the model, which collected it from the caller — but until check-availability
+    // existed it had no way to know what was free, so it asked the caller to
+    // guess and found out from the exclusion violation. Both sides are checked
+    // for the same thing: a request to book must produce OPTIONS, not a booking.
+    const contact = await prisma.contact.upsert({
+      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
+      create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Caller' },
+      update: {},
+    });
+    const conversation = await prisma.conversation.upsert({
+      where: {
+        organizationId_contactId_channel: {
+          organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP',
+        },
+      },
+      create: { organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP' },
+      update: { flowState: Prisma.DbNull },
+    });
+
+    const before = await prisma.booking.count({ where: { organizationId: org.orgId } });
+    const o = await orchestrator.processIncomingMessage(
+      { ...ctx(), conversationId: conversation.id },
+      'i want to book an appointment'
+    );
+    const after = await prisma.booking.count({ where: { organizationId: org.orgId } });
+
+    const oOffers = o.intentDetected === 'FLOW_COLLECTING' && after === before;
+
+    // The agent's equivalent: ask what is free, and get real times back that
+    // are inside business hours and in the future.
+    const a = await viaAgent('check-availability', { limit: 3 });
+    const slots = a.body?.data?.slots ?? [];
+    const aOffers =
+      a.body?.ok === true &&
+      slots.length > 0 &&
+      slots.every((sl) => new Date(sl.startTime).getTime() > Date.now());
+
+    return {
+      orchestrator: {
+        honoured: oOffers,
+        said: `${o.intentDetected}: ${trim(o.replyText)} [bookings created: ${after - before}]`,
+      },
+      agent: {
+        honoured: aOffers,
+        said: `${trim(a.body?.speak)} [${slots.length} real slots returned]`,
+      },
+      note: 'asking to book offers times; it does not, by itself, create a booking',
+    };
+  });
+
+  await compare('Availability — both read the same diary', async () => {
+    // The point of sharing findAvailableSlots. If these two ever disagree, one
+    // engine is offering a slot the other considers taken, and that is a double
+    // booking both paths believed was legitimate.
+    const { findAvailableSlots, BUSY_BOOKING_STATUSES, formatLagos } =
+      require(path.join(ROOT, 'packages/database/dist/index.js'));
+
+    const direct = await findAvailableSlots(
+      (from, to) =>
+        prisma.booking.findMany({
+          where: {
+            organizationId: org.orgId,
+            status: { in: BUSY_BOOKING_STATUSES },
+            startTime: { gte: from, lte: to },
+          },
+          select: { startTime: true, endTime: true },
+        }),
+      30,
+      3
+    );
+
+    const a = await viaAgent('check-availability', { limit: 3, durationMinutes: 30 });
+    const agentSlots = (a.body?.data?.slots ?? []).map((sl) => sl.startTime);
+    const ours = direct.map((sl) => sl.start.toISOString());
+    const same = JSON.stringify(ours) === JSON.stringify(agentSlots);
+
+    return {
+      orchestrator: {
+        honoured: ours.length > 0,
+        said: `${ours.length} free: ${direct.map((sl) => formatLagos(sl.start)).join('; ')}`,
+      },
+      agent: {
+        honoured: same && agentSlots.length > 0,
+        said: same ? 'identical to the shared search' : `DIFFERS: ${agentSlots.join('; ')}`,
+      },
+      note: 'one implementation of "what is free", or the two engines can double-book',
+    };
+  });
+
+  await compareAsymmetric('Reserving — the party size is asked for, never assumed', async () => {
+    // The orchestrator defaulted an unstated party size to TWO and wrote it.
+    // It now asks. The agent path has no reservation tool at all, so this side
+    // is read from the prompt: the agent must not invent one either.
+    const contact = await prisma.contact.upsert({
+      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
+      create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Caller' },
+      update: {},
+    });
+    const conversation = await prisma.conversation.upsert({
+      where: {
+        organizationId_contactId_channel: {
+          organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP',
+        },
+      },
+      create: { organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP' },
+      update: { flowState: Prisma.DbNull },
+    });
+
+    const before = await prisma.reservation.count({ where: { organizationId: org.orgId } });
+    const o = await orchestrator.processIncomingMessage(
+      { ...ctx(), conversationId: conversation.id },
+      'can i book a table for friday'   // no number anywhere in it
+    );
+    const after = await prisma.reservation.count({ where: { organizationId: org.orgId } });
+
+    const asks = /how many people/i.test(o.replyText ?? '') && after === before;
+
+    const { agentPromptFor } = require(path.join(ROOT, 'apps/api/dist/agent-tools/agent-tool-catalog.js'));
+    const prompt = agentPromptFor({ persona: null, aiPersonaPrompt: null });
+    const forbidsInvention = /Never invent prices, availability/i.test(prompt);
+
+    return {
+      orchestrator: {
+        honoured: asks,
+        said: `${trim(o.replyText)} [reservations created: ${after - before}]`,
+      },
+      agent: {
+        honoured: forbidsInvention,
+        said: forbidsInvention
+          ? 'system prompt forbids inventing facts a tool did not return (STATIC CHECK — no reservation tool exists)'
+          : 'system prompt does NOT forbid inventing unreturned facts',
+      },
+      note: 'a number the customer never said must not reach a real record',
+    };
+  });
+
   await compare('Rescheduling — neither engine picks the time', async () => {
     // The orchestrator used to move the customer's next booking to tomorrow at
     // 10:00 without asking, and reply that it "has been rescheduled". It now

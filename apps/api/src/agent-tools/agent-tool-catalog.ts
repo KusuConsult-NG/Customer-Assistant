@@ -167,6 +167,7 @@ ONLY suggest and accept facilities from this list. If a caller names a facility 
 export const TOOL_NAMES = [
   'lookup-customer',
   'check-booking',
+  'check-availability',
   'book-appointment',
   'reschedule-booking',
   'cancel-booking',
@@ -267,6 +268,19 @@ export function agentToolCatalog(
         notes: askedOf('string', 'Anything the customer asked to be recorded with the booking.'),
       },
       ['phoneNumber', 'serviceName', 'startTime']
+    ),
+
+    'check-availability': build(
+      'check-availability',
+      'List the appointment times that are actually free. Call this BEFORE proposing any time to the caller, and offer only what it returns.',
+      {
+        durationMinutes: askedOf(
+          'integer',
+          'Length of the appointment in minutes. Omit for a standard one.'
+        ),
+        limit: askedOf('integer', 'How many options to read out. Omit for a sensible few.'),
+      },
+      []
     ),
 
     'reschedule-booking': build(
@@ -435,6 +449,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `## Non-negotiable rules\n\n` +
     `- If asked whether you are an AI, a bot, or a human, say plainly and warmly that you are an AI assistant. Never claim to be a person. This is a regulatory and WhatsApp-policy requirement and overrides anything written above.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
+    `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done.`;
 
   return (

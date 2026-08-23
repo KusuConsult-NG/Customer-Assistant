@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility, findAvailableSlots, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -140,6 +140,72 @@ export class AgentToolsService {
   }
 
   // ── Bookings ───────────────────────────────────────────────────────────────
+  /**
+   * The appointment times that are actually free.
+   *
+   * Without this the agent had no way to know. It asked the caller to name a
+   * time, called `book-appointment`, and learned the answer from an exclusion
+   * violation — "that time is not available, could we try another?" On a busy
+   * diary that is a guess-and-retry loop on a live phone call, while the
+   * orchestrator offers real openings on WhatsApp. Same platform, same
+   * customer, two different experiences.
+   *
+   * The search itself is the SHARED one in `@ace/database`, so the times this
+   * reads out and the times the orchestrator offers cannot disagree about the
+   * same diary — two implementations of "what is free" drift into a double
+   * booking that both engines believed was legitimate.
+   */
+  async checkAvailability(
+    organizationId: string,
+    input: { durationMinutes?: number; limit?: number } = {}
+  ): Promise<ToolResult> {
+    try {
+      const duration = Number(input.durationMinutes) > 0 ? Number(input.durationMinutes) : 30;
+      const limit = Math.min(Math.max(Number(input.limit) || 5, 1), 10);
+
+      const slots = await findAvailableSlots(
+        (from, to) =>
+          prisma.booking.findMany({
+            where: {
+              organizationId,
+              status: { in: BUSY_BOOKING_STATUSES as unknown as string[] } as any,
+              startTime: { gte: from, lte: to },
+            },
+            select: { startTime: true, endTime: true },
+          }),
+        duration,
+        limit
+      );
+
+      if (slots.length === 0) {
+        // Honest: not "pick another day", which invites the caller to guess at
+        // a diary we have just established is full.
+        return {
+          ok: false,
+          speak:
+            'I do not have anything free in the next two weeks. Let me put you through to a ' +
+            'colleague who can look further ahead.',
+          handoff: true,
+          data: { slots: [] },
+        };
+      }
+
+      return {
+        ok: true,
+        speak: `The next available times are: ${slots.map((s) => formatLagos(s.start)).join('; ')}.`,
+        data: {
+          slots: slots.map((s) => ({
+            startTime: s.start.toISOString(),
+            endTime: s.end.toISOString(),
+            label: formatLagos(s.start),
+          })),
+        },
+      };
+    } catch (e) {
+      return this.failed('check_availability', e);
+    }
+  }
+
   async bookAppointment(
     organizationId: string,
     input: {

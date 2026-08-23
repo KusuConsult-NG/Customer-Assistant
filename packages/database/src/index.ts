@@ -76,3 +76,4 @@ export * from './phone-number';
 export * from './ticket-number';
 export * from './plaschema-facilities';
 export * from './booking-conflicts';
+export * from './availability';

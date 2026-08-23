@@ -369,6 +369,79 @@ describe('Agent tools', () => {
     });
   });
 
+  /**
+   * The agent could not know what was free.
+   *
+   * It asked the caller to name a time, called book-appointment, and learned
+   * the answer from an exclusion violation — a guess-and-retry loop on a live
+   * call, while the orchestrator offered real openings on WhatsApp.
+   */
+  describe('availability', () => {
+    it('returns real, future slots inside business hours', async () => {
+      const res = await post('check-availability', keyA, { limit: 3 }).expect(201);
+
+      expect(res.body.ok).toBe(true);
+      const slots = res.body.data.slots;
+      expect(slots.length).toBeGreaterThan(0);
+      expect(slots.length).toBeLessThanOrEqual(3);
+
+      for (const slot of slots) {
+        const start = new Date(slot.startTime);
+        expect(start.getTime()).toBeGreaterThan(Date.now());
+        // Mon–Fri 08:00–18:00 West Africa Time.
+        const watHour = (start.getUTCHours() + 1) % 24;
+        const watDay = new Date(start.getTime() + 3600_000).getUTCDay();
+        expect(watHour).toBeGreaterThanOrEqual(8);
+        expect(watHour).toBeLessThan(18);
+        expect(watDay).not.toBe(0);
+        expect(watDay).not.toBe(6);
+        // A sentence the agent can read out, not a raw timestamp it would have
+        // to format itself — and formatting a time is a thing models get wrong.
+        expect(slot.label).toBeTruthy();
+      }
+      expect(res.body.speak).toContain(slots[0].label);
+    });
+
+    it('never offers a slot that is already booked', async () => {
+      const phone = `+2349${Date.now().toString().slice(-9)}`;
+
+      const free = await post('check-availability', keyA, { limit: 1 }).expect(201);
+      const target = free.body.data.slots[0];
+
+      await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        serviceName: 'Blocker',
+        startTime: target.startTime,
+        durationMinutes: 30,
+      }).expect(201);
+
+      const after = await post('check-availability', keyA, { limit: 5 }).expect(201);
+      const offered = after.body.data.slots.map((sl: any) => sl.startTime);
+      expect(offered).not.toContain(target.startTime);
+
+      await post('cancel-booking', keyA, { phoneNumber: phone, reason: 'cleanup' });
+    });
+
+    it('is scoped to the caller\'s own tenant', async () => {
+      const phone = `+2349${Date.now().toString().slice(-9)}`;
+      const free = await post('check-availability', keyA, { limit: 1 }).expect(201);
+      const target = free.body.data.slots[0];
+
+      // Org A fills the slot; org B's diary is untouched by that.
+      await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        serviceName: 'Tenant A only',
+        startTime: target.startTime,
+        durationMinutes: 30,
+      }).expect(201);
+
+      const bView = await post('check-availability', keyB, { limit: 5 }).expect(201);
+      expect(bView.body.data.slots.map((sl: any) => sl.startTime)).toContain(target.startTime);
+
+      await post('cancel-booking', keyA, { phoneNumber: phone, reason: 'cleanup' });
+    });
+  });
+
   describe('booking round trip', () => {
     it('books, finds and cancels an appointment for the caller', async () => {
       const phone = `+2349${Date.now().toString().slice(-9)}`;

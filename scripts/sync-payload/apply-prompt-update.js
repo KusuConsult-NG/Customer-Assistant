@@ -89,7 +89,7 @@ function api(method, urlPath, bodyFile) {
     );
     process.exit(1);
   }
-  const { SYSTEM_PROMPT } = require(catalogPath);
+  const { SYSTEM_PROMPT, agentPromptFor } = require(catalogPath);
   if (!newPrompt.includes(SYSTEM_PROMPT)) {
     console.error(
       'The payload no longer contains the current SYSTEM_PROMPT — it is stale.\n' +
@@ -98,7 +98,24 @@ function api(method, urlPath, bodyFile) {
     );
     process.exit(1);
   }
-  console.log('payload verified against the built catalog');
+
+  // The guardrails are checked SEPARATELY, because they are not part of
+  // SYSTEM_PROMPT — `agentPromptFor` appends them after the tenant persona.
+  // A change to them (the AI-disclosure rule lives there, and so does the
+  // instruction to check availability before proposing a time) would otherwise
+  // pass the check above while pushing a prompt that has lost it. They contain
+  // no tenant data, so they can be rebuilt here exactly.
+  const guardrails = '## Non-negotiable rules' +
+    agentPromptFor({ persona: null, aiPersonaPrompt: null }).split('## Non-negotiable rules')[1];
+  if (!newPrompt.includes(guardrails)) {
+    console.error(
+      'The payload does not carry the current non-negotiable rules — it is stale.\n' +
+      'These are the rules that keep the agent from claiming to be human and from ' +
+      'inventing availability. Regenerate the payload before applying.'
+    );
+    process.exit(1);
+  }
+  console.log('payload verified against the built catalog (prompt + guardrails)');
 
   cc.agent.prompt.prompt = newPrompt;
 

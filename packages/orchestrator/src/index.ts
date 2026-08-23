@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -98,6 +98,23 @@ const RESCHEDULE_OPTIONS_OFFERED = 5;
 
 /** A table is held for longer than a consultation. */
 const RESERVATION_DURATION_MINUTES = 90;
+
+/**
+ * What is already taken, for this engine.
+ *
+ * The only thing either engine supplies to the shared availability search —
+ * everything that decides what "free" means lives in `@ace/database`, so the
+ * agent and the orchestrator cannot offer different times for the same diary.
+ */
+const busyIn = (organizationId: string) => (from: Date, to: Date) =>
+  prisma.booking.findMany({
+    where: {
+      organizationId,
+      status: { in: BUSY_BOOKING_STATUSES as unknown as string[] } as any,
+      startTime: { gte: from, lte: to },
+    },
+    select: { startTime: true, endTime: true },
+  });
 const RESCHEDULE_TARGETS_LISTED = 5;
 
 /** Business timezone for all customer-facing times. */
@@ -120,36 +137,6 @@ const MAX_HISTORY_TURNS = 12;
  * in Lagos, and then re-rendered with `toLocaleString('en-NG', { timeZone })` so the
  * customer was quoted an hour later than the slot that was reserved.
  */
-const WAT_OFFSET_HOURS = 1;
-
-function watHour(date: Date): number {
-  return (date.getUTCHours() + WAT_OFFSET_HOURS) % 24;
-}
-
-/** Day of week in WAT: 0 = Sunday … 6 = Saturday. */
-function watDay(date: Date): number {
-  const shifted = new Date(date.getTime() + WAT_OFFSET_HOURS * 60 * 60 * 1000);
-  return shifted.getUTCDay();
-}
-
-function isWithinBusinessHours(date: Date): boolean {
-  const day = watDay(date);
-  if (day === 0 || day === 6) return false; // closed at weekends
-  const hour = watHour(date);
-  return hour >= BUSINESS_OPEN_HOUR_WAT && hour < BUSINESS_CLOSE_HOUR_WAT;
-}
-
-function formatLagos(date: Date): string {
-  return date.toLocaleString('en-NG', {
-    timeZone: BUSINESS_TIMEZONE,
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 // ─── Message parsing helpers ─────────────────────────────────────────────────
 
 /**
@@ -1722,8 +1709,8 @@ export class ConversationOrchestrator {
       };
     }
 
-    const slots = await this.findAvailableSlots(
-      context.organizationId,
+    const slots = await findAvailableSlots(
+      busyIn(context.organizationId),
       DEFAULT_APPOINTMENT_DURATION_MINUTES,
       RESCHEDULE_OPTIONS_OFFERED
     );
@@ -1952,8 +1939,8 @@ export class ConversationOrchestrator {
       };
     }
 
-    const free = await this.findAvailableSlots(
-      context.organizationId,
+    const free = await findAvailableSlots(
+      busyIn(context.organizationId),
       DEFAULT_APPOINTMENT_DURATION_MINUTES,
       RESCHEDULE_OPTIONS_OFFERED
     );
@@ -2111,8 +2098,8 @@ export class ConversationOrchestrator {
       };
     }
 
-    const free = await this.findAvailableSlots(
-      context.organizationId,
+    const free = await findAvailableSlots(
+      busyIn(context.organizationId),
       RESERVATION_DURATION_MINUTES,
       RESCHEDULE_OPTIONS_OFFERED
     );
@@ -2214,75 +2201,6 @@ export class ConversationOrchestrator {
    * Finds the earliest free slot within the organization's operating hours
    * (Mon–Fri, 08:00–18:00 West Africa Time), skipping anything already booked.
    */
-  private async findNextAvailableSlot(
-    organizationId: string,
-    durationMinutes: number
-  ): Promise<{ start: Date; end: Date } | null> {
-    return (await this.findAvailableSlots(organizationId, durationMinutes, 1))[0] ?? null;
-  }
-
-  /**
-   * Up to `limit` genuinely free slots, spread across days rather than bunched.
-   *
-   * `findNextAvailableSlot` is this with a limit of one — one implementation, so
-   * the times we OFFER for a reschedule and the time we PICK for a booking can
-   * never disagree about what "free" means.
-   *
-   * At most two per day, because five consecutive half-hours on Tuesday morning
-   * is one option presented five times; a customer who cannot do Tuesday has
-   * been shown nothing.
-   */
-  private async findAvailableSlots(
-    organizationId: string,
-    durationMinutes: number,
-    limit: number
-  ): Promise<Array<{ start: Date; end: Date }>> {
-    const SEARCH_HORIZON_DAYS = 14;
-    const MAX_PER_DAY = 2;
-    const now = Date.now();
-    const horizon = new Date(now + SEARCH_HORIZON_DAYS * 24 * 60 * 60 * 1000);
-
-    const existing = await prisma.booking.findMany({
-      where: {
-        organizationId,
-        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-        startTime: { gte: new Date(now), lte: horizon },
-      },
-      select: { startTime: true, endTime: true },
-    });
-
-    const busy = existing.map((b) => [b.startTime.getTime(), b.endTime.getTime()] as const);
-    const durationMs = durationMinutes * 60 * 1000;
-
-    // Start at the next half-hour boundary, at least an hour out.
-    let cursor = new Date(now + 60 * 60 * 1000);
-    cursor.setUTCSeconds(0, 0);
-    cursor.setUTCMinutes(cursor.getUTCMinutes() > 30 ? 60 : 30);
-
-    const found: Array<{ start: Date; end: Date }> = [];
-    const perDay = new Map<string, number>();
-
-    while (cursor.getTime() < horizon.getTime() && found.length < limit) {
-      const end = new Date(cursor.getTime() + durationMs);
-
-      if (isWithinBusinessHours(cursor) && isWithinBusinessHours(new Date(end.getTime() - 1))) {
-        const clashes = busy.some(([s, e]) => cursor.getTime() < e && end.getTime() > s);
-        if (!clashes) {
-          const day = cursor.toISOString().slice(0, 10);
-          const taken = perDay.get(day) ?? 0;
-          if (taken < MAX_PER_DAY) {
-            perDay.set(day, taken + 1);
-            found.push({ start: new Date(cursor), end });
-          }
-        }
-      }
-
-      cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
-    }
-
-    return found;
-  }
-
   /**
    * Quotes a price from the organization's own deal history.
    *
