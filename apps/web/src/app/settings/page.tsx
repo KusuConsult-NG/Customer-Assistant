@@ -213,6 +213,9 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [payoutAccountName, setPayoutAccountName] = useState(org?.payoutAccountName || '');
   const [payoutAccountNumber, setPayoutAccountNumber] = useState(org?.payoutAccountNumber || '');
   const [payoutUssdCode, setPayoutUssdCode] = useState(org?.payoutUssdCode || '');
+  // What the AI opens conversations in until the customer's own language is
+  // detected — once they write in a supported language, the AI follows them.
+  const [defaultLanguage, setDefaultLanguage] = useState(org?.defaultLanguage || 'en');
   const [saving, setSaving] = useState(false);
 
   const save = async (e: React.FormEvent) => {
@@ -222,7 +225,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       const res = await fetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
-          name, aiPersonaPrompt, welcomeMessage,
+          name, aiPersonaPrompt, welcomeMessage, defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
         }),
       });
@@ -268,6 +271,24 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             placeholder="Hello! 👋 Welcome to [Company]. I'm your AI assistant. How can I help you today?"
           />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">First message sent to every new customer conversation.</p>
+        </div>
+        <div>
+          <label className={labelCls}>Default Language</label>
+          <select
+            value={defaultLanguage}
+            onChange={e => setDefaultLanguage(e.target.value)}
+            className={inputCls}
+          >
+            <option value="en">English</option>
+            <option value="pcm">Nigerian Pidgin</option>
+            <option value="ha">Hausa</option>
+            <option value="ig">Igbo</option>
+            <option value="yo">Yoruba</option>
+          </select>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+            The language the AI uses until a customer&apos;s own language is known. Once someone writes in
+            English, Pidgin, Hausa, Igbo or Yoruba, the AI follows their language automatically.
+          </p>
         </div>
       </Section>
 
