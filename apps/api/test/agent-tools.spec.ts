@@ -69,12 +69,16 @@ describe('Agent tools', () => {
     keyB = await mintKey(orgB);
   }, 60_000);
 
+  // Same 60s as the setup above. Two organizations cascade to every booking
+  // the concurrency tests made, and this runs while the contended writes are
+  // still draining — it hit the 5s default in CI and reported "Test suite
+  // failed to run", which reads like a broken suite rather than slow cleanup.
   afterAll(async () => {
     for (const id of [orgA, orgB]) {
       await prisma.organization.delete({ where: { id } }).catch(() => {});
     }
     await app?.close();
-  });
+  }, 60_000);
 
   const post = (path: string, key: string, body: any = {}) =>
     request(app.getHttpServer())
@@ -275,6 +279,21 @@ describe('Agent tools', () => {
       it.each([
         ['with a named staff member', 'Dr Concurrent'],
         ['with no staff assigned — what the agent always sends', undefined],
+        /*
+         * 60s, because jest's default 5s cannot cover what this test asks for.
+         *
+         * Eight writers contend on one gist exclusion key, and PostgreSQL only
+         * notices a deadlock after `deadlock_timeout` — one second per
+         * collision, on the server, before our own jittered retry even starts.
+         * A CI run of this pair logged fourteen deadlock aborts across twelve
+         * seconds. The unstaffed variant is the worse of the two by design:
+         * every row keys on COALESCE("staffName", ''), so all eight collide on
+         * the same value rather than spreading.
+         *
+         * It passed on faster runners by luck. Raising the timeout does not
+         * weaken the assertions — one CONFIRMED row, seven honest refusals —
+         * it stops a slow runner reporting them as a double-booking bug.
+         */
       ])('gives one caller the slot when eight ask at once, %s', async (_label, staffName) => {
         const startTime = slotFor(60 + (staffName ? 0 : 1));
 
@@ -305,7 +324,7 @@ describe('Agent tools', () => {
           },
         });
         expect(rows).toBe(1);
-      });
+      }, 60_000);
 
       it('does not swallow a genuine failure as a taken slot', async () => {
         // The mirror of the bug above, and it survived the first mutation run:
