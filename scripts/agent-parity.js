@@ -442,6 +442,169 @@ async function main() {
     };
   });
 
+  // ── Guarantee 5: the language a customer is served in ──────────────────────
+  //
+  // The platform supports five languages, and the two engines reach that very
+  // differently. The orchestrator detects the language itself and renders its
+  // own translated templates. The agent path does not translate at all — the
+  // tools return English `speak` strings and structured data, and the MODEL
+  // does the language work under instruction from the system prompt.
+  //
+  // So the parity question here is not "do both reply in Hausa" — only one of
+  // them can be asked that over HTTP. It is the sharper one underneath: does
+  // switching language change any FIGURE the customer is given? Payment details
+  // and booking references are the same facts in every language, and a
+  // translation layer is exactly where a digit goes missing.
+
+  // A contact who has told us they want Hausa. Created directly because the
+  // language only sticks to a contact that exists, and because the scenarios
+  // below are about what is SAID, not about how the row was made.
+  await prisma.contact.upsert({
+    where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
+    create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Hausa Caller', preferredLanguage: 'ha' },
+    update: { preferredLanguage: 'ha' },
+  });
+
+  await compare('Payment details in Hausa — the account number survives translation', async () => {
+    const o = await viaOrchestrator('how do i pay');
+    const a = await viaAgent('payment-details');
+    const oText = o.replyText ?? '';
+    const aText = a.body?.speak ?? '';
+
+    // The orchestrator must be speaking Hausa AND still carrying the figures
+    // byte for byte. Either half alone is a failure: English defeats the
+    // feature, and a paraphrased account number sends money to nobody.
+    const oIsHausa = oText.includes('lambar asusu');
+    const oCarries =
+      oText.includes(PAYOUT.payoutAccountNumber) &&
+      new RegExp(PAYOUT.payoutBankName, 'i').test(oText);
+    const aCarries =
+      aText.includes(PAYOUT.payoutAccountNumber) ||
+      String(a.body?.data?.accountNumber ?? '') === PAYOUT.payoutAccountNumber;
+
+    return {
+      orchestrator: { honoured: oIsHausa && oCarries, said: oText },
+      agent: { honoured: aCarries, said: aText },
+      note:
+        'the orchestrator answers in Hausa with the digits verbatim; the agent returns the same ' +
+        'figures for its model to translate — neither may round, localise or restate an account number',
+    };
+  });
+
+  await compare('Unconfigured payment in Hausa — neither invents an account', async () => {
+    // Clears this tenant's payout fields and puts them back, rather than
+    // registering a second organization for the sake of one check. Registration
+    // is rate limited to 5/min per address — the harness says so at the top —
+    // so a scenario that quietly spends that budget is a scenario that fails
+    // for reasons having nothing to do with the guarantee it names. An earlier
+    // draft did exactly that and diverged intermittently.
+    await api('PATCH', '/api/organizations/settings', {
+      token: org.token,
+      body: { payoutBankName: '', payoutAccountName: '', payoutAccountNumber: '', payoutUssdCode: '' },
+    });
+    try {
+      const o = await viaOrchestrator('how do i pay');
+      const a = await viaAgent('payment-details');
+      const oText = o.replyText ?? '';
+      const aText = a.body?.speak ?? '';
+      // Any run of digits long enough to be read back as an account number.
+      // Translating a refusal must not manufacture one.
+      const accountShaped = /\d{6,}/;
+
+      return {
+        orchestrator: { honoured: !accountShaped.test(oText) && o.shouldHandoff === true, said: oText },
+        agent: { honoured: !accountShaped.test(aText) && a.body?.handoff === true, said: aText },
+        note: 'with no payout fields set, both must defer to a human in any language rather than produce a number',
+      };
+    } finally {
+      // Restored whatever happened above, so the scenarios after this one still
+      // see a configured tenant.
+      await api('PATCH', '/api/organizations/settings', { token: org.token, body: PAYOUT });
+    }
+  });
+
+  await compare('A booking confirmed in Hausa quotes the same reference', async () => {
+    const when = new Date(Date.now() + 5 * 24 * 3600 * 1000);
+    when.setUTCHours(14, 0, 0, 0);
+
+    const a = await viaAgent('book-appointment', {
+      phoneNumber: CALLER,
+      serviceName: 'Enrollment Check',
+      startTime: when.toISOString(),
+    });
+    const agentRef = String(a.body?.data?.reference ?? a.body?.data?.bookingId ?? '');
+
+    const o = await viaOrchestrator('i want to book an appointment');
+    const oText = o.replyText ?? '';
+    const orchestratorRef = String(o.toolCallsExecuted?.[0]?.result?.bookingId ?? '');
+
+    // The confirmation is Hausa; the reference inside it is the booking's own
+    // id, unaltered. A localised or re-formatted reference is one a customer
+    // reads back and staff cannot find.
+    const oIsHausa = oText.includes('Lambar tunani');
+    const oQuotesItsOwn =
+      orchestratorRef.length > 0 && oText.includes(orchestratorRef.slice(-8).toUpperCase());
+
+    return {
+      orchestrator: { honoured: oIsHausa && oQuotesItsOwn, said: oText },
+      agent: { honoured: agentRef.length > 0, said: `${trim(a.body?.speak)} [ref ${agentRef.slice(-8)}]` },
+      note: 'both hand back a reference that resolves to the row they wrote, whatever language the sentence is in',
+    };
+  });
+
+  await compareAsymmetric('Speech the voice cannot produce — refused, not promised', async () => {
+    // Hausa, Igbo and Yoruba are absent from the TTS provider's model line-up,
+    // so a caller cannot be answered aloud in them. The orchestrator refuses
+    // over the VOICE channel and offers the two routes that exist. The agent
+    // path has no tool for this at all — it is governed by the system prompt —
+    // so that side is read from the prompt text and graded as the static check
+    // it is, rather than being reported as though a live path had answered.
+    const o = await orchestrator.processIncomingMessage(
+      { ...ctx(), channel: 'VOICE' },
+      'hausa please'
+    );
+    const oText = o.replyText ?? '';
+    const refuses =
+      /cannot speak Hausa/i.test(oText) && /colleague/i.test(oText) && /WhatsApp/i.test(oText);
+
+    const { SYSTEM_PROMPT } = require(path.join(ROOT, 'apps/api/dist/agent-tools/agent-tool-catalog.js'));
+    const promptScopes =
+      /cannot speak Hausa, Igbo or Yoruba aloud/i.test(SYSTEM_PROMPT) &&
+      /do not pretend to speak their language/i.test(SYSTEM_PROMPT);
+
+    return {
+      orchestrator: { honoured: refuses, said: oText },
+      agent: {
+        honoured: promptScopes,
+        said: promptScopes
+          ? 'system prompt scopes speech to English/Pidgin and offers colleague or WhatsApp (STATIC CHECK — no live path)'
+          : 'system prompt does NOT scope spoken languages — the agent would promise speech it cannot produce',
+      },
+      note: 'neither engine may offer a language it cannot actually speak on a call',
+    };
+  });
+
+  await compare('Non-English intent routing — reported, not assumed', async () => {
+    // "I want to register for PLASCHEMA", in Hausa, with no English keyword in
+    // it. The orchestrator reaches its booking tool for this ONLY through the
+    // LLM classifier — and this harness deletes OPENAI_API_KEY on purpose, so
+    // that two runs of a scenario cannot disagree with themselves.
+    //
+    // So this scenario cannot pass here, and must not pretend to: it records
+    // that non-English routing is model-dependent on one side and entirely
+    // model-dependent on the other, which is a real property of the cutover
+    // and one a green harness would otherwise imply had been tested.
+    const before = await prisma.booking.count({ where: { organizationId: org.orgId } });
+    const o = await viaOrchestrator('Ina so in yi rijistar PLASCHEMA don Allah');
+    const after = await prisma.booking.count({ where: { organizationId: org.orgId } });
+
+    throw new Error(
+      `non-English routing needs the LLM classifier, disabled here for determinism — ` +
+      `orchestrator booked ${after - before}, replied ${JSON.stringify(trim(o.replyText))}; ` +
+      `the agent side is the model's own routing, which only a real call exercises`
+    );
+  });
+
   await cleanup(org.orgId);
   summarise();
 }
