@@ -34,6 +34,11 @@ import {
   chosenSlot, serviceOf, type BookableSlot,
 } from './booking-flow';
 export * from './booking-flow';
+import {
+  RESERVATION_FLOW, RESERVATION_FLOW_NAME, TABLE_SLOTS_KEY,
+  chosenTableSlot, partySizeOf,
+} from './reservation-flow';
+export * from './reservation-flow';
 import { TARGETS_KEY, chosenTarget, type AppointmentTarget } from './appointment-targets';
 export * from './appointment-targets';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
@@ -90,6 +95,9 @@ const DEFAULT_APPOINTMENT_DURATION_MINUTES = 30;
  * a list nobody finishes reading is a list nobody chooses from.
  */
 const RESCHEDULE_OPTIONS_OFFERED = 5;
+
+/** A table is held for longer than a consultation. */
+const RESERVATION_DURATION_MINUTES = 90;
 const RESCHEDULE_TARGETS_LISTED = 5;
 
 /** Business timezone for all customer-facing times. */
@@ -695,6 +703,7 @@ const FLOWS: Record<string, FlowDefinition> = {
   [RESCHEDULE_FLOW_NAME]: RESCHEDULE_FLOW,
   [CANCEL_FLOW_NAME]: CANCEL_FLOW,
   [BOOKING_FLOW_NAME]: BOOKING_FLOW,
+  [RESERVATION_FLOW_NAME]: RESERVATION_FLOW,
 };
 
 /**
@@ -1038,15 +1047,7 @@ export class ConversationOrchestrator {
     const RESERVATION_PHRASES = ['reservation', 'book room', 'book table', 'book a room', 'book a table', 'reserve a table', 'make a reservation'];
     if (RESERVATION_PHRASES.some((p) => lowerInput.includes(p)) && !isAboutExistingBooking(lowerInput)) {
       try {
-        const toolResult = await this.executeManageReservation(context, cleanInput);
-        return {
-          replyText: toolResult.message,
-          intentDetected: 'MANAGE_RESERVATION',
-          confidenceScore: 0.9,
-          shouldHandoff: toolResult.shouldHandoff,
-          ...(toolResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
-          toolCallsExecuted: [{ toolName: 'manage_reservation', result: toolResult }],
-        };
+        return await this.startReservationFlow(context, cleanInput, lang);
       } catch (err) {
         return this.toolFailureReply('MANAGE_RESERVATION', err, lang);
       }
@@ -2073,55 +2074,139 @@ export class ConversationOrchestrator {
     };
   }
 
-  private async executeManageReservation(context: ConversationContext, messageText: string) {
-    let contact;
+  /**
+   * Offer the free tables, and reserve the one the customer picks.
+   *
+   * Two defects sat here, and the party size was the worse one:
+   *
+   *     const partySize = extractPartySize(messageText) ?? 2;
+   *
+   * A message that did not name a number silently became a table for TWO. A
+   * group of eight asking "can I book a table for Friday?" got a reservation
+   * for two, were told a table was reserved, and the restaurant set two covers.
+   * Nothing failed and nothing was logged. A number the customer never said was
+   * written into the one field a restaurant plans around, and read back as
+   * though they had said it.
+   *
+   * A party size found in the message is used; one that is absent is ASKED FOR.
+   *
+   * Nothing here writes.
+   */
+  private async startReservationFlow(
+    context: ConversationContext,
+    messageText: string,
+    lang: Language = 'en'
+  ): Promise<OrchestrationResult> {
     try {
-      contact = await this.getOrCreateContact(context);
+      await this.getOrCreateContact(context);
     } catch {
       return {
-        booked: false,
-        shouldHandoff: true,
-        message:
+        replyText:
           `Happy to arrange that — I just need a phone number for the reservation. ` +
           `Let me bring in a colleague who can take your details.`,
+        intentDetected: 'MANAGE_RESERVATION',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
 
-    // Read the party size out of the message rather than always assuming two people.
-    const partySize = extractPartySize(messageText) ?? 2;
-
-    const slot = await this.findNextAvailableSlot(context.organizationId, 90);
-    if (!slot) {
+    const free = await this.findAvailableSlots(
+      context.organizationId,
+      RESERVATION_DURATION_MINUTES,
+      RESCHEDULE_OPTIONS_OFFERED
+    );
+    if (free.length === 0) {
       return {
-        booked: false,
-        shouldHandoff: true,
-        message:
+        replyText:
           `We're fully booked over the next couple of weeks. I'm passing you to a colleague ` +
           `who can look for a table for you.`,
+        intentDetected: 'MANAGE_RESERVATION',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
+
+    const conversationId = await this.ensureConversation(context);
+    if (!conversationId) {
+      return {
+        replyText:
+          `I can get a table held for you, but I can't take you through the details here — ` +
+          `let me bring in a colleague who can do it with you.`,
+        intentDetected: 'MANAGE_RESERVATION',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    const state = beginFlow(RESERVATION_FLOW);
+    state.collected[TABLE_SLOTS_KEY] = JSON.stringify(
+      free.map((s) => ({
+        startIso: s.start.toISOString(),
+        endIso: s.end.toISOString(),
+        label: formatLagos(s.start),
+      }))
+    );
+
+    // Pre-filled ONLY when the customer actually named a number. Absent, the
+    // flow asks — it does not assume a table for two.
+    const stated = extractPartySize(messageText);
+    if (stated !== null) state.collected.partySize = String(stated);
+
+    return this.runFlow(context, conversationId, RESERVATION_FLOW, state, '', lang);
+  }
+
+  /** Write the reservation the customer set up. */
+  private async completeReservation(
+    context: ConversationContext,
+    collected: Record<string, string>,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const slot = chosenTableSlot(collected);
+    const partySize = partySizeOf(collected);
+    if (!slot || partySize === null) {
+      return this.toolFailureReply(
+        'MANAGE_RESERVATION',
+        new Error('confirmed a reservation with no table time or no party size'),
+        lang
+      );
+    }
+
+    const contact = await this.getOrCreateContact(context);
 
     const reservation = await prisma.reservation.create({
       data: {
         organizationId: context.organizationId,
         contactId: contact.id,
         partySize,
-        reservationTime: slot.start,
+        reservationTime: new Date(slot.startIso),
         status: 'CONFIRMED',
-        specialRequests: `Requested via AI assistant: "${messageText.slice(0, 200)}"`,
+        // Deliberately left unset. This used to hold
+        // `Requested via AI assistant: "<the raw message>"` — a log line in the
+        // one field staff read as the customer's REQUIREMENTS. An empty
+        // special-requests field means there are none, which is true; a
+        // transcript of "can i book a table" in it means a kitchen reads a
+        // requirement that was never made.
       },
     });
 
     return {
-      booked: true,
-      shouldHandoff: false,
-      reservationId: reservation.id,
-      partySize,
-      message:
+      replyText:
         `I've reserved a table for *${partySize} guest${partySize === 1 ? '' : 's'}* on ` +
-        `*${formatLagos(slot.start)}* (West Africa Time).\n\n` +
+        `*${slot.label}* (West Africa Time).\n\n` +
         `Reference: #${reservation.id.slice(-8).toUpperCase()}\n\n` +
-        `Say *"reschedule"* if you'd prefer a different time, or tell me your party size if I got it wrong.`,
+        `Say *"reschedule"* if you'd prefer a different time.`,
+      intentDetected: 'MANAGE_RESERVATION',
+      confidenceScore: 1.0,
+      shouldHandoff: false,
+      toolCallsExecuted: [
+        {
+          toolName: 'manage_reservation',
+          result: { booked: true, reservationId: reservation.id, partySize, startTime: slot.startIso },
+        },
+      ],
     };
   }
 
@@ -2651,17 +2736,10 @@ export class ConversationOrchestrator {
           // confidence is discarded, because what comes back is a list of times
           // to choose from rather than a booking.
           return await this.startBookingFlow(context, cleanInput, lang, serviceName ?? undefined);
-        case 'MANAGE_RESERVATION': {
-          const result = await this.executeManageReservation(context, cleanInput);
-          return {
-            replyText: result.message,
-            intentDetected: 'MANAGE_RESERVATION',
-            confidenceScore: confidence,
-            shouldHandoff: result.shouldHandoff,
-            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
-            toolCallsExecuted: [{ toolName: 'manage_reservation', result }],
-          };
-        }
+        case 'MANAGE_RESERVATION':
+          // A question, not a reservation — so the classifier's confidence in
+          // having read the message is not confidence about a table.
+          return await this.startReservationFlow(context, cleanInput, lang);
         case 'CHECK_BOOKING_STATUS': {
           const result = await this.executeCheckBookingStatus(context, lang);
           return {
@@ -2956,6 +3034,14 @@ export class ConversationOrchestrator {
         return await this.completeBooking(context, step.state.collected, lang);
       } catch (err) {
         return this.toolFailureReply('BOOK_APPOINTMENT', err, lang);
+      }
+    }
+
+    if (flow.name === RESERVATION_FLOW_NAME) {
+      try {
+        return await this.completeReservation(context, step.state.collected, lang);
+      } catch (err) {
+        return this.toolFailureReply('MANAGE_RESERVATION', err, lang);
       }
     }
 

@@ -487,25 +487,42 @@ describe('ConversationOrchestrator', () => {
   });
 
   describe('Reservations', () => {
-    it('reads the party size from the message instead of always assuming two', async () => {
+    /**
+     * Reserve, the way a customer does: say what you want, then pick a time.
+     *
+     * A party size the customer NAMED is still used without being asked for
+     * again — that is what these two guard. The case where they named none is
+     * in reservation-flow.spec.ts, because "assume a table for two" was the
+     * defect and it needs more than one assertion.
+     */
+    const reserved = async (message: string) => {
       mockPrisma.reservation.create.mockImplementation(({ data }: any) =>
         Promise.resolve({ id: 'res_12345678', ...data })
       );
+      const offered = await orchestrator.processIncomingMessage(baseContext(), message);
+      expect(mockPrisma.reservation.create).not.toHaveBeenCalled();
 
-      await orchestrator.processIncomingMessage(baseContext(), 'book a table for 6 please');
-
+      await orchestrator.processIncomingMessage(baseContext(), '1');
       expect(mockPrisma.reservation.create).toHaveBeenCalledTimes(1);
-      expect(mockPrisma.reservation.create.mock.calls[0][0].data.partySize).toBe(6);
+      return {
+        stored: mockPrisma.reservation.create.mock.calls[0][0].data,
+        offered: offered.replyText,
+      };
+    };
+
+    it('reads the party size from the message instead of always assuming two', async () => {
+      const { stored, offered } = await reserved('book a table for 6 please');
+
+      expect(stored.partySize).toBe(6);
+      // Never asked again, and the number is visible in the question they
+      // answered rather than only appearing after the table is held.
+      expect(offered).toMatch(/table for 6 guests/i);
+      expect(offered).not.toMatch(/how many people/i);
     });
 
     it('understands spelled-out party sizes', async () => {
-      mockPrisma.reservation.create.mockImplementation(({ data }: any) =>
-        Promise.resolve({ id: 'res_1', ...data })
-      );
-
-      await orchestrator.processIncomingMessage(baseContext(), 'make a reservation for four');
-
-      expect(mockPrisma.reservation.create.mock.calls[0][0].data.partySize).toBe(4);
+      const { stored } = await reserved('make a reservation for four');
+      expect(stored.partySize).toBe(4);
     });
   });
 
