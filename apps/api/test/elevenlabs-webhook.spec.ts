@@ -22,6 +22,7 @@ import {
   verifyElevenLabsSignature,
 } from '../src/agent-tools/elevenlabs-signature';
 import { ElevenLabsWebhookService } from '../src/agent-tools/elevenlabs-webhook.service';
+import { MissedCallFollowUpService } from '../src/agent-tools/missed-call-followup.service';
 
 const SECRET = 'wsec_test_secret';
 
@@ -128,7 +129,13 @@ describe('ElevenLabs webhook ingestion', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      providers: [ElevenLabsWebhookService],
+      providers: [
+        ElevenLabsWebhookService,
+        // Stubbed: the follow-up is fire-and-forget off the back of a recorded
+        // failure, and these tests are about what gets RECORDED. Its own
+        // refusals are covered in missed-call-followup.spec.ts.
+        { provide: MissedCallFollowUpService, useValue: { followUp: jest.fn().mockResolvedValue({ sent: false, reason: 'stubbed in test' }) } },
+      ],
     }).compile();
     service = moduleRef.get(ElevenLabsWebhookService);
 

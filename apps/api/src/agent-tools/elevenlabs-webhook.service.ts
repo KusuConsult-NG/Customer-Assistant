@@ -35,6 +35,7 @@ import { Injectable } from '@nestjs/common';
 import { prisma, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
+import { MissedCallFollowUpService } from './missed-call-followup.service';
 
 const log = new AceLogger('ElevenLabsWebhook');
 
@@ -356,6 +357,8 @@ export type IngestOutcome =
 
 @Injectable()
 export class ElevenLabsWebhookService {
+  constructor(private readonly followUp: MissedCallFollowUpService) {}
+
   /**
    * Persist one delivery.
    *
@@ -599,6 +602,20 @@ export class ElevenLabsWebhookService {
       reason,
       matchedContact: Boolean(contact),
     });
+
+    // Reach back to the person who could not get through. Fire-and-forget on
+    // purpose: the call log is the record that matters and this webhook has
+    // already been ACKed, so a follow-up that cannot be sent must not turn a
+    // recorded failure into an unrecorded one.
+    this.followUp
+      .followUp({
+        organizationId,
+        contactId: contact?.id ?? null,
+        customerNumber,
+        callSid,
+        correlationId,
+      })
+      .catch(() => {});
 
     return { handled: true, kind: 'voice', organizationId, reference: callSid };
   }

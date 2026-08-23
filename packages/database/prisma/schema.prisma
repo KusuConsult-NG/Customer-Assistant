@@ -933,6 +933,17 @@ model HostedAgentConfig {
   callPermissionTemplateName     String?
   callPermissionTemplateLanguage String? @default("en")
 
+  /// Template used to follow up a caller the platform could not connect.
+  ///
+  /// Meta requires an approved template for any business-initiated message, so
+  /// with this unset the follow-up is SKIPPED and logged rather than attempted:
+  /// a send that the provider will reject is not a follow-up, it is a log line
+  /// pretending to be one. The wording lives in Meta's approved template and
+  /// cannot drift, which is the property that makes it safe to send
+  /// unattended.
+  missedCallTemplateName     String?
+  missedCallTemplateLanguage String? @default("en")
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
