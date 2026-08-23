@@ -253,6 +253,100 @@ describe('ElevenLabs webhook ingestion', () => {
     });
   });
 
+  // ── A call that never connected ────────────────────────────────────────────
+
+  /**
+   * The only trace a turned-away caller leaves.
+   *
+   * These events used to be discarded as an unhandled type, so somebody who
+   * rang the helpline and could not get through — almost always because every
+   * concurrent slot on the plan was busy — existed nowhere: not in the call
+   * log, not on the dashboard, not in any number the agency could act on.
+   */
+  describe('a call that could not be connected', () => {
+    const failurePayload = (over: Record<string, any> = {}) => ({
+      type: 'call_initiation_failure',
+      event_timestamp: 1_760_000_500,
+      data: {
+        agent_id: agentId,
+        reason: 'concurrency_limit_reached',
+        phone_call: {
+          direction: 'inbound',
+          call_sid: `CA${randomBytes(6).toString('hex')}`,
+          agent_number: '+2348000000001',
+          external_number: '+2348111111111',
+        },
+        ...over,
+      },
+    });
+
+    it('records the attempt as a FAILED call against the caller', async () => {
+      const payload = failurePayload();
+
+      const outcome = await service.ingest(payload as any, 'test');
+
+      expect(outcome).toMatchObject({ handled: true, kind: 'voice', organizationId: orgId });
+      const row = await prisma.callLog.findFirst({ where: { organizationId: orgId } });
+      expect(row?.status).toBe('FAILED');
+      expect(row?.durationSeconds).toBe(0);
+      // The provider's own reason, not our paraphrase of it.
+      expect(row?.summary).toContain('concurrency_limit_reached');
+      // Inbound: the customer's number is the origin.
+      expect(row?.fromNumber).toBe('+2348111111111');
+    });
+
+    it('links the attempt to an existing contact, and invents none when it cannot', async () => {
+      const contact = await prisma.contact.create({
+        data: { organizationId: orgId, phoneNumber: '+2348111111111', fullName: 'Known Caller' },
+      });
+
+      await service.ingest(failurePayload() as any, 'test');
+      const linked = await prisma.callLog.findFirst({ where: { organizationId: orgId } });
+      expect(linked?.contactId).toBe(contact.id);
+
+      await prisma.callLog.deleteMany({ where: { organizationId: orgId } });
+      const before = await prisma.contact.count({ where: { organizationId: orgId } });
+
+      // No number at all: still recorded, still attributed, no phantom customer.
+      await service.ingest(failurePayload({ phone_call: { direction: 'inbound' } }) as any, 'test');
+      expect(await prisma.callLog.count({ where: { organizationId: orgId } })).toBe(1);
+      expect(await prisma.contact.count({ where: { organizationId: orgId } })).toBe(before);
+    });
+
+    it('counts a redelivery once — webhook delivery is at-least-once', async () => {
+      const payload = failurePayload();
+
+      await service.ingest(payload as any, 'test');
+      await service.ingest(payload as any, 'test');
+
+      // Two rows here would overstate how many people the service turned away,
+      // which is the one number this event exists to get right.
+      expect(await prisma.callLog.count({ where: { organizationId: orgId } })).toBe(1);
+    });
+
+    it('is recorded even with no conversation id — the conversation never started', async () => {
+      // A transcript without a conversation id is refused (its messages have
+      // nothing to key on); a failure legitimately has none.
+      const outcome = await service.ingest(failurePayload() as any, 'test');
+      expect(outcome).toMatchObject({ handled: true });
+      expect(await prisma.callLog.count({ where: { organizationId: orgId } })).toBe(1);
+    });
+
+    it('applies the same attribution rules as a transcript', async () => {
+      const unknown = failurePayload();
+      (unknown.data as any).agent_id = 'agent_nobody';
+      expect(await service.ingest(unknown as any, 'test')).toMatchObject({ handled: false });
+
+      await prisma.hostedAgentConfig.create({ data: { organizationId: otherOrgId, agentId } });
+      const ambiguous = await service.ingest(failurePayload() as any, 'test');
+      expect(ambiguous).toMatchObject({ handled: false });
+      expect((ambiguous as any).reason).toMatch(/more than one organization/i);
+
+      expect(await prisma.callLog.count({ where: { organizationId: orgId } })).toBe(0);
+      expect(await prisma.callLog.count({ where: { organizationId: otherOrgId } })).toBe(0);
+    });
+  });
+
   // ── Voice ──────────────────────────────────────────────────────────────────
 
   describe('a finished call', () => {

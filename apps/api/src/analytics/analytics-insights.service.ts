@@ -57,6 +57,13 @@ export interface OperationalInsights {
     refundRequests: number;
   };
   languages: Array<{ language: string; count: number }>;
+  /**
+   * Calls the platform could not answer — almost always every concurrent slot
+   * on the workspace plan being in use. This is the only number that says how
+   * many people tried to reach the helpline and did not get through, so it is
+   * reported even when it is zero rather than being omitted as uninteresting.
+   */
+  callsNotConnected: number;
 }
 
 @Injectable()
@@ -76,6 +83,7 @@ export class AnalyticsInsightsService {
       bookingFunnel,
       ticketFlow,
       languages,
+      callsNotConnected,
     ] = await Promise.all([
       this.volumeTrend(organizationId, since).catch(this.empty('volumeTrend', [])),
       this.intentDistribution(organizationId, since).catch(this.empty('intentDistribution', [])),
@@ -88,6 +96,7 @@ export class AnalyticsInsightsService {
         this.empty('ticketFlow', { opened: 0, resolved: 0, openByPriority: [], refundRequests: 0 })
       ),
       this.languages(organizationId).catch(this.empty('languages', [])),
+      this.callsNotConnected(organizationId, since).catch(this.empty('callsNotConnected', 0)),
     ]);
 
     return {
@@ -100,7 +109,21 @@ export class AnalyticsInsightsService {
       bookingFunnel,
       ticketFlow,
       languages,
+      callsNotConnected,
     };
+  }
+
+  /**
+   * How many callers could not be connected in the period.
+   *
+   * Written by the `call_initiation_failure` webhook. A zero here means either
+   * a healthy line or a line nobody called — the volume trend beside it tells
+   * those apart, which is why this is a bare count and not a rate.
+   */
+  private async callsNotConnected(organizationId: string, since: Date): Promise<number> {
+    return prisma.callLog.count({
+      where: { organizationId, status: 'FAILED', startedAt: { gte: since } },
+    });
   }
 
   /** One failed section logs and yields its empty shape — never a blank page. */

@@ -18,6 +18,16 @@ describe('generateTicketNumber', () => {
   it('does not repeat across a burst in the same millisecond', () => {
     // The old scheme was the last six digits of Date.now(). Every number in a
     // burst like this one was identical, and all but the first insert failed.
+    //
+    // 5,000 is not arbitrary, and this assertion is exact rather than
+    // approximate on purpose: within one millisecond the timestamp component is
+    // constant, so the whole burst leans on the random suffix and the BIRTHDAY
+    // bound decides it, not the raw key space. At three random bytes (2^24) the
+    // expected collisions here are 5000² / (2 · 2^24) ≈ 0.75 — a repeat more
+    // often than not — and CI duly returned 4,999. At five bytes (2^40) it is
+    // ≈ 1.1e-5, which is the difference between the retry being a safety net and
+    // the retry being part of normal operation. Loosening this to
+    // `toBeGreaterThan(4990)` would let the suffix silently shrink again.
     const numbers = new Set(Array.from({ length: 5000 }, () => generateTicketNumber()));
     expect(numbers.size).toBe(5000);
   });
