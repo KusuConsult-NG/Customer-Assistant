@@ -26,6 +26,7 @@
  */
 import type { FlowDefinition } from './flows';
 import { chosenTarget, whichSlot } from './appointment-targets';
+import { t } from './languages';
 
 export const CANCEL_FLOW_NAME = 'cancel-booking';
 
@@ -34,20 +35,13 @@ export const CANCEL_FLOW: FlowDefinition = {
 
   // The only thing this flow needs to know. With one appointment upcoming the
   // slot is skipped and the customer goes straight to the read-back.
-  slots: [whichSlot('cancel')],
+  slots: [whichSlot('verb_cancel')],
 
-  summarise: (c) => {
+  summarise: (c, lang) => {
     const target = chosenTarget(c);
-    if (!target) {
-      // Should not happen: a target list is seeded before the flow starts.
-      // Asking again is the safe reading — it never cancels on a guess.
-      return 'Sorry — I lost track of which appointment you meant. Which one would you like to cancel?';
-    }
-    return (
-      'Just to be sure, because this cannot be undone:\n\n' +
-      `• ${target.label}\n` +
-      `• ${target.startLabel}\n\n` +
-      'Reply *yes* to cancel it, or *no* to leave it as it is.'
-    );
+    // Should not happen: a target list is seeded before the flow starts. Asking
+    // again is the safe reading — it never cancels on a guess.
+    if (!target) return t(lang, 'lost_track');
+    return t(lang, 'cancel_summary', { label: target.label, when: target.startLabel });
   },
 };

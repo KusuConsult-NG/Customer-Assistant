@@ -23,6 +23,19 @@
  * AI disclosure, the handoff, the failure apology. Everything conversational
  * stays with the LLM tier, which mirrors the customer's language natively.
  *
+ * The FLOW prompts are here for the same reason, and they are the largest
+ * group. A form is the least forgiving place to switch language: a customer
+ * mid-way through registering has already given five answers, the questions
+ * decide what their health card says, and there is no LLM tier behind them to
+ * paraphrase — the deterministic engine says exactly these words. They were
+ * English-only at first, with a line in the customer's language apologising
+ * for it; that line is gone because the reason for it is.
+ *
+ * What is NOT translated, in any language, is a VALUE: the plan names that go
+ * on the card, "34 years", an LGA, a facility. Those are fields of a record
+ * read by desk staff and sent to PLASCHEMA, not sentences said to a customer.
+ * `t` interpolates them and never touches them.
+ *
  * ⚠ NATIVE-SPEAKER REVIEW REQUIRED before production. These renderings are
  * careful and deliberately simple, but they were machine-authored. Hausa was
  * written in the Boko orthography without tonal marks; Igbo and Yoruba use
@@ -244,17 +257,34 @@ type TemplateKey =
   | 'language_voice_unavailable'
   | 'flow_abandoned'
   | 'flow_what_to_change'
+
+  // ── Enrollment (PLASCHEMA) ────────────────────────────────────────────────
+  | 'enrol_name_ask' | 'enrol_name_two_words' | 'enrol_name_digits'
+  | 'enrol_age_ask' | 'enrol_age_implausible' | 'enrol_age_unclear'
+  | 'enrol_address_ask' | 'enrol_address_short'
+  | 'enrol_lga_ask' | 'enrol_lga_unknown'
+  | 'enrol_plan_ask' | 'enrol_plan_unclear'
+  | 'enrol_facility_ask' | 'enrol_facility_unaccredited'
+  | 'enrol_nin_ask' | 'enrol_nin_length' | 'enrol_nin_none'
+  | 'enrol_summary' | 'enrol_summary_free'
   /**
-   * Said once, in the customer's own language, before a form whose questions
-   * are only written in English.
+   * What to call somebody whose name we do not have.
    *
-   * The registration questions are not translated yet, and switching a Hausa
-   * conversation silently into English mid-sentence is the sort of thing that
-   * makes somebody assume they have been handed to a different system and stop
-   * replying. Saying so — and offering the person who can take them through it
-   * in their language — costs one line and is true.
+   * Only reachable if the name slot were ever empty when the next question is
+   * asked, which the slot order prevents. It is here because an untranslated
+   * "there" sitting in a Hausa sentence is exactly the leak this pass exists to
+   * close, and a key costs less than reasoning about whether it can be hit.
    */
-  | 'flow_english_only';
+  | 'enrol_friend'
+
+  // ── Acting on an appointment ──────────────────────────────────────────────
+  | 'which_one_ask' | 'which_one_unclear'
+  | 'verb_move' | 'verb_cancel'
+  | 'when_ask' | 'when_only_these'
+  | 'book_ask' | 'book_only_these'
+  | 'table_when_ask' | 'table_for'
+  | 'party_ask' | 'party_too_many' | 'party_too_few' | 'party_unclear'
+  | 'reschedule_summary' | 'cancel_summary' | 'lost_track';
 
 type Params = Record<string, string>;
 
@@ -299,7 +329,80 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       "No problem — I've stopped that. Tell me any time you'd like to start again.",
     flow_what_to_change:
       'No problem. Which part should I change?',
-    flow_english_only: '',
+    enrol_name_ask:
+      "Let's get you registered. What is your full name, as it should appear on your health card?",
+    enrol_name_two_words:
+      'Could you give me your full name — first name and surname?',
+    enrol_name_digits:
+      'That looks like it has numbers in it. What is your full name?',
+    enrol_age_ask:
+      'Thank you, {name}. How old are you, or what is your date of birth?',
+    enrol_age_implausible:
+      'That age does not look right. How old are you, in years?',
+    enrol_age_unclear:
+      'Could you tell me your age in years, or your date of birth?',
+    enrol_address_ask:
+      'What is your street address, or the area where you live?',
+    enrol_address_short:
+      'Could you give me a bit more — the street or the area you live in?',
+    enrol_lga_ask:
+      'Which Local Government Area do you live in? For example: Jos North, Jos South, Barkin Ladi, Mangu, Shendam.',
+    enrol_lga_unknown:
+      'I could not match that to a Plateau State LGA. Could you tell me which one you live in? The full list is: {list}.',
+    enrol_plan_ask:
+      'Which describes you best?\n\n1 — Formal Sector (you work for a company or government)\n2 — Informal Sector (self-employed, trader, farmer, artisan)\n3 — Equity Programme (free: pregnant, child under 5, over 65, living with a disability)\n4 — BHCPF (free, for the most vulnerable)\n\nReply with the number or the name.',
+    enrol_plan_unclear:
+      'I did not catch which plan that is. Reply 1 for Formal Sector, 2 for Informal Sector, 3 for the free Equity Programme, or 4 for BHCPF.',
+    enrol_facility_ask:
+      'Which hospital or health centre in {lga} would you like as your primary facility?\n\nAccredited options: {options}.',
+    enrol_facility_unaccredited:
+      'That one is not on the accredited list for {lga}, and a card issued against it would be refused at the desk. Please choose one of: {options}.',
+    enrol_nin_ask:
+      "Last one, and it is optional: do you have your National Identification Number (NIN)? It speeds things up, but we can register you without it — just say \"no\".",
+    enrol_nin_length:
+      "A NIN is 11 digits. Could you check and send it again, or say \"no\" to continue without it?",
+    enrol_nin_none:
+      'not provided',
+    enrol_friend:
+      'there',
+    enrol_summary:
+      'Here is what I have — please check it carefully before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Plan: {plan}{free}\n• Primary facility: {facility}\n• NIN: {nin}\n\nIs all of that correct? Reply *yes* to register, or tell me what to change.',
+    enrol_summary_free:
+      ' (free — no payment)',
+    which_one_ask:
+      'You have more than one coming up. Which would you like to {verb}?\n\n{list}\n\nReply with the number.',
+    which_one_unclear:
+      'I did not catch which one. Please reply with the number:\n\n{list}',
+    verb_move:
+      'move',
+    verb_cancel:
+      'cancel',
+    when_ask:
+      '{heading}Here is what is free:\n\n{list}\n\nReply with the number that suits you. If none of these work, say *"speak to an agent"* and a colleague will find something else.',
+    when_only_these:
+      'I can only move it to one of these, so that I do not put you down for a time that is already taken:\n\n{list}\n\nReply with the number, or say *"speak to an agent"* for anything else.',
+    book_ask:
+      'Happy to book you in for a {service}. Here is what is free:\n\n{list}\n\nReply with the number that suits you. If none of these work, say *"speak to an agent"* and a colleague will find something else.',
+    book_only_these:
+      'I can only book one of these, so that I do not put you down for a time that is already taken:\n\n{list}\n\nReply with the number, or say *"speak to an agent"* for anything else.',
+    table_when_ask:
+      '{heading}Here is what is free:\n\n{list}\n\nReply with the number that suits you. If none of these work, say *"speak to an agent"* and a colleague will find something else.',
+    table_for:
+      'A table for {guests}. ',
+    party_ask:
+      'How many people will the table be for?',
+    party_too_many:
+      'That is more than we can seat on one booking. For a party over {max}, say *"speak to an agent"* and a colleague will arrange it.',
+    party_too_few:
+      'A table needs at least one person. How many will be coming?',
+    party_unclear:
+      'How many people should I book the table for? A number is fine.',
+    reschedule_summary:
+      'Just to confirm before I change anything:\n\n• {label}\n• From: {from}\n• To: {to}\n\nReply *yes* to move it, or tell me what to change.',
+    cancel_summary:
+      'Just to be sure, because this cannot be undone:\n\n• {label}\n• {when}\n\nReply *yes* to cancel it, or *no* to leave it as it is.',
+    lost_track:
+      'Sorry — I lost track of which one we were dealing with. Could you tell me again?',
   },
   pcm: {
     ai_disclosure:
@@ -338,8 +441,80 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'No wahala — I don stop am. Tell me anytime wey you wan start again.',
     flow_what_to_change:
       'No wahala. Which one make I change?',
-    flow_english_only:
-      'Small tin: dis registration questions dey for English only for now. If you want person wey go carry you through am for Pidgin, just talk say you want human.',
+    enrol_name_ask:
+      'Make we register you. Wetin be your full name, as e go show for your health card?',
+    enrol_name_two_words:
+      'Abeg give me your full name — first name and surname.',
+    enrol_name_digits:
+      'E get number inside am. Wetin be your full name?',
+    enrol_age_ask:
+      'Thank you, {name}. How old you be, abi wetin be your date of birth?',
+    enrol_age_implausible:
+      'That age no correct. How many years you get?',
+    enrol_age_unclear:
+      'Abeg tell me your age for years, abi your date of birth.',
+    enrol_address_ask:
+      'Wetin be your street address, abi the area wey you dey stay?',
+    enrol_address_short:
+      'Abeg add small — the street abi area wey you dey live.',
+    enrol_lga_ask:
+      'Which Local Government Area you dey stay? For example: Jos North, Jos South, Barkin Ladi, Mangu, Shendam.',
+    enrol_lga_unknown:
+      'I no fit match that one to any Plateau State LGA. Which one you dey stay? Full list na: {list}.',
+    enrol_plan_ask:
+      'Which one be you?\n\n1 — Formal Sector (you dey work for company abi government)\n2 — Informal Sector (self-employed, trader, farmer, artisan)\n3 — Equity Programme (free: pregnant, pikin wey never reach 5, over 65, person wey get disability)\n4 — BHCPF (free, for people wey need am pass)\n\nReply with the number abi the name.',
+    enrol_plan_unclear:
+      'I no catch which plan be that. Reply 1 for Formal Sector, 2 for Informal Sector, 3 for the free Equity Programme, abi 4 for BHCPF.',
+    enrol_facility_ask:
+      'Which hospital abi health centre for {lga} you want as your primary facility?\n\nAccredited options: {options}.',
+    enrol_facility_unaccredited:
+      'That one no dey the accredited list for {lga}, and card wey dem issue with am go be refuse for desk. Abeg pick one of: {options}.',
+    enrol_nin_ask:
+      "Last one, and e be optional: you get your National Identification Number (NIN)? E dey fast the thing, but we fit register you without am — just talk \"no\".",
+    enrol_nin_length:
+      "NIN na 11 digits. Abeg check am send again, abi talk \"no\" make we continue without am.",
+    enrol_nin_none:
+      'e no give am',
+    enrol_friend:
+      'my friend',
+    enrol_summary:
+      'Na wetin I get be this — abeg check am well before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Plan: {plan}{free}\n• Primary facility: {facility}\n• NIN: {nin}\n\nEverything correct? Reply *yes* make I register you, abi tell me wetin I go change.',
+    enrol_summary_free:
+      ' (free — you no go pay anything)',
+    which_one_ask:
+      'You get pass one wey dey come. Which one you wan {verb}?\n\n{list}\n\nReply with the number.',
+    which_one_unclear:
+      'I no catch which one. Abeg reply with the number:\n\n{list}',
+    verb_move:
+      'move',
+    verb_cancel:
+      'cancel',
+    when_ask:
+      '{heading}Na these ones free:\n\n{list}\n\nReply with the number wey suit you. If none of dem work, talk *"speak to an agent"* make colleague find another one.',
+    when_only_these:
+      'Na only one of these I fit move am go, so I no go put you for time wey person don take:\n\n{list}\n\nReply with the number, abi talk *"speak to an agent"* for anything else.',
+    book_ask:
+      'I fit book you for {service}. Na these ones free:\n\n{list}\n\nReply with the number wey suit you. If none of dem work, talk *"speak to an agent"* make colleague find another one.',
+    book_only_these:
+      'Na only one of these I fit book, so I no go put you for time wey person don take:\n\n{list}\n\nReply with the number, abi talk *"speak to an agent"* for anything else.',
+    table_when_ask:
+      '{heading}Na these ones free:\n\n{list}\n\nReply with the number wey suit you. If none of dem work, talk *"speak to an agent"* make colleague find another one.',
+    table_for:
+      'Table for {guests}. ',
+    party_ask:
+      'How many people the table go be for?',
+    party_too_many:
+      'That one pass wetin we fit seat for one booking. If una pass {max}, talk *"speak to an agent"* make colleague arrange am.',
+    party_too_few:
+      'Table need at least one person. How many people dey come?',
+    party_unclear:
+      'How many people make I book the table for? Number go do.',
+    reschedule_summary:
+      'Make I confirm before I change anything:\n\n• {label}\n• From: {from}\n• To: {to}\n\nReply *yes* make I move am, abi tell me wetin I go change.',
+    cancel_summary:
+      'Make I sure, because we no fit undo am:\n\n• {label}\n• {when}\n\nReply *yes* make I cancel am, abi *no* make e remain as e dey.',
+    lost_track:
+      'Sorry — I don lose track of which one we dey talk about. Abeg tell me again.',
   },
   ha: {
     ai_disclosure:
@@ -376,8 +551,80 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Babu matsala — na daina. Ka gaya mini duk lokacin da kake son sake farawa.',
     flow_what_to_change:
       'Babu matsala. Wanne bangare zan canza?',
-    flow_english_only:
-      'Abu ɗaya: tambayoyin rijistar suna cikin Turanci kawai a yanzu. Idan kana son mutum ya bi da kai cikin Hausa, ka ce kana son mutum.',
+    enrol_name_ask:
+      'Mu yi maka rijista. Menene cikakken sunanka, kamar yadda zai bayyana a katin lafiyarka?',
+    enrol_name_two_words:
+      'Ka ba ni cikakken sunanka — sunan farko da sunan mahaifi.',
+    enrol_name_digits:
+      'Wannan yana da lambobi a ciki. Menene cikakken sunanka?',
+    enrol_age_ask:
+      'Na gode, {name}. Shekarunka nawa ne, ko kuma ranar haihuwarka?',
+    enrol_age_implausible:
+      'Wannan shekarun ba su yi daidai ba. Shekarunka nawa ne?',
+    enrol_age_unclear:
+      'Ka gaya mini shekarunka, ko ranar haihuwarka.',
+    enrol_address_ask:
+      'Menene adireshinka, ko yankin da kake zama?',
+    enrol_address_short:
+      'Ka kara bayani kadan — titi ko yankin da kake zama.',
+    enrol_lga_ask:
+      'A wace Karamar Hukuma kake zama? Misali: Jos North, Jos South, Barkin Ladi, Mangu, Shendam.',
+    enrol_lga_unknown:
+      'Ban gane wannan a matsayin Karamar Hukuma ta Jihar Filato ba. A wace kake zama? Cikakken jerin: {list}.',
+    enrol_plan_ask:
+      'Wanne ya fi dacewa da kai?\n\n1 — Formal Sector (kana aiki da kamfani ko gwamnati)\n2 — Informal Sector (kai da kanka, dan kasuwa, manomi, masani)\n3 — Equity Programme (kyauta: mai ciki, yaro kasa da shekara 5, sama da 65, mai nakasa)\n4 — BHCPF (kyauta, ga wadanda suka fi bukata)\n\nKa amsa da lamba ko suna.',
+    enrol_plan_unclear:
+      'Ban gane wanne shiri ba ne. Ka amsa 1 don Formal Sector, 2 don Informal Sector, 3 don Equity Programme na kyauta, ko 4 don BHCPF.',
+    enrol_facility_ask:
+      'Wanne asibiti ko cibiyar lafiya a {lga} kake son ya zama babbar cibiyarka?\n\nWadanda aka amince da su: {options}.',
+    enrol_facility_unaccredited:
+      'Wannan ba ya cikin jerin da aka amince da su a {lga}, kuma za a ki karbar katin a teburin. Ka zabi daya daga cikin: {options}.',
+    enrol_nin_ask:
+      "Na karshe, kuma ba dole ba ne: kana da lambar NIN? Tana saurin aiki, amma za mu iya yi maka rijista ba tare da ita ba — ka ce \"a'a\".",
+    enrol_nin_length:
+      "NIN lambobi 11 ne. Ka duba ka sake aikawa, ko ka ce \"a'a\" mu ci gaba ba tare da ita ba.",
+    enrol_nin_none:
+      'ba a bayar ba',
+    enrol_friend:
+      'abokina',
+    enrol_summary:
+      'Ga abin da na samu — ka duba shi da kyau kafin in yi maka rijista:\n\n• Suna: {name}\n• Shekaru / Ranar haihuwa: {age}\n• Adireshi: {address}\n• Karamar Hukuma: {lga}\n• Shiri: {plan}{free}\n• Babbar cibiya: {facility}\n• NIN: {nin}\n\nDuk daidai ne? Ka amsa *yes* in yi rijista, ko ka gaya mini abin da zan canza.',
+    enrol_summary_free:
+      ' (kyauta — babu biyan kudi)',
+    which_one_ask:
+      'Kana da fiye da daya mai zuwa. Wanne kake son {verb}?\n\n{list}\n\nKa amsa da lamba.',
+    which_one_unclear:
+      'Ban gane wanne ba. Ka amsa da lamba:\n\n{list}',
+    verb_move:
+      'canza',
+    verb_cancel:
+      'soke',
+    when_ask:
+      '{heading}Ga lokutan da suke a bude:\n\n{list}\n\nKa amsa da lambar da ta dace da kai. Idan babu wanda ya dace, ka ce *"speak to an agent"* abokin aiki zai nemo wani.',
+    when_only_these:
+      'Zan iya canza shi zuwa daya daga cikin wadannan kawai, don kada in sa ka a lokacin da aka riga aka dauka:\n\n{list}\n\nKa amsa da lamba, ko ka ce *"speak to an agent"*.',
+    book_ask:
+      'Zan iya yi maka rijistar {service}. Ga lokutan da suke a bude:\n\n{list}\n\nKa amsa da lambar da ta dace da kai. Idan babu wanda ya dace, ka ce *"speak to an agent"*.',
+    book_only_these:
+      'Zan iya yin rijista a daya daga cikin wadannan kawai, don kada in sa ka a lokacin da aka riga aka dauka:\n\n{list}\n\nKa amsa da lamba, ko ka ce *"speak to an agent"*.',
+    table_when_ask:
+      '{heading}Ga lokutan da suke a bude:\n\n{list}\n\nKa amsa da lambar da ta dace da kai. Idan babu wanda ya dace, ka ce *"speak to an agent"*.',
+    table_for:
+      'Tebur na mutane {guests}. ',
+    party_ask:
+      'Mutane nawa za su zauna a teburin?',
+    party_too_many:
+      'Wannan ya fi yawan da za mu iya zama a rijista daya. Idan kun fi {max}, ka ce *"speak to an agent"* abokin aiki zai shirya.',
+    party_too_few:
+      'Tebur yana bukatar akalla mutum daya. Mutane nawa za su zo?',
+    party_unclear:
+      'Mutane nawa zan yi rijistar tebur? Lamba ta isa.',
+    reschedule_summary:
+      'Bari in tabbatar kafin in canza komai:\n\n• {label}\n• Daga: {from}\n• Zuwa: {to}\n\nKa amsa *yes* in canza shi, ko ka gaya mini abin da zan canza.',
+    cancel_summary:
+      'Bari in tabbata, saboda ba za a iya mayar da shi ba:\n\n• {label}\n• {when}\n\nKa amsa *yes* in soke shi, ko *no* ya kasance kamar yadda yake.',
+    lost_track:
+      'Yi hakuri — na rasa wanne muke magana a kai. Ka sake gaya mini.',
   },
   ig: {
     ai_disclosure:
@@ -414,8 +661,80 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Nsogbu adịghị — akwụsịla m ya. Gwa m mgbe ọ bụla ị chọrọ ịmalitegharịa.',
     flow_what_to_change:
       'Nsogbu adịghị. Kedu akụkụ ka m ga-agbanwe?',
-    flow_english_only:
-      'Otu ihe: ajụjụ ndebanye aha dị naanị n\'Bekee ugbu a. Ọ bụrụ na ị chọrọ mmadụ ga-eduzi gị n\'Igbo, kwuo na ị chọrọ mmadụ.',
+    enrol_name_ask:
+      'Ka anyị debanye aha gị. Gịnị bụ aha gị zuru ezu, dịka ọ ga-esi pụta na kaadị ahụike gị?',
+    enrol_name_two_words:
+      'Biko nye m aha gị zuru ezu — aha mbụ na aha nna.',
+    enrol_name_digits:
+      'Nke a nwere ọnụọgụgụ n\'ime ya. Gịnị bụ aha gị zuru ezu?',
+    enrol_age_ask:
+      'Daalụ, {name}. Afọ ole ka ị dị, ma ọ bụ ụbọchị ọmụmụ gị?',
+    enrol_age_implausible:
+      'Afọ ahụ ezighi ezi. Afọ ole ka ị dị?',
+    enrol_age_unclear:
+      'Biko gwa m afọ ole ka ị dị, ma ọ bụ ụbọchị ọmụmụ gị.',
+    enrol_address_ask:
+      'Gịnị bụ adreesị gị, ma ọ bụ ebe ị bi?',
+    enrol_address_short:
+      'Biko tinye ntakịrị ọzọ — okporo ámá ma ọ bụ ebe ị bi.',
+    enrol_lga_ask:
+      'Kedu Local Government Area ị bi? Dịka: Jos North, Jos South, Barkin Ladi, Mangu, Shendam.',
+    enrol_lga_unknown:
+      'Enweghị m ike ịchọta nke ahụ na LGA nke Plateau State. Kedu nke ị bi? Ndepụta zuru ezu bụ: {list}.',
+    enrol_plan_ask:
+      'Kedu nke kacha kọwaa gị?\n\n1 — Formal Sector (ị na-arụ ọrụ maka ụlọ ọrụ ma ọ bụ gọọmentị)\n2 — Informal Sector (onwe gị, onye ahịa, onye ọrụ ubi, onye ǹka)\n3 — Equity Programme (n\'efu: dị ime, nwa n\'okpuru afọ 5, karịa 65, onye nwere nkwarụ)\n4 — BHCPF (n\'efu, maka ndị kachasị mkpa)\n\nZaa site na nọmba ma ọ bụ aha.',
+    enrol_plan_unclear:
+      'Aghọtaghị m nke bụ atụmatụ ahụ. Zaa 1 maka Formal Sector, 2 maka Informal Sector, 3 maka Equity Programme n\'efu, ma ọ bụ 4 maka BHCPF.',
+    enrol_facility_ask:
+      'Kedu ụlọ ọgwụ ma ọ bụ ebe ahụike na {lga} ị chọrọ ka isi ebe gị?\n\nNdị anabatara: {options}.',
+    enrol_facility_unaccredited:
+      'Nke ahụ adịghị na ndepụta anabatara maka {lga}, kaadị e nyere na ya ga-abụ nke a jụrụ na tebụl. Biko họrọ otu n\'ime: {options}.',
+    enrol_nin_ask:
+      "Nke ikpeazụ, ọ bụghịkwa mmanye: ị nwere nọmba NIN gị? Ọ na-eme ka ihe dị ngwa, mana anyị nwere ike idebanye aha gị na-enweghị ya — kwuo \"mba\".",
+    enrol_nin_length:
+      "NIN bụ ọnụọgụgụ 11. Biko lelee ma zipụ ya ọzọ, ma ọ bụ kwuo \"mba\" ka anyị gaa n'ihu na-enweghị ya.",
+    enrol_nin_none:
+      'e nyeghị ya',
+    enrol_friend:
+      'nwanne m',
+    enrol_summary:
+      'Nke a bụ ihe m nwetara — biko lelee ya nke ọma tupu m debanye aha gị:\n\n• Aha: {name}\n• Afọ / Ụbọchị ọmụmụ: {age}\n• Adreesị: {address}\n• LGA: {lga}\n• Atụmatụ: {plan}{free}\n• Isi ebe ahụike: {facility}\n• NIN: {nin}\n\nIhe niile ziri ezi? Zaa *yes* ka m debanye, ma ọ bụ gwa m ihe m ga-agbanwe.',
+    enrol_summary_free:
+      ' (n\'efu — ọ dịghị ụgwọ)',
+    which_one_ask:
+      'Ị nwere ihe karịrị otu na-abịa. Kedu nke ị chọrọ {verb}?\n\n{list}\n\nZaa site na nọmba.',
+    which_one_unclear:
+      'Aghọtaghị m nke bụ nke. Biko zaa site na nọmba:\n\n{list}',
+    verb_move:
+      'ịkwaga',
+    verb_cancel:
+      'ịkagbu',
+    when_ask:
+      '{heading}Nke a bụ oge ndị nwere ohere:\n\n{list}\n\nZaa site na nọmba dabara gị. Ọ bụrụ na ọ dịghị nke dabara, kwuo *"speak to an agent"*.',
+    when_only_these:
+      'Enwere m ike ịkwaga ya naanị na otu n\'ime ndị a, ka m ghara itinye gị n\'oge e weerela:\n\n{list}\n\nZaa site na nọmba, ma ọ bụ kwuo *"speak to an agent"*.',
+    book_ask:
+      'Enwere m ike idebanye gị maka {service}. Nke a bụ oge ndị nwere ohere:\n\n{list}\n\nZaa site na nọmba dabara gị. Ọ bụrụ na ọ dịghị nke dabara, kwuo *"speak to an agent"*.',
+    book_only_these:
+      'Enwere m ike idebanye naanị otu n\'ime ndị a, ka m ghara itinye gị n\'oge e weerela:\n\n{list}\n\nZaa site na nọmba, ma ọ bụ kwuo *"speak to an agent"*.',
+    table_when_ask:
+      '{heading}Nke a bụ oge ndị nwere ohere:\n\n{list}\n\nZaa site na nọmba dabara gị. Ọ bụrụ na ọ dịghị nke dabara, kwuo *"speak to an agent"*.',
+    table_for:
+      'Tebụl maka {guests}. ',
+    party_ask:
+      'Mmadụ ole ka tebụl ahụ ga-abụrụ?',
+    party_too_many:
+      'Nke ahụ karịrị ihe anyị nwere ike ịnọdụ na otu ndebanye. Maka ndị karịrị {max}, kwuo *"speak to an agent"*.',
+    party_too_few:
+      'Tebụl chọrọ opekempe otu mmadụ. Mmadụ ole na-abịa?',
+    party_unclear:
+      'Mmadụ ole ka m ga-edebanye tebụl maka ya? Nọmba ezuola.',
+    reschedule_summary:
+      'Ka m kwado tupu m gbanwee ihe ọ bụla:\n\n• {label}\n• Site na: {from}\n• Ruo: {to}\n\nZaa *yes* ka m kwaga ya, ma ọ bụ gwa m ihe m ga-agbanwe.',
+    cancel_summary:
+      'Ka m jide n\'aka, n\'ihi na enweghị ike ịtụgharị ya:\n\n• {label}\n• {when}\n\nZaa *yes* ka m kagbuo ya, ma ọ bụ *no* ka ọ dịrị ka ọ dị.',
+    lost_track:
+      'Ndo — echefuru m nke anyị na-ekwu maka ya. Biko gwa m ọzọ.',
   },
   yo: {
     ai_disclosure:
@@ -452,11 +771,91 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Kò sí wàhálà — mo ti dá a dúró. Sọ fún mi nígbàkúgbà tí o bá fẹ́ bẹ̀rẹ̀ lẹ́ẹ̀kansí.',
     flow_what_to_change:
       'Kò sí wàhálà. Apá wo ni kí n yí padà?',
-    flow_english_only:
-      'Ohun kan: àwọn ìbéèrè ìforúkọsílẹ̀ wà ní Gẹ̀ẹ́sì nìkan fún ìsinsìnyí. ' +
-      'Bí o bá fẹ́ ẹnìyàn tí yóò mú ọ la inú rẹ̀ ní Yorùbá, sọ pé o fẹ́ ẹnìyàn.',
+    enrol_name_ask:
+      'Jẹ́ kí a forúkọ rẹ sílẹ̀. Kí ni orúkọ rẹ ní kíkún, gẹ́gẹ́ bí yóò ṣe hàn lórí káàdì ìlera rẹ?',
+    enrol_name_two_words:
+      'Jọ̀wọ́ fún mi ní orúkọ rẹ ní kíkún — orúkọ àkọ́kọ́ àti orúkọ ìdílé.',
+    enrol_name_digits:
+      'Èyí ní àwọn nọ́ḿbà nínú rẹ̀. Kí ni orúkọ rẹ ní kíkún?',
+    enrol_age_ask:
+      'O ṣé, {name}. Ọdún mélòó ni ọ́, tàbí kí ni ọjọ́ ìbí rẹ?',
+    enrol_age_implausible:
+      'Ọdún yẹn kò tọ̀nà. Ọdún mélòó ni ọ́?',
+    enrol_age_unclear:
+      'Jọ̀wọ́ sọ ọdún rẹ fún mi, tàbí ọjọ́ ìbí rẹ.',
+    enrol_address_ask:
+      'Kí ni àdírẹ́sì rẹ, tàbí agbègbè tí o ń gbé?',
+    enrol_address_short:
+      'Jọ̀wọ́ fi kún un díẹ̀ — òpópónà tàbí agbègbè tí o ń gbé.',
+    enrol_lga_ask:
+      'Ìjọba Ìbílẹ̀ wo ni o ń gbé? Bí àpẹẹrẹ: Jos North, Jos South, Barkin Ladi, Mangu, Shendam.',
+    enrol_lga_unknown:
+      'Mi ò rí ìyẹn gẹ́gẹ́ bí Ìjọba Ìbílẹ̀ ní Ìpínlẹ̀ Plateau. Èwo ni o ń gbé? Àkọsílẹ̀ kíkún ni: {list}.',
+    enrol_plan_ask:
+      'Èwo ni ó bá ọ mu jùlọ?\n\n1 — Formal Sector (o ń ṣiṣẹ́ fún ilé-iṣẹ́ tàbí ìjọba)\n2 — Informal Sector (ara rẹ, oníṣòwò, àgbẹ̀, oníṣẹ́-ọwọ́)\n3 — Equity Programme (ọ̀fẹ́: aboyún, ọmọ tí kò tí ì pé ọdún 5, ju 65 lọ, ẹni tí ó ní àbùkù ara)\n4 — BHCPF (ọ̀fẹ́, fún àwọn tí ó nílò rẹ̀ jùlọ)\n\nDáhùn pẹ̀lú nọ́ḿbà tàbí orúkọ.',
+    enrol_plan_unclear:
+      'Mi ò gbọ́ èwo ni ètò náà. Dáhùn 1 fún Formal Sector, 2 fún Informal Sector, 3 fún Equity Programme ọ̀fẹ́, tàbí 4 fún BHCPF.',
+    enrol_facility_ask:
+      'Ilé-ìwòsàn tàbí ilé-ìtọ́jú wo ní {lga} ni o fẹ́ gẹ́gẹ́ bí ibùdó àkọ́kọ́ rẹ?\n\nÀwọn tí a fọwọ́sí: {options}.',
+    enrol_facility_unaccredited:
+      'Ìyẹn kò sí nínú àkọsílẹ̀ tí a fọwọ́sí fún {lga}, káàdì tí a bá fi fún ọ yóò sì jẹ́ èyí tí wọn yóò kọ̀ ní tábìlì. Jọ̀wọ́ yan ọ̀kan nínú: {options}.',
+    enrol_nin_ask:
+      "Ìkẹyìn, kò sì ṣe dandan: ṣé o ní nọ́ḿbà NIN rẹ? Ó máa yára nǹkan, ṣùgbọ́n a lè forúkọ rẹ sílẹ̀ láìsí rẹ̀ — kàn sọ \"rárá\".",
+    enrol_nin_length:
+      "NIN jẹ́ nọ́ḿbà 11. Jọ̀wọ́ ṣàyẹ̀wò kí o sì fi ránṣẹ́ lẹ́ẹ̀kansí, tàbí sọ \"rárá\" kí a tẹ̀síwájú láìsí rẹ̀.",
+    enrol_nin_none:
+      'kò fi fúnni',
+    enrol_friend:
+      'ọ̀rẹ́ mi',
+    enrol_summary:
+      'Èyí ni ohun tí mo ní — jọ̀wọ́ ṣàyẹ̀wò rẹ̀ dáadáa kí n tó forúkọ rẹ sílẹ̀:\n\n• Orúkọ: {name}\n• Ọdún / Ọjọ́ ìbí: {age}\n• Àdírẹ́sì: {address}\n• Ìjọba Ìbílẹ̀: {lga}\n• Ètò: {plan}{free}\n• Ibùdó àkọ́kọ́: {facility}\n• NIN: {nin}\n\nGbogbo rẹ̀ tọ̀nà? Dáhùn *yes* kí n forúkọ sílẹ̀, tàbí sọ ohun tí n óò yí padà.',
+    enrol_summary_free:
+      ' (ọ̀fẹ́ — kò sí owó kankan)',
+    which_one_ask:
+      'O ní ju ọ̀kan lọ tí ń bọ̀. Èwo ni o fẹ́ {verb}?\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà.',
+    which_one_unclear:
+      'Mi ò gbọ́ èwo. Jọ̀wọ́ dáhùn pẹ̀lú nọ́ḿbà:\n\n{list}',
+    verb_move:
+      'yí padà',
+    verb_cancel:
+      'fagilé',
+    when_ask:
+      '{heading}Àwọn àkókò tí ó ṣófo ni wọ̀nyí:\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà tí ó bá ọ mu. Bí kò bá sí èyí tí ó bá ọ mu, sọ *"speak to an agent"*.',
+    when_only_these:
+      'Ọ̀kan nínú wọ̀nyí nìkan ni mo lè yí i padà sí, kí n má bàa fi ọ́ sí àkókò tí a ti gbà:\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà, tàbí sọ *"speak to an agent"*.',
+    book_ask:
+      'Mo lè forúkọ rẹ sílẹ̀ fún {service}. Àwọn àkókò tí ó ṣófo ni wọ̀nyí:\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà tí ó bá ọ mu. Bí kò bá sí èyí, sọ *"speak to an agent"*.',
+    book_only_these:
+      'Ọ̀kan nínú wọ̀nyí nìkan ni mo lè forúkọ sílẹ̀, kí n má bàa fi ọ́ sí àkókò tí a ti gbà:\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà, tàbí sọ *"speak to an agent"*.',
+    table_when_ask:
+      '{heading}Àwọn àkókò tí ó ṣófo ni wọ̀nyí:\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà tí ó bá ọ mu. Bí kò bá sí èyí, sọ *"speak to an agent"*.',
+    table_for:
+      'Tábìlì fún {guests}. ',
+    party_ask:
+      'Ènìyàn mélòó ni tábìlì náà yóò jẹ́ fún?',
+    party_too_many:
+      'Ìyẹn ju èyí tí a lè gbà sí ìforúkọsílẹ̀ kan. Fún àwùjọ tí ó ju {max} lọ, sọ *"speak to an agent"*.',
+    party_too_few:
+      'Tábìlì nílò ó kéré tán ènìyàn kan. Ènìyàn mélòó ni yóò wá?',
+    party_unclear:
+      'Ènìyàn mélòó ni kí n forúkọ tábìlì sílẹ̀ fún? Nọ́ḿbà tó.',
+    reschedule_summary:
+      'Jẹ́ kí n jẹ́rìí kí n tó yí ohunkóhun padà:\n\n• {label}\n• Láti: {from}\n• Sí: {to}\n\nDáhùn *yes* kí n yí i padà, tàbí sọ ohun tí n óò yí padà.',
+    cancel_summary:
+      'Jẹ́ kí n dá mi lójú, nítorí a kò lè yí i padà:\n\n• {label}\n• {when}\n\nDáhùn *yes* kí n fagilé rẹ̀, tàbí *no* kí ó wà bí ó ti wà.',
+    lost_track:
+      'Má bínú — mo ti gbàgbé èwo ni a ń sọ̀rọ̀ nípa rẹ̀. Jọ̀wọ́ sọ fún mi lẹ́ẹ̀kansí.',
   },
 };
+
+/**
+ * Every template key, taken from the table rather than hand-listed.
+ *
+ * Exported for the tests that sweep all keys in all languages — a hand-kept
+ * list goes stale the first time somebody adds a key, and the whole point of
+ * those sweeps is to catch the key somebody forgot.
+ */
+export const TEMPLATE_KEYS = Object.keys(TEMPLATES.en) as TemplateKey[];
 
 /** Render a consequential template in `lang`, falling back to English. */
 export function t(lang: Language | null | undefined, key: TemplateKey, params: Params = {}): string {

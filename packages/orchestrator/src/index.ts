@@ -942,7 +942,7 @@ export class ConversationOrchestrator {
       // above the flow engine so the request is honoured rather than eaten as
       // an answer — which means the pending question has to be repeated here,
       // or the customer is left holding a confirmation and no question.
-      const pending = await this.pendingFlowQuestion(context);
+      const pending = await this.pendingFlowQuestion(context, chosenLanguage);
       return {
         replyText: pending
           ? `${t(chosenLanguage, 'language_set')}\n\n${pending}`
@@ -2823,7 +2823,10 @@ export class ConversationOrchestrator {
    * the branches that legitimately interrupt a flow (a language switch) so the
    * interruption is answered AND the form carries on.
    */
-  private async pendingFlowQuestion(context: ConversationContext): Promise<string | null> {
+  private async pendingFlowQuestion(
+    context: ConversationContext,
+    lang: Language = 'en'
+  ): Promise<string | null> {
     try {
       const conversation = await this.loadConversation(context);
       const state = asFlowState(conversation?.flowState);
@@ -2832,9 +2835,9 @@ export class ConversationOrchestrator {
       if (!flow) return null;
       // A flow with no read-back never sits in `confirming`, so the guard is
       // about the type rather than a case that can happen.
-      if (state.confirming) return flow.summarise?.(state.collected) ?? null;
+      if (state.confirming) return flow.summarise?.(state.collected, lang) ?? null;
       const slot = flow.slots.find((s) => s.name === state.awaiting);
-      return slot ? slot.prompt(state.collected) : null;
+      return slot ? slot.prompt(state.collected, lang) : null;
     } catch {
       return null;
     }
@@ -2862,19 +2865,10 @@ export class ConversationOrchestrator {
         handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
-    const started = await this.runFlow(context, conversationId, flow, beginFlow(flow), '', lang);
-
-    // The form's questions are not translated yet. Dropping a Hausa
-    // conversation into English mid-sentence, with no explanation, reads as
-    // having been handed to a different system — and people stop replying to
-    // that. Said ONCE, at the start, with the route to a person who can do it
-    // in their language. Remove this the day the prompts are translated, not
-    // before.
-    const notice = lang === 'en' ? '' : t(lang, 'flow_english_only');
-    if (notice && started.replyText) {
-      return { ...started, replyText: `${notice}\n\n${started.replyText}` };
-    }
-    return started;
+    // Every flow prompt, validation error and read-back now exists in all five
+    // languages, so a flow no longer switches the conversation into English and
+    // the notice that used to apologise for it has gone with the reason for it.
+    return this.runFlow(context, conversationId, flow, beginFlow(flow), '', lang);
   }
 
   /**

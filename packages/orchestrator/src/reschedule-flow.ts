@@ -35,6 +35,7 @@
  * happened — see `completeReschedule`.
  */
 import type { FlowDefinition } from './flows';
+import { t } from './languages';
 import {
   TARGETS_KEY, readTargets, chosenTarget, numbered, pickFromList, whichSlot,
   type AppointmentTarget,
@@ -81,35 +82,27 @@ export const RESCHEDULE_FLOW: FlowDefinition = {
   name: RESCHEDULE_FLOW_NAME,
 
   slots: [
-    whichSlot('move'),
+    whichSlot('verb_move'),
     {
       name: 'when',
       aliases: ['time', 'date', 'day', 'slot'],
-      prompt: (c) => {
+      prompt: (c, lang) => {
         const target = chosenTarget(c);
-        const options = readOptions(c);
-        const heading = target
-          ? `Moving ${target.label}, currently ${target.startLabel}.\n\n`
-          : '';
-        return (
-          `${heading}Here is what is free:\n\n` +
-          numbered(options.map((o) => o.label)) +
-          '\n\nReply with the number that suits you. If none of these work, ' +
-          'say *"speak to an agent"* and a colleague will find something else.'
-        );
+        return t(lang, 'when_ask', {
+          heading: target ? `${target.label} — ${target.startLabel}.\n\n` : '',
+          list: numbered(readOptions(c).map((o) => o.label)),
+        });
       },
-      accept: (text, c) => {
+      accept: (text, c, lang) => {
         const options = readOptions(c);
         const index = pickFromList(text, options.map((o) => o.label));
         if (index === null) {
+          // Re-offer rather than guess. Parsing a date out of this sentence
+          // is how an appointment ends up at a time nobody agreed.
           return {
-            // Re-offer rather than guess. Parsing a date out of this sentence
-            // is how an appointment ends up at a time nobody agreed.
-            error:
-              'I can only move it to one of these, so that I do not put you down ' +
-              'for a time that is already taken:\n\n' +
-              numbered(options.map((o) => o.label)) +
-              '\n\nReply with the number, or say *"speak to an agent"* for anything else.',
+            error: t(lang, 'when_only_these', {
+              list: numbered(options.map((o) => o.label)),
+            }),
           };
         }
         return { value: String(index) };
@@ -117,20 +110,16 @@ export const RESCHEDULE_FLOW: FlowDefinition = {
     },
   ],
 
-  summarise: (c) => {
+  summarise: (c, lang) => {
     const target = chosenTarget(c);
     const option = chosenOption(c);
-    if (!target || !option) {
-      // Should not happen: both slots are filled before a read-back. Asking
-      // again is the safe reading — it never asserts a move that was not set up.
-      return 'Sorry — I lost track of which appointment we were moving. Could you tell me again?';
-    }
-    return (
-      'Just to confirm before I change anything:\n\n' +
-      `• ${target.label}\n` +
-      `• From: ${target.startLabel}\n` +
-      `• To: ${option.label}\n\n` +
-      'Reply *yes* to move it, or tell me what to change.'
-    );
+    // Should not happen: both slots are filled before a read-back. Asking again
+    // is the safe reading — it never asserts a move that was not set up.
+    if (!target || !option) return t(lang, 'lost_track');
+    return t(lang, 'reschedule_summary', {
+      label: target.label,
+      from: target.startLabel,
+      to: option.label,
+    });
   },
 };

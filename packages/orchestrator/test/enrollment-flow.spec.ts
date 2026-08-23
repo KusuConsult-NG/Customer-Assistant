@@ -38,23 +38,24 @@ import {
   FLOW_TTL_MS, type FlowState,
 } from '../src/flows';
 import { ENROLLMENT_FLOW } from '../src/enrollment-flow';
+import { SUPPORTED_LANGUAGES, type Language } from '../src/languages';
 import { ChannelType } from '@ace/shared-types';
 
 const F = ENROLLMENT_FLOW;
 
 /** Drive the engine through a list of answers, returning every reply. */
-function play(answers: string[], start: FlowState = beginFlow(F)) {
+function play(answers: string[], start: FlowState = beginFlow(F), lang: Language = 'en') {
   let state = start;
   const replies: string[] = [];
   let executed = false;
   // The opening question, from the message that started the flow.
-  let step = advanceFlow(F, state, '', 'en');
+  let step = advanceFlow(F, state, '', lang);
   if (step.kind === 'ask' || step.kind === 'confirm') {
     replies.push(step.reply);
     state = step.state;
   }
   for (const answer of answers) {
-    step = advanceFlow(F, state, answer, 'en');
+    step = advanceFlow(F, state, answer, lang);
     if (step.kind === 'execute') { executed = true; state = step.state; break; }
     if (step.kind === 'abandon') { replies.push(step.reply); break; }
     if (step.kind === 'not-mine') break;
@@ -145,6 +146,84 @@ describe('the enrollment conversation', () => {
     const byName = play([...GOOD_ANSWERS.slice(0, 4), 'i am a trader']);
     expect(byName.state.collected.planType).toBe('Informal Sector');
   });
+});
+
+/**
+ * The form used to be English-only, and said so in the customer's language
+ * before switching. Now every question, every validation error and the
+ * read-back exist in all five, so what has to be tested is that none of the
+ * English wording survives anywhere in a non-English run — a single
+ * `prompt: () => '...'` left behind is invisible until a citizen hits it.
+ */
+describe('the form in every language', () => {
+  /**
+   * Tested by DIFFERENCE from English, not by hunting English words.
+   *
+   * Hunting words is the obvious version and it is wrong twice over: Pidgin is
+   * English-lexified, so "full name" appearing in it is correct rather than a
+   * leak, and Igbo borrows "Local Government Area" the way Nigerians of every
+   * language do for that administrative term. Meanwhile a slot left as
+   * `prompt: () => '...'` renders the SAME STRING in all five — which is
+   * exactly what this catches, at every step, without a phrase list to keep.
+   */
+  const english = play(GOOD_ANSWERS, beginFlow(F), 'en');
+
+  for (const lang of SUPPORTED_LANGUAGES.filter((l) => l !== 'en')) {
+    it(`asks and reads back in ${lang}, sharing no wording with the English form`, () => {
+      const { replies, last } = play(GOOD_ANSWERS, beginFlow(F), lang);
+
+      // Every question was asked, plus the read-back.
+      expect(replies.length).toBe(GOOD_ANSWERS.length + 1);
+      expect(replies.length).toBe(english.replies.length);
+
+      replies.forEach((reply, i) => {
+        expect({ step: i, sameAsEnglish: reply === english.replies[i] })
+          .toEqual({ step: i, sameAsEnglish: false });
+      });
+
+      // The read-back still carries the answers themselves — the values are
+      // the customer's own words and the record's own labels, and translating
+      // those is a different (and wrong) thing.
+      expect(last).toContain('Amina Yusuf');
+      expect(last).toContain('Jos North');
+      expect(last).toContain('Plateau Specialist Hospital');
+      expect(last).toContain('Informal Sector');
+    });
+
+    it(`reports a validation error in ${lang} rather than falling back to English`, () => {
+      const badName = play(['Amina'], beginFlow(F), lang);
+      expect(badName.last).not.toBe(play(['Amina'], beginFlow(F), 'en').last);
+
+      const badLga = play([...GOOD_ANSWERS.slice(0, 3), 'Ikeja'], beginFlow(F), lang);
+      expect(badLga.last).not.toBe(
+        play([...GOOD_ANSWERS.slice(0, 3), 'Ikeja'], beginFlow(F), 'en').last
+      );
+      // …and still names the LGAs it will accept, so the error is actionable.
+      expect(badLga.last).toContain('Jos North');
+    });
+  }
+
+  /**
+   * The Hausa NIN question tells the caller to answer "a'a". That word was in
+   * NEGATE but not in DECLINE, and only DECLINE was consulted for an optional
+   * slot — so following the instruction abandoned the form six answers in.
+   * Every language's own "no" is pinned here, because the prompt in each one
+   * names it.
+   */
+  const NO: Array<[Language, string]> = [
+    ['en', 'no'], ['pcm', 'no'], ['ha', "a'a"], ['ig', 'mba'], ['yo', 'rara'],
+  ];
+  for (const [lang, no] of NO) {
+    it(`declines the optional NIN on "${no}" (${lang}) instead of abandoning the form`, () => {
+      const { last, state } = play([...GOOD_ANSWERS.slice(0, 6), no], beginFlow(F), lang);
+
+      expect(state.collected.nin).toBe('');
+      expect(state.confirming).toBe(true);
+      // The six answers before it survived.
+      expect(last).toContain('Amina Yusuf');
+      expect(last).toContain('Plateau Specialist Hospital');
+    });
+  }
 });
 
 describe('the ways a form must not trap someone', () => {
@@ -358,21 +437,22 @@ describe('through the orchestrator', () => {
     expect(res.intentDetected).toBe('FLOW_COLLECTING');
   });
 
-  it('says the form is English-only, in their language, rather than switching silently', async () => {
+  it('asks the first question in Hausa, rather than switching the conversation to English', async () => {
     const res = await orchestrator.processIncomingMessage(
       ctx(),
       'Ina so in yi rijistar PLASCHEMA don Allah'
     );
 
     expect(res.intentDetected).toBe('FLOW_COLLECTING');
-    // The notice comes first, in Hausa, and the English question follows it.
-    expect(res.replyText).toMatch(/Turanci/);
-    expect(res.replyText).toMatch(/full name/i);
-    // Said once at the start, not stapled to every question.
-    expect(res.replyText.match(/Turanci/g)).toHaveLength(1);
+    expect(res.replyText).toMatch(/cikakken sunanka/);
+    // The English wording of the same question is gone, not merely prefaced by
+    // an apology for it — which is what this used to assert.
+    expect(res.replyText).not.toMatch(/full name/i);
+    // And nothing left over apologising for an English-only form.
+    expect(res.replyText).not.toMatch(/Turanci/);
   });
 
-  it('does not repeat the English-only notice on later questions', async () => {
+  it('stays in Hausa for the questions after the first', async () => {
     mockPrisma.conversation.findUnique.mockResolvedValue({
       id: CONV,
       flowState: {
@@ -382,9 +462,11 @@ describe('through the orchestrator', () => {
     });
     mockPrisma.contact.findFirst.mockResolvedValue({ id: 'c1', preferredLanguage: 'ha' });
 
+    // An address is asked for next; the answer to the age question is accepted.
     const res = await orchestrator.processIncomingMessage(ctx(), '34');
 
-    expect(res.replyText).not.toMatch(/Turanci/);
+    expect(res.replyText).toMatch(/adireshinka|yankin da kake zama/);
+    expect(res.replyText).not.toMatch(/street address/i);
   });
 
   it('resumes from stored state instead of re-asking', async () => {
@@ -453,8 +535,11 @@ describe('through the orchestrator', () => {
 
     expect(res.intentDetected).toBe('SET_LANGUAGE');
     // The confirmation alone would leave a customer holding an acknowledgement
-    // and no question, mid-form, with no idea what to type next.
-    expect(res.replyText).toMatch(/how old|date of birth/i);
+    // and no question, mid-form, with no idea what to type next. The question
+    // comes back in the language they just asked for — repeating it in English
+    // would answer the request by ignoring it.
+    expect(res.replyText).toMatch(/Shekarunka nawa ne|ranar haihuwarka/);
+    expect(res.replyText).not.toMatch(/how old|date of birth/i);
     // And the flow is still theirs — the language request did not abandon it.
     const clearedFlow = mockPrisma.conversation.update.mock.calls.some(
       (c: any) => 'flowState' in (c[0].data ?? {})
