@@ -33,7 +33,10 @@ jest.mock('@ace/database', () => ({
 }));
 
 import { ConversationOrchestrator } from '../src/index';
-import { detectLanguage, asLanguage, t } from '../src/languages';
+import {
+  detectLanguage, asLanguage, t,
+  explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
+} from '../src/languages';
 import { ChannelType } from '@ace/shared-types';
 
 describe('detectLanguage — conservative by contract', () => {
@@ -107,6 +110,7 @@ describe('t — templates interpolate, never translate values', () => {
       'ai_disclosure', 'escalation_connecting', 'payment_details',
       'payment_details_ussd_suffix', 'payment_unconfigured', 'booking_confirmed',
       'booking_cancelled', 'no_upcoming_booking', 'tool_failure', 'capabilities',
+      'language_menu', 'language_set', 'language_voice_unavailable',
     ] as const;
     for (const lang of ['en', 'pcm', 'ha', 'ig', 'yo'] as const) {
       for (const key of keys) {
@@ -254,5 +258,184 @@ describe('orchestrator language wiring', () => {
     expect(res.replyText).toContain('How to pay Test Clinic');
     expect(res.replyText).toContain('5556667778');
     expect(res.replyText).toContain('GTBank');
+  });
+});
+
+/**
+ * Choosing a language, as opposed to merely being detected in one.
+ *
+ * The distinction is the whole point of this layer: a customer who writes in
+ * Hausa mid-conversation gets a silent switch, because confirming would
+ * interrupt what they came for. A customer who ASKS gets an acknowledgement,
+ * because a request that produces no visible response reads as ignored.
+ */
+describe('explicitLanguageRequest', () => {
+  it.each([
+    ['hausa', 'ha'],
+    ['Hausa please', 'ha'],
+    ['in igbo', 'ig'],
+    ['speak to me in yoruba', 'yo'],
+    ['change to pidgin', 'pcm'],
+    ['I want it in english', 'en'],
+    ['abeg hausa', 'ha'],
+  ])('reads %j as a request for %s', (text, expected) => {
+    expect(explicitLanguageRequest(text as string)).toBe(expected);
+  });
+
+  it('does not fire for a message merely WRITTEN in a language', () => {
+    // The silent-switch path owns these — see detectLanguage.
+    expect(explicitLanguageRequest('ina kwana, i want to book an appointment')).toBeNull();
+    expect(explicitLanguageRequest('biko, when is my appointment')).toBeNull();
+  });
+
+  it('does not fire for a passing mention inside a real sentence', () => {
+    expect(explicitLanguageRequest('my son is learning hausa at school and i need a booking')).toBeNull();
+    expect(explicitLanguageRequest('do you have any staff who studied yoruba literature at university')).toBeNull();
+  });
+
+  it('ignores a long message even if it names a language', () => {
+    const long = 'hausa ' + 'x'.repeat(200);
+    expect(explicitLanguageRequest(long)).toBeNull();
+  });
+});
+
+describe('wantsLanguageMenu', () => {
+  it.each(['change language', 'change my language', 'language options', 'what languages do you speak', 'language'])(
+    'recognises %j', (text) => {
+      expect(wantsLanguageMenu(text)).toBe(true);
+    }
+  );
+
+  it('does not fire on unrelated text', () => {
+    expect(wantsLanguageMenu('i want to book an appointment')).toBe(false);
+    expect(wantsLanguageMenu('')).toBe(false);
+  });
+});
+
+describe('parseLanguageChoice', () => {
+  it('maps the menu numbers to the menu order', () => {
+    expect(parseLanguageChoice('1')).toBe('en');
+    expect(parseLanguageChoice('2')).toBe('pcm');
+    expect(parseLanguageChoice('3')).toBe('ha');
+    expect(parseLanguageChoice('4')).toBe('ig');
+    expect(parseLanguageChoice('5')).toBe('yo');
+  });
+
+  it('accepts a named language as well as a number', () => {
+    expect(parseLanguageChoice('hausa')).toBe('ha');
+  });
+
+  it('rejects numbers outside the menu', () => {
+    expect(parseLanguageChoice('6')).toBeNull();
+    expect(parseLanguageChoice('0')).toBeNull();
+    expect(parseLanguageChoice('12')).toBeNull();
+  });
+
+  it('every rendering of the menu carries the marker the next turn looks for', () => {
+    for (const lang of ['en', 'pcm', 'ha', 'ig', 'yo'] as const) {
+      expect(t(lang, 'language_menu')).toContain(LANGUAGE_MENU_MARKER);
+    }
+  });
+});
+
+describe('orchestrator — language selection', () => {
+  const orchestrator = new ConversationOrchestrator();
+
+  const baseContext = (over: any = {}) => ({
+    conversationId: 'conv_langsel_1',
+    organizationId: 'org_1',
+    customerPhoneNumber: '+2348031234567',
+    channel: ChannelType.WHATSAPP,
+    history: [],
+    slots: {},
+    isHumanHandoffActive: false,
+    ...over,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.OPENAI_API_KEY;
+    mockPrisma.contact.findFirst.mockResolvedValue({ id: 'c1', preferredLanguage: null });
+    mockPrisma.contact.update.mockResolvedValue({});
+    mockPrisma.organization.findUnique.mockResolvedValue({ name: 'Test Clinic', defaultLanguage: 'en' });
+  });
+
+  it('confirms an explicit request IN the language chosen, and stores it', async () => {
+    const res = await orchestrator.processIncomingMessage(baseContext(), 'hausa please');
+
+    expect(res.intentDetected).toBe('SET_LANGUAGE');
+    expect(res.replyText).toBe(t('ha', 'language_set'));
+    expect(res.replyText).toContain('Hausa'); // the confirmation names it
+    expect(mockPrisma.contact.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: { preferredLanguage: 'ha' },
+    });
+  });
+
+  it('offers the menu when asked which languages exist', async () => {
+    const res = await orchestrator.processIncomingMessage(baseContext(), 'change language');
+
+    expect(res.intentDetected).toBe('LANGUAGE_MENU');
+    expect(res.replyText).toBe(t('en', 'language_menu'));
+    expect(mockPrisma.contact.update).not.toHaveBeenCalled();
+  });
+
+  it('accepts a numbered reply only when the menu was the previous turn', async () => {
+    const withMenu = baseContext({
+      history: [
+        { sender: 'CUSTOMER', content: 'change language' },
+        { sender: 'AI', content: t('en', 'language_menu') },
+      ],
+    });
+    const res = await orchestrator.processIncomingMessage(withMenu, '3');
+
+    expect(res.intentDetected).toBe('SET_LANGUAGE');
+    expect(res.replyText).toBe(t('ha', 'language_set'));
+  });
+
+  it('treats a bare number as a language ONLY after the menu — never otherwise', async () => {
+    // Same message, no menu behind it: this is an answer to something else
+    // (a party size, a plan choice) and must not silently repoint the language.
+    const res = await orchestrator.processIncomingMessage(baseContext(), '3');
+
+    expect(res.intentDetected).not.toBe('SET_LANGUAGE');
+    expect(mockPrisma.contact.update).not.toHaveBeenCalled();
+  });
+
+  it('leaves a message merely WRITTEN in another language on its normal path', async () => {
+    // Hausa greeting + a booking request: the customer came to book, so the
+    // language switch stays silent and the booking branch still runs.
+    const res = await orchestrator.processIncomingMessage(
+      baseContext(),
+      'ina kwana, i want to book an appointment'
+    );
+
+    expect(res.intentDetected).not.toBe('SET_LANGUAGE');
+    expect(res.intentDetected).not.toBe('LANGUAGE_MENU');
+  });
+
+  it('refuses to promise a language it cannot speak on a call', async () => {
+    const res = await orchestrator.processIncomingMessage(
+      baseContext({ channel: ChannelType.VOICE }),
+      'hausa please'
+    );
+
+    expect(res.intentDetected).toBe('SET_LANGUAGE_UNAVAILABLE');
+    // Says what is true, names the language, and offers the two real routes.
+    expect(res.replyText).toContain('cannot speak Hausa');
+    expect(res.replyText).toMatch(/colleague/i);
+    expect(res.replyText).toMatch(/WhatsApp/i);
+    // And it does NOT record a preference it cannot honour on this channel.
+    expect(mockPrisma.contact.update).not.toHaveBeenCalled();
+  });
+
+  it('still switches spoken-capable languages on a call', async () => {
+    const res = await orchestrator.processIncomingMessage(
+      baseContext({ channel: ChannelType.VOICE }),
+      'pidgin please'
+    );
+
+    expect(res.intentDetected).toBe('SET_LANGUAGE');
+    expect(res.replyText).toBe(t('pcm', 'language_set'));
   });
 });

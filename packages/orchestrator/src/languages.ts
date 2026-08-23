@@ -36,6 +36,22 @@ export type Language = 'en' | 'pcm' | 'ha' | 'ig' | 'yo';
 
 export const SUPPORTED_LANGUAGES: Language[] = ['en', 'pcm', 'ha', 'ig', 'yo'];
 
+/**
+ * The languages this platform can SPEAK, as opposed to write.
+ *
+ * Text carries all five. Speech does not: the TTS engines available to both
+ * voice paths cover English (and Nigerian Pidgin, which is English-lexified
+ * enough to render acceptably) and do NOT cover Hausa, Igbo or Yoruba — those
+ * are absent from ElevenLabs' multilingual model line-up entirely, so it is a
+ * missing capability rather than a setting.
+ *
+ * Kept here, beside the templates, because the honest thing to say to a caller
+ * and the list of what can be said are the same fact. `agent-tool-catalog.ts`
+ * states the same constraint in prose for the hosted agent — change both
+ * together, and only when a provider actually gains the language.
+ */
+export const SPEAKABLE_LANGUAGES: Language[] = ['en', 'pcm'];
+
 export const LANGUAGE_NAMES: Record<Language, string> = {
   en: 'English',
   pcm: 'Nigerian Pidgin',
@@ -93,6 +109,96 @@ const SIGNALS: Record<Exclude<Language, 'en'>, RegExp[]> = {
 const ENGLISH_SIGNALS = [/\b(in|for)\s+english\b/i, /\bspeak english\b/i, /\benglish please\b/i];
 
 /**
+ * The language names a customer might type, in any of the five.
+ *
+ * Deliberately generous: someone asking for their own language types it the
+ * way they say it, not the way ISO 639 spells it. Diacritics are optional
+ * because most phone keyboards do not produce them.
+ */
+const LANGUAGE_WORDS: Array<{ lang: Language; pattern: RegExp }> = [
+  { lang: 'en', pattern: /\b(english|turanci|bekee|g[eè][eè]si)\b/i },
+  { lang: 'pcm', pattern: /\b(pidgin|pigin|broken(?:\s+english)?|naija(?:\s+english)?)\b/i },
+  { lang: 'ha', pattern: /\b(hausa|hausawa)\b/i },
+  { lang: 'ig', pattern: /\b(igbo|ibo|asụsụ igbo|asusu igbo)\b/i },
+  { lang: 'yo', pattern: /\b(yoruba|yor[uù]b[aá])\b/i },
+];
+
+/**
+ * Is this message ASKING for a language, rather than merely written in one?
+ *
+ * The distinction decides whether the assistant confirms out loud. Someone who
+ * types "ina kwana, I want to book" gets a silent switch — confirming would
+ * interrupt what they actually came for. Someone who types "hausa please" is
+ * making a request, and a request that produces no acknowledgement reads as
+ * having been ignored.
+ */
+const REQUEST_FRAMES = [
+  /\b(in|for|na|ni|da)\s+$/i,
+  /\b(speak|talk|reply|respond|write|answer|say it|switch to|change to|use)\s+(to me\s+)?(in\s+)?$/i,
+  /\b(i want|i prefer|i need|give me|make it|i dey want|abeg)\s+(it\s+)?(in\s+)?$/i,
+];
+const REQUEST_SUFFIXES = /^\s*(please|abeg|biko|don allah|jow?o|only|now)\b/i;
+
+export function explicitLanguageRequest(text: string): Language | null {
+  const value = (text ?? '').trim();
+  if (!value || value.length > 120) return null; // a long message is a conversation, not a request
+
+  for (const { lang, pattern } of LANGUAGE_WORDS) {
+    const m = value.match(pattern);
+    if (!m || m.index === undefined) continue;
+
+    const before = value.slice(0, m.index);
+    const after = value.slice(m.index + m[0].length);
+
+    // "hausa" alone, "hausa please", "in hausa", "speak to me in hausa".
+    const bareName = before.trim() === '' && after.trim() === '';
+    const framed = REQUEST_FRAMES.some((f) => f.test(before));
+    const suffixed = before.trim() === '' && REQUEST_SUFFIXES.test(after);
+    if (bareName || framed || suffixed) return lang;
+  }
+  return null;
+}
+
+/** Asking WHICH languages are available, without naming one. */
+const MENU_SIGNALS = [
+  /\bchange\s+(my\s+)?language\b/i,
+  /\bswitch\s+(my\s+)?language\b/i,
+  /\blanguage\s+(options?|list|menu|settings?)\b/i,
+  /\bwhat\s+languages?\b/i,
+  /\bwhich\s+languages?\b/i,
+  /\bother\s+languages?\b/i,
+  /\bdo you speak\b/i,
+  /^\s*language\s*$/i,
+];
+
+export function wantsLanguageMenu(text: string): boolean {
+  const value = (text ?? '').trim();
+  if (!value) return false;
+  return MENU_SIGNALS.some((r) => r.test(value));
+}
+
+/**
+ * The numbered reply to a menu we just sent.
+ *
+ * Only meaningful directly after the menu — a bare "3" in any other context is
+ * an answer to something else entirely, so the caller must establish that the
+ * previous turn WAS the menu (see `LANGUAGE_MENU_MARKER`).
+ */
+export function parseLanguageChoice(text: string): Language | null {
+  const value = (text ?? '').trim();
+  const numeric = value.match(/^\s*([1-5])\s*[.)]?\s*$/);
+  if (numeric) return SUPPORTED_LANGUAGES[Number(numeric[1]) - 1] ?? null;
+  return explicitLanguageRequest(value);
+}
+
+/**
+ * A string that appears in every rendering of the language menu, in every
+ * language, so the next turn can recognise its own menu in the history without
+ * storing conversation state.
+ */
+export const LANGUAGE_MENU_MARKER = '1 — English';
+
+/**
  * The customer's language, from this one message — or null when the message
  * does not say. Two distinct signals are required for the marker-based
  * languages' single short words to avoid loanword false positives, except
@@ -132,7 +238,10 @@ type TemplateKey =
   | 'booking_cancelled'
   | 'no_upcoming_booking'
   | 'tool_failure'
-  | 'capabilities';
+  | 'capabilities'
+  | 'language_menu'
+  | 'language_set'
+  | 'language_voice_unavailable';
 
 type Params = Record<string, string>;
 
@@ -165,6 +274,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       '• Raise a refund request\n' +
       '• Answer questions about our services\n\n' +
       'And any time you\'d rather talk to a person, just say *"speak to an agent"*.',
+    language_menu:
+      'Which language would you like me to use? Reply with a number:\n\n' +
+      '1 — English\n2 — Nigerian Pidgin\n3 — Hausa\n4 — Igbo\n5 — Yorùbá',
+    language_set:
+      "Done — I'll reply in English from now on. Say *\"change language\"* any time you want to switch.",
+    language_voice_unavailable:
+      'I understand you, but I cannot speak {language} on a call — only English. ' +
+      'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
   },
   pcm: {
     ai_disclosure:
@@ -189,6 +306,16 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       '• Raise refund request\n' +
       '• Answer question about our services\n\n' +
       'Anytime you want person, just talk *"speak to an agent"*.',
+    language_menu:
+      'Which language you want make I take talk? Reply with number:\n\n' +
+      '1 — English\n2 — Nigerian Pidgin\n3 — Hausa\n4 — Igbo\n5 — Yorùbá',
+    language_set:
+      'Done — na Pidgin I go dey talk from now. Just talk *"change language"* anytime you wan change am.',
+    // English on purpose: this reply exists precisely because the call cannot
+    // carry the customer's language, so it must be said in one the voice can.
+    language_voice_unavailable:
+      'I understand you, but I cannot speak {language} on a call — only English. ' +
+      'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
   },
   ha: {
     ai_disclosure:
@@ -213,6 +340,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       '• Neman mayar da kudi\n' +
       '• Amsa tambayoyi game da ayyukanmu\n\n' +
       'Duk lokacin da kake son mutum, ka ce *"speak to an agent"*.',
+    language_menu:
+      'Wane harshe kake so in yi amfani da shi? Ka amsa da lamba:\n\n' +
+      '1 — English\n2 — Nigerian Pidgin\n3 — Hausa\n4 — Igbo\n5 — Yorùbá',
+    language_set:
+      'An gama — zan yi maka magana da Hausa daga yanzu. Ka ce *"change language"* duk lokacin da kake son canzawa.',
+    language_voice_unavailable:
+      'I understand you, but I cannot speak {language} on a call — only English. ' +
+      'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
   },
   ig: {
     ai_disclosure:
@@ -237,6 +372,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       '• Ịrịọ nkwụghachi ego\n' +
       '• Ịza ajụjụ gbasara ọrụ anyị\n\n' +
       'Mgbe ọ bụla ị chọrọ mmadụ, kwuo *"speak to an agent"*.',
+    language_menu:
+      'Kedu asụsụ ị chọrọ ka m jiri? Zaghachi na nọmba:\n\n' +
+      '1 — English\n2 — Nigerian Pidgin\n3 — Hausa\n4 — Igbo\n5 — Yorùbá',
+    language_set:
+      'Ọ gwụla — m ga-aza gị n\'Igbo site ugbu a. Kwuo *"change language"* mgbe ọ bụla ị chọrọ ịgbanwe.',
+    language_voice_unavailable:
+      'I understand you, but I cannot speak {language} on a call — only English. ' +
+      'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
   },
   yo: {
     ai_disclosure:
@@ -261,6 +404,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       '• Bèèrè kí wọ́n dá owó padà\n' +
       '• Dáhùn ìbéèrè nípa iṣẹ́ wa\n\n' +
       'Nígbàkúgbà tí o bá fẹ́ ènìyàn, sọ *"speak to an agent"*.',
+    language_menu:
+      'Èdè wo ni o fẹ́ kí n lò? Fi nọ́mbà dáhùn:\n\n' +
+      '1 — English\n2 — Nigerian Pidgin\n3 — Hausa\n4 — Igbo\n5 — Yorùbá',
+    language_set:
+      'Ó ti parí — Yorùbá ni màá lò láti ìsinsìnyí. Sọ *"change language"* nígbàkúgbà tí o bá fẹ́ yí i padà.',
+    language_voice_unavailable:
+      'I understand you, but I cannot speak {language} on a call — only English. ' +
+      'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
   },
 };
 

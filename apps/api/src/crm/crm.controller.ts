@@ -78,7 +78,7 @@ export class CrmController {
   }
 
   @Patch('contacts/:id')
-  async updateContact(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string }) {
+  async updateContact(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { fullName?: string; phoneNumber?: string; email?: string; tags?: string[]; address?: string; city?: string; state?: string; preferredLanguage?: string | null }) {
     return this.crmService.updateContact(id, body, req.user.organizationId);
   }
 

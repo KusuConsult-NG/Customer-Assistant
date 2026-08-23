@@ -5,8 +5,15 @@ import {
   ChannelType,
 } from '@ace/shared-types';
 import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber } from '@ace/database';
-import { detectLanguage, asLanguage, t, LANGUAGE_NAMES, type Language } from './languages';
-export { detectLanguage, asLanguage, t, LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from './languages';
+import {
+  detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
+  explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
+  type Language,
+} from './languages';
+export {
+  detectLanguage, asLanguage, t, LANGUAGE_NAMES, SUPPORTED_LANGUAGES, SPEAKABLE_LANGUAGES,
+  explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
+} from './languages';
 export type { Language } from './languages';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
@@ -837,6 +844,64 @@ export class ConversationOrchestrator {
         // counts if the customer can read it.
         replyText: t(lang, 'ai_disclosure', { org: discloseOrgName }),
         intentDetected: 'AI_DISCLOSURE',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+      };
+    }
+
+    // ── 2a-bis. Choosing a language ─────────────────────────────────────────
+    //
+    // Detection alone switches SILENTLY, which is right for someone who simply
+    // writes in Hausa mid-conversation — confirming would interrupt what they
+    // came for. But a customer who ASKS ("hausa please", "change language") is
+    // making a request, and a request that produces no acknowledgement reads as
+    // having been ignored. This branch is the difference: it confirms, in the
+    // language chosen, and remembers it.
+    //
+    // Sits above the tool branches because a language request must never be
+    // consumed by one, and above escalation because "do you speak Hausa?" is a
+    // question about the assistant, not a demand for a human.
+    const lastAssistantLine = (context.history ?? [])
+      .filter((m) => m.sender !== 'CUSTOMER')
+      .slice(-1)[0]?.content ?? '';
+    const menuJustShown = lastAssistantLine.includes(LANGUAGE_MENU_MARKER);
+
+    // A bare "3" only means a language directly after we offered the menu;
+    // anywhere else it is an answer to something entirely different.
+    const chosenLanguage =
+      explicitLanguageRequest(cleanInput) ??
+      (menuJustShown ? parseLanguageChoice(cleanInput) : null);
+
+    if (chosenLanguage) {
+      // On a call, three of the five cannot be spoken at all. Confirming a
+      // switch we cannot perform would be a promise the next sentence breaks,
+      // so say what is true and offer the two routes that actually exist.
+      if (context.channel === ChannelType.VOICE && !SPEAKABLE_LANGUAGES.includes(chosenLanguage)) {
+        return {
+          replyText: t('en', 'language_voice_unavailable', {
+            language: LANGUAGE_NAMES[chosenLanguage],
+          }),
+          intentDetected: 'SET_LANGUAGE_UNAVAILABLE',
+          confidenceScore: 1.0,
+          shouldHandoff: false,
+        };
+      }
+
+      await this.persistPreferredLanguage(context, chosenLanguage);
+      return {
+        replyText: t(chosenLanguage, 'language_set'),
+        intentDetected: 'SET_LANGUAGE',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+      };
+    }
+
+    if (wantsLanguageMenu(cleanInput)) {
+      return {
+        // Offered in whatever language we are already using, so the menu is
+        // readable by the person who asked for it.
+        replyText: t(lang, 'language_menu'),
+        intentDetected: 'LANGUAGE_MENU',
         confidenceScore: 1.0,
         shouldHandoff: false,
       };
@@ -2357,6 +2422,47 @@ export class ConversationOrchestrator {
       // Same contract as every keyword branch: a tool failure is an honest
       // reply plus a handoff, never a throw the customer experiences as silence.
       return this.toolFailureReply(intent, err, lang);
+    }
+  }
+
+  /**
+   * Record a language the customer explicitly chose.
+   *
+   * Awaited, unlike the fire-and-forget write in `resolveReplyLanguage`: this
+   * one backs a sentence that says "from now on", and the reply should not go
+   * out before the write it describes has been attempted. A failure is logged
+   * rather than escalated — the customer still gets the language they asked for
+   * in this conversation, and a preference that has to be re-stated next time
+   * is a smaller harm than derailing them into a handoff over it.
+   */
+  private async persistPreferredLanguage(
+    context: ConversationContext,
+    language: Language
+  ): Promise<void> {
+    const phone = context.customerPhoneNumber;
+    if (!phone) return;
+    try {
+      const contact = await prisma.contact.findFirst({
+        where: {
+          organizationId: context.organizationId,
+          phoneNumber: { in: phoneNumberVariants(phone) },
+        },
+        select: { id: true },
+      });
+      if (!contact) return;
+      await prisma.contact.update({
+        where: { id: contact.id },
+        data: { preferredLanguage: language },
+      });
+    } catch (err: any) {
+      console.error(JSON.stringify({
+        level: 'warn',
+        service: 'ConversationOrchestrator',
+        event: 'preferred_language_persist_failed',
+        organizationId: context.organizationId,
+        language,
+        error: err?.message,
+      }));
     }
   }
 

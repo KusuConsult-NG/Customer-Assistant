@@ -1138,6 +1138,81 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   );
 }
 
+/**
+ * The language the AI replies to this customer in.
+ *
+ * Normally set by the assistant itself, from the customer's own messages. This
+ * control exists for the case the assistant cannot cover: a customer who tells
+ * an officer on the phone "always write to me in Hausa" — until now there was
+ * nowhere to put that, and the request died with the call.
+ *
+ * "Not yet known" is a real, selectable state, not a placeholder: clearing the
+ * field hands the choice back to detection, which is different from asserting
+ * that a customer speaks English.
+ */
+function PreferredLanguageControl({ contact }: { contact: any }) {
+  const OPTIONS: Array<{ value: string; label: string }> = [
+    { value: '', label: 'Not yet known' },
+    { value: 'en', label: 'English' },
+    { value: 'pcm', label: 'Nigerian Pidgin' },
+    { value: 'ha', label: 'Hausa' },
+    { value: 'ig', label: 'Igbo' },
+    { value: 'yo', label: 'Yoruba' },
+  ];
+  const [value, setValue] = useState<string>(contact.preferredLanguage ?? '');
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  const save = async (next: string) => {
+    const previous = value;
+    setValue(next);
+    setStatus('saving');
+    try {
+      const res = await fetch(`${API_URL}/api/crm/contacts/${contact.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('ace_token')}`,
+        },
+        body: JSON.stringify({ preferredLanguage: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setStatus('saved');
+    } catch {
+      // Put the control back to what is actually stored. A selector left
+      // showing a value the server rejected is a lie about the customer's
+      // record, and this one decides what language they get written to in.
+      setValue(previous);
+      setStatus('error');
+    }
+  };
+
+  return (
+    <div className="pt-3 mt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
+          AI replies in
+        </label>
+        <select
+          value={value}
+          onChange={(e) => save(e.target.value)}
+          disabled={status === 'saving'}
+          className="flex-1 max-w-[190px] px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white disabled:opacity-50"
+        >
+          {OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+      <p className="text-[11px] mt-1.5 text-slate-500 dark:text-slate-400">
+        {status === 'saving' && 'Saving…'}
+        {status === 'saved' && 'Saved — the assistant will use this language.'}
+        {status === 'error' && <span className="text-red-500">Could not save. The stored language is unchanged.</span>}
+        {status === 'idle' && 'Usually set automatically from the customer’s own messages.'}
+      </p>
+    </div>
+  );
+}
+
 function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; onClose: () => void; onOpenTicket: () => void }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'onboarding'>('overview');
 
@@ -1205,6 +1280,8 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
               <TicketCheck className="w-3.5 h-3.5" /> Ticket
             </button>
           </div>
+
+          <PreferredLanguageControl contact={contact} />
         </div>
 
         {/* Tab Navigation */}
