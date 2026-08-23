@@ -10,8 +10,9 @@
 
 const mockPrisma = {
   organization: { findUnique: jest.fn() },
+  conversation: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), upsert: jest.fn() },
   booking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
-  reservation: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+  reservation: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   contact: { findFirst: jest.fn(), create: jest.fn() },
   ticket: { create: jest.fn() },
   deal: { findMany: jest.fn() },
@@ -34,7 +35,9 @@ const mockPrisma = {
  */
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
+  ...jest.requireActual('../../database/src/booking-conflicts'),
   prisma: mockPrisma,
+  Prisma: { DbNull: null },
 }));
 
 import { ConversationOrchestrator } from '../src/index';
@@ -52,6 +55,7 @@ const baseContext = () => ({
 
 describe('ConversationOrchestrator', () => {
   let orchestrator: ConversationOrchestrator;
+  let storedFlowState: any = null;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -69,7 +73,28 @@ describe('ConversationOrchestrator', () => {
     });
     mockPrisma.documentChunk.findMany.mockResolvedValue([]);
     mockPrisma.booking.findMany.mockResolvedValue([]);
+    mockPrisma.reservation.findMany.mockResolvedValue([]);
     mockPrisma.contact.findFirst.mockResolvedValue({ id: 'contact_1', fullName: 'Ada' });
+
+    // The mocked conversation row REMEMBERS its flowState, so a multi-turn flow
+    // can be driven to completion here the way a real one is. Without this a
+    // flow starts, saves state into a mock that forgets it, and the next
+    // message begins again from nothing — which looks exactly like the flow
+    // being broken rather than the mock being too shallow.
+    storedFlowState = null;
+    mockPrisma.conversation.findUnique.mockImplementation(async () => ({
+      id: 'conv_abc123def',
+      flowState: storedFlowState,
+    }));
+    mockPrisma.conversation.findFirst.mockImplementation(async () => ({
+      id: 'conv_abc123def',
+      flowState: storedFlowState,
+    }));
+    mockPrisma.conversation.upsert.mockResolvedValue({ id: 'conv_abc123def' });
+    mockPrisma.conversation.update.mockImplementation(async ({ data }: any) => {
+      storedFlowState = data.flowState ?? null;
+      return {};
+    });
 
     orchestrator = new ConversationOrchestrator();
   });
@@ -140,11 +165,24 @@ describe('ConversationOrchestrator', () => {
    * cutover would have silently changed the answer.
    */
   describe('The service a booking is filed under', () => {
+    /**
+     * Book, the way a customer does: ask, then pick a time.
+     *
+     * Booking is two turns now — it offers the free slots and writes the one
+     * the customer chooses, rather than picking for them. The invariant these
+     * tests exist for is unchanged: whatever ends up in `serviceName` must not
+     * be filler scraped out of the sentence.
+     */
     const bookedService = async (message: string) => {
       mockPrisma.booking.create.mockImplementation(({ data }: any) =>
         Promise.resolve({ id: 'booking_12345678', ...data })
       );
-      const result = await orchestrator.processIncomingMessage(baseContext(), message);
+      const offered = await orchestrator.processIncomingMessage(baseContext(), message);
+      expect(offered.intentDetected).toBe('FLOW_COLLECTING');
+      // Nothing is written until a time is chosen.
+      expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+
+      const result = await orchestrator.processIncomingMessage(baseContext(), '1');
       expect(mockPrisma.booking.create).toHaveBeenCalledTimes(1);
       return {
         stored: mockPrisma.booking.create.mock.calls[0][0].data.serviceName,
@@ -250,8 +288,19 @@ describe('ConversationOrchestrator', () => {
       'book an appointment',
       'schedule consultation',
     ])('still routes %j to creating one', async (message) => {
-      // The guard must not swallow the intent it is guarding.
-      expect(await intentOf(message)).toBe('BOOK_APPOINTMENT');
+      // The guard must not swallow the intent it is guarding. Booking is two
+      // turns now — it offers free times first — so this follows through to the
+      // booking rather than stopping at the offer, which is what proves the
+      // message reached the booking branch and not some other one.
+      const offered = await orchestrator.processIncomingMessage(baseContext(), message);
+      expect(offered.intentDetected).toBe('FLOW_COLLECTING');
+      expect(offered.replyText).toMatch(/here is what is free/i);
+
+      mockPrisma.booking.create.mockImplementation(({ data }: any) =>
+        Promise.resolve({ id: 'booking_12345678', ...data })
+      );
+      expect(await intentOf('1')).toBe('BOOK_APPOINTMENT');
+      expect(mockPrisma.booking.create).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -376,10 +425,15 @@ describe('ConversationOrchestrator', () => {
         Promise.resolve({ id: 'booking_12345678', ...data })
       );
 
-      const result = await orchestrator.processIncomingMessage(
+      const offered = await orchestrator.processIncomingMessage(
         baseContext(),
         'I want to book an appointment'
       );
+      // The times offered are the free ones; the customer picks.
+      expect(offered.replyText).toMatch(/here is what is free/i);
+      expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+
+      const result = await orchestrator.processIncomingMessage(baseContext(), '1');
 
       expect(result.intentDetected).toBe('BOOK_APPOINTMENT');
       expect(mockPrisma.booking.create).toHaveBeenCalledTimes(1);

@@ -27,6 +27,7 @@ const mockPrisma = {
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/ticket-number'),
+  ...jest.requireActual('../../database/src/booking-conflicts'),
   prisma: mockPrisma,
   upsertEnrollee: jest.fn(),
   Prisma: { DbNull: null },
@@ -54,6 +55,8 @@ describe('LLM intent routing', () => {
   const orchestrator = new ConversationOrchestrator();
   const realFetch = global.fetch;
   let fetchMock: jest.Mock;
+  let storedFlowState: any = null;
+  let storedLanguage: string | null = null;
 
   const baseContext = () => ({
     conversationId: 'conv_cls_test01',
@@ -71,16 +74,40 @@ describe('LLM intent routing', () => {
     fetchMock = jest.fn();
     global.fetch = fetchMock as any;
 
-    mockPrisma.contact.findFirst.mockResolvedValue({ id: 'c1', preferredLanguage: null, fullName: 'Test Customer' });
-    mockPrisma.contact.update.mockResolvedValue({});
+    // The contact REMEMBERS preferredLanguage, because that is how the reply
+    // language survives from one turn to the next: a Hausa first message
+    // persists 'ha', and a bare "1" on the next turn has no language signal of
+    // its own. A static null here makes every multi-turn flow answer its last
+    // turn in English, which looks like the language feature being broken.
+    storedLanguage = null;
+    mockPrisma.contact.findFirst.mockImplementation(async () => ({
+      id: 'c1', preferredLanguage: storedLanguage, fullName: 'Test Customer',
+    }));
+    mockPrisma.contact.update.mockImplementation(async ({ data }: any) => {
+      if (data?.preferredLanguage) storedLanguage = data.preferredLanguage;
+      return {};
+    });
     mockPrisma.faqEntry.findMany.mockResolvedValue([]);
     mockPrisma.documentChunk.findMany.mockResolvedValue([]);
     mockPrisma.booking.findFirst.mockResolvedValue(null);
     mockPrisma.booking.findMany.mockResolvedValue([]);
     mockPrisma.reservation.findMany.mockResolvedValue([]);
-    mockPrisma.conversation.findUnique.mockResolvedValue({ id: 'conv_1', flowState: null });
+    // The mocked row REMEMBERS its flowState, so a two-turn flow can be driven
+    // here the way a real one is. Returning a static null instead makes every
+    // flow restart on the second message, which reads as the flow being broken
+    // rather than the mock being too shallow.
+    storedFlowState = null;
+    mockPrisma.conversation.findUnique.mockImplementation(async () => ({
+      id: 'conv_1', flowState: storedFlowState,
+    }));
+    mockPrisma.conversation.findFirst.mockImplementation(async () => ({
+      id: 'conv_1', flowState: storedFlowState,
+    }));
     mockPrisma.conversation.upsert.mockResolvedValue({ id: 'conv_1' });
-    mockPrisma.conversation.update.mockResolvedValue({});
+    mockPrisma.conversation.update.mockImplementation(async ({ data }: any) => {
+      storedFlowState = data.flowState ?? null;
+      return {};
+    });
     mockPrisma.organization.findUnique.mockResolvedValue({
       name: 'Test Clinic',
       defaultLanguage: 'en',
@@ -124,12 +151,21 @@ describe('LLM intent routing', () => {
 
     // "I want to see a doctor, please" — zero English keywords, and not a
     // registration, so the keyword branches genuinely cannot place it.
-    const res = await orchestrator.processIncomingMessage(
+    const offered = await orchestrator.processIncomingMessage(
       baseContext(),
       'Ina so in ga likita, don Allah'
     );
+    // Booking offers free times first; the service name travels in the flow
+    // state, which is where a scraped-from-Hausa value would show up.
+    expect(offered.intentDetected).toBe('FLOW_COLLECTING');
+    expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+
+    const res = await orchestrator.processIncomingMessage(baseContext(), '1');
 
     expect(res.intentDetected).toBe('BOOK_APPOINTMENT');
+    // Asserted explicitly: the tool-failure path ALSO reports BOOK_APPOINTMENT,
+    // so the intent alone cannot tell a booking from a broken one.
+    expect(res.shouldHandoff).toBe(false);
     expect(mockPrisma.booking.create).toHaveBeenCalledTimes(1);
     // The classifier's English rendering is what lands in the calendar — not
     // Hausa scraped through an English regex.
