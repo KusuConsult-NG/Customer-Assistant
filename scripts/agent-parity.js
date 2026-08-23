@@ -56,6 +56,7 @@ delete process.env.OPENAI_API_KEY;
 
 const { PrismaClient, Prisma } = require(path.join(ROOT, 'node_modules/@prisma/client'));
 const { ConversationOrchestrator } = require('@ace/orchestrator');
+const { phoneNumberVariants } = require(path.join(ROOT, 'packages/database/dist/index.js'));
 
 const prisma = new PrismaClient({ log: [] });
 const API = process.env.E2E_API_URL || 'http://localhost:4000';
@@ -168,8 +169,80 @@ async function main() {
     isHumanHandoffActive: false,
   });
 
-  /** Drive the live engine. */
-  const viaOrchestrator = (text) => orchestrator.processIncomingMessage(ctx(), text);
+  /**
+   * Drive the live engine, as a conversation that has just begun.
+   *
+   * Most scenarios here send ONE message and grade the reply, which was a
+   * complete description of the engine until it grew multi-turn flows. It is
+   * not any more: a scenario that starts a booking leaves that flow in progress
+   * on this caller's conversation, and the NEXT scenario's message is then read
+   * as an answer to "which time suits you?" — correctly, by the engine, and
+   * ruinously for a harness whose scenarios assume they are independent.
+   *
+   * The first run after the flows landed reported four false DIVERGEDs for
+   * exactly this: every one of them had the orchestrator replying "I can only
+   * book one of these", which is a booking flow answering a question about
+   * payment details.
+   *
+   * So a single-shot scenario clears any flow first. The multi-turn scenarios
+   * pass their own conversationId and drive their turns deliberately, which is
+   * the distinction: this helper is for messages that stand alone.
+   */
+  const clearFlows = () =>
+    prisma.conversation.updateMany({
+      where: {
+        organizationId: org.orgId,
+        contact: { phoneNumber: { in: phoneNumberVariants(CALLER) } },
+      },
+      data: { flowState: Prisma.DbNull },
+    });
+
+  const viaOrchestrator = async (text) => {
+    await clearFlows();
+    return orchestrator.processIncomingMessage(ctx(), text);
+  };
+
+  /**
+   * Book through the live engine the way a customer does: ask, then pick a time.
+   *
+   * Booking is two turns now — it offers what is free and writes the choice —
+   * so a scenario that sends one message and counts rows is describing the
+   * engine as it was before, not as it is. The scenarios that care about the
+   * RECORD a booking produces use this; the ones that care about the first
+   * reply still use viaOrchestrator.
+   */
+  /**
+   * Send a message in `lang` and WAIT for the engine to have remembered it.
+   *
+   * `resolveReplyLanguage` persists a detected language fire-and-forget — the
+   * reply must not wait on a CRM write, which is right in production and a race
+   * here. Without this poll a scenario that depends on the customer being known
+   * as Hausa-speaking passes or fails depending on whether a background update
+   * happened to land first, and a harness that disagrees with itself between
+   * runs cannot tell anyone whether a cutover is safe.
+   */
+  const establishLanguage = async (text, expected) => {
+    await viaOrchestrator(text);
+    for (let i = 0; i < 50; i++) {
+      const row = await prisma.contact.findFirst({
+        where: {
+          organizationId: org.orgId,
+          phoneNumber: { in: phoneNumberVariants(CALLER) },
+        },
+        select: { preferredLanguage: true },
+      });
+      if (row?.preferredLanguage === expected) return;
+      await sleep(20);
+    }
+    throw new Error(`the engine never remembered ${expected} for this caller`);
+  };
+
+  const bookViaOrchestrator = async (text = 'i want to book an appointment') => {
+    await clearFlows();
+    const offered = await orchestrator.processIncomingMessage(ctx(), text);
+    if (offered.intentDetected !== 'FLOW_COLLECTING') return offered;
+    return orchestrator.processIncomingMessage(ctx(), '1');
+  };
 
   /** Drive the agent engine exactly as ElevenLabs would — over HTTP, with the agent key. */
   const viaAgent = (tool, body = {}) =>
@@ -414,7 +487,7 @@ async function main() {
     });
     const afterAgent = await prisma.booking.count({ where: { organizationId: org.orgId } });
 
-    const o = await viaOrchestrator('i want to book an appointment');
+    const o = await bookViaOrchestrator();
     const afterBoth = await prisma.booking.count({ where: { organizationId: org.orgId } });
 
     const rows = await prisma.booking.findMany({
@@ -534,7 +607,18 @@ async function main() {
     });
     const agentRef = String(a.body?.data?.reference ?? a.body?.data?.bookingId ?? '');
 
-    const o = await viaOrchestrator('i want to book an appointment');
+    // Hausa is established first, by a message that is unmistakably Hausa. The
+    // booking request itself stays in English because the keyword branches are
+    // English and the classifier is disabled here for determinism — what is
+    // being checked is not routing, it is that the CONFIRMATION comes back in
+    // the customer's language.
+    await establishLanguage('sannu, ina kwana', 'ha');
+
+    // Then two turns, the second a bare "1" — which carries no language signal
+    // at all. That the confirmation is still Hausa is the property: the
+    // language must survive the turn, or every multi-turn flow ends in English
+    // for a customer who never wrote a word of it.
+    const o = await bookViaOrchestrator('i want to book an appointment');
     const oText = o.replyText ?? '';
     const orchestratorRef = String(o.toolCallsExecuted?.[0]?.result?.bookingId ?? '');
 
@@ -793,9 +877,17 @@ async function main() {
     // model is the thing that confirms — which is why this is graded on the
     // shared guarantee rather than on the mechanism: asking to cancel must not,
     // by itself, cancel.
+    // A caller of its OWN, with exactly one appointment.
+    //
+    // Sharing CALLER meant this scenario inherited every booking the earlier
+    // ones made, so "cancel my appointment" correctly asked WHICH — and the
+    // "yes" this sends answered that question instead of confirming a
+    // cancellation. The engine was right; the scenario was describing a
+    // customer who does not exist.
+    const cancelPhone = `+23480${(Date.now() + 1).toString().slice(-8)}`;
     const contact = await prisma.contact.upsert({
-      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
-      create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Caller' },
+      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: cancelPhone } },
+      create: { organizationId: org.orgId, phoneNumber: cancelPhone, fullName: 'Parity Canceller' },
       update: {},
     });
     const conversation = await prisma.conversation.upsert({
@@ -819,7 +911,7 @@ async function main() {
     });
 
     const o = await orchestrator.processIncomingMessage(
-      { ...ctx(), conversationId: conversation.id },
+      { ...ctx(), conversationId: conversation.id, customerPhoneNumber: cancelPhone },
       'please cancel my appointment'
     );
     const afterO = await prisma.booking.findUnique({ where: { id: booking.id } });
@@ -829,7 +921,7 @@ async function main() {
     // replaced — the record of how the booking came to exist is most wanted at
     // exactly the moment it is being undone.
     const yes = await orchestrator.processIncomingMessage(
-      { ...ctx(), conversationId: conversation.id },
+      { ...ctx(), conversationId: conversation.id, customerPhoneNumber: cancelPhone },
       'yes'
     );
     const afterYes = await prisma.booking.findUnique({ where: { id: booking.id } });
