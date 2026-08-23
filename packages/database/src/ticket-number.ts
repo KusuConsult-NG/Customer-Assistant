@@ -27,9 +27,24 @@
  * ── The scheme ──────────────────────────────────────────────────────────────
  *
  * Base-36 milliseconds keeps numbers sorting chronologically, which is what
- * makes them useful to read; three random bytes make a same-millisecond
- * collision improbable rather than certain; and the bounded retry turns the
- * remaining improbability into a different number rather than a lost ticket.
+ * makes them useful to read; random bytes make a same-millisecond collision
+ * improbable rather than certain; and the bounded retry turns the remaining
+ * improbability into a different number rather than a lost ticket.
+ *
+ * ── Why FIVE random bytes and not three ─────────────────────────────────────
+ *
+ * Within one millisecond the timestamp is constant, so uniqueness rests
+ * entirely on the random part, and the birthday bound — not the raw space —
+ * decides it. Three bytes is 2^24 ≈ 16.7M values: across 5,000 references in a
+ * single millisecond the expected number of collisions is 5000² / (2 · 2^24) ≈
+ * 0.75, so a repeat is MORE LIKELY THAN NOT. CI found exactly that, returning
+ * 4,999 distinct numbers from a 5,000 burst.
+ *
+ * Five bytes is 2^40 ≈ 1.1e12, which takes the same burst to ≈ 1.1e-5 — rare
+ * enough that the retry stays the safety net it was meant to be rather than
+ * part of normal operation. The cost is two extra characters in something a
+ * customer reads back over the phone, which is worth it: the retry is bounded,
+ * and a caller who exhausts it is told their complaint could not be filed.
  *
  * The prefix is a parameter because it carries meaning to staff: a refund
  * request is filed as REF-BK / REF-RS so it can be told apart from a support
@@ -37,10 +52,13 @@
  */
 import { randomBytes } from 'crypto';
 
+/** Bytes of randomness after the timestamp. See the birthday note above. */
+const ENTROPY_BYTES = 5;
+
 /** A time-ordered, collision-resistant reference. */
 export function generateTicketNumber(prefix = 'TCK'): string {
   const time = Date.now().toString(36).toUpperCase();
-  const entropy = randomBytes(3).toString('hex').toUpperCase();
+  const entropy = randomBytes(ENTROPY_BYTES).toString('hex').toUpperCase();
   return `${prefix}-${time}-${entropy}`;
 }
 
