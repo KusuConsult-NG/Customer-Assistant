@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
+  BarChart3,
   MessageSquareText,
   MessageCircle,
   Users,
@@ -291,6 +292,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <nav className="flex-1 px-3.5 py-3 space-y-1 overflow-y-auto">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Helpline</p>
                   <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/analytics" icon={<BarChart3 className="w-4 h-4" />} label="Analytics" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="Enrollees & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Live Conversations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />

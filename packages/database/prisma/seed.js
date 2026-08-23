@@ -422,6 +422,32 @@ async function main() {
     console.log('  . TelephonyConfig already exists: +17372212163');
   }
 
+  // ── 12. Hosted-agent workspace (demo) ───────────────────────────────────────
+  // A fake dedicated ElevenLabs workspace so Settings → Hosted Agent renders
+  // the CONFIGURED state: OWN WORKSPACE badge, masked key fingerprint, webhook
+  // secret status. The key is not real — nothing outbound can be provisioned
+  // with it, and the e2e suite asserts against the rendered state, not the
+  // provider. Sealed with ENCRYPTION_KEY when one is set; the legacy plaintext
+  // read path keeps an unencrypted demo value working (with a warning).
+  const { encryptSecret, encryptionAvailable } = require('../dist/secret-box');
+  const sealDemo = (v) => (encryptionAvailable() ? encryptSecret(v) : v);
+  const existingHosted = await prisma.hostedAgentConfig.findUnique({
+    where: { organizationId: org.id },
+  });
+  if (!existingHosted) {
+    await prisma.hostedAgentConfig.create({
+      data: {
+        organizationId: org.id,
+        agentId: 'agent_demo_0000000000000000',
+        apiKey: sealDemo(`sk_demo_${randomBytes(16).toString('hex')}`),
+        webhookSecret: sealDemo(`wsec_demo_${randomBytes(16).toString('hex')}`),
+      },
+    });
+    console.log('  + Created HostedAgentConfig (demo workspace, fake key)');
+  } else {
+    console.log('  . HostedAgentConfig already exists');
+  }
+
   console.log('\n════════════════════════════════════════════════════════════');
   console.log('🚀 DB SEEDING COMPLETE! All modules populated with rich data.');
   console.log('   Admin Login Email:    admin@acedemo.com');

@@ -149,6 +149,10 @@ model Organization {
   industry             IndustryType @default(SME)
   country              String       @default("Nigeria")
   timezone             String       @default("Africa/Lagos")
+  /// The language the assistant opens in and falls back to: en, pcm (Nigerian
+  /// Pidgin), ha (Hausa), ig (Igbo), yo (Yoruba). Per-customer preference on
+  /// Contact.preferredLanguage wins once known.
+  defaultLanguage      String       @default("en")
   phone                String?
   logoUrl              String?
   aiPersonaPrompt      String?      @db.Text
@@ -317,6 +321,9 @@ model Contact {
   address        String?
   city           String?
   state          String?
+  /// Learned from the customer's own messages (conservative detection) or set
+  /// by staff. Null until known — never guessed from name or location.
+  preferredLanguage String?
   tags           String[]     @default([])
   metadata       Json?
   createdAt      DateTime     @default(now())

@@ -127,6 +127,16 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
+      # The e2e suites sign in as the seeded demo admin (admin@acedemo.com)
+      # instead of registering their own organizations — registering is
+      # throttled 5/min per IP, and a CI job is one IP. Without this step every
+      # e2e login 401s against an empty database, which is exactly how the
+      # whole Playwright step has been failing since the specs switched to the
+      # seeded user. Runs after the API jest step so its data cannot bleed into
+      # those assertions.
+      - name: Seed demo data for e2e
+        run: node packages/database/prisma/seed.js
+
       - name: Boot API + web for e2e
         run: |
           node apps/api/dist/main.js > /tmp/api.log 2>&1 &

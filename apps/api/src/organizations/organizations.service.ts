@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret } from '@ace/database';
+import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -125,8 +126,19 @@ export class OrganizationsService {
       payoutAccountName?: string;
       payoutAccountNumber?: string;
       payoutUssdCode?: string;
+      // The language the AI opens conversations in until the customer's own
+      // language is known. Validated against the supported set: silently
+      // storing an unknown code would be a selector that saves and changes
+      // nothing, because the orchestrator falls back to English on any value
+      // it does not recognise.
+      defaultLanguage?: string;
     }
   ) {
+    if (data.defaultLanguage !== undefined && !SUPPORTED_LANGUAGES.includes(data.defaultLanguage as Language)) {
+      throw new BadRequestException(
+        `defaultLanguage must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`
+      );
+    }
     return prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -141,6 +153,7 @@ export class OrganizationsService {
         ...(data.payoutAccountName !== undefined && { payoutAccountName: data.payoutAccountName || null }),
         ...(data.payoutAccountNumber !== undefined && { payoutAccountNumber: data.payoutAccountNumber || null }),
         ...(data.payoutUssdCode !== undefined && { payoutUssdCode: data.payoutUssdCode || null }),
+        ...(data.defaultLanguage !== undefined && { defaultLanguage: data.defaultLanguage }),
         // The widgetPrimaryColor / widgetSecondaryColor / widgetPosition
         // columns still exist but are no longer writable: the embedded chat
         // channel was retired, so there is nothing left for them to style.

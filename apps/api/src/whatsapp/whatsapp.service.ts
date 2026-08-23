@@ -347,6 +347,14 @@ export class WhatsappService {
             conversationId: conversation.id,
             sender: MessageSender.AI,
             content: orchResult.replyText,
+            // The intent is what analytics aggregates. It used to live only in
+            // a log line, so "what do customers actually ask for?" — the first
+            // question any operator has — was unanswerable from the product.
+            metadata: {
+              intent: orchResult.intentDetected ?? 'GENERAL_INQUIRY',
+              confidence: orchResult.confidenceScore ?? null,
+              ...(orchResult.shouldHandoff ? { handoff: true } : {}),
+            },
           },
         });
 
