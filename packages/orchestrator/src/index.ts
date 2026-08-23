@@ -29,6 +29,11 @@ import {
 export * from './reschedule-flow';
 import { CANCEL_FLOW, CANCEL_FLOW_NAME } from './cancel-flow';
 export { CANCEL_FLOW, CANCEL_FLOW_NAME } from './cancel-flow';
+import {
+  BOOKING_FLOW, BOOKING_FLOW_NAME, SLOTS_KEY, SERVICE_KEY,
+  chosenSlot, serviceOf, type BookableSlot,
+} from './booking-flow';
+export * from './booking-flow';
 import { TARGETS_KEY, chosenTarget, type AppointmentTarget } from './appointment-targets';
 export * from './appointment-targets';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
@@ -689,6 +694,7 @@ const FLOWS: Record<string, FlowDefinition> = {
   [ENROLLMENT_FLOW_NAME]: ENROLLMENT_FLOW,
   [RESCHEDULE_FLOW_NAME]: RESCHEDULE_FLOW,
   [CANCEL_FLOW_NAME]: CANCEL_FLOW,
+  [BOOKING_FLOW_NAME]: BOOKING_FLOW,
 };
 
 /**
@@ -1008,13 +1014,12 @@ export class ConversationOrchestrator {
 
     // ── 3. Tool: Appointment Booking ─────────────────────────────────────────
     //
-    // Note on scope: this books the next FREE slot in the organization's working
-    // hours and says exactly which slot it took, so the customer can correct it.
-    // It used to unconditionally write "tomorrow at 10:00" for a "General
-    // Consultation" and reply "✅ Your appointment has been confirmed" — regardless
-    // of what the customer asked for, whether the business is open then, or whether
-    // that slot was already taken. Customers were told a time nobody was expecting
-    // them, and staff got silently double-booked.
+    // Offers the free slots and books the one the customer picks. It used to
+    // take the next free slot and write it, saying which — honest, and
+    // reversible, but still a time nobody chose. Before that it wrote
+    // "tomorrow at 10:00" for a "General Consultation" regardless of what was
+    // asked for, whether the business was open, or whether the slot was taken.
+    //
     // The bare word "appointment" is in here, so this branch matches almost any
     // sentence about one. It sits ABOVE check, cancel and reschedule, so before
     // the guard "cancel my appointment" created a second appointment and
@@ -1022,15 +1027,7 @@ export class ConversationOrchestrator {
     const APPOINTMENT_PHRASES = ['appointment', 'schedule consultation', 'book a doctor', 'reserve slot', 'book an appointment', 'book appointment'];
     if (APPOINTMENT_PHRASES.some((p) => lowerInput.includes(p)) && !isAboutExistingBooking(lowerInput)) {
       try {
-        const toolResult = await this.executeBookAppointment(context, cleanInput, lang);
-        return {
-          replyText: toolResult.message,
-          intentDetected: 'BOOK_APPOINTMENT',
-          confidenceScore: 0.9,
-          shouldHandoff: toolResult.shouldHandoff,
-          ...(toolResult.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
-          toolCallsExecuted: [{ toolName: 'book_appointment', result: toolResult }],
-        };
+        return await this.startBookingFlow(context, cleanInput, lang);
       } catch (err) {
         return this.toolFailureReply('BOOK_APPOINTMENT', err, lang);
       }
@@ -1919,78 +1916,160 @@ export class ConversationOrchestrator {
 
 
   /**
-   * Books the next genuinely free slot inside the organization's working hours.
+   * Offer the free slots, and book the one the customer picks.
    *
-   * Conflicts are checked against existing bookings before writing. Two concurrent
-   * requests can still race between the check and the insert; at Nigerian SME volume
-   * (< 500 bookings/day) that window is negligible, and closing it properly needs a
-   * serializable transaction or a database exclusion constraint on the time range.
+   * Booking used to take the next free slot and write it, then say which slot
+   * it had taken. Honest and reversible, but still a time nobody chose — and
+   * the cost lands on the people least able to absorb it. A PLASCHEMA enrollee
+   * travels to a facility; "we have put you down for Tuesday 11:00" to somebody
+   * who can only come after work is an appointment they will miss and a slot
+   * the clinic holds empty.
+   *
+   * Nothing here writes.
    */
-  private async executeBookAppointment(
+  private async startBookingFlow(
     context: ConversationContext,
     messageText: string,
     lang: Language = 'en',
     // From the LLM intent classifier: the requested service in English, when
     // the message itself is in a language the regex extractor cannot read.
     serviceNameHint?: string
-  ) {
-    let contact;
+  ): Promise<OrchestrationResult> {
+    // Resolved before anything is offered: a customer we cannot file a booking
+    // against should not be asked to pick a time for one.
     try {
-      contact = await this.getOrCreateContact(context);
+      await this.getOrCreateContact(context);
     } catch {
       return {
-        booked: false,
+        replyText:
+          `Happy to book that in — I just need a phone number on file first. ` +
+          `Let me bring in a colleague who can take your details.`,
+        intentDetected: 'BOOK_APPOINTMENT',
+        confidenceScore: 0.9,
         shouldHandoff: true,
-        message:
-          `I'd be glad to book that for you — I just need a phone number to put the ` +
-          `appointment under. Let me bring in a colleague who can take your details.`,
+        handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
 
-    const slot = await this.findNextAvailableSlot(
+    const free = await this.findAvailableSlots(
       context.organizationId,
-      DEFAULT_APPOINTMENT_DURATION_MINUTES
+      DEFAULT_APPOINTMENT_DURATION_MINUTES,
+      RESCHEDULE_OPTIONS_OFFERED
     );
-
-    if (!slot) {
+    if (free.length === 0) {
       return {
-        booked: false,
-        shouldHandoff: true,
-        message:
+        replyText:
           `We're fully booked for the next couple of weeks, so I don't want to guess at a ` +
           `time. I'm passing you to a colleague who can find something that works for you.`,
+        intentDetected: 'BOOK_APPOINTMENT',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
 
-    const serviceName = serviceNameHint?.trim() || extractServiceName(messageText);
+    const conversationId = await this.ensureConversation(context);
+    if (!conversationId) {
+      // No thread means the customer's choice would never reach us. Offering a
+      // numbered list we cannot read the answer to is worse than not offering.
+      return {
+        replyText:
+          `I can get you booked in, but I can't take you through picking a time here — ` +
+          `let me bring in a colleague who can do it with you.`,
+        intentDetected: 'BOOK_APPOINTMENT',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
 
-    const booking = await prisma.booking.create({
-      data: {
-        organizationId: context.organizationId,
-        contactId: contact.id,
-        serviceName,
-        startTime: slot.start,
-        endTime: slot.end,
-        status: 'CONFIRMED',
-        notes: `Booked by AI assistant from: "${messageText.slice(0, 200)}"`,
-      },
-    });
+    const state = beginFlow(BOOKING_FLOW);
+    state.collected[SLOTS_KEY] = JSON.stringify(
+      free.map((s) => ({
+        startIso: s.start.toISOString(),
+        endIso: s.end.toISOString(),
+        label: formatLagos(s.start),
+      }))
+    );
+    state.collected[SERVICE_KEY] = serviceNameHint?.trim() || extractServiceName(messageText);
 
-    const when = formatLagos(slot.start);
+    return this.runFlow(context, conversationId, BOOKING_FLOW, state, '', lang);
+  }
+
+  /**
+   * Write the booking for the slot the customer picked.
+   *
+   * The slot was free when it was offered, which is not the same as free now —
+   * so the database settles it. On a genuine clash the customer is told, and
+   * offered a fresh list rather than an apology.
+   */
+  private async completeBooking(
+    context: ConversationContext,
+    collected: Record<string, string>,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const slot = chosenSlot(collected);
+    if (!slot) {
+      return this.toolFailureReply(
+        'BOOK_APPOINTMENT',
+        new Error('confirmed a booking with no slot selected'),
+        lang
+      );
+    }
+
+    const contact = await this.getOrCreateContact(context);
+    const serviceName = serviceOf(collected);
+
+    let booking;
+    try {
+      booking = await withDeadlockRetry(() =>
+        prisma.booking.create({
+          data: {
+            organizationId: context.organizationId,
+            contactId: contact.id,
+            serviceName,
+            startTime: new Date(slot.startIso),
+            endTime: new Date(slot.endIso),
+            status: 'CONFIRMED',
+            notes: `Booked by AI assistant; time chosen by the customer from offered slots`,
+          },
+        })
+      );
+    } catch (err) {
+      if (isSlotTakenError(err)) return this.bookingSlotTaken(context, slot, lang);
+      throw err;
+    }
 
     return {
-      booked: true,
-      shouldHandoff: false,
-      bookingId: booking.id,
-      serviceName,
-      startTime: slot.start.toISOString(),
-      // Say what was actually booked and invite a correction, rather than asserting
-      // that a time the customer never chose is "confirmed".
-      message: t(lang, 'booking_confirmed', {
+      replyText: t(lang, 'booking_confirmed', {
         service: serviceName,
-        when,
+        when: slot.label,
         ref: booking.id.slice(-8).toUpperCase(),
       }),
+      intentDetected: 'BOOK_APPOINTMENT',
+      confidenceScore: 1.0,
+      shouldHandoff: false,
+      toolCallsExecuted: [
+        {
+          toolName: 'book_appointment',
+          result: { booked: true, bookingId: booking.id, serviceName, startTime: slot.startIso },
+        },
+      ],
+    };
+  }
+
+  /** Somebody took that slot between the offer and the reply. */
+  private async bookingSlotTaken(
+    context: ConversationContext,
+    slot: BookableSlot,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const retry = await this.startBookingFlow(context, '', lang);
+    return {
+      ...retry,
+      replyText:
+        `Someone took ${slot.label} while we were talking, so I have not booked you in ` +
+        `there.\n\n${retry.replyText}`,
     };
   }
 
@@ -2566,17 +2645,12 @@ export class ConversationOrchestrator {
             confidenceScore: confidence,
             shouldHandoff: false,
           };
-        case 'BOOK_APPOINTMENT': {
-          const result = await this.executeBookAppointment(context, cleanInput, lang, serviceName ?? undefined);
-          return {
-            replyText: result.message,
-            intentDetected: 'BOOK_APPOINTMENT',
-            confidenceScore: confidence,
-            shouldHandoff: result.shouldHandoff,
-            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
-            toolCallsExecuted: [{ toolName: 'book_appointment', result }],
-          };
-        }
+        case 'BOOK_APPOINTMENT':
+          // The classifier's English rendering of the service is passed through
+          // — a Hausa sentence must not be scraped by an English regex — but its
+          // confidence is discarded, because what comes back is a list of times
+          // to choose from rather than a booking.
+          return await this.startBookingFlow(context, cleanInput, lang, serviceName ?? undefined);
         case 'MANAGE_RESERVATION': {
           const result = await this.executeManageReservation(context, cleanInput);
           return {
@@ -2760,7 +2834,9 @@ export class ConversationOrchestrator {
       if (!state || isStale(state)) return null;
       const flow = FLOWS[state.flow];
       if (!flow) return null;
-      if (state.confirming) return flow.summarise(state.collected);
+      // A flow with no read-back never sits in `confirming`, so the guard is
+      // about the type rather than a case that can happen.
+      if (state.confirming) return flow.summarise?.(state.collected) ?? null;
       const slot = flow.slots.find((s) => s.name === state.awaiting);
       return slot ? slot.prompt(state.collected) : null;
     } catch {
@@ -2872,6 +2948,14 @@ export class ConversationOrchestrator {
         return await this.completeCancellation(context, step.state.collected, lang);
       } catch (err) {
         return this.toolFailureReply('CANCEL_BOOKING', err, lang);
+      }
+    }
+
+    if (flow.name === BOOKING_FLOW_NAME) {
+      try {
+        return await this.completeBooking(context, step.state.collected, lang);
+      } catch (err) {
+        return this.toolFailureReply('BOOK_APPOINTMENT', err, lang);
       }
     }
 

@@ -78,8 +78,21 @@ export interface SlotDefinition {
 export interface FlowDefinition {
   name: string;
   slots: SlotDefinition[];
-  /** Read-back shown before anything is written. */
-  summarise: (collected: Record<string, string>) => string;
+  /**
+   * Read-back shown before anything is written.
+   *
+   * OPTIONAL, and the exception is narrow. A flow may omit it only when the
+   * last answer IS the decision — booking picks one slot from a list of free
+   * ones, so "2" is already an explicit choice about the only variable, and a
+   * "yes" after it confirms the thing the customer just said. Two clicks to
+   * mean one thing is how people learn to click without reading.
+   *
+   * Everything that CHANGES or DESTROYS something already there must keep a
+   * read-back: rescheduling and cancelling both act on an appointment the
+   * customer already has, where the cost of a misread is an appointment moved
+   * or gone rather than a wrong slot they can pick again.
+   */
+  summarise?: (collected: Record<string, string>) => string;
 }
 
 export interface FlowState {
@@ -368,7 +381,7 @@ export function advanceFlow(
     if (correction) {
       collected[correction.slot.name] = correction.value as string;
       const next: FlowState = { ...state, collected, awaiting: null, confirming: true, updatedAt: now };
-      return { kind: 'confirm', state: next, reply: flow.summarise(collected) };
+      return { kind: 'confirm', state: next, reply: flow.summarise!(collected) };
     }
     if (isNegation(message)) {
       return {
@@ -381,7 +394,7 @@ export function advanceFlow(
     return {
       kind: 'confirm',
       state: { ...state, collected, updatedAt: now },
-      reply: flow.summarise(collected),
+      reply: flow.summarise!(collected),
     };
   }
 
@@ -466,6 +479,13 @@ export function advanceFlow(
       state: { ...state, collected, awaiting: next.name, confirming: false, updatedAt: now },
       reply: next.prompt(collected),
     };
+  }
+
+  // Every slot answered. A flow with a read-back asks for confirmation; one
+  // without goes straight to the write, because its last answer WAS the
+  // decision — see the note on `summarise`.
+  if (!flow.summarise) {
+    return { kind: 'execute', state: { ...state, collected, awaiting: null, updatedAt: now } };
   }
 
   return {
