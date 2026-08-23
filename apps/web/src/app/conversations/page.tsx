@@ -4,6 +4,7 @@ import { Search, Send, MessageCircle, Phone as WhatsAppIcon, User, Bot, AlertTri
 
 import { API_URL } from '@/lib/api';
 import SharedEmptyState from '@/components/ui/EmptyState';
+import FlowInProgressPanel, { type FlowSnapshot } from '@/components/FlowInProgressPanel';
 
 interface Conversation {
   id: string;
@@ -19,7 +20,8 @@ interface Message {
   id: string;
   content: string;
   senderType: 'USER' | 'AGENT' | 'SYSTEM' | 'AI';
-  createdAt: string;
+  sentAt: string;
+  createdAt?: string;
 }
 
 export default function ConversationsPage() {
@@ -30,6 +32,7 @@ export default function ConversationsPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [flow, setFlow] = useState<FlowSnapshot | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +66,9 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (selectedId) {
       fetchMessages(selectedId);
+      fetchFlow(selectedId);
+    } else {
+      setFlow(null);
     }
   }, [selectedId]);
 
@@ -83,6 +89,13 @@ export default function ConversationsPage() {
           ...c,
           contactName: c.contactName || c.contact?.fullName || 'Customer',
           contactPhone: c.contactPhone || c.contact?.phoneNumber || '',
+          // Derived from the thread the list already carries. There is no
+          // `lastMessagePreview` field on the payload, so every row in the
+          // inbox said "New conversation" — including threads with fifty
+          // messages in them, which made the list impossible to scan.
+          lastMessagePreview:
+            c.lastMessagePreview || c.messages?.[c.messages.length - 1]?.content || '',
+          updatedAt: c.lastMessageAt || c.updatedAt,
         }));
         setConversations(mapped);
       }
@@ -110,6 +123,26 @@ export default function ConversationsPage() {
     }
   };
 
+  /**
+   * What the customer is part-way through, so an operator taking over does not
+   * ask for six answers they have already given.
+   *
+   * Failure is silent by design: this is context beside the thread, and an
+   * error banner over a conversation because a side panel could not load would
+   * be louder than the thing it is reporting.
+   */
+  const fetchFlow = async (id: string) => {
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await fetch(`${API_URL}/api/conversations/${id}/flow`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setFlow(res.ok ? await res.json() : null);
+    } catch {
+      setFlow(null);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedId) return;
@@ -122,7 +155,7 @@ export default function ConversationsPage() {
       id: 'temp-' + Date.now().toString(),
       content,
       senderType: 'AGENT',
-      createdAt: new Date().toISOString()
+      sentAt: new Date().toISOString()
     };
     setMessages(prev => [...prev, tempMsg]);
 
@@ -286,6 +319,9 @@ export default function ConversationsPage() {
               </div>
             )}
 
+            {/* What the customer is half-way through filling in, if anything. */}
+            <FlowInProgressPanel flow={flow} />
+
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.map((msg: any, i) => {
@@ -310,7 +346,11 @@ export default function ConversationsPage() {
                       )}
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       <div className={`text-[10px] mt-1 text-right ${isCustomer ? 'text-blue-200' : 'text-slate-500 dark:text-slate-400'}`}>
-                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {/* `sentAt` is the column — Message has no `createdAt`, so this
+                            rendered "Invalid Date" on every message in the thread. The
+                            optimistic bubble below sets `sentAt` too; `createdAt` is kept
+                            as a fallback for any caller still sending it. */}
+                        {new Date(msg.sentAt ?? msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
                   </div>

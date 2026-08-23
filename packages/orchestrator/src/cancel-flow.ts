@@ -32,6 +32,7 @@ export const CANCEL_FLOW_NAME = 'cancel-booking';
 
 export const CANCEL_FLOW: FlowDefinition = {
   name: CANCEL_FLOW_NAME,
+  title: 'Cancelling an appointment',
 
   // The only thing this flow needs to know. With one appointment upcoming the
   // slot is skipped and the customer goes straight to the read-back.

@@ -14,6 +14,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, MessageSender } from '@ace/shared-types';
 import { prisma } from '@ace/database';
+import { describeConversationFlow } from '@ace/orchestrator';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { AgentConsoleGateway } from './agent-console.gateway';
 import { AceLogger } from '../config/logger';
@@ -88,6 +89,27 @@ export class ConversationsController {
       take: MESSAGE_PAGE_SIZE,
     });
     return page.reverse();
+  }
+
+  /**
+   * GET /api/conversations/:id/flow
+   *
+   * What the customer is part-way through, for the operator taking over.
+   *
+   * Asking for a person always beats a flow — that is what stops a form being
+   * a trap — but the state it interrupts lived only inside the orchestrator.
+   * A citizen six answers into PLASCHEMA enrollment who asked for help was
+   * handed to somebody who could see the message thread and nothing else, so
+   * they were asked their name, age, address and LGA a second time.
+   *
+   * Returns null rather than 404 when there is no flow: "this customer is not
+   * filling anything in" is a normal answer to this question, and the caller
+   * renders nothing.
+   */
+  @Get(':id/flow')
+  async getFlow(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    const conv = await this.requireConversation(id, req.user.organizationId);
+    return describeConversationFlow(conv.flowState);
   }
 
   /**

@@ -81,11 +81,36 @@ export interface SlotDefinition {
    * unidentifiable correction is refused rather than applied to a guess.
    */
   identifies?: (text: string, collected: Record<string, string>) => boolean;
+  /**
+   * What to call this field when showing a half-filled form to STAFF.
+   *
+   * English, and separate from `prompt`, because these two audiences are not
+   * the same person: the customer is asked "Menene cikakken sunanka?" and the
+   * operator taking the conversation over reads "Full name". Optional — the
+   * slot name is de-camel-cased when it reads well enough on its own, which it
+   * does for `fullName` and does not for `lga`.
+   */
+  label?: string;
+  /**
+   * How to render the STORED value for staff, when the stored value is not the
+   * thing the customer chose.
+   *
+   * Slots that pick from a list store an index: booking's `when` holds "2".
+   * Showing an operator "Time: 2" is worse than showing them nothing, because
+   * it looks like an answer. Where this is set it turns the index back into
+   * the label the customer actually saw.
+   */
+  display?: (collected: Record<string, string>) => string;
 }
 
 export interface FlowDefinition {
   name: string;
   slots: SlotDefinition[];
+  /**
+   * What this form is called when shown to staff — "PLASCHEMA enrollment".
+   * Falls back to the flow's own name, which is a slug and reads like one.
+   */
+  title?: string;
   /**
    * Read-back shown before anything is written.
    *
@@ -161,6 +186,102 @@ export const wantsToAbandon = (text: string) => ABANDON.some((r) => r.test(text 
 export const isAffirmation = (text: string) => AFFIRM.some((r) => r.test(text ?? ''));
 export const isNegation = (text: string) => NEGATE.some((r) => r.test(text ?? ''));
 export const isDecline = (text: string) => DECLINE.some((r) => r.test(text ?? ''));
+
+/**
+ * A half-filled form, described for the human about to take it over.
+ *
+ * ── What this is for ────────────────────────────────────────────────────────
+ *
+ * Asking for a person ALWAYS wins over a flow — that is the rule that keeps a
+ * form from being a trap. But it meant a customer six answers into PLASCHEMA
+ * enrollment could say "let me speak to someone", and the operator who picked
+ * the conversation up saw the message thread and nothing else: `flowState`
+ * lived on the Conversation row and never left the orchestrator. So the
+ * operator asked for the name, the age, the address and the LGA a second time
+ * — which is the exact experience these flows were built to end, surviving on
+ * the one path the whole system treats as sacred.
+ *
+ * ── Why it is a projection rather than the raw state ────────────────────────
+ *
+ * `collected` is not fit to show anyone. It carries the seeded lists the slots
+ * ask their questions from (`_targets`, `_slots` — JSON blobs, underscored so
+ * they cannot collide with a slot name), and slots that pick from a list store
+ * an INDEX, so booking's `when` is the string "2". An operator reading
+ * "Time: 2" has been told something false-looking rather than nothing, so the
+ * index is turned back into the label the customer actually saw.
+ */
+export interface FlowSnapshot {
+  /** The flow's machine name, for anything that needs to branch on it. */
+  flow: string;
+  /** What to call it on screen. */
+  title: string;
+  answered: Array<{ name: string; label: string; value: string; declined: boolean }>;
+  /** The question the customer is looking at now, if the flow is mid-question. */
+  awaiting: { name: string; label: string } | null;
+  /** True once the read-back has been sent and the flow is waiting on yes/no. */
+  confirming: boolean;
+  startedAt: number;
+  updatedAt: number;
+  /**
+   * Past the TTL, so the customer's next message starts fresh rather than
+   * resuming. Worth saying out loud: an operator who hands a stale form back
+   * to the AI expecting it to continue is going to watch it start over.
+   */
+  stale: boolean;
+}
+
+/** "preferredHospital" → "Preferred hospital". Wrong for acronyms; see `label`. */
+function derivedLabel(name: string): string {
+  const spaced = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+export function describeFlowState(
+  value: unknown,
+  flow: FlowDefinition | null,
+  now = Date.now()
+): FlowSnapshot | null {
+  const state = asFlowState(value);
+  if (!state || !flow) return null;
+
+  const answered: FlowSnapshot['answered'] = [];
+  // Driven by the flow's SLOTS, never by the keys of `collected`. That is what
+  // keeps the seeded lists out — `_targets` and `_slots` are JSON blobs the
+  // slots ask their questions from, underscored so they cannot collide with a
+  // slot name, and they are not answers. Walking `collected` would print them,
+  // and would also print a key left behind by a flow that has since changed
+  // shape, under a label nobody chose.
+  for (const slot of flow.slots) {
+    if (!(slot.name in state.collected)) continue;
+
+    const stored = state.collected[slot.name];
+    // An optional slot the customer declined stores '', which is an answer —
+    // "they were asked for their NIN and said no" — not a missing field.
+    const declined = stored === '';
+    const value = declined ? '' : (slot.display ? slot.display(state.collected) : stored);
+    answered.push({
+      name: slot.name,
+      label: slot.label ?? derivedLabel(slot.name),
+      value,
+      declined,
+    });
+  }
+
+  const pending = state.awaiting ? flow.slots.find((s) => s.name === state.awaiting) : null;
+
+  return {
+    flow: state.flow,
+    title: flow.title ?? flow.name,
+    answered,
+    awaiting: pending
+      ? { name: pending.name, label: pending.label ?? derivedLabel(pending.name) }
+      : null,
+    confirming: Boolean(state.confirming),
+    startedAt: state.startedAt,
+    updatedAt: state.updatedAt,
+    stale: isStale(state, now),
+  };
+}
 
 /** A flow older than the TTL is not resumed — see the staleness rule above. */
 export function isStale(state: FlowState, now = Date.now()): boolean {

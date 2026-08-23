@@ -105,6 +105,11 @@ export function numbered(labels: string[]): string {
 export function whichSlot(verbKey: 'verb_move' | 'verb_cancel'): SlotDefinition {
   return {
     name: 'which',
+    label: 'Which appointment',
+    display: (c) => {
+      const t = chosenTarget(c);
+      return t ? `${t.label} — ${t.startLabel}` : '';
+    },
     aliases: ['appointment', 'booking', 'reservation'],
     skipIf: (c) => readTargets(c).length <= 1,
     prompt: (c, lang) =>

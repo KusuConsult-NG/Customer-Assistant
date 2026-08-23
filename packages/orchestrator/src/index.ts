@@ -16,8 +16,8 @@ export {
 } from './languages';
 export type { Language } from './languages';
 import {
-  advanceFlow, asFlowState, beginFlow, isStale,
-  type FlowDefinition, type FlowState,
+  advanceFlow, asFlowState, beginFlow, isStale, describeFlowState,
+  type FlowDefinition, type FlowState, type FlowSnapshot,
 } from './flows';
 export * from './flows';
 import { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
@@ -692,6 +692,25 @@ const FLOWS: Record<string, FlowDefinition> = {
   [BOOKING_FLOW_NAME]: BOOKING_FLOW,
   [RESERVATION_FLOW_NAME]: RESERVATION_FLOW,
 };
+
+/**
+ * Describe a conversation's stored flow state for staff.
+ *
+ * The registry lives here rather than in `flows.ts` — the engine is pure and
+ * knows nothing about which flows exist — so this is the one place that can
+ * turn `Conversation.flowState` into something an operator can read. Returns
+ * null for a conversation with no flow, or a flow this build no longer has:
+ * a snapshot naming a form nobody can describe is worse than no panel, because
+ * it shows a customer half-way through something and cannot say through what.
+ */
+export function describeConversationFlow(
+  flowState: unknown,
+  now = Date.now()
+): FlowSnapshot | null {
+  const state = asFlowState(flowState);
+  if (!state) return null;
+  return describeFlowState(state, FLOWS[state.flow] ?? null, now);
+}
 
 /**
  * What starts an enrollment. Deliberately narrow: these are people saying they

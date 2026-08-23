@@ -27,6 +27,7 @@ import request from 'supertest';
 import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { AppModule } from '../src/app.module';
+import { createTenant } from './support/tenant';
 import { WhatsappService } from '../src/whatsapp/whatsapp.service';
 
 describe('Conversation history returns the last N messages', () => {
@@ -68,21 +69,13 @@ describe('Conversation history returns the last N messages', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    const email = `history.${randomBytes(4).toString('hex')}@history.test`;
-    const password = 'HistoryPassw0rd!';
-    const reg = await request(app.getHttpServer()).post('/api/auth/register').send({
-      organizationName: 'History Test Ltd',
-      industry: 'OTHER',
-      email,
-      password,
-      fullName: 'History Tester',
-    });
-    expect(reg.status).toBeLessThan(400);
-    const login = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email, password });
-    token = login.body.accessToken;
-    orgId = login.body.user.organizationId;
+    // Seeded directly rather than registered. POST /api/auth/register is
+    // throttled 5/min per IP and the whole suite is one IP, so a spec that
+    // registers for setup convenience spends a budget the registration
+    // CONTRACT tests in api-integration.spec.ts need — and losing it there
+    // surfaces as a 429 that reads like a broken endpoint. Three sibling specs
+    // already avoid it for this reason; this was the last one that did not.
+    ({ token, orgId } = await createTenant(app, 'history'));
   });
 
   afterAll(async () => {
