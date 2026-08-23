@@ -82,11 +82,14 @@ async function main() {
   }
 
   // ── 3. Create Contacts ──────────────────────────────────────────────────────
+  // preferredLanguage mirrors what the orchestrator records when it detects a
+  // customer's language — some known, most not, so the analytics language mix
+  // shows both real languages and the honest "Not yet known" bucket.
   const contactsInput = [
-    { fullName: 'Babatunde Fashola', phoneNumber: '+2348031234567', email: 'babatunde@example.ng', tags: ['VIP', 'Enterprise'] },
-    { fullName: 'Nneka Okonkwo', phoneNumber: '+2348029876543', email: 'nneka.o@gmail.com', tags: ['Patient', 'Regular'] },
-    { fullName: 'Tunde Bakare', phoneNumber: '+2348145550192', email: 'tunde.bakare@outlook.com', tags: ['Lead', 'WhatsApp'] },
-    { fullName: 'Fatima Mohammed', phoneNumber: '+2347061112233', email: 'fatima.m@company.co', tags: ['Corporate', 'Deal'] },
+    { fullName: 'Babatunde Fashola', phoneNumber: '+2348031234567', email: 'babatunde@example.ng', tags: ['VIP', 'Enterprise'], preferredLanguage: 'en' },
+    { fullName: 'Nneka Okonkwo', phoneNumber: '+2348029876543', email: 'nneka.o@gmail.com', tags: ['Patient', 'Regular'], preferredLanguage: 'ha' },
+    { fullName: 'Tunde Bakare', phoneNumber: '+2348145550192', email: 'tunde.bakare@outlook.com', tags: ['Lead', 'WhatsApp'], preferredLanguage: 'pcm' },
+    { fullName: 'Fatima Mohammed', phoneNumber: '+2347061112233', email: 'fatima.m@company.co', tags: ['Corporate', 'Deal'], preferredLanguage: 'ha' },
     { fullName: 'David Osei', phoneNumber: '+2348094445566', email: 'david.osei@startup.io', tags: ['Tech', 'Partner'] },
     { fullName: 'Grace Danjuma', phoneNumber: '+2348123332211', email: 'grace.d@danjumagroup.com', tags: ['VIP', 'Healthcare'] },
     { fullName: 'Kelechi Iheanacho', phoneNumber: '+2348039998877', email: 'kelechi@sports.ng', tags: ['Sports', 'Individual'] },
@@ -107,6 +110,7 @@ async function main() {
           phoneNumber: c.phoneNumber,
           email: c.email,
           tags: c.tags,
+          preferredLanguage: c.preferredLanguage ?? null,
           updatedAt: new Date(),
         },
       });
@@ -218,7 +222,7 @@ async function main() {
       channel: 'WHATSAPP',
       messages: [
         { sender: 'CUSTOMER', content: 'Hello, I want to inquire about corporate health plans for our 50 employees.' },
-        { sender: 'AI', content: 'Hello Mr. Babatunde! 👋 Thank you for contacting Apex Care Services. Our Corporate Health Package covers full diagnostic consultations, priority appointments, and 24/7 AI telemedicine support for ₦450,000 annually. Would you like me to send over our detailed brochure?' },
+        { sender: 'AI', content: 'Hello Mr. Babatunde! 👋 Thank you for contacting Apex Care Services. Our Corporate Health Package covers full diagnostic consultations, priority appointments, and 24/7 AI telemedicine support for ₦450,000 annually. Would you like me to send over our detailed brochure?', intent: 'REQUEST_QUOTATION' },
         { sender: 'CUSTOMER', content: 'Yes please, send the brochure and pricing breakdown.' },
         { sender: 'HUMAN_AGENT', content: 'Hi Babatunde, I am Sarah from executive support. I have emailed the full brochure to babatunde@example.ng. Let me know if you have any questions!' },
       ],
@@ -228,7 +232,7 @@ async function main() {
       channel: 'VOICE',
       messages: [
         { sender: 'CUSTOMER', content: 'Good morning, what time are doctor consultations available today?' },
-        { sender: 'AI', content: 'Good morning! Our specialist consultations run from 9:00 AM to 5:00 PM today. Would you like me to reserve a slot for you at 2:00 PM?' },
+        { sender: 'AI', content: 'Good morning! Our specialist consultations run from 9:00 AM to 5:00 PM today. Would you like me to reserve a slot for you at 2:00 PM?', intent: 'BOOK_APPOINTMENT' },
         { sender: 'CUSTOMER', content: 'Yes, 2:00 PM works perfectly for me. Thank you.' },
       ],
     },
@@ -237,7 +241,7 @@ async function main() {
       channel: 'WEBCHAT',
       messages: [
         { sender: 'CUSTOMER', content: 'Can I integrate my existing hospital management system with your AI API?' },
-        { sender: 'AI', content: 'Absolutely! Our platform provides a REST API and real-time Webhooks (`call.started`, `appointment.booked`, `lead.captured`). You can view your API key in Settings → White-Label & API.' },
+        { sender: 'AI', content: 'Absolutely! Our platform provides a REST API and real-time Webhooks (`call.started`, `appointment.booked`, `lead.captured`). You can view your API key in Settings → White-Label & API.', intent: 'GENERAL_INQUIRY' },
       ],
     },
   ];
@@ -268,6 +272,9 @@ async function main() {
             sender: msg.sender,
             content: msg.content,
             sentAt: new Date(),
+            // What the live engine records on every AI reply — the analytics
+            // intent distribution reads exactly this key.
+            ...(msg.intent ? { metadata: { intent: msg.intent } } : {}),
           },
         });
       }
