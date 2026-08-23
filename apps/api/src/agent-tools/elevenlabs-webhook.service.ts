@@ -32,7 +32,7 @@
  * at once and both would pass the check.
  */
 import { Injectable } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, openUploadUrl } from '@ace/database';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
@@ -74,7 +74,19 @@ async function sendPostCallLink(
     return;
   }
 
-  const uploadUrl = selfieReq.uploadUrl;
+  // Decrypt: the column holds ciphertext, and sending it verbatim would text
+  // the enrollee a `v1.…` blob instead of a way to finish enrolling.
+  let uploadUrl: string;
+  try {
+    uploadUrl = openUploadUrl(selfieReq.uploadUrl)!;
+  } catch (err) {
+    log.error(
+      'post_call_link_unreadable',
+      err instanceof Error ? err : new Error(String(err)),
+      { correlationId, contactId, selfieRequestId: selfieReq.id }
+    );
+    return;
+  }
 
   // ── Option 1: ElevenLabs WhatsApp outbound message ───────────────────────
   // Endpoint: POST /v1/convai/whatsapp/outbound-message
