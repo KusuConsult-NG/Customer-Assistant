@@ -11,6 +11,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { prisma } from '@ace/database';
 import { AppModule } from '../src/app.module';
 
@@ -31,15 +32,30 @@ describe('PATCH /api/organizations/settings — defaultLanguage', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
+    // Fixtures go straight into the database rather than through
+    // POST /api/auth/register: that endpoint is throttled to 5/min per IP as
+    // an anti-abuse control, the whole CI suite shares one IP, and the sixth
+    // registering spec in a minute gets a 429 that has nothing to do with what
+    // it tests. Login carries a 60/min budget, so the token still comes from
+    // the real auth path.
     const email = `lang.${randomBytes(4).toString('hex')}@lang.test`;
     const password = 'LanguagePassw0rd!';
-    const reg = await request(app.getHttpServer()).post('/api/auth/register').send({
-      organizationName: 'Language Test Ltd', industry: 'CLINIC', email, password, fullName: 'Lang Tester',
+    const org = await prisma.organization.create({
+      data: { name: 'Language Test Ltd', slug: `lang-test-${randomBytes(4).toString('hex')}`, industry: 'CLINIC' },
     });
-    expect(reg.status).toBeLessThan(400);
+    orgId = org.id;
+    await prisma.user.create({
+      data: {
+        organizationId: orgId,
+        email,
+        fullName: 'Lang Tester',
+        role: 'OWNER',
+        passwordHash: await bcrypt.hash(password, 10),
+      },
+    });
     const login = await request(app.getHttpServer()).post('/api/auth/login').send({ email, password });
     token = login.body.accessToken;
-    orgId = login.body.user.organizationId;
+    expect(token).toBeTruthy();
   });
 
   afterAll(async () => {
