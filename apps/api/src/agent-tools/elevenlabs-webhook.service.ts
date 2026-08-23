@@ -379,18 +379,23 @@ export class ElevenLabsWebhookService {
     const type = payload?.type ?? 'unknown';
     const data = payload?.data;
 
-    // Audio and call-initiation-failure events are real event types we have not
-    // built handling for. Saying so beats logging them as errors.
-    if (type !== 'post_call_transcription') {
+    // Audio events are a real event type we have not built handling for.
+    // Saying so beats logging them as errors.
+    if (type !== 'post_call_transcription' && type !== 'call_initiation_failure') {
       log.info('elevenlabs_webhook_ignored_type', { correlationId, type });
       return { handled: false, reason: `unhandled event type "${type}"` };
     }
 
     const agentId = data?.agent_id;
     const conversationId = data?.conversation_id;
-    if (!agentId || !conversationId) {
+    // A failed call may never have been assigned a conversation id — the
+    // failure is precisely that the conversation did not start — so only the
+    // agent is required to attribute one. A transcript without a conversation
+    // id has nothing to key its messages on and is still refused below.
+    if (!agentId || (type === 'post_call_transcription' && !conversationId)) {
       log.warn('elevenlabs_webhook_missing_identifiers', {
         correlationId,
+        type,
         hasAgentId: Boolean(agentId),
         hasConversationId: Boolean(conversationId),
       });
@@ -462,6 +467,10 @@ export class ElevenLabsWebhookService {
       };
     }
 
+    if (type === 'call_initiation_failure') {
+      return this.ingestCallFailure(organizationId, payload, correlationId);
+    }
+
     const meta = data?.metadata ?? {};
 
     if (meta.phone_call) {
@@ -480,6 +489,118 @@ export class ElevenLabsWebhookService {
       conversationId,
     });
     return { handled: false, reason: 'conversation carries no phone or WhatsApp identity' };
+  }
+
+  // ── A call that never happened ─────────────────────────────────────────────
+
+  /**
+   * Record a call the platform failed to answer.
+   *
+   * This is the only signal that a customer tried to reach the helpline and did
+   * not get through — most often because every concurrent-conversation slot on
+   * the workspace plan was already in use. Until this existed the event was
+   * discarded as an unhandled type, so a caller turned away left no trace
+   * anywhere: not in the call log, not in the dashboard, not in any number an
+   * agency could act on. "How many people could not reach us today?" had no
+   * answer, which is the worst possible state for the one number that decides
+   * whether to buy more capacity.
+   *
+   * Stored as a CallLog with status FAILED rather than in a table of its own:
+   * it IS a call attempt, staff already look there, and `callSid` is unique so
+   * a redelivery updates one row instead of inflating the count. No schema
+   * change, so nothing new is required of the deploy path.
+   *
+   * ── On the payload shape ──────────────────────────────────────────────────
+   *
+   * The exact field layout of this event is NOT confirmed against a live
+   * delivery — the platform has never taken a real call. Every field is
+   * therefore read defensively from the places it plausibly appears, nothing is
+   * required beyond the agent id, and the keys actually observed are logged so
+   * the first genuine delivery settles the question instead of being silently
+   * mangled to fit. A guess written confidently into a call log is worse than a
+   * row that admits which parts were missing.
+   */
+  private async ingestCallFailure(
+    organizationId: string,
+    payload: PostCallPayload,
+    correlationId: string
+  ): Promise<IngestOutcome> {
+    const data: any = payload?.data ?? {};
+    const meta: any = data.metadata ?? {};
+    const call: any = meta.phone_call ?? data.phone_call ?? {};
+
+    // Log the shape before interpreting it, so a delivery whose layout differs
+    // from this reading is diagnosable from one line rather than from absence.
+    log.info('elevenlabs_call_initiation_failure_received', {
+      correlationId,
+      organizationId,
+      dataKeys: Object.keys(data),
+      metadataKeys: Object.keys(meta),
+      phoneCallKeys: Object.keys(call),
+    });
+
+    const reason =
+      data.reason ??
+      data.error ??
+      data.failure_reason ??
+      meta.termination_reason ??
+      data.status ??
+      'unknown';
+
+    const customerNumber = call.external_number ?? data.external_number ?? data.from_number ?? '';
+    const agentNumber = call.agent_number ?? data.agent_number ?? data.to_number ?? '';
+    const outbound = (call.direction ?? data.direction) === 'outbound';
+
+    // Same key as a successful call, for the same reason: it must be stable
+    // across redelivery. Falling back to the event timestamp keeps two distinct
+    // failures apart when the provider sends neither id.
+    const callSid =
+      call.call_sid ??
+      data.call_sid ??
+      data.conversation_id ??
+      `initiation-failure:${organizationId}:${payload?.event_timestamp ?? Date.now()}`;
+
+    const startedAt = meta.start_time_unix_secs
+      ? new Date(meta.start_time_unix_secs * 1000)
+      : payload?.event_timestamp
+        ? new Date(payload.event_timestamp * 1000)
+        : new Date();
+
+    const contact = customerNumber
+      ? await this.contactFor(organizationId, customerNumber)
+      : null;
+
+    const row = {
+      organizationId,
+      contactId: contact?.id ?? null,
+      fromNumber: outbound ? agentNumber : customerNumber,
+      toNumber: outbound ? customerNumber : agentNumber,
+      direction: outbound ? ('OUTBOUND' as const) : ('INBOUND' as const),
+      status: 'FAILED' as const,
+      durationSeconds: 0,
+      // Says what happened in the words the provider used, so staff reading the
+      // log see the provider's reason rather than our paraphrase of it.
+      summary: `Call could not be connected (${reason}).`,
+      startedAt,
+      endedAt: startedAt,
+      provider: 'TWILIO' as const,
+    };
+
+    await prisma.callLog.upsert({
+      where: { callSid },
+      create: { callSid, ...row },
+      update: row,
+    });
+
+    log.info('elevenlabs_call_initiation_failure_recorded', {
+      correlationId,
+      organizationId,
+      callSid,
+      reason,
+      matchedContact: Boolean(contact),
+    });
+
+    return { handled: true, kind: 'voice', organizationId, reference: callSid };
   }
 
   // ── Voice ──────────────────────────────────────────────────────────────────

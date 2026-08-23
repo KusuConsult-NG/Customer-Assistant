@@ -48,6 +48,7 @@ interface Insights {
     refundRequests: number;
   };
   languages: Array<{ language: string; count: number }>;
+  callsNotConnected: number;
 }
 
 /** Validated palette (reference instance), stepped per mode for our surfaces. */
@@ -173,6 +174,31 @@ export default function AnalyticsPage() {
         <StatTile theme={theme} label="Tickets resolved" value={data.ticketFlow.resolved} note={`since ${sinceDate}`} />
         <StatTile theme={theme} label="Refund requests" value={data.ticketFlow.refundRequests} note={`since ${sinceDate}`} />
         <StatTile theme={theme} label="Waiting on a person" value={totalHandoffs} note="open handoffs now" />
+      </div>
+
+      {/* Callers who could not be connected.
+          Given a row of its own rather than a fifth tile: it is the only figure
+          here that counts people the service failed to reach at all, and it is
+          the number that decides whether to buy more capacity. A non-zero value
+          takes the critical status color WITH the icon and the sentence beside
+          it — never color alone. */}
+      <div className={`${card} p-5 flex items-center gap-4`}>
+        {data.callsNotConnected > 0
+          ? <AlertTriangle className="w-6 h-6 shrink-0" style={{ color: T.status.critical }} />
+          : <CheckCircle2 className="w-6 h-6 shrink-0" style={{ color: T.status.good }} />}
+        <div className="flex-1">
+          <p className="text-xs font-medium uppercase tracking-wider" style={{ color: T.muted }}>
+            Callers who could not get through
+          </p>
+          <p className="text-3xl font-bold mt-0.5" style={{ color: data.callsNotConnected > 0 ? T.status.critical : T.ink }}>
+            {data.callsNotConnected}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: T.inkSecondary }}>
+            {data.callsNotConnected > 0
+              ? `Since ${sinceDate}. The line was busy or the call could not be answered — usually every concurrent call slot being in use.`
+              : `Since ${sinceDate}. Every call that reached the line was answered.`}
+          </p>
+        </div>
       </div>
 
       {/* Volume trend */}

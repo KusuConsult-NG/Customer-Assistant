@@ -106,6 +106,21 @@ describe('GET /api/analytics/insights', () => {
       ],
     });
 
+    // Calls: two the platform could not connect, one that went through. Only
+    // the failures count toward callsNotConnected.
+    await prisma.callLog.createMany({
+      data: [
+        { organizationId: orgId, callSid: `CA-fail-1-${randomBytes(3).toString('hex')}`, fromNumber: '+2348030009901', toNumber: '+2348000000001', status: 'FAILED', durationSeconds: 0, startedAt: hoursAgo(3) },
+        { organizationId: orgId, callSid: `CA-fail-2-${randomBytes(3).toString('hex')}`, fromNumber: '+2348030009902', toNumber: '+2348000000001', status: 'FAILED', durationSeconds: 0, startedAt: hoursAgo(2) },
+        { organizationId: orgId, callSid: `CA-ok-1-${randomBytes(3).toString('hex')}`, fromNumber: '+2348030009903', toNumber: '+2348000000001', status: 'COMPLETED', durationSeconds: 65, startedAt: hoursAgo(1) },
+      ],
+    });
+
+    // The other tenant's failure must not be counted here either.
+    await prisma.callLog.create({
+      data: { organizationId: otherOrgId, callSid: `CA-other-${randomBytes(3).toString('hex')}`, fromNumber: '+2348030009999', toNumber: '+2348000000002', status: 'FAILED', durationSeconds: 0, startedAt: hoursAgo(2) },
+    });
+
     // Tickets: one OPEN HIGH, one refund (REF- prefix).
     await prisma.ticket.createMany({
       data: [
@@ -202,6 +217,18 @@ describe('GET /api/analytics/insights', () => {
     expect(totals.customer).toBe(1);
     // All four AI messages count as volume — labelled or not.
     expect(totals.ai).toBe(4);
+  });
+
+  it('counts callers who could not get through, for this tenant only', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/analytics/insights?period=7d')
+      .set('Authorization', `Bearer ${token}`).expect(200);
+
+    // Two failed, and neither the completed call nor the other tenant's
+    // failure is included. This is the number that decides whether the plan
+    // needs more concurrent capacity, so an inflated one is not a harmless
+    // rounding error.
+    expect(res.body.callsNotConnected).toBe(2);
   });
 
   it('refuses an unauthenticated request', async () => {
