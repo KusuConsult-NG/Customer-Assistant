@@ -1067,6 +1067,25 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── 12.5 "What can you do?" ──────────────────────────────────────────────
+    // Placed AFTER every tool branch on purpose: "what can you do about my
+    // broken product" must reach the ticket tool, not a menu. Only a message
+    // that matched nothing else and asks about the assistant itself lands here.
+    const CAPABILITY_PHRASES = [
+      'what can you do', 'what do you do', 'what can you help', 'how can you help',
+      'what are you able to do', 'what services do you offer', 'what do you offer',
+      'what else can you do', 'show me the menu', 'list of services',
+    ];
+    if (CAPABILITY_PHRASES.some((p) => lowerInput.includes(p))) {
+      const capOrgName = await this.getOrganizationName(context.organizationId);
+      return {
+        replyText: t(lang, 'capabilities', { org: capOrgName }),
+        intentDetected: 'CAPABILITIES',
+        confidenceScore: 0.95,
+        shouldHandoff: false,
+      };
+    }
+
     // ── 10.5 FAQ direct match ────────────────────────────────────────────────
     // The dashboard's curated FAQ entries were previously dead knowledge: the
     // RAG path only searches document chunks, so nothing the operator typed
@@ -1082,6 +1101,27 @@ export class ConversationOrchestrator {
         confidenceScore: faqMatch.score,
         shouldHandoff: false,
       };
+    }
+
+    // ── 12.6 LLM intent routing — the second chance the keywords never had ───
+    //
+    // Everything above matches English keywords. A customer writing "ina so in
+    // yi rijista" (Hausa: I want to register) or "I'd like to see the doctor on
+    // Friday" matched nothing and fell through to RAG synthesis — which can
+    // only TALK about booking, never actually book. This pass asks the LLM one
+    // narrow question — which of the EXISTING intents is this, if any? — and
+    // dispatches to the SAME deterministic executors the keyword branches use.
+    //
+    // The classifier's authority stops at naming an intent. It never writes a
+    // reply, never supplies a phone number, and its output is whitelist-checked;
+    // state-changing intents need higher confidence than read-only ones. On any
+    // failure — no key, timeout, junk JSON, low confidence — the message falls
+    // through to the RAG path exactly as before, so the feature degrades to
+    // the status quo, never below it.
+    const classified = await this.classifyIntentWithLlm(cleanInput);
+    if (classified) {
+      const routed = await this.dispatchClassifiedIntent(classified, context, cleanInput, lang);
+      if (routed) return routed;
     }
 
     // ── 11. RAG Knowledge Search ──────────────────────────────────────────────
@@ -1595,7 +1635,14 @@ export class ConversationOrchestrator {
    * (< 500 bookings/day) that window is negligible, and closing it properly needs a
    * serializable transaction or a database exclusion constraint on the time range.
    */
-  private async executeBookAppointment(context: ConversationContext, messageText: string, lang: Language = 'en') {
+  private async executeBookAppointment(
+    context: ConversationContext,
+    messageText: string,
+    lang: Language = 'en',
+    // From the LLM intent classifier: the requested service in English, when
+    // the message itself is in a language the regex extractor cannot read.
+    serviceNameHint?: string
+  ) {
     let contact;
     try {
       contact = await this.getOrCreateContact(context);
@@ -1624,7 +1671,7 @@ export class ConversationOrchestrator {
       };
     }
 
-    const serviceName = extractServiceName(messageText);
+    const serviceName = serviceNameHint?.trim() || extractServiceName(messageText);
 
     const booking = await prisma.booking.create({
       data: {
@@ -2050,6 +2097,266 @@ export class ConversationOrchestrator {
       return asLanguage(org?.defaultLanguage) ?? 'en';
     } catch {
       return detected ?? 'en';
+    }
+  }
+
+  /**
+   * The intents the classifier may name, and the confidence each one needs.
+   *
+   * Writes need more certainty than reads, because the costs are asymmetric: a
+   * wrong CHECK shows a customer their own booking; a wrong CANCEL destroys
+   * it. Anything not in this table — whatever the model returns — is treated
+   * as NONE. The table is the whitelist.
+   */
+  private static readonly CLASSIFIABLE_INTENTS: Record<string, number> = {
+    BOOK_APPOINTMENT: 0.75,
+    MANAGE_RESERVATION: 0.75,
+    CANCEL_BOOKING: 0.8,
+    RESCHEDULE_BOOKING: 0.8,
+    REQUEST_REFUND: 0.75,
+    REQUEST_QUOTATION: 0.75,
+    CREATE_TICKET: 0.75,
+    REQUEST_SELFIE: 0.75,
+    CHECK_BOOKING_STATUS: 0.6,
+    PROVIDE_PAYMENT_GUIDANCE: 0.6,
+    HUMAN_HANDOFF: 0.6,
+    AI_DISCLOSURE: 0.6,
+    CAPABILITIES: 0.6,
+  };
+
+  /**
+   * Ask the LLM which EXISTING intent a message is — in any of the five
+   * supported languages — or null when it is none of them, the model is
+   * unsure, no key is configured, or anything at all goes wrong. Null always
+   * means "fall through to the RAG path", so this can only add routing, never
+   * take any away.
+   */
+  private async classifyIntentWithLlm(
+    messageText: string
+  ): Promise<{ intent: string; confidence: number; serviceName: string | null } | null> {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return null;
+
+    const systemPrompt =
+      `You classify ONE customer message for a customer-service system. The message may be in ` +
+      `English, Nigerian Pidgin, Hausa, Igbo or Yoruba.\n` +
+      `Reply with ONLY a JSON object: {"intent": string, "confidence": number 0-1, "serviceName": string|null}\n` +
+      `intent must be exactly one of:\n` +
+      `BOOK_APPOINTMENT - wants a NEW appointment, consultation, registration or enrollment\n` +
+      `MANAGE_RESERVATION - wants a NEW table or room reservation\n` +
+      `CHECK_BOOKING_STATUS - asks about an EXISTING booking or reservation\n` +
+      `RESCHEDULE_BOOKING - wants to MOVE an existing booking\n` +
+      `CANCEL_BOOKING - wants to CANCEL an existing booking\n` +
+      `PROVIDE_PAYMENT_GUIDANCE - asks how or where to pay\n` +
+      `REQUEST_REFUND - wants money back\n` +
+      `REQUEST_QUOTATION - asks the price or cost of a service\n` +
+      `CREATE_TICKET - complains or reports a problem\n` +
+      `REQUEST_SELFIE - asks about sending their photo or identity picture\n` +
+      `HUMAN_HANDOFF - wants to talk to a human being\n` +
+      `AI_DISCLOSURE - asks whether they are talking to an AI, robot or human\n` +
+      `CAPABILITIES - asks what the assistant can do\n` +
+      `NONE - anything else: greetings, questions about the business, general conversation\n` +
+      `serviceName: the specific service they want, translated to English — or null.\n` +
+      `Use NONE whenever you are not sure. Confidence reflects the MESSAGE's clarity, not your optimism.`;
+
+    try {
+      const response = await fetch(chatCompletionsUrl(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: llmConfig().chatModel,
+          max_tokens: 120,
+          temperature: 0,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            // Truncated: intent lives in the first sentence or two, and the
+            // classifier must never become the expensive call on the path.
+            { role: 'user', content: messageText.slice(0, 600) },
+          ],
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return null;
+
+      const data: any = await response.json();
+      const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
+      const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const parsed = JSON.parse(jsonText);
+
+      const intent = typeof parsed.intent === 'string' ? parsed.intent.toUpperCase().trim() : '';
+      const threshold = ConversationOrchestrator.CLASSIFIABLE_INTENTS[intent];
+      if (threshold === undefined) return null; // NONE, or something invented
+
+      const confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+      if (!(confidence >= threshold && confidence <= 1)) return null;
+
+      const serviceName =
+        typeof parsed.serviceName === 'string' && parsed.serviceName.trim().length >= 3
+          ? parsed.serviceName.trim().slice(0, 80)
+          : null;
+
+      return { intent, confidence, serviceName };
+    } catch {
+      return null; // no JSON, timeout, network — all mean "keywords only today"
+    }
+  }
+
+  /**
+   * Route a classified intent to the SAME executor its keyword branch uses.
+   * The return shapes deliberately mirror those branches one for one, so a
+   * message routed here is indistinguishable downstream (analytics included)
+   * from one that matched a keyword — except by its confidence score.
+   */
+  private async dispatchClassifiedIntent(
+    classified: { intent: string; confidence: number; serviceName: string | null },
+    context: ConversationContext,
+    cleanInput: string,
+    lang: Language
+  ) {
+    const { intent, confidence, serviceName } = classified;
+    try {
+      switch (intent) {
+        case 'HUMAN_HANDOFF':
+          return {
+            replyText: t(lang, 'escalation_connecting'),
+            intentDetected: 'HUMAN_HANDOFF',
+            confidenceScore: confidence,
+            shouldHandoff: true,
+            handoffReason: HandoffReason.CUSTOMER_REQUEST,
+          };
+        case 'AI_DISCLOSURE':
+          return {
+            replyText: t(lang, 'ai_disclosure', {
+              org: await this.getOrganizationName(context.organizationId),
+            }),
+            intentDetected: 'AI_DISCLOSURE',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+          };
+        case 'CAPABILITIES':
+          return {
+            replyText: t(lang, 'capabilities', {
+              org: await this.getOrganizationName(context.organizationId),
+            }),
+            intentDetected: 'CAPABILITIES',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+          };
+        case 'BOOK_APPOINTMENT': {
+          const result = await this.executeBookAppointment(context, cleanInput, lang, serviceName ?? undefined);
+          return {
+            replyText: result.message,
+            intentDetected: 'BOOK_APPOINTMENT',
+            confidenceScore: confidence,
+            shouldHandoff: result.shouldHandoff,
+            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+            toolCallsExecuted: [{ toolName: 'book_appointment', result }],
+          };
+        }
+        case 'MANAGE_RESERVATION': {
+          const result = await this.executeManageReservation(context, cleanInput);
+          return {
+            replyText: result.message,
+            intentDetected: 'MANAGE_RESERVATION',
+            confidenceScore: confidence,
+            shouldHandoff: result.shouldHandoff,
+            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+            toolCallsExecuted: [{ toolName: 'manage_reservation', result }],
+          };
+        }
+        case 'CHECK_BOOKING_STATUS': {
+          const result = await this.executeCheckBookingStatus(context, lang);
+          return {
+            replyText: result.message,
+            intentDetected: 'CHECK_BOOKING_STATUS',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+            toolCallsExecuted: [{ toolName: 'check_booking_status', result }],
+          };
+        }
+        case 'CANCEL_BOOKING': {
+          const result = await this.executeCancelBookingOrReservation(context, lang);
+          return {
+            replyText: result.message,
+            intentDetected: 'CANCEL_BOOKING',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+            toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
+          };
+        }
+        case 'RESCHEDULE_BOOKING': {
+          const result = await this.executeRescheduleBookingOrReservation(context, lang);
+          return {
+            replyText: result.message,
+            intentDetected: 'RESCHEDULE_BOOKING',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+            toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
+          };
+        }
+        case 'REQUEST_REFUND': {
+          const result = await this.executeRequestRefund(context, cleanInput);
+          return {
+            replyText: result.message,
+            intentDetected: 'REQUEST_REFUND',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+            toolCallsExecuted: [{ toolName: 'request_refund', result }],
+          };
+        }
+        case 'REQUEST_QUOTATION': {
+          const result = await this.executeGenerateQuotation(context, cleanInput);
+          return {
+            replyText: result.summaryText,
+            intentDetected: 'REQUEST_QUOTATION',
+            confidenceScore: confidence,
+            shouldHandoff: result.shouldHandoff,
+            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+            toolCallsExecuted: [{ toolName: 'request_quotation', result }],
+          };
+        }
+        case 'CREATE_TICKET': {
+          const result = await this.executeCreateTicket(context, cleanInput);
+          return {
+            replyText: `I've opened support ticket *#${result.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
+            intentDetected: 'CREATE_TICKET',
+            confidenceScore: confidence,
+            shouldHandoff: false,
+            toolCallsExecuted: [{ toolName: 'create_support_ticket', result }],
+          };
+        }
+        case 'PROVIDE_PAYMENT_GUIDANCE': {
+          const result = await this.executeProvidePaymentGuidance(context, lang);
+          return {
+            replyText: result.replyText,
+            intentDetected: 'PROVIDE_PAYMENT_GUIDANCE',
+            confidenceScore: confidence,
+            shouldHandoff: result.shouldHandoff,
+            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+            toolCallsExecuted: [{ toolName: 'provide_payment_guidance', result }],
+          };
+        }
+        case 'REQUEST_SELFIE': {
+          const result = await this.executeRequestSelfie(context);
+          return {
+            replyText: result.replyText,
+            intentDetected: 'REQUEST_SELFIE',
+            confidenceScore: confidence,
+            shouldHandoff: result.shouldHandoff,
+            ...(result.shouldHandoff ? { handoffReason: HandoffReason.TOOL_FAILURE } : {}),
+            toolCallsExecuted: [{ toolName: 'request_onboarding_selfie', result }],
+          };
+        }
+        default:
+          return null;
+      }
+    } catch (err) {
+      // Same contract as every keyword branch: a tool failure is an honest
+      // reply plus a handoff, never a throw the customer experiences as silence.
+      return this.toolFailureReply(intent, err, lang);
     }
   }
 

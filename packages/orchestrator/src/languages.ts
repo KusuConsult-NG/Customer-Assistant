@@ -131,7 +131,8 @@ type TemplateKey =
   | 'booking_confirmed'
   | 'booking_cancelled'
   | 'no_upcoming_booking'
-  | 'tool_failure';
+  | 'tool_failure'
+  | 'capabilities';
 
 type Params = Record<string, string>;
 
@@ -156,6 +157,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     no_upcoming_booking: "I can't find an upcoming appointment under this number.",
     tool_failure:
       'I ran into a technical problem completing that automatically. Let me connect you with a team member who can help right away.',
+    capabilities:
+      "Here's what I can do for you at {org}:\n\n" +
+      '• Book, check, move or cancel an appointment\n' +
+      '• Share our payment details when you want to pay\n' +
+      '• File a complaint or report a problem\n' +
+      '• Raise a refund request\n' +
+      '• Answer questions about our services\n\n' +
+      'And any time you\'d rather talk to a person, just say *"speak to an agent"*.',
   },
   pcm: {
     ai_disclosure:
@@ -172,6 +181,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     no_upcoming_booking: 'I no see any appointment wey dey come for this number.',
     tool_failure:
       'Something spoil small as I dey try do am automatic. Make I connect you to team member wey go help you sharp-sharp.',
+    capabilities:
+      'See wetin I fit do for you for {org}:\n\n' +
+      '• Book appointment, check am, move am or cancel am\n' +
+      '• Show you how you go pay\n' +
+      '• Take your complaint or report problem\n' +
+      '• Raise refund request\n' +
+      '• Answer question about our services\n\n' +
+      'Anytime you want person, just talk *"speak to an agent"*.',
   },
   ha: {
     ai_disclosure:
@@ -188,6 +205,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     no_upcoming_booking: 'Ban sami wani alkawari mai zuwa a wannan lambar ba.',
     tool_failure:
       'An sami matsala yayin da nake yin haka kai tsaye. Bari in hada ka da ma’aikaci da zai taimaka nan take.',
+    capabilities:
+      'Ga abin da zan iya yi maka a {org}:\n\n' +
+      '• Yin alkawari, duba shi, canza shi ko soke shi\n' +
+      '• Ba ka bayanin yadda za ka biya\n' +
+      '• Daukar korafi ko rahoton matsala\n' +
+      '• Neman mayar da kudi\n' +
+      '• Amsa tambayoyi game da ayyukanmu\n\n' +
+      'Duk lokacin da kake son mutum, ka ce *"speak to an agent"*.',
   },
   ig: {
     ai_disclosure:
@@ -204,6 +229,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     no_upcoming_booking: 'Ahụghị m nhọpụta ọ bụla na-abịa na nọmba a.',
     tool_failure:
       'Enwere nsogbu mgbe m na-eme ya ozugbo. Ka m jikọọ gị na onye ọrụ ga-enyere gị aka ozugbo.',
+    capabilities:
+      'Ihe m nwere ike imere gị na {org}:\n\n' +
+      '• Idebe oge, ilele ya, ịgbanwe ya ma ọ bụ kagbuo ya\n' +
+      '• Igosi gị otu ị ga-esi kwụọ ụgwọ\n' +
+      '• Ịnara mkpesa ma ọ bụ nsogbu\n' +
+      '• Ịrịọ nkwụghachi ego\n' +
+      '• Ịza ajụjụ gbasara ọrụ anyị\n\n' +
+      'Mgbe ọ bụla ị chọrọ mmadụ, kwuo *"speak to an agent"*.',
   },
   yo: {
     ai_disclosure:
@@ -220,6 +253,14 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     no_upcoming_booking: 'N kò rí ìpàdé kankan tó ń bọ̀ lórí nọ́mbà yìí.',
     tool_failure:
       'Ìṣòro kékeré wáyé bí mo ṣe ń gbìyànjú rẹ̀ fúnra mi. Jẹ́ kí n so ọ́ pọ̀ mọ́ òṣìṣẹ́ tí yóò ràn ọ́ lọ́wọ́ lẹ́sẹ̀kẹsẹ̀.',
+    capabilities:
+      'Ohun tí mo lè ṣe fún ọ ní {org}:\n\n' +
+      '• Ṣe ìpàdé, ṣàyẹ̀wò rẹ̀, yí i padà tàbí fagi lé e\n' +
+      '• Fi bí o ṣe lè sanwó hàn ọ́\n' +
+      '• Gba ẹ̀sùn tàbí ìròyìn ìṣòro\n' +
+      '• Bèèrè kí wọ́n dá owó padà\n' +
+      '• Dáhùn ìbéèrè nípa iṣẹ́ wa\n\n' +
+      'Nígbàkúgbà tí o bá fẹ́ ènìyàn, sọ *"speak to an agent"*.',
   },
 };
 

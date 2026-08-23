@@ -106,7 +106,7 @@ describe('t — templates interpolate, never translate values', () => {
     const keys = [
       'ai_disclosure', 'escalation_connecting', 'payment_details',
       'payment_details_ussd_suffix', 'payment_unconfigured', 'booking_confirmed',
-      'booking_cancelled', 'no_upcoming_booking', 'tool_failure',
+      'booking_cancelled', 'no_upcoming_booking', 'tool_failure', 'capabilities',
     ] as const;
     for (const lang of ['en', 'pcm', 'ha', 'ig', 'yo'] as const) {
       for (const key of keys) {
