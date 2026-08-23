@@ -1,61 +1,22 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { prisma, phoneNumberVariants } from '@ace/database';
+import {
+  prisma, phoneNumberVariants,
+  isOverlapViolation, withDeadlockRetry,
+} from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 
 /**
- * True when PostgreSQL rejected a write because of the booking exclusion constraint.
- * SQLSTATE 23P01 is `exclusion_violation`; Prisma surfaces it without a dedicated
- * error code, so the constraint name is matched as well.
- */
-export function isOverlapViolation(err: any): boolean {
-  const code = err?.code ?? err?.meta?.code;
-  const message = String(err?.message ?? '');
-  return code === '23P01'
-    || message.includes('bookings_no_staff_overlap')
-    || message.includes('exclusion constraint');
-}
-
-/**
- * True when PostgreSQL aborted the write to break a deadlock (SQLSTATE 40P01).
+ * Booking-conflict detection lives in `@ace/database`, not here.
  *
- * Concurrent inserts that must each check the same GiST exclusion constraint can
- * end up waiting on one another, and PostgreSQL resolves that by killing one of
- * them. The victim is NOT told the slot is taken — it gets a deadlock error —
- * so this used to fall past `isOverlapViolation` into the generic failure path,
- * and a caller whose only problem was arriving at a busy moment was told the
- * system had broken and offered a human. Eight simultaneous requests reproduced
- * it: one won, and the other seven got "technical problem" instead of "that
- * time is taken".
+ * The orchestrator writes bookings too — it moves appointments for customers on
+ * WhatsApp — and it cannot import from `apps/api`. A second copy would be a
+ * second thing to keep correct, and being wrong means telling a customer the
+ * system broke when their slot was merely taken. Re-exported so every existing
+ * importer and test keeps working against the one implementation.
  */
-export function isDeadlock(err: any): boolean {
-  const code = err?.code ?? err?.meta?.code;
-  const message = String(err?.message ?? '');
-  return code === '40P01' || /deadlock detected/i.test(message);
-}
-
-/**
- * Run a booking write, retrying only the deadlock case.
- *
- * A deadlock abort rolls the whole transaction back, so nothing was written and
- * re-running is safe — and it is the honest way to answer, because a deadlock
- * says the row was CONTENDED, not that the slot was taken. Retrying lets the
- * constraint decide: the attempt either succeeds (the slot really was free) or
- * raises the exclusion violation the caller should hear about. Every other
- * error propagates untouched on the first try.
- */
-export async function withDeadlockRetry<T>(write: () => Promise<T>, attempts = 3): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await write();
-    } catch (err: any) {
-      if (!isDeadlock(err) || attempt >= attempts) throw err;
-      // Jittered, so retries of a pile-up do not re-collide in lockstep.
-      await new Promise((r) => setTimeout(r, 15 * attempt + Math.floor(Math.random() * 25)));
-    }
-  }
-}
+export { isOverlapViolation, isDeadlock, withDeadlockRetry } from '@ace/database';
 
 @Injectable()
 export class SchedulingService {

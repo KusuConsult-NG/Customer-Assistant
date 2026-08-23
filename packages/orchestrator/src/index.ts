@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -22,6 +22,12 @@ import {
 export * from './flows';
 import { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
 export { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
+import {
+  RESCHEDULE_FLOW, RESCHEDULE_FLOW_NAME, TARGETS_KEY, OPTIONS_KEY,
+  chosenTarget, chosenOption,
+  type RescheduleTarget, type RescheduleOption,
+} from './reschedule-flow';
+export * from './reschedule-flow';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -68,6 +74,15 @@ const EMBEDDING_DIMENSIONS = () => llmConfig().embeddingDimensions;
  * future iteration — currently a platform-wide default.
  */
 const DEFAULT_APPOINTMENT_DURATION_MINUTES = 30;
+
+/**
+ * How many free slots a reschedule offers, and how many appointments it lists.
+ *
+ * Small on purpose. This is read on a phone, often as one WhatsApp message, and
+ * a list nobody finishes reading is a list nobody chooses from.
+ */
+const RESCHEDULE_OPTIONS_OFFERED = 5;
+const RESCHEDULE_TARGETS_LISTED = 5;
 
 /** Business timezone for all customer-facing times. */
 const BUSINESS_TIMEZONE = 'Africa/Lagos';
@@ -669,6 +684,7 @@ export class QdrantRAGService {
 /** Every multi-turn flow the live engine can run, by name. */
 const FLOWS: Record<string, FlowDefinition> = {
   [ENROLLMENT_FLOW_NAME]: ENROLLMENT_FLOW,
+  [RESCHEDULE_FLOW_NAME]: RESCHEDULE_FLOW,
 };
 
 /**
@@ -1070,14 +1086,7 @@ export class ConversationOrchestrator {
     // ── 7. Tool: Reschedule Booking / Reservation ─────────────────────────────
     if (RESCHEDULE_PHRASES.some((p) => lowerInput.includes(p))) {
       try {
-        const result = await this.executeRescheduleBookingOrReservation(context, lang);
-        return {
-          replyText: result.message,
-          intentDetected: 'RESCHEDULE_BOOKING',
-          confidenceScore: 0.96,
-          shouldHandoff: false,
-          toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
-        };
+        return await this.startRescheduleFlow(context, lang);
       } catch (err) {
         return this.toolFailureReply('RESCHEDULE_BOOKING', err, lang);
       }
@@ -1580,89 +1589,156 @@ export class ConversationOrchestrator {
   }
 
   /**
-   * Reschedule the customer's most recent active booking/reservation.
-   * Since we're in a single-turn conversation (no multi-turn state yet),
-   * we reschedule to the next available slot (tomorrow, 10 AM) and invite
-   * the customer to call back to pick a specific time.
+   * Start the conversation that moves an appointment.
    *
-   * TODO (multi-turn): Implement a slot-picker conversation flow.
+   * This used to move it without one. It relocated the customer's next booking
+   * to TOMORROW AT 10:00, wrote that to the database, and replied that it "has
+   * been rescheduled" — then invited them to call back if they wanted a
+   * specific time. The comment beside it said why: there was no multi-turn
+   * state, so it could not ask. It can now.
+   *
+   * Nothing here writes. It gathers what the customer needs in order to choose
+   * — which appointment, and which times are genuinely free — and hands over to
+   * the flow engine, which reads the choice back before anything changes.
    */
-  private async executeRescheduleBookingOrReservation(context: ConversationContext, lang: Language = 'en') {
+  private async startRescheduleFlow(
+    context: ConversationContext,
+    lang: Language = 'en'
+  ): Promise<OrchestrationResult> {
     const phone = context.customerPhoneNumber;
     if (!phone) {
-      return { message: 'I need your phone number on file to reschedule. Please contact our team directly.' };
-    }
-
-    const newTime = new Date();
-    newTime.setDate(newTime.getDate() + 1);
-    newTime.setHours(10, 0, 0, 0); // Default: tomorrow 10 AM Lagos
-
-    // Try booking
-    const booking = await prisma.booking.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
-        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-        startTime: { gte: new Date() },
-      },
-      include: { contact: true },
-      orderBy: { startTime: 'asc' },  // NEXT_UPCOMING
-    });
-
-    if (booking) {
-      const endTime = new Date(newTime.getTime() + 30 * 60 * 1000);
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { status: 'RESCHEDULED', startTime: newTime, endTime, updatedAt: new Date() },
-      });
-      const timeStr = newTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
       return {
-        bookingId: booking.id,
-        newTime: timeStr,
-        message:
-          `📅 Your *${booking.serviceName}* appointment has been rescheduled to:\n\n` +
-          `*${timeStr}*\n\n` +
-          `Reference: #${booking.id.slice(-8).toUpperCase()}\n\n` +
-          `If you'd prefer a specific date and time, please call us or say *"speak to an agent"* and we'll arrange it.`,
+        replyText:
+          'I need the number your appointment is under before I can move it. ' +
+          'Let me bring in a colleague who can look it up for you.',
+        intentDetected: 'RESCHEDULE_BOOKING',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
 
-    // Try reservation
-    const reservation = await prisma.reservation.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        contact: { phoneNumber: { in: phoneNumberVariants(phone) } },  // every stored shape — see NEXT_UPCOMING
-        status: { in: ['CONFIRMED', 'RESCHEDULED'] },
-        reservationTime: { gte: new Date() },
-      },
-      include: { contact: true },
-      orderBy: { reservationTime: 'asc' },  // NEXT_UPCOMING
-    });
-
-    if (reservation) {
-      await prisma.reservation.update({
-        where: { id: reservation.id },
-        data: { status: 'RESCHEDULED', reservationTime: newTime, updatedAt: new Date() },
-      });
-      const timeStr = newTime.toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
+    const targets = await this.upcomingAppointments(context.organizationId, phone);
+    if (targets.length === 0) {
       return {
-        reservationId: reservation.id,
-        newTime: timeStr,
-        message:
-          `🍽️ Your reservation for *${reservation.partySize} guest(s)* has been rescheduled to:\n\n` +
-          `*${timeStr}*\n\n` +
-          `Reference: #${reservation.id.slice(-8).toUpperCase()}\n\n` +
-          `Need a specific date or time? Say *"speak to an agent"* and we'll sort it out.`,
+        replyText:
+          lang === 'en'
+            ? `I couldn't find an active booking or reservation to reschedule under your number. ` +
+              `Please say *"speak to an agent"* for help.`
+            : t(lang, 'no_upcoming_booking'),
+        intentDetected: 'RESCHEDULE_BOOKING',
+        confidenceScore: 0.96,
+        shouldHandoff: false,
       };
     }
 
-    return {
-      message:
-        lang === 'en'
-          ? `I couldn't find an active booking or reservation to reschedule under your number. ` +
-            `Please say *"speak to an agent"* for help.`
-          : t(lang, 'no_upcoming_booking'),
-    };
+    const slots = await this.findAvailableSlots(
+      context.organizationId,
+      DEFAULT_APPOINTMENT_DURATION_MINUTES,
+      RESCHEDULE_OPTIONS_OFFERED
+    );
+    if (slots.length === 0) {
+      // Offering nothing is not an option list. Say so and pass it on, rather
+      // than asking the customer to pick from an empty set.
+      return {
+        replyText:
+          `I can see ${targets[0].label} on ${targets[0].startLabel}, but there is nothing free ` +
+          `in the next two weeks to move it to. Let me pass you to a colleague who can find ` +
+          `something for you.`,
+        intentDetected: 'RESCHEDULE_BOOKING',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    const conversationId = await this.ensureConversation(context);
+    if (!conversationId) {
+      // No thread means no memory, and a question we cannot receive the answer
+      // to is worse than not asking. Notably this is every VOICE call today:
+      // the media-stream handler passes the callSid as the conversation id and
+      // creates no row. Say what we can see and hand over.
+      return {
+        replyText:
+          `I can see ${targets[0].label} on ${targets[0].startLabel}. I can't take you through ` +
+          `changing it here, so let me bring in a colleague who can move it to a time that suits you.`,
+        intentDetected: 'RESCHEDULE_BOOKING',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    const options: RescheduleOption[] = slots.map((s) => ({
+      startIso: s.start.toISOString(),
+      endIso: s.end.toISOString(),
+      label: formatLagos(s.start),
+    }));
+
+    const state = beginFlow(RESCHEDULE_FLOW);
+    state.collected[TARGETS_KEY] = JSON.stringify(targets);
+    state.collected[OPTIONS_KEY] = JSON.stringify(options);
+
+    return this.runFlow(context, conversationId, RESCHEDULE_FLOW, state, '', lang);
+  }
+
+  /**
+   * Everything of the customer's that is still ahead of them, soonest first.
+   *
+   * Both kinds, because "move my appointment" does not tell you which table it
+   * lives in — and because the old code checked bookings first and silently
+   * ignored a reservation whenever a booking existed.
+   */
+  private async upcomingAppointments(
+    organizationId: string,
+    phone: string
+  ): Promise<RescheduleTarget[]> {
+    const variants = phoneNumberVariants(phone);
+    const active = { in: ['CONFIRMED', 'RESCHEDULED'] };
+
+    const [bookings, reservations] = await Promise.all([
+      prisma.booking.findMany({
+        where: {
+          organizationId,
+          contact: { phoneNumber: { in: variants } },
+          status: active as any,
+          startTime: { gte: new Date() },
+        },
+        orderBy: { startTime: 'asc' },
+        take: RESCHEDULE_TARGETS_LISTED,
+      }),
+      prisma.reservation.findMany({
+        where: {
+          organizationId,
+          contact: { phoneNumber: { in: variants } },
+          status: active as any,
+          reservationTime: { gte: new Date() },
+        },
+        orderBy: { reservationTime: 'asc' },
+        take: RESCHEDULE_TARGETS_LISTED,
+      }),
+    ]);
+
+    const targets: RescheduleTarget[] = [
+      ...bookings.map((b) => ({
+        id: b.id,
+        kind: 'BOOKING' as const,
+        label: `your ${b.serviceName} appointment`,
+        startIso: b.startTime.toISOString(),
+        startLabel: formatLagos(b.startTime),
+      })),
+      ...reservations.map((r) => ({
+        id: r.id,
+        kind: 'RESERVATION' as const,
+        label: `your reservation for ${r.partySize} guest(s)`,
+        startIso: r.reservationTime.toISOString(),
+        startLabel: formatLagos(r.reservationTime),
+      })),
+    ];
+
+    return targets
+      .sort((a, b) => a.startIso.localeCompare(b.startIso))
+      .slice(0, RESCHEDULE_TARGETS_LISTED);
   }
 
   /**
@@ -1886,7 +1962,27 @@ export class ConversationOrchestrator {
     organizationId: string,
     durationMinutes: number
   ): Promise<{ start: Date; end: Date } | null> {
+    return (await this.findAvailableSlots(organizationId, durationMinutes, 1))[0] ?? null;
+  }
+
+  /**
+   * Up to `limit` genuinely free slots, spread across days rather than bunched.
+   *
+   * `findNextAvailableSlot` is this with a limit of one — one implementation, so
+   * the times we OFFER for a reschedule and the time we PICK for a booking can
+   * never disagree about what "free" means.
+   *
+   * At most two per day, because five consecutive half-hours on Tuesday morning
+   * is one option presented five times; a customer who cannot do Tuesday has
+   * been shown nothing.
+   */
+  private async findAvailableSlots(
+    organizationId: string,
+    durationMinutes: number,
+    limit: number
+  ): Promise<Array<{ start: Date; end: Date }>> {
     const SEARCH_HORIZON_DAYS = 14;
+    const MAX_PER_DAY = 2;
     const now = Date.now();
     const horizon = new Date(now + SEARCH_HORIZON_DAYS * 24 * 60 * 60 * 1000);
 
@@ -1907,18 +2003,28 @@ export class ConversationOrchestrator {
     cursor.setUTCSeconds(0, 0);
     cursor.setUTCMinutes(cursor.getUTCMinutes() > 30 ? 60 : 30);
 
-    while (cursor.getTime() < horizon.getTime()) {
+    const found: Array<{ start: Date; end: Date }> = [];
+    const perDay = new Map<string, number>();
+
+    while (cursor.getTime() < horizon.getTime() && found.length < limit) {
       const end = new Date(cursor.getTime() + durationMs);
 
       if (isWithinBusinessHours(cursor) && isWithinBusinessHours(new Date(end.getTime() - 1))) {
         const clashes = busy.some(([s, e]) => cursor.getTime() < e && end.getTime() > s);
-        if (!clashes) return { start: new Date(cursor), end };
+        if (!clashes) {
+          const day = cursor.toISOString().slice(0, 10);
+          const taken = perDay.get(day) ?? 0;
+          if (taken < MAX_PER_DAY) {
+            perDay.set(day, taken + 1);
+            found.push({ start: new Date(cursor), end });
+          }
+        }
       }
 
       cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
     }
 
-    return null;
+    return found;
   }
 
   /**
@@ -2410,16 +2516,11 @@ export class ConversationOrchestrator {
             toolCallsExecuted: [{ toolName: 'cancel_booking', result }],
           };
         }
-        case 'RESCHEDULE_BOOKING': {
-          const result = await this.executeRescheduleBookingOrReservation(context, lang);
-          return {
-            replyText: result.message,
-            intentDetected: 'RESCHEDULE_BOOKING',
-            confidenceScore: confidence,
-            shouldHandoff: false,
-            toolCallsExecuted: [{ toolName: 'reschedule_booking', result }],
-          };
-        }
+        case 'RESCHEDULE_BOOKING':
+          // The classifier's own confidence is discarded here on purpose: what
+          // this returns is a question, not an assertion about the booking, and
+          // the customer confirms before anything moves.
+          return await this.startRescheduleFlow(context, lang);
         case 'REQUEST_REFUND': {
           const result = await this.executeRequestRefund(context, cleanInput);
           return {
@@ -2586,9 +2687,23 @@ export class ConversationOrchestrator {
     flow: FlowDefinition,
     lang: Language
   ): Promise<OrchestrationResult | null> {
-    const conversation = await this.loadConversation(context);
-    if (!conversation) return null; // no thread to hang state on — fall through
-    const started = await this.runFlow(context, conversation.id, flow, beginFlow(flow), '', lang);
+    const conversationId = await this.ensureConversation(context);
+    if (!conversationId) {
+      // Falling through would be worse than failing: the message that reaches
+      // the next branch is "I want to register", and the booking branch matches
+      // almost anything — so a citizen asking to join got an appointment
+      // booked. A form we cannot remember the answers to is a person's job.
+      return {
+        replyText:
+          `I can help you register, but I can't take you through the questions here — ` +
+          `let me bring in a colleague who can sign you up properly.`,
+        intentDetected: 'FLOW_UNAVAILABLE',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+    const started = await this.runFlow(context, conversationId, flow, beginFlow(flow), '', lang);
 
     // The form's questions are not translated yet. Dropping a Hausa
     // conversation into English mid-sentence, with no explanation, reads as
@@ -2656,6 +2771,15 @@ export class ConversationOrchestrator {
     // Clear FIRST: if the write fails we must not leave them trapped in a
     // confirmed flow that re-fires on their next message.
     await this.clearFlow(conversationId);
+
+    if (flow.name === RESCHEDULE_FLOW_NAME) {
+      try {
+        return await this.completeReschedule(context, step.state.collected, lang);
+      } catch (err) {
+        return this.toolFailureReply('RESCHEDULE_BOOKING', err, lang);
+      }
+    }
+
     try {
       return await this.completeEnrollment(context, step.state.collected, lang);
     } catch (err) {
@@ -2719,6 +2843,171 @@ export class ConversationOrchestrator {
       shouldHandoff: false,
       toolCallsExecuted: [{ toolName: 'register_enrollee', result }],
     };
+  }
+
+  /**
+   * Move the appointment the customer just confirmed — then say what happened.
+   *
+   * `execute` from the flow engine is permission to TRY, never a promise that
+   * it worked, because up to an hour can pass between the option being offered
+   * and the customer replying "yes". Two things can have changed underneath:
+   * the appointment may have been cancelled, and the slot may have been taken.
+   * Both are reported as what they are. Announcing the move first and writing
+   * afterwards is how somebody ends up holding a confirmation for an
+   * appointment that does not exist.
+   */
+  private async completeReschedule(
+    context: ConversationContext,
+    collected: Record<string, string>,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const target = chosenTarget(collected);
+    const option = chosenOption(collected);
+    if (!target || !option) {
+      return this.toolFailureReply(
+        'RESCHEDULE_BOOKING',
+        new Error('confirmed a reschedule with no appointment or no slot selected'),
+        lang
+      );
+    }
+
+    const start = new Date(option.startIso);
+    const end = new Date(option.endIso);
+    const stillActive = { in: ['CONFIRMED', 'RESCHEDULED'] } as any;
+
+    if (target.kind === 'BOOKING') {
+      const booking = await prisma.booking.findFirst({
+        where: { id: target.id, organizationId: context.organizationId, status: stillActive },
+      });
+      if (!booking) return this.rescheduleTargetGone(target, lang);
+
+      try {
+        // Retry only the deadlock case, exactly as the API's booking writes do:
+        // a deadlock means CONTENDED and rolled back, not taken, and re-running
+        // is what discovers which of the two it actually was.
+        await withDeadlockRetry(() =>
+          prisma.booking.update({
+            where: { id: booking.id },
+            data: { status: 'RESCHEDULED', startTime: start, endTime: end, updatedAt: new Date() },
+          })
+        );
+      } catch (err) {
+        // The database is what settles the race — an application-level check
+        // before the write is a read-then-write with a gap in the middle.
+        if (isSlotTakenError(err)) return this.rescheduleSlotTaken(context, option, lang);
+        throw err;
+      }
+
+      return {
+        replyText:
+          `Done — ${target.label} has moved.\n\n` +
+          `• Was: ${target.startLabel}\n` +
+          `• Now: ${option.label}\n\n` +
+          `Reference: #${booking.id.slice(-8).toUpperCase()}`,
+        intentDetected: 'RESCHEDULE_BOOKING',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+        toolCallsExecuted: [
+          { toolName: 'reschedule_booking', result: { bookingId: booking.id, newTime: option.startIso } },
+        ],
+      };
+    }
+
+    const reservation = await prisma.reservation.findFirst({
+      where: { id: target.id, organizationId: context.organizationId, status: stillActive },
+    });
+    if (!reservation) return this.rescheduleTargetGone(target, lang);
+
+    await prisma.reservation.update({
+      where: { id: reservation.id },
+      data: { status: 'RESCHEDULED', reservationTime: start, updatedAt: new Date() },
+    });
+
+    return {
+      replyText:
+        `Done — ${target.label} has moved.\n\n` +
+        `• Was: ${target.startLabel}\n` +
+        `• Now: ${option.label}\n\n` +
+        `Reference: #${reservation.id.slice(-8).toUpperCase()}`,
+      intentDetected: 'RESCHEDULE_BOOKING',
+      confidenceScore: 1.0,
+      shouldHandoff: false,
+      toolCallsExecuted: [
+        { toolName: 'reschedule_booking', result: { reservationId: reservation.id, newTime: option.startIso } },
+      ],
+    };
+  }
+
+  /** The appointment stopped being movable while we were talking about it. */
+  private rescheduleTargetGone(target: RescheduleTarget, lang: Language): OrchestrationResult {
+    return {
+      replyText:
+        `${target.label} is no longer active, so there was nothing for me to move — it may have ` +
+        `been cancelled or already changed. Let me bring in a colleague who can check it with you.`,
+      intentDetected: 'RESCHEDULE_BOOKING',
+      confidenceScore: 0.9,
+      shouldHandoff: true,
+      handoffReason: HandoffReason.TOOL_FAILURE,
+    };
+  }
+
+  /**
+   * Somebody else took that slot first. Re-offer from a fresh read rather than
+   * apologising into a dead end — the appointment has not moved, and the
+   * customer still wants it moved.
+   */
+  private async rescheduleSlotTaken(
+    context: ConversationContext,
+    option: RescheduleOption,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const retry = await this.startRescheduleFlow(context, lang);
+    return {
+      ...retry,
+      replyText:
+        `Someone booked ${option.label} while we were talking, so I have left your appointment ` +
+        `where it is.\n\n${retry.replyText}`,
+    };
+  }
+
+  /**
+   * The conversation row this context belongs to, creating one if there is none.
+   *
+   * A flow needs somewhere to keep its state, and `Conversation.flowState` is
+   * that place. WhatsApp always has a row by the time the orchestrator is
+   * called; VOICE has none at all — the media-stream handler passes the callSid
+   * as the conversation id and creates nothing — so without this a flow on a
+   * call would fall silently through into whichever tool branch matched next.
+   *
+   * Returns null rather than throwing: a customer who cannot be given a form is
+   * given a person, which the callers handle.
+   */
+  private async ensureConversation(context: ConversationContext): Promise<string | null> {
+    const existing = await this.loadConversation(context);
+    if (existing) return existing.id;
+
+    try {
+      const contact = await this.getOrCreateContact(context);
+      const row = await prisma.conversation.upsert({
+        where: {
+          organizationId_contactId_channel: {
+            organizationId: context.organizationId,
+            contactId: contact.id,
+            channel: context.channel as any,
+          },
+        },
+        create: {
+          organizationId: context.organizationId,
+          contactId: contact.id,
+          channel: context.channel as any,
+        },
+        update: {},
+        select: { id: true },
+      });
+      return row.id;
+    } catch {
+      return null;
+    }
   }
 
   /** The conversation row this context belongs to, or null if it has none yet. */

@@ -584,6 +584,65 @@ async function main() {
     };
   });
 
+  await compare('Rescheduling — neither engine picks the time', async () => {
+    // The orchestrator used to move the customer's next booking to tomorrow at
+    // 10:00 without asking, and reply that it "has been rescheduled". It now
+    // offers real openings and confirms before writing.
+    //
+    // The agent path never had that bug: the model collects the time from the
+    // caller and passes it in, so a reschedule there is already the customer's
+    // choice. What this pins is the shared guarantee — asking to move an
+    // appointment must not, by itself, move it.
+    const contact = await prisma.contact.upsert({
+      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
+      create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Caller' },
+      update: {},
+    });
+    const conversation = await prisma.conversation.upsert({
+      where: {
+        organizationId_contactId_channel: {
+          organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP',
+        },
+      },
+      create: { organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP' },
+      update: { flowState: Prisma.DbNull },
+    });
+
+    const start = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    start.setUTCMinutes(0, 0, 0);
+    const booking = await prisma.booking.create({
+      data: {
+        organizationId: org.orgId, contactId: contact.id, serviceName: 'Parity Consultation',
+        startTime: start, endTime: new Date(start.getTime() + 30 * 60 * 1000), status: 'CONFIRMED',
+      },
+    });
+
+    const o = await orchestrator.processIncomingMessage(
+      { ...ctx(), conversationId: conversation.id },
+      'i need to reschedule my appointment'
+    );
+    const afterO = await prisma.booking.findUnique({ where: { id: booking.id } });
+    const oHeld = afterO.startTime.getTime() === start.getTime();
+
+    // The agent side, asked the same thing with no time supplied: the tool
+    // requires one, so an empty call must not move anything either.
+    const a = await viaAgent('reschedule-booking', { phoneNumber: CALLER, newStartTime: '' });
+    const afterA = await prisma.booking.findUnique({ where: { id: booking.id } });
+    const aHeld = afterA.startTime.getTime() === start.getTime();
+
+    return {
+      orchestrator: {
+        honoured: oHeld && o.intentDetected === 'FLOW_COLLECTING',
+        said: `${o.intentDetected}: ${trim(o.replyText)} [booking moved: ${!oHeld}]`,
+      },
+      agent: {
+        honoured: aHeld && a.body?.ok !== true,
+        said: `${trim(a.body?.speak)} [booking moved: ${!aHeld}]`,
+      },
+      note: 'asking to move an appointment must not, on its own, move it',
+    };
+  });
+
   await compareAsymmetric('Registering in Hausa — a form, not a booking', async () => {
     // "I want to register for PLASCHEMA", in Hausa, with no English keyword in
     // it. This used to be BLOCKED here: the orchestrator could only reach a
