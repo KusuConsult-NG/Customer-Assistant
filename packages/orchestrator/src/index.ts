@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -15,6 +15,13 @@ export {
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
 } from './languages';
 export type { Language } from './languages';
+import {
+  advanceFlow, asFlowState, beginFlow, isStale,
+  type FlowDefinition, type FlowState,
+} from './flows';
+export * from './flows';
+import { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
+export { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
@@ -659,6 +666,27 @@ export class QdrantRAGService {
  *     stateless HTTP), but the OpenAI embedding API calls add ~150-300ms latency.
  *     For voice calls (target: < 500ms response), RAG must be pre-warmed or cached.
  */
+/** Every multi-turn flow the live engine can run, by name. */
+const FLOWS: Record<string, FlowDefinition> = {
+  [ENROLLMENT_FLOW_NAME]: ENROLLMENT_FLOW,
+};
+
+/**
+ * What starts an enrollment. Deliberately narrow: these are people saying they
+ * want to JOIN, not people asking what the scheme is. A question about the
+ * plans should be answered, not turned into a form.
+ */
+const ENROLLMENT_ENTRY = [
+  /\b(register|registration|enrol|enroll|enrolment|enrollment)\b/i,
+  /\bsign (me )?up\b/i,
+  /\bi want to join\b/i,
+  /\bhow (do|can) i (register|join|enrol|enroll)\b/i,
+  /\bina so in yi rijista/i,          // Hausa: I want to register
+  /\bachọrọ m ịdebanye/i,             // Igbo
+  /\bmo f[eẹ] forúkọsílẹ̀/i,          // Yoruba
+  /\bi wan register\b/i,              // Pidgin
+];
+
 export class ConversationOrchestrator {
   private ragService: QdrantRAGService;
 
@@ -888,8 +916,15 @@ export class ConversationOrchestrator {
       }
 
       await this.persistPreferredLanguage(context, chosenLanguage);
+      // Switching language must not strand somebody mid-form. This branch sits
+      // above the flow engine so the request is honoured rather than eaten as
+      // an answer — which means the pending question has to be repeated here,
+      // or the customer is left holding a confirmation and no question.
+      const pending = await this.pendingFlowQuestion(context);
       return {
-        replyText: t(chosenLanguage, 'language_set'),
+        replyText: pending
+          ? `${t(chosenLanguage, 'language_set')}\n\n${pending}`
+          : t(chosenLanguage, 'language_set'),
         intentDetected: 'SET_LANGUAGE',
         confidenceScore: 1.0,
         shouldHandoff: false,
@@ -926,6 +961,29 @@ export class ConversationOrchestrator {
         shouldHandoff: true,
         handoffReason: HandoffReason.CUSTOMER_REQUEST,
       };
+    }
+
+    // ── 2c. A multi-turn flow already in progress ───────────────────────────
+    //
+    // Placed BELOW escalation and the language branches and ABOVE every intent
+    // branch, and the ordering is the whole point:
+    //
+    //   - asking for a human wins even mid-form. A half-filled registration is
+    //     not a reason to keep somebody talking to software they have given up
+    //     on. (This sat the other way round once: the flow ate the message and
+    //     replied with question four.)
+    //   - so does asking to switch language, which is why that is above too —
+    //     a request answered with the next form question reads as ignored.
+    //   - but a tool branch must NOT grab it. Someone part-way through
+    //     registering who types "appointment" is answering the question we
+    //     asked, and the booking branch matches almost anything.
+    const resumed = await this.resumeFlow(context, cleanInput, lang);
+    if (resumed) return resumed;
+
+    // ── 2d. Starting one ────────────────────────────────────────────────────
+    if (ENROLLMENT_ENTRY.some((r) => r.test(cleanInput))) {
+      const started = await this.startFlow(context, ENROLLMENT_FLOW, lang);
+      if (started) return started;
     }
 
     // ── 3. Tool: Appointment Booking ─────────────────────────────────────────
@@ -2464,6 +2522,241 @@ export class ConversationOrchestrator {
         error: err?.message,
       }));
     }
+  }
+
+  // ─── Multi-turn flows ──────────────────────────────────────────────────────
+
+  /**
+   * Continue a flow the customer is part-way through, if there is one.
+   *
+   * Returns null when there is nothing to resume, which lets the ordinary
+   * intent branches run. Every database touch is guarded: a flow that cannot be
+   * loaded is a flow that does not exist, and the customer still gets answered.
+   */
+  private async resumeFlow(
+    context: ConversationContext,
+    text: string,
+    lang: Language
+  ): Promise<OrchestrationResult | null> {
+    const conversation = await this.loadConversation(context);
+    const state = asFlowState(conversation?.flowState);
+    if (!conversation || !state) return null;
+
+    const flow = FLOWS[state.flow];
+    if (!flow) {
+      await this.clearFlow(conversation.id);
+      return null;
+    }
+
+    // Somebody who answered two questions and put their phone down does not
+    // want question three next Tuesday.
+    if (isStale(state)) {
+      await this.clearFlow(conversation.id);
+      return null;
+    }
+
+    return this.runFlow(context, conversation.id, flow, state, text, lang);
+  }
+
+  /**
+   * The question a live flow is currently waiting on, or null.
+   *
+   * Read-only and side-effect free: it re-asks, it does not advance. Used by
+   * the branches that legitimately interrupt a flow (a language switch) so the
+   * interruption is answered AND the form carries on.
+   */
+  private async pendingFlowQuestion(context: ConversationContext): Promise<string | null> {
+    try {
+      const conversation = await this.loadConversation(context);
+      const state = asFlowState(conversation?.flowState);
+      if (!state || isStale(state)) return null;
+      const flow = FLOWS[state.flow];
+      if (!flow) return null;
+      if (state.confirming) return flow.summarise(state.collected);
+      const slot = flow.slots.find((s) => s.name === state.awaiting);
+      return slot ? slot.prompt(state.collected) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Begin a flow, asking its first question. */
+  private async startFlow(
+    context: ConversationContext,
+    flow: FlowDefinition,
+    lang: Language
+  ): Promise<OrchestrationResult | null> {
+    const conversation = await this.loadConversation(context);
+    if (!conversation) return null; // no thread to hang state on — fall through
+    const started = await this.runFlow(context, conversation.id, flow, beginFlow(flow), '', lang);
+
+    // The form's questions are not translated yet. Dropping a Hausa
+    // conversation into English mid-sentence, with no explanation, reads as
+    // having been handed to a different system — and people stop replying to
+    // that. Said ONCE, at the start, with the route to a person who can do it
+    // in their language. Remove this the day the prompts are translated, not
+    // before.
+    const notice = lang === 'en' ? '' : t(lang, 'flow_english_only');
+    if (notice && started.replyText) {
+      return { ...started, replyText: `${notice}\n\n${started.replyText}` };
+    }
+    return started;
+  }
+
+  /**
+   * One step of a flow: decide, persist, reply — and execute when confirmed.
+   *
+   * The decision itself is pure (`advanceFlow`); everything database-shaped
+   * lives here, so there is one place that knows when state is written and when
+   * it is cleared.
+   */
+  private async runFlow(
+    context: ConversationContext,
+    conversationId: string,
+    flow: FlowDefinition,
+    state: FlowState,
+    text: string,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const step = advanceFlow(flow, state, text, lang);
+
+    if (step.kind === 'abandon') {
+      await this.clearFlow(conversationId);
+      return {
+        replyText: step.reply,
+        intentDetected: 'FLOW_ABANDONED',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+      };
+    }
+
+    if (step.kind === 'ask' || step.kind === 'confirm') {
+      await this.saveFlow(conversationId, step.state);
+      return {
+        replyText: step.reply,
+        intentDetected: step.kind === 'confirm' ? 'FLOW_CONFIRM' : 'FLOW_COLLECTING',
+        confidenceScore: 1.0,
+        shouldHandoff: false,
+      };
+    }
+
+    if (step.kind !== 'execute') {
+      // 'not-mine' is not produced by advanceFlow today; treating it as "no
+      // flow ran" keeps this exhaustive rather than assuming.
+      return {
+        replyText: t(lang, 'tool_failure'),
+        intentDetected: 'FLOW_UNHANDLED',
+        confidenceScore: 0.5,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    // The customer has read it back and said yes.
+    // Clear FIRST: if the write fails we must not leave them trapped in a
+    // confirmed flow that re-fires on their next message.
+    await this.clearFlow(conversationId);
+    try {
+      return await this.completeEnrollment(context, step.state.collected, lang);
+    } catch (err) {
+      return this.toolFailureReply('REGISTER_ENROLLEE', err, lang);
+    }
+  }
+
+  /**
+   * Write the enrollment the customer just confirmed.
+   *
+   * Uses the SAME shared core the agent tool uses, so a citizen who registers
+   * on WhatsApp and one who registers by phone end up as the same shape of
+   * record. A second implementation here would drift, and the drift would be in
+   * somebody's healthcare entitlement.
+   */
+  private async completeEnrollment(
+    context: ConversationContext,
+    collected: Record<string, string>,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const phone = context.customerPhoneNumber;
+    if (!phone) {
+      // Never invent one — see the note on EnrolleeInput.phoneNumber.
+      return this.toolFailureReply(
+        'REGISTER_ENROLLEE',
+        new Error('no phone number on the conversation to enroll against'),
+        lang
+      );
+    }
+
+    const result = await upsertEnrollee(context.organizationId, {
+      phoneNumber: phone,
+      fullName: collected.fullName,
+      ageOrDob: collected.ageOrDob,
+      residentialAddress: collected.residentialAddress,
+      lga: collected.lga,
+      planType: collected.planType,
+      preferredHospital: collected.preferredHospital,
+      nin: collected.nin || undefined,
+    });
+
+    const firstName = (collected.fullName ?? '').trim().split(/\s+/)[0] || 'there';
+    const payment = result.isEquity
+      ? 'Because you qualify for the free programme, there is no payment at all.'
+      : 'Our team will confirm your contribution and how to pay it.';
+
+    return {
+      // Only facts the write actually produced: the reference is the row's own
+      // id, and the facility is what was recorded, which may differ from what
+      // was asked for. Nothing here promises a link or a date that no code
+      // sends — the photo step is described as something the team arranges,
+      // because on this channel nothing dispatches it yet.
+      replyText:
+        `You are registered, ${firstName}. ✅\n\n` +
+        `• Reference: *${result.refId}* — please keep this\n` +
+        `• Plan: ${result.planType}\n` +
+        `• Primary facility: ${result.facility}\n\n` +
+        `${payment} Our team will be in touch about the photo step to complete your profile.`,
+      intentDetected: 'REGISTER_ENROLLEE',
+      confidenceScore: 1.0,
+      shouldHandoff: false,
+      toolCallsExecuted: [{ toolName: 'register_enrollee', result }],
+    };
+  }
+
+  /** The conversation row this context belongs to, or null if it has none yet. */
+  private async loadConversation(context: ConversationContext) {
+    try {
+      if (context.conversationId) {
+        const byId = await prisma.conversation.findUnique({
+          where: { id: context.conversationId },
+          select: { id: true, flowState: true },
+        });
+        if (byId) return byId;
+      }
+      const phone = context.customerPhoneNumber;
+      if (!phone) return null;
+      return await prisma.conversation.findFirst({
+        where: {
+          organizationId: context.organizationId,
+          channel: context.channel as any,
+          contact: { phoneNumber: { in: phoneNumberVariants(phone) } },
+        },
+        select: { id: true, flowState: true },
+        orderBy: { lastMessageAt: 'desc' },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private async saveFlow(conversationId: string, state: FlowState): Promise<void> {
+    await prisma.conversation
+      .update({ where: { id: conversationId }, data: { flowState: state as any } })
+      .catch(() => {});
+  }
+
+  private async clearFlow(conversationId: string): Promise<void> {
+    await prisma.conversation
+      .update({ where: { id: conversationId }, data: { flowState: Prisma.DbNull } })
+      .catch(() => {});
   }
 
   /** Organization display name, with a neutral fallback if the row is unreachable. */

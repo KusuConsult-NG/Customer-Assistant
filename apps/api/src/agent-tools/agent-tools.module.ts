@@ -13,6 +13,7 @@ import { ElevenLabsNumbersService } from './elevenlabs-numbers.service';
 import { ElevenLabsOutboundService } from './elevenlabs-outbound.service';
 import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
 import { ElevenLabsWebhookController } from './elevenlabs-webhook.controller';
+import { MissedCallFollowUpService } from './missed-call-followup.service';
 import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
 
 /**
@@ -51,6 +52,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
     ElevenLabsOutboundService,
     ElevenLabsTakeoverService,
     ElevenLabsWebhookService,
+    MissedCallFollowUpService,
   ],
   exports: [
     AgentToolsService,

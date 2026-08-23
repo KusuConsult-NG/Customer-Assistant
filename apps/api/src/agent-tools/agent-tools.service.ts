@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -587,11 +587,14 @@ export class AgentToolsService {
    * Creates (or updates) a contact record with enrollment details collected
    * during the call, then fires the selfie-capture link to their WhatsApp.
    *
-   * Sarah calls this once she has collected: full name, LGA, phone (caller
-   * phone is injected by the platform), NIN, and plan type. The tool creates
-   * the contact, stores the enrollment details, and triggers the onboarding
-   * service to send a one-time selfie link via WhatsApp. Sarah then tells the
-   * caller to check their WhatsApp for the photo link to complete registration online.
+   * The agent calls this once it has collected: full name, LGA, phone (the
+   * caller's number is injected by the platform, never supplied by the model),
+   * NIN, and plan type. The record itself is written by `upsertEnrollee` in
+   * `@ace/database` — the SAME function the WhatsApp flow calls — because a
+   * citizen who registers by phone and one who registers by message must end up
+   * as the same shape of record. This method keeps only what is specific to a
+   * voice call: the guards that tell the agent which field to ask for next, the
+   * selfie request, and what is said back.
    */
   async registerEnrollee(
     organizationId: string,
@@ -663,108 +666,67 @@ export class AgentToolsService {
         };
       }
 
-      const cleanPhone = input.phoneNumber?.trim()
-        ? normalizePhoneNumber(input.phoneNumber)
-        : `+23480${Math.floor(10000000 + Math.random() * 90000000)}`;
+      // Guard: we must know who is calling.
+      //
+      // This used to invent one — `+23480${8 random digits}` — when the caller's
+      // number was missing, which writes a fabricated phone number into a real
+      // CRM: staff ring it and reach a stranger, and it can collide with an
+      // actual enrollee's number, at which point one person's health record
+      // hangs off another person's phone. The number is injected by the
+      // platform from the call itself, so absent means something upstream broke
+      // and the right move is to say so.
+      if (!input.phoneNumber?.trim()) {
+        return {
+          ok: false,
+          speak:
+            'I could not read the number you are calling from. Could you tell me the phone number to register you with?',
+          data: { reason: 'missing_phone_number' },
+        };
+      }
 
-      // Resolve accredited facility for this LGA
+      // Guard: the LGA has to be one we have accredited facilities for. Without
+      // this the enrollment lands on a placeholder facility, and the caller is
+      // told they are registered somewhere that does not exist.
       const lgaFacilities = getFacilitiesForLGA(input.lga);
-      let selectedFacility = input.preferredHospital?.trim();
-      if (selectedFacility && lgaFacilities.length > 0) {
-        const matched = lgaFacilities.find(
-          (f) => f.name.toLowerCase() === selectedFacility!.toLowerCase() || f.name.toLowerCase().includes(selectedFacility!.toLowerCase())
-        );
-        if (matched) selectedFacility = matched.name;
-      }
-      if (!selectedFacility && lgaFacilities.length > 0) {
-        selectedFacility = lgaFacilities[0].name;
-      }
-      if (!selectedFacility) {
-        selectedFacility = input.preferredHospital?.trim() || 'Accredited Primary Healthcare Provider';
+      if (lgaFacilities.length === 0) {
+        return {
+          ok: false,
+          speak:
+            `I could not match ${input.lga} to a Plateau State Local Government Area. ` +
+            `Which LGA do you live in?`,
+          data: { reason: 'unknown_lga' },
+        };
       }
 
-      const isEquity = /equity|bhcpf|vulnerable|free/i.test(input.planType);
-      const normalizedPlan = isEquity
-        ? 'Equity / BHCPF Subsidized Plan'
-        : input.planType;
+      // Guard: and the facility has to be on that LGA's list. A card issued
+      // against an unaccredited hospital is refused at the desk — which the
+      // enrollee discovers while ill.
+      if (!resolveFacility(input.lga, input.preferredHospital)) {
+        const options = lgaFacilities.slice(0, 3).map((f) => f.name).join(', ');
+        return {
+          ok: false,
+          speak:
+            `That facility is not on our accredited list for ${input.lga}. ` +
+            `The approved options there include: ${options}. Which would you prefer?`,
+          data: { reason: 'unaccredited_facility' },
+        };
+      }
 
-      const existing = await prisma.contact.findFirst({
-        where: { organizationId, phoneNumber: { in: phoneNumberVariants(cleanPhone) } },
+      const enrolled = await upsertEnrollee(organizationId, {
+        phoneNumber: input.phoneNumber,
+        fullName: input.fullName,
+        lga: input.lga,
+        planType: input.planType,
+        residentialAddress: input.residentialAddress,
+        ageOrDob: input.ageOrDob,
+        nin: input.nin,
+        preferredHospital: input.preferredHospital,
+        notes: input.notes,
       });
-
-      const enrollmentDetails = [
-        `Address: ${input.residentialAddress || 'N/A'}`,
-        `LGA: ${input.lga}`,
-        input.ageOrDob ? `Age/DOB: ${input.ageOrDob}` : null,
-        `Plan: ${normalizedPlan}`,
-        `Primary Facility: ${selectedFacility}`,
-        input.nin ? `NIN: ${input.nin}` : null,
-        isEquity ? 'Status: 100% State Subsidized (₦0)' : null,
-        input.notes || null,
-      ]
-        .filter(Boolean)
-        .join(' | ');
-
-      let contact;
-      if (existing) {
-        contact = await prisma.contact.update({
-          where: { id: existing.id },
-          data: {
-            fullName: input.fullName.trim(),
-            address: input.residentialAddress?.trim() || existing.address,
-            city: input.lga.trim(),
-            metadata: {
-              ...(typeof existing.metadata === 'object' && existing.metadata !== null ? (existing.metadata as Record<string, unknown>) : {}),
-              residentialAddress: input.residentialAddress,
-              lga: input.lga,
-              ageOrDob: input.ageOrDob,
-              nin: input.nin,
-              planType: normalizedPlan,
-              preferredHospital: selectedFacility,
-              isEquity,
-              enrollmentStatus: isEquity ? 'PENDING_EQUITY_REVIEW' : 'PENDING_SELFIE',
-              paymentStatus: isEquity ? 'WAIVED_SUBSIDIZED' : 'PENDING',
-              registeredAt: new Date().toISOString(),
-            },
-            tags: existing.tags.includes('enrollment-pending')
-              ? existing.tags
-              : [...existing.tags, 'enrollment-pending'],
-          },
-        });
-      } else {
-        contact = await prisma.contact.create({
-          data: {
-            organizationId,
-            phoneNumber: cleanPhone,
-            fullName: input.fullName.trim(),
-            address: input.residentialAddress?.trim(),
-            city: input.lga.trim(),
-            metadata: {
-              residentialAddress: input.residentialAddress,
-              lga: input.lga,
-              ageOrDob: input.ageOrDob,
-              nin: input.nin,
-              planType: normalizedPlan,
-              preferredHospital: selectedFacility,
-              isEquity,
-              enrollmentStatus: isEquity ? 'PENDING_EQUITY_REVIEW' : 'PENDING_SELFIE',
-              paymentStatus: isEquity ? 'WAIVED_SUBSIDIZED' : 'PENDING',
-              registeredAt: new Date().toISOString(),
-            },
-            tags: ['enrollment-pending'],
-          },
-        });
-      }
-
-      // Save a note for audit/record keeping
-      await prisma.note
-        .create({
-          data: {
-            contactId: contact.id,
-            content: `Helpline Enrollment Registration: ${enrollmentDetails}`,
-          },
-        })
-        .catch(() => {});
+      const contact = { id: enrolled.contactId };
+      const selectedFacility = enrolled.facility;
+      const normalizedPlan = enrolled.planType;
+      const isEquity = enrolled.isEquity;
 
       // Create the selfie request so the post-call webhook can find it and
       // send the link via Twilio SMS right after this call ends.
@@ -779,7 +741,7 @@ export class AgentToolsService {
         expiresInHours: 48,
       });
 
-      const refId = contact.id.slice(0, 8).toUpperCase();
+      const refId = enrolled.refId;
       const firstName = input.fullName.split(' ')[0];
 
       if (isEquity) {

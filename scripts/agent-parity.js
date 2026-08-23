@@ -54,7 +54,7 @@ assertLocalDatabase('agent parity comparison');
 // between the engines is indistinguishable from sampling noise.
 delete process.env.OPENAI_API_KEY;
 
-const { PrismaClient } = require(path.join(ROOT, 'node_modules/@prisma/client'));
+const { PrismaClient, Prisma } = require(path.join(ROOT, 'node_modules/@prisma/client'));
 const { ConversationOrchestrator } = require('@ace/orchestrator');
 
 const prisma = new PrismaClient({ log: [] });
@@ -584,25 +584,68 @@ async function main() {
     };
   });
 
-  await compare('Non-English intent routing — reported, not assumed', async () => {
+  await compareAsymmetric('Registering in Hausa — a form, not a booking', async () => {
     // "I want to register for PLASCHEMA", in Hausa, with no English keyword in
-    // it. The orchestrator reaches its booking tool for this ONLY through the
-    // LLM classifier — and this harness deletes OPENAI_API_KEY on purpose, so
-    // that two runs of a scenario cannot disagree with themselves.
+    // it. This used to be BLOCKED here: the orchestrator could only reach a
+    // tool for it through the LLM classifier, which the harness disables on
+    // purpose so two runs cannot disagree with themselves — and what it
+    // actually did without the classifier was book an appointment.
     //
-    // So this scenario cannot pass here, and must not pretend to: it records
-    // that non-English routing is model-dependent on one side and entirely
-    // model-dependent on the other, which is a real property of the cutover
-    // and one a green harness would otherwise imply had been tested.
+    // The enrollment flow made the live side deterministic: the entry patterns
+    // cover all five languages, so this starts a form with no model in the
+    // loop. The agent side is still the model's own routing, which only a real
+    // call exercises, so it is read from the prompt and graded as the static
+    // check it is.
+    // A flow needs a thread to hang its state on, and in production the
+    // WhatsApp service always creates one before the orchestrator is called.
+    // The harness builds its context by hand, so it has to create the same row
+    // — otherwise this would exercise a shape the platform never produces and
+    // report a limitation that does not exist.
+    const contact = await prisma.contact.upsert({
+      where: { organizationId_phoneNumber: { organizationId: org.orgId, phoneNumber: CALLER } },
+      create: { organizationId: org.orgId, phoneNumber: CALLER, fullName: 'Parity Caller' },
+      update: {},
+    });
+    const conversation = await prisma.conversation.upsert({
+      where: {
+        organizationId_contactId_channel: {
+          organizationId: org.orgId,
+          contactId: contact.id,
+          channel: 'WHATSAPP',
+        },
+      },
+      create: { organizationId: org.orgId, contactId: contact.id, channel: 'WHATSAPP' },
+      update: { flowState: Prisma.DbNull },
+    });
+
     const before = await prisma.booking.count({ where: { organizationId: org.orgId } });
-    const o = await viaOrchestrator('Ina so in yi rijistar PLASCHEMA don Allah');
+    const o = await orchestrator.processIncomingMessage(
+      { ...ctx(), conversationId: conversation.id },
+      'Ina so in yi rijistar PLASCHEMA don Allah'
+    );
     const after = await prisma.booking.count({ where: { organizationId: org.orgId } });
 
-    throw new Error(
-      `non-English routing needs the LLM classifier, disabled here for determinism — ` +
-      `orchestrator booked ${after - before}, replied ${JSON.stringify(trim(o.replyText))}; ` +
-      `the agent side is the model's own routing, which only a real call exercises`
-    );
+    const oText = o.replyText ?? '';
+    const startsForm = o.intentDetected === 'FLOW_COLLECTING' && after === before;
+
+    const { SYSTEM_PROMPT } = require(path.join(ROOT, 'apps/api/dist/agent-tools/agent-tool-catalog.js'));
+    const promptCollects =
+      /register-enrollee/.test(SYSTEM_PROMPT) &&
+      /ONE AT A TIME/i.test(SYSTEM_PROMPT);
+
+    return {
+      orchestrator: {
+        honoured: startsForm,
+        said: `${o.intentDetected}: ${trim(oText)} [bookings created: ${after - before}]`,
+      },
+      agent: {
+        honoured: promptCollects,
+        said: promptCollects
+          ? 'system prompt collects the six fields one at a time before register-enrollee (STATIC CHECK — no live path)'
+          : 'system prompt does NOT instruct the agent to collect before registering',
+      },
+      note: 'wanting to join is a form to fill, on either path — never an appointment booked instead',
+    };
   });
 
   await cleanup(org.orgId);
