@@ -26,6 +26,8 @@
     "secrets:encrypt": "node scripts/encrypt-secrets.js",
     "contacts:dedupe": "node scripts/merge-duplicate-contacts.js",
     "selfie:reissue": "node scripts/reissue-selfie-links.js",
+    "translations:export": "node scripts/export-translations.js",
+    "translations:import": "node scripts/import-translations.js",
     "parity": "node scripts/agent-parity.js"
   },
   "dependencies": {
