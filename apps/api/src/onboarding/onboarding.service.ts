@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { SELFIE_MAX_UPLOAD_ATTEMPTS, createSelfieRequest, hashSelfieToken, prisma, selfieUploadUrl, withWhatsAppCredentials, phoneNumberVariants } from '@ace/database';
+import { SELFIE_MAX_UPLOAD_ATTEMPTS, createSelfieRequest, hashSelfieToken, prisma, selfieUploadUrl, sealUploadUrl, withWhatsAppCredentials, phoneNumberVariants } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { MessageSender } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
@@ -68,11 +68,15 @@ export class OnboardingService {
 
     const uploadUrl = selfieUploadUrl(request.token);
 
-    // Persist the upload URL so the post-call webhook can retrieve it without
-    // needing the raw token (which is intentionally not stored anywhere else).
+    // Persist the upload URL so the post-call webhook can send the link after
+    // the call ends, by which point the raw token is gone.
+    //
+    // ENCRYPTED, because this URL ends in that token: stored plainly it made
+    // the tokenHash beside it decorative — hashing the token out of the stored
+    // URL reproduced the stored hash exactly.
     await prisma.selfieRequest.update({
       where: { id: request.id },
-      data: { uploadUrl },
+      data: { uploadUrl: sealUploadUrl(uploadUrl) },
     }).catch(() => {}); // non-fatal: the link is still in memory for this request
 
     const delivery = await this.deliverRequest(organizationId, contact, request.id, channel, input.purpose, uploadUrl);

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
+import { decryptSecret, encryptSecret } from './secret-box';
 import { prisma } from './index';
 
 /**
@@ -32,7 +33,17 @@ export interface CreateSelfieRequestInput {
   conversationId?: string;
   callSid?: string;
   requestedByUserId?: string;
-  /** Pre-computed public URL — stored so post-call delivery can retrieve it without the raw token. */
+  /**
+   * Pre-computed public URL, stored so post-call delivery can send the link
+   * after the call ends — by which point the raw token is long gone.
+   *
+   * ENCRYPTED at rest, because the URL ENDS IN THE RAW TOKEN. Stored plainly it
+   * made the hashing beside it pointless: `sha256(token from uploadUrl)` equals
+   * the stored `tokenHash` exactly, so anyone who could read this table held a
+   * working one-time upload link for every pending request — and the people
+   * those links belong to are enrollees about to upload a photograph of
+   * themselves.
+   */
   uploadUrl?: string;
 }
 
@@ -69,13 +80,35 @@ export async function createSelfieRequest(input: CreateSelfieRequestInput): Prom
       conversationId: input.conversationId ?? null,
       callSid: input.callSid ?? null,
       tokenHash: hashSelfieToken(token),
-      uploadUrl: input.uploadUrl ?? null,
+      uploadUrl: sealUploadUrl(input.uploadUrl),
       expiresAt,
       requestedByUserId: input.requestedByUserId ?? null,
     },
   });
 
   return { id: request.id, expiresAt: request.expiresAt, token };
+}
+
+/**
+ * Encrypt an upload URL for storage, and read one back.
+ *
+ * Separate helpers rather than inline calls for the same reason the credential
+ * resolvers exist: a missed read does not fail loudly, it hands a `v1.…`
+ * ciphertext to Twilio as the link text and the enrollee receives an SMS
+ * containing gibberish instead of a way to finish enrolling.
+ *
+ * Legacy plaintext still reads, so rows written before this keep working — and
+ * they are exactly the rows whose links are already exposed, so they should be
+ * re-issued rather than trusted.
+ */
+export function sealUploadUrl(url: string | null | undefined): string | null {
+  if (url === null || url === undefined || url === '') return null;
+  return encryptSecret(url);
+}
+
+export function openUploadUrl(stored: string | null | undefined, label = 'SelfieRequest.uploadUrl'): string | null {
+  if (stored === null || stored === undefined || stored === '') return null;
+  return decryptSecret(stored, label);
 }
 
 /** Public base URL for the selfie upload link sent to patients. */
