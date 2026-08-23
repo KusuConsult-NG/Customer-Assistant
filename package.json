@@ -2,7 +2,7 @@
   "name": "ace-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "Customer Care Agent — AI-Powered Customer Experience for Nigerian Businesses and Government MDAs",
+  "description": "Customer Care Agent \u2014 AI-Powered Customer Experience for Nigerian Businesses and Government MDAs",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -25,6 +25,7 @@
     "certify": "node scripts/certify-mvp.js",
     "secrets:encrypt": "node scripts/encrypt-secrets.js",
     "contacts:dedupe": "node scripts/merge-duplicate-contacts.js",
+    "selfie:reissue": "node scripts/reissue-selfie-links.js",
     "parity": "node scripts/agent-parity.js"
   },
   "dependencies": {
