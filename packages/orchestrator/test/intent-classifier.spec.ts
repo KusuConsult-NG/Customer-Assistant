@@ -13,19 +13,23 @@
 
 const mockPrisma = {
   organization: { findUnique: jest.fn() },
+  conversation: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), upsert: jest.fn() },
   booking: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
-  reservation: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+  reservation: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   contact: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
   ticket: { create: jest.fn() },
   deal: { findMany: jest.fn() },
   documentChunk: { findMany: jest.fn() },
   faqEntry: { findMany: jest.fn() },
+  note: { create: jest.fn() },
 };
 
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/ticket-number'),
   prisma: mockPrisma,
+  upsertEnrollee: jest.fn(),
+  Prisma: { DbNull: null },
 }));
 
 // Pinned BEFORE the orchestrators below are constructed. The RAG service
@@ -73,6 +77,10 @@ describe('LLM intent routing', () => {
     mockPrisma.documentChunk.findMany.mockResolvedValue([]);
     mockPrisma.booking.findFirst.mockResolvedValue(null);
     mockPrisma.booking.findMany.mockResolvedValue([]);
+    mockPrisma.reservation.findMany.mockResolvedValue([]);
+    mockPrisma.conversation.findUnique.mockResolvedValue({ id: 'conv_1', flowState: null });
+    mockPrisma.conversation.upsert.mockResolvedValue({ id: 'conv_1' });
+    mockPrisma.conversation.update.mockResolvedValue({});
     mockPrisma.organization.findUnique.mockResolvedValue({
       name: 'Test Clinic',
       defaultLanguage: 'en',
@@ -88,18 +96,37 @@ describe('LLM intent routing', () => {
     delete process.env.OPENAI_API_KEY;
   });
 
-  it('routes a Hausa registration request to the real booking executor, with the translated service name', async () => {
+  it('does not consult the model at all for a Hausa registration request', async () => {
+    // This used to be the classifier's showcase: "Ina so in yi rijistar
+    // PLASCHEMA" reached the model, came back BOOK_APPOINTMENT, and booked a
+    // "Health Insurance Registration" appointment — which is not what the
+    // citizen asked for. Registration is a form, and the entry patterns cover
+    // all five languages, so it is now settled before any model is asked.
+    const res = await orchestrator.processIncomingMessage(
+      baseContext(),
+      'Ina so in yi rijistar PLASCHEMA don Allah'
+    );
+
+    expect(res.intentDetected).toBe('FLOW_COLLECTING');
+    expect(mockPrisma.booking.create).not.toHaveBeenCalled();
+    // No model call: a deterministic path that still pays for an LLM round trip
+    // is not deterministic, it is just lucky.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('routes a non-English booking request to the real booking executor, with the translated service name', async () => {
     fetchMock.mockResolvedValueOnce(
-      llmReply('{"intent":"BOOK_APPOINTMENT","confidence":0.92,"serviceName":"Health Insurance Registration"}')
+      llmReply('{"intent":"BOOK_APPOINTMENT","confidence":0.92,"serviceName":"General Consultation"}')
     );
     mockPrisma.booking.create.mockImplementation(({ data }: any) =>
       Promise.resolve({ id: 'booking_12345678', ...data })
     );
 
-    // "I want to register for PLASCHEMA" — zero English keywords.
+    // "I want to see a doctor, please" — zero English keywords, and not a
+    // registration, so the keyword branches genuinely cannot place it.
     const res = await orchestrator.processIncomingMessage(
       baseContext(),
-      'Ina so in yi rijistar PLASCHEMA don Allah'
+      'Ina so in ga likita, don Allah'
     );
 
     expect(res.intentDetected).toBe('BOOK_APPOINTMENT');
@@ -107,9 +134,9 @@ describe('LLM intent routing', () => {
     // The classifier's English rendering is what lands in the calendar — not
     // Hausa scraped through an English regex.
     expect(mockPrisma.booking.create.mock.calls[0][0].data.serviceName).toBe(
-      'Health Insurance Registration'
+      'General Consultation'
     );
-    // "don Allah" + "ina so" made this a Hausa message, so the confirmation is Hausa.
+    // "don Allah" made this a Hausa message, so the confirmation is Hausa.
     expect(res.replyText).toContain('Lambar tunani');
   });
 

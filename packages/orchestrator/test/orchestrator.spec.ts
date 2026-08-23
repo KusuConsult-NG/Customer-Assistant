@@ -274,16 +274,29 @@ describe('ConversationOrchestrator', () => {
    *     six sites filter through `contact: {…}` and were missed by it.
    */
   describe('Finding the booking a customer means', () => {
-    const queryFor = async (message: string) => {
+    /**
+     * Checking and cancelling need ONE booking, so they read one. Rescheduling
+     * needs every candidate — the customer may have two and has to be asked
+     * which — so it reads them all. Both must still ask the same two things of
+     * the database, which is what these assert; the method differs, the
+     * invariant does not.
+     */
+    const CASES: Array<[string, 'findFirst' | 'findMany']> = [
+      ['when is my appointment', 'findFirst'],
+      ['cancel my appointment', 'findFirst'],
+      ['reschedule', 'findMany'],
+    ];
+
+    const queryFor = async (message: string, method: 'findFirst' | 'findMany') => {
       await orchestrator.processIncomingMessage(baseContext(), message);
-      expect(mockPrisma.booking.findFirst).toHaveBeenCalled();
-      return mockPrisma.booking.findFirst.mock.calls[0][0];
+      expect(mockPrisma.booking[method]).toHaveBeenCalled();
+      return mockPrisma.booking[method].mock.calls[0][0];
     };
 
-    it.each(['when is my appointment', 'cancel my appointment', 'reschedule'])(
+    it.each(CASES)(
       'asks for the NEXT upcoming booking, not the latest, for %j',
-      async (message) => {
-        const query = await queryFor(message);
+      async (message, method) => {
+        const query = await queryFor(message, method);
 
         expect(query.orderBy).toEqual({ startTime: 'asc' });
         // A lower bound, so a finished appointment is never offered as upcoming.
@@ -291,10 +304,10 @@ describe('ConversationOrchestrator', () => {
       }
     );
 
-    it.each(['when is my appointment', 'cancel my appointment', 'reschedule'])(
+    it.each(CASES)(
       'matches every stored phone shape for %j',
-      async (message) => {
-        const query = await queryFor(message);
+      async (message, method) => {
+        const query = await queryFor(message, method);
 
         const shapes = query.where.contact?.phoneNumber?.in;
         expect(Array.isArray(shapes)).toBe(true);
