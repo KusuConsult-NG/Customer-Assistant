@@ -241,7 +241,9 @@ type TemplateKey =
   | 'capabilities'
   | 'language_menu'
   | 'language_set'
-  | 'language_voice_unavailable';
+  | 'language_voice_unavailable'
+  | 'flow_abandoned'
+  | 'flow_what_to_change';
 
 type Params = Record<string, string>;
 
@@ -282,6 +284,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     language_voice_unavailable:
       'I understand you, but I cannot speak {language} on a call — only English. ' +
       'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
+    flow_abandoned:
+      "No problem — I've stopped that. Tell me any time you'd like to start again.",
+    flow_what_to_change:
+      'No problem. Which part should I change?',
   },
   pcm: {
     ai_disclosure:
@@ -316,6 +322,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     language_voice_unavailable:
       'I understand you, but I cannot speak {language} on a call — only English. ' +
       'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
+    flow_abandoned:
+      'No wahala — I don stop am. Tell me anytime wey you wan start again.',
+    flow_what_to_change:
+      'No wahala. Which one make I change?',
   },
   ha: {
     ai_disclosure:
@@ -348,6 +358,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     language_voice_unavailable:
       'I understand you, but I cannot speak {language} on a call — only English. ' +
       'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
+    flow_abandoned:
+      'Babu matsala — na daina. Ka gaya mini duk lokacin da kake son sake farawa.',
+    flow_what_to_change:
+      'Babu matsala. Wanne bangare zan canza?',
   },
   ig: {
     ai_disclosure:
@@ -380,6 +394,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     language_voice_unavailable:
       'I understand you, but I cannot speak {language} on a call — only English. ' +
       'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
+    flow_abandoned:
+      'Nsogbu adịghị — akwụsịla m ya. Gwa m mgbe ọ bụla ị chọrọ ịmalitegharịa.',
+    flow_what_to_change:
+      'Nsogbu adịghị. Kedu akụkụ ka m ga-agbanwe?',
   },
   yo: {
     ai_disclosure:
@@ -412,6 +430,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     language_voice_unavailable:
       'I understand you, but I cannot speak {language} on a call — only English. ' +
       'I can bring in a colleague who speaks {language}, or we can continue on WhatsApp where I can write to you in it. Which would you prefer?',
+    flow_abandoned:
+      'Kò sí wàhálà — mo ti dá a dúró. Sọ fún mi nígbàkúgbà tí o bá fẹ́ bẹ̀rẹ̀ lẹ́ẹ̀kansí.',
+    flow_what_to_change:
+      'Kò sí wàhálà. Apá wo ni kí n yí padà?',
   },
 };
 

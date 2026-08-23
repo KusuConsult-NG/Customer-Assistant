@@ -448,6 +448,16 @@ model Conversation {
   assignedUserId       String?
   assignedUser         User?          @relation("AssignedAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
   lastMessageAt        DateTime       @default(now())
+
+  /// In-progress multi-turn flow: which one, what has been collected, what was
+  /// last asked for. Null when the customer is not part-way through anything.
+  ///
+  /// Lives on the conversation because that is the thing a customer resumes.
+  /// Without it every message was answered in isolation — the assistant could
+  /// not collect a form, confirm before writing, or accept a correction, which
+  /// is most of what makes an assistant feel capable rather than mechanical.
+  flowState            Json?
+
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
