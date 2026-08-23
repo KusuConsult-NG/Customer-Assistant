@@ -29,6 +29,7 @@
  */
 import type { FlowDefinition } from './flows';
 import { numbered, pickFromList } from './appointment-targets';
+import { t, type Language } from './languages';
 
 export const RESERVATION_FLOW_NAME = 'make-reservation';
 
@@ -73,7 +74,12 @@ const NUMBER_WORDS: Record<string, number> = {
   ookan: 1, meji: 2, meta: 3, merin: 4, marun: 5,                    // Yoruba
 };
 
-const guests = (n: number) => `${n} guest${n === 1 ? '' : 's'}`;
+/**
+ * "4 guests" — pluralised only in English, because the other four do not form
+ * plurals that way and a machine-added "s" reads as a mistake.
+ */
+const guests = (n: number, lang: Language) =>
+  lang === 'en' || lang === 'pcm' ? `${n} guest${n === 1 ? '' : 's'}` : String(n);
 
 export const RESERVATION_FLOW: FlowDefinition = {
   name: RESERVATION_FLOW_NAME,
@@ -85,8 +91,8 @@ export const RESERVATION_FLOW: FlowDefinition = {
       identifies: (text) => /^\d{1,2}$/.test(text.trim()),
       // Skipped only when the message already named a number — never defaulted.
       skipIf: (c) => partySizeOf(c) !== null,
-      prompt: () => 'How many people will the table be for?',
-      accept: (text) => {
+      prompt: (_c, lang) => t(lang, 'party_ask'),
+      accept: (text, _c, lang) => {
         const value = text.trim().toLowerCase();
 
         const digits = value.match(/\b(\d{1,2})\b/);
@@ -96,9 +102,8 @@ export const RESERVATION_FLOW: FlowDefinition = {
           return {
             error:
               n < 1
-                ? 'A table needs at least one person. How many will be coming?'
-                : `That is more than we can seat on one booking. For a party over ${MAX_PARTY}, ` +
-                  `say *"speak to an agent"* and a colleague will arrange it.`,
+                ? t(lang, 'party_too_few')
+                : t(lang, 'party_too_many', { max: String(MAX_PARTY) }),
           };
         }
 
@@ -108,34 +113,29 @@ export const RESERVATION_FLOW: FlowDefinition = {
           }
         }
 
-        return { error: 'How many people should I book the table for? A number is fine.' };
+        return { error: t(lang, 'party_unclear') };
       },
     },
     {
       name: 'when',
       aliases: ['time', 'date', 'day', 'slot'],
-      prompt: (c) => {
+      prompt: (c, lang) => {
         const size = partySizeOf(c);
         // The party size is stated HERE rather than in a separate read-back:
         // picking a time answers a question that had the number in it.
-        const heading = size ? `A table for ${guests(size)}. ` : '';
-        return (
-          `${heading}Here is what is free:\n\n` +
-          numbered(readTableSlots(c).map((s) => s.label)) +
-          '\n\nReply with the number that suits you. If none of these work, ' +
-          'say *"speak to an agent"* and a colleague will find something else.'
-        );
+        return t(lang, 'table_when_ask', {
+          heading: size ? t(lang, 'table_for', { guests: guests(size, lang) }) : '',
+          list: numbered(readTableSlots(c).map((x) => x.label)),
+        });
       },
-      accept: (text, c) => {
+      accept: (text, c, lang) => {
         const slots = readTableSlots(c);
-        const index = pickFromList(text, slots.map((s) => s.label));
+        const index = pickFromList(text, slots.map((x) => x.label));
         if (index === null) {
           return {
-            error:
-              'I can only hold one of these, so that I do not put you down for a ' +
-              'time that is already taken:\n\n' +
-              numbered(slots.map((s) => s.label)) +
-              '\n\nReply with the number, or say *"speak to an agent"* for anything else.',
+            error: t(lang, 'book_only_these', {
+              list: numbered(slots.map((x) => x.label)),
+            }),
           };
         }
         return { value: String(index) };

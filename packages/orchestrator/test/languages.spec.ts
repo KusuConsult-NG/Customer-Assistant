@@ -35,7 +35,7 @@ jest.mock('@ace/database', () => ({
 
 import { ConversationOrchestrator } from '../src/index';
 import {
-  detectLanguage, asLanguage, t,
+  detectLanguage, asLanguage, t, TEMPLATE_KEYS, SUPPORTED_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
 } from '../src/languages';
 import { ChannelType } from '@ace/shared-types';
@@ -107,15 +107,51 @@ describe('t — templates interpolate, never translate values', () => {
   });
 
   it('every key renders non-empty in every language', () => {
-    const keys = [
-      'ai_disclosure', 'escalation_connecting', 'payment_details',
-      'payment_details_ussd_suffix', 'payment_unconfigured', 'booking_confirmed',
-      'booking_cancelled', 'no_upcoming_booking', 'tool_failure', 'capabilities',
-      'language_menu', 'language_set', 'language_voice_unavailable',
-    ] as const;
-    for (const lang of ['en', 'pcm', 'ha', 'ig', 'yo'] as const) {
-      for (const key of keys) {
-        expect(t(lang, key, { org: 'X', account: 'A', bank: 'B', number: 'N', ussd: '*1#', service: 'S', when: 'W', ref: 'R' }).length).toBeGreaterThan(0);
+    // Driven by the table's own keys, not a list beside it: a hand-kept list
+    // silently stops covering the key somebody just added, which is the only
+    // thing this test is for.
+    for (const lang of SUPPORTED_LANGUAGES) {
+      for (const key of TEMPLATE_KEYS) {
+        expect(t(lang, key).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  /**
+   * A template's placeholders are its contract with the calling code.
+   *
+   * `t` interpolates by string replacement, so a `{list}` dropped from the
+   * Yoruba rendering of `enrol_lga_unknown` does not fail — it produces a
+   * fluent Yoruba sentence promising a list of LGAs and then not containing
+   * one, and only a Yoruba speaker hitting that validation error would ever
+   * find out. Same for `{options}` on the facility error and `{name}` on the
+   * summary. So every language's placeholder set must equal English's.
+   */
+  it('carries the same placeholders in every language', () => {
+    const placeholders = (s: string) =>
+      [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+
+    for (const key of TEMPLATE_KEYS) {
+      const expected = placeholders(t('en', key));
+      for (const lang of SUPPORTED_LANGUAGES) {
+        expect({ key, lang, placeholders: placeholders(t(lang, key)) })
+          .toEqual({ key, lang, placeholders: expected });
+      }
+    }
+  });
+
+  it('leaves no placeholder unfilled once its parameters are supplied', () => {
+    const every = {
+      org: 'X', account: 'A', bank: 'B', number: 'N', ussd: '*1#',
+      service: 'S', when: 'W', ref: 'R', language: 'Hausa',
+      name: 'Amina Yusuf', age: '34 years', address: '12 Bello Way',
+      lga: 'Jos North', plan: 'Informal Sector', free: '', facility: 'PSH',
+      nin: '—', list: '1 — a', options: 'PSH', verb: 'move', heading: '',
+      label: 'L', from: 'F', to: 'T', guests: '4', max: '50',
+    };
+    for (const lang of SUPPORTED_LANGUAGES) {
+      for (const key of TEMPLATE_KEYS) {
+        expect(t(lang, key, every)).not.toMatch(/\{\w+\}/);
       }
     }
   });

@@ -36,6 +36,7 @@
  */
 import type { FlowDefinition } from './flows';
 import { numbered, pickFromList } from './appointment-targets';
+import { t } from './languages';
 
 export const BOOKING_FLOW_NAME = 'book-appointment';
 
@@ -75,21 +76,19 @@ export const BOOKING_FLOW: FlowDefinition = {
     {
       name: 'when',
       aliases: ['time', 'date', 'day', 'slot'],
-      prompt: (c) =>
-        `Happy to book you in for a ${serviceOf(c)}. Here is what is free:\n\n` +
-        numbered(readSlots(c).map((s) => s.label)) +
-        '\n\nReply with the number that suits you. If none of these work, ' +
-        'say *"speak to an agent"* and a colleague will find something else.',
-      accept: (text, c) => {
+      prompt: (c, lang) =>
+        t(lang, 'book_ask', {
+          service: serviceOf(c),
+          list: numbered(readSlots(c).map((x) => x.label)),
+        }),
+      accept: (text, c, lang) => {
         const slots = readSlots(c);
-        const index = pickFromList(text, slots.map((s) => s.label));
+        const index = pickFromList(text, slots.map((x) => x.label));
         if (index === null) {
           return {
-            error:
-              'I can only book one of these, so that I do not put you down for a ' +
-              'time that is already taken:\n\n' +
-              numbered(slots.map((s) => s.label)) +
-              '\n\nReply with the number, or say *"speak to an agent"* for anything else.',
+            error: t(lang, 'book_only_these', {
+              list: numbered(slots.map((x) => x.label)),
+            }),
           };
         }
         return { value: String(index) };

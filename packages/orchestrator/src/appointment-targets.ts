@@ -12,6 +12,7 @@
  * soonest.
  */
 import type { SlotDefinition } from './flows';
+import { t, type Language } from './languages';
 
 /**
  * The key the orchestrator seeds the candidate list under.
@@ -101,23 +102,24 @@ export function numbered(labels: string[]): string {
  * Skipped entirely when there is only one candidate: asking about a single
  * appointment is a question whose answer we already have.
  */
-export function whichSlot(verb: string): SlotDefinition {
+export function whichSlot(verbKey: 'verb_move' | 'verb_cancel'): SlotDefinition {
   return {
     name: 'which',
     aliases: ['appointment', 'booking', 'reservation'],
     skipIf: (c) => readTargets(c).length <= 1,
-    prompt: (c) =>
-      `You have more than one coming up. Which would you like to ${verb}?\n\n` +
-      numbered(readTargets(c).map((t) => `${t.label} — ${t.startLabel}`)) +
-      '\n\nReply with the number.',
-    accept: (text, c) => {
+    prompt: (c, lang) =>
+      t(lang, 'which_one_ask', {
+        verb: t(lang, verbKey),
+        list: numbered(readTargets(c).map((x) => `${x.label} — ${x.startLabel}`)),
+      }),
+    accept: (text, c, lang) => {
       const targets = readTargets(c);
-      const index = pickFromList(text, targets.map((t) => `${t.label} ${t.startLabel}`));
+      const index = pickFromList(text, targets.map((x) => `${x.label} ${x.startLabel}`));
       if (index === null) {
         return {
-          error:
-            'I did not catch which one. Please reply with the number:\n\n' +
-            numbered(targets.map((t) => `${t.label} — ${t.startLabel}`)),
+          error: t(lang, 'which_one_unclear', {
+            list: numbered(targets.map((x) => `${x.label} — ${x.startLabel}`)),
+          }),
         };
       }
       return { value: String(index) };

@@ -27,6 +27,7 @@ import {
   facilitiesForLGAAsText,
 } from '@ace/database';
 import type { FlowDefinition } from './flows';
+import { t, type Language } from './languages';
 
 export const ENROLLMENT_FLOW_NAME = 'plaschema-enrollment';
 
@@ -61,16 +62,15 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       // No `identifies`: almost any two words are a plausible name, which is
       // exactly why a name can only be corrected by being named. See the note
       // on `findCorrection`.
-      prompt: () =>
-        "Let's get you registered. What is your full name, as it should appear on your health card?",
-      accept: (text) => {
+      prompt: (_c, lang) => t(lang, 'enrol_name_ask'),
+      accept: (text, _c, lang) => {
         const value = text.trim().replace(/\s+/g, ' ');
         // Two words, because a card printed "Musa" helps nobody at a desk.
         if (value.length < 3 || !/\s/.test(value)) {
-          return { error: 'Could you give me your full name — first name and surname?' };
+          return { error: t(lang, 'enrol_name_two_words') };
         }
         if (/\d/.test(value)) {
-          return { error: 'That looks like it has numbers in it. What is your full name?' };
+          return { error: t(lang, 'enrol_name_digits') };
         }
         return { value };
       },
@@ -79,32 +79,36 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       name: 'ageOrDob',
       aliases: ['age', 'date of birth', 'dob', 'birthday'],
       identifies: (text) => /^\d{1,3}(\s*years?)?$/i.test(text.trim()),
-      prompt: (c) => `Thank you, ${firstNameOf(c.fullName)}. How old are you, or what is your date of birth?`,
-      accept: (text) => {
+      prompt: (c, lang) => t(lang, 'enrol_age_ask', { name: firstNameOf(c.fullName, lang) }),
+      accept: (text, _c, lang) => {
         const value = text.trim();
         const asAge = value.match(/\b(\d{1,3})\b/);
         if (asAge) {
           const age = Number(asAge[1]);
           if (age < 1 || age > 120) {
-            return { error: 'That age does not look right. How old are you, in years?' };
+            return { error: t(lang, 'enrol_age_implausible') };
           }
+          // Stored in English on purpose, like the plan labels below: this is a
+          // field of the enrollment RECORD, read by desk staff and sent to
+          // PLASCHEMA, not a sentence spoken to the customer. Only the
+          // questions and the errors around it change language.
           return { value: `${age} years` };
         }
         // A date in any readable form is fine — it is recorded, not computed on.
         if (/\d{4}|january|february|march|april|may|june|july|august|september|october|november|december/i.test(value)) {
           return { value };
         }
-        return { error: 'Could you tell me your age in years, or your date of birth?' };
+        return { error: t(lang, 'enrol_age_unclear') };
       },
     },
     {
       name: 'residentialAddress',
       aliases: ['address', 'street', 'house', 'where i live'],
-      prompt: () => 'What is your street address, or the area where you live?',
-      accept: (text) => {
+      prompt: (_c, lang) => t(lang, 'enrol_address_ask'),
+      accept: (text, _c, lang) => {
         const value = text.trim();
         if (value.length < 3) {
-          return { error: 'Could you give me a bit more — the street or the area you live in?' };
+          return { error: t(lang, 'enrol_address_short') };
         }
         return { value };
       },
@@ -115,16 +119,11 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       // A Plateau LGA name is unambiguous: no other field in this form takes a
       // value that resolves against the accredited list.
       identifies: (text) => canonicalLga(text) !== null,
-      prompt: () =>
-        'Which Local Government Area do you live in? For example: Jos North, Jos South, Barkin Ladi, Mangu, Shendam.',
-      accept: (text) => {
+      prompt: (_c, lang) => t(lang, 'enrol_lga_ask'),
+      accept: (text, _c, lang) => {
         const lga = canonicalLga(text);
         if (!lga) {
-          return {
-            error:
-              `I could not match that to a Plateau State LGA. Could you tell me which one you live in? ` +
-              `The full list is: ${PLATEAU_LGAS.join(', ')}.`,
-          };
+          return { error: t(lang, 'enrol_lga_unknown', { list: PLATEAU_LGAS.join(', ') }) };
         }
         return { value: lga };
       },
@@ -135,22 +134,17 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       // Deliberately excludes the bare digits the prompt offers: "3" is a valid
       // plan answer AND a valid age, so as a CORRECTION it identifies nothing.
       identifies: (text) => /formal|informal|equity|bhcpf/i.test(text),
-      prompt: () =>
-        'Which describes you best?\n\n' +
-        '1 — Formal Sector (you work for a company or government)\n' +
-        '2 — Informal Sector (self-employed, trader, farmer, artisan)\n' +
-        '3 — Equity Programme (free: pregnant, child under 5, over 65, living with a disability)\n' +
-        '4 — BHCPF (free, for the most vulnerable)\n\n' +
-        'Reply with the number or the name.',
-      accept: (text) => {
+      prompt: (_c, lang) => t(lang, 'enrol_plan_ask'),
+      accept: (text, _c, lang) => {
         const found = PLANS.find((p) => p.match.test(text));
         if (!found) {
-          return {
-            error:
-              'I did not catch which plan that is. Reply 1 for Formal Sector, 2 for Informal Sector, ' +
-              '3 for the free Equity Programme, or 4 for BHCPF.',
-          };
+          return { error: t(lang, 'enrol_plan_unclear') };
         }
+        // `found.label` is the scheme's own name for the plan and stays in
+        // English in every language, for the same reason the age does: it is
+        // the value written to the record. Every translated prompt keeps the
+        // four labels verbatim beside the numbers, so the customer is choosing
+        // from the words that will appear on their card.
         return { value: found.label };
       },
     },
@@ -161,10 +155,12 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
         getFacilitiesForLGA(c.lga ?? '').some((f) =>
           f.name.toLowerCase().includes(text.trim().toLowerCase())
         ),
-      prompt: (c) =>
-        `Which hospital or health centre in ${c.lga} would you like as your primary facility?\n\n` +
-        `Accredited options: ${facilitiesForLGAAsText(c.lga)}.`,
-      accept: (text, c) => {
+      prompt: (c, lang) =>
+        t(lang, 'enrol_facility_ask', {
+          lga: c.lga ?? '',
+          options: facilitiesForLGAAsText(c.lga),
+        }),
+      accept: (text, c, lang) => {
         const facilities = getFacilitiesForLGA(c.lga ?? '');
         const lower = text.trim().toLowerCase();
         const matched =
@@ -173,9 +169,10 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
           facilities.find((f) => lower.includes(f.name.toLowerCase()));
         if (!matched) {
           return {
-            error:
-              `That one is not on the accredited list for ${c.lga}, and a card issued against it ` +
-              `would be refused at the desk. Please choose one of: ${facilitiesForLGAAsText(c.lga ?? '')}.`,
+            error: t(lang, 'enrol_facility_unaccredited', {
+              lga: c.lga ?? '',
+              options: facilitiesForLGAAsText(c.lga ?? ''),
+            }),
           };
         }
         return { value: matched.name };
@@ -186,39 +183,33 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       optional: true,
       aliases: ['nin', 'national identification number', 'national id'],
       identifies: (text) => text.replace(/\D/g, '').length === 11,
-      prompt: () =>
-        'Last one, and it is optional: do you have your National Identification Number (NIN)? ' +
-        'It speeds things up, but we can register you without it — just say "no".',
-      accept: (text) => {
+      prompt: (_c, lang) => t(lang, 'enrol_nin_ask'),
+      accept: (text, _c, lang) => {
         const digits = text.replace(/\D/g, '');
         if (digits.length === 0) return { value: '' };
         if (digits.length !== 11) {
-          return {
-            error:
-              'A NIN is 11 digits. Could you check and send it again, or say "no" to continue without it?',
-          };
+          return { error: t(lang, 'enrol_nin_length') };
         }
         return { value: digits };
       },
     },
   ],
 
-  summarise: (c) => {
+  summarise: (c, lang) => {
     const free = /equity|bhcpf/i.test(c.planType ?? '');
-    return (
-      'Here is what I have — please check it carefully before I register you:\n\n' +
-      `• Name: ${c.fullName}\n` +
-      `• Age / DOB: ${c.ageOrDob}\n` +
-      `• Address: ${c.residentialAddress}\n` +
-      `• LGA: ${c.lga}\n` +
-      `• Plan: ${c.planType}${free ? ' (free — no payment)' : ''}\n` +
-      `• Primary facility: ${c.preferredHospital}\n` +
-      `• NIN: ${c.nin ? c.nin : 'not provided'}\n\n` +
-      'Is all of that correct? Reply *yes* to register, or tell me what to change.'
-    );
+    return t(lang, 'enrol_summary', {
+      name: c.fullName ?? '',
+      age: c.ageOrDob ?? '',
+      address: c.residentialAddress ?? '',
+      lga: c.lga ?? '',
+      plan: c.planType ?? '',
+      free: free ? t(lang, 'enrol_summary_free') : '',
+      facility: c.preferredHospital ?? '',
+      nin: c.nin ? c.nin : t(lang, 'enrol_nin_none'),
+    });
   },
 };
 
-function firstNameOf(fullName?: string): string {
-  return (fullName ?? '').trim().split(/\s+/)[0] || 'there';
+function firstNameOf(fullName: string | undefined, lang: Language): string {
+  return (fullName ?? '').trim().split(/\s+/)[0] || t(lang, 'enrol_friend');
 }

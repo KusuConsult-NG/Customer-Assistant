@@ -45,8 +45,15 @@ export const FLOW_TTL_MS = 60 * 60 * 1000;
 
 export interface SlotDefinition {
   name: string;
-  /** What to ask when this slot is the next one missing. */
-  prompt: (collected: Record<string, string>) => string;
+  /**
+   * What to ask when this slot is the next one missing.
+   *
+   * Takes the language because a form is not a place to switch to English. The
+   * assistant answers a Hausa message in Hausa everywhere else; asking the
+   * seven questions that decide somebody's healthcare in a language they did
+   * not write in is where that promise would have quietly stopped.
+   */
+  prompt: (collected: Record<string, string>, lang: Language) => string;
   /**
    * Turn what the customer said into the value to store, or return a reason it
    * cannot be accepted. Returning `{ error }` re-asks WITH the reason, which is
@@ -55,7 +62,8 @@ export interface SlotDefinition {
    */
   accept: (
     text: string,
-    collected: Record<string, string>
+    collected: Record<string, string>,
+    lang: Language
   ) => { value: string } | { error: string };
   /** Optional: skip this slot entirely given what is already collected. */
   skipIf?: (collected: Record<string, string>) => boolean;
@@ -92,7 +100,7 @@ export interface FlowDefinition {
    * customer already has, where the cost of a misread is an appointment moved
    * or gone rather than a wrong slot they can pick again.
    */
-  summarise?: (collected: Record<string, string>) => string;
+  summarise?: (collected: Record<string, string>, lang: Language) => string;
 }
 
 export interface FlowState {
@@ -251,7 +259,8 @@ export interface Correction {
 export function findNamedCorrection(
   flow: FlowDefinition,
   collected: Record<string, string>,
-  text: string
+  text: string,
+  lang: Language = 'en'
 ): Correction | null {
   if (!CORRECTION_MARKERS.some((r) => r.test(text))) return null;
 
@@ -274,7 +283,7 @@ export function findNamedCorrection(
 
   const candidate = stripNoise(best.rest);
   if (!candidate) return { slot: best.slot, value: null };
-  const parsed = best.slot.accept(candidate, collected);
+  const parsed = best.slot.accept(candidate, collected, lang);
   if ('value' in parsed && parsed.value !== collected[best.slot.name]) {
     return { slot: best.slot, value: parsed.value };
   }
@@ -284,9 +293,10 @@ export function findNamedCorrection(
 export function findCorrection(
   flow: FlowDefinition,
   collected: Record<string, string>,
-  text: string
+  text: string,
+  lang: Language = 'en'
 ): Correction | null {
-  const named = findNamedCorrection(flow, collected, text);
+  const named = findNamedCorrection(flow, collected, text, lang);
   if (named) return named;
 
   if (!CORRECTION_MARKERS.some((r) => r.test(text))) return null;
@@ -299,7 +309,7 @@ export function findCorrection(
   const claimants = answered.filter((s) => s.identifies?.(stripped, collected));
   if (claimants.length !== 1) return null;
 
-  const parsed = claimants[0].accept(stripped, collected);
+  const parsed = claimants[0].accept(stripped, collected, lang);
   if ('value' in parsed && parsed.value !== collected[claimants[0].name]) {
     return { slot: claimants[0], value: parsed.value };
   }
@@ -369,19 +379,19 @@ export function advanceFlow(
     // also names the correction, apply it; otherwise ask what to change rather
     // than restarting the whole form, which would make the customer repeat
     // five answers to fix one.
-    const correction = findCorrection(flow, collected, message);
+    const correction = findCorrection(flow, collected, message, lang);
     if (correction && correction.value === null) {
       delete collected[correction.slot.name];
       return {
         kind: 'ask',
         state: { ...state, collected, awaiting: correction.slot.name, confirming: false, updatedAt: now },
-        reply: correction.slot.prompt(collected),
+        reply: correction.slot.prompt(collected, lang),
       };
     }
     if (correction) {
       collected[correction.slot.name] = correction.value as string;
       const next: FlowState = { ...state, collected, awaiting: null, confirming: true, updatedAt: now };
-      return { kind: 'confirm', state: next, reply: flow.summarise!(collected) };
+      return { kind: 'confirm', state: next, reply: flow.summarise!(collected, lang) };
     }
     if (isNegation(message)) {
       return {
@@ -394,7 +404,7 @@ export function advanceFlow(
     return {
       kind: 'confirm',
       state: { ...state, collected, updatedAt: now },
-      reply: flow.summarise!(collected),
+      reply: flow.summarise!(collected, lang),
     };
   }
 
@@ -412,12 +422,17 @@ export function advanceFlow(
     ? flow.slots.find((s) => s.name === state.awaiting) ?? null
     : null;
 
-  const named = findNamedCorrection(flow, collected, message);
+  const named = findNamedCorrection(flow, collected, message, lang);
   if (named && named.slot.name !== state.awaiting) {
     if (named.value === null) delete collected[named.slot.name];
     else collected[named.slot.name] = named.value;
   } else if (slot) {
-    if (slot.optional && isDecline(message)) {
+    if (slot.optional && (isDecline(message) || isNegation(message))) {
+      // Both lists, because on an OPTIONAL slot they mean the same thing: "I
+      // do not have one". They are separate lists elsewhere and only DECLINE
+      // carried the non-English words, so a Hausa caller answering the NIN
+      // question with "a'a" — which is the word the Hausa prompt tells them to
+      // use — fell through to the abandon branch below and lost six answers.
       collected[slot.name] = '';
     } else if (isNegation(message)) {
       // A bare "no" to a question the flow REQUIRES an answer to is somebody
@@ -435,18 +450,18 @@ export function advanceFlow(
       // a correction word stuck to the front of it. Try it verbatim first, and
       // only strip that scaffolding if the verbatim read fails — so an answer
       // that legitimately contains "not" is never quietly rewritten.
-      let parsed = slot.accept(message, collected);
+      let parsed = slot.accept(message, collected, lang);
       if ('error' in parsed && CORRECTION_MARKERS.some((r) => r.test(message))) {
         const retry = stripNoise(message);
         if (retry) {
-          const second = slot.accept(retry, collected);
+          const second = slot.accept(retry, collected, lang);
           if ('value' in second) parsed = second;
         }
       }
       if ('error' in parsed) {
         // It is not a valid answer to the question we asked. Only now is a
         // correction to an earlier field the better reading.
-        const correction = findCorrection(flow, collected, message);
+        const correction = findCorrection(flow, collected, message, lang);
         if (correction) {
           if (correction.value === null) delete collected[correction.slot.name];
           else collected[correction.slot.name] = correction.value;
@@ -465,7 +480,7 @@ export function advanceFlow(
   } else {
     // Nothing was asked — either the message that started the flow, or one
     // arriving while every slot is already filled.
-    const correction = findCorrection(flow, collected, message);
+    const correction = findCorrection(flow, collected, message, lang);
     if (correction) {
       if (correction.value === null) delete collected[correction.slot.name];
       else collected[correction.slot.name] = correction.value;
@@ -477,7 +492,7 @@ export function advanceFlow(
     return {
       kind: 'ask',
       state: { ...state, collected, awaiting: next.name, confirming: false, updatedAt: now },
-      reply: next.prompt(collected),
+      reply: next.prompt(collected, lang),
     };
   }
 
@@ -491,6 +506,6 @@ export function advanceFlow(
   return {
     kind: 'confirm',
     state: { ...state, collected, awaiting: null, confirming: true, updatedAt: now },
-    reply: flow.summarise(collected),
+    reply: flow.summarise(collected, lang),
   };
 }
