@@ -99,11 +99,15 @@ The git marketplace layer is a separate mechanism and still works, so `.claude/s
 | Plugin | Source | Why | Always-on cost |
 |---|---|---|---|
 | `superpowers` | `obra/superpowers` | 14 skills — `systematic-debugging`, `test-driven-development`, `verification-before-completion` | ~688 tok |
-| `twilio-developer-kit` | `twilio/ai` | 57 skills across SMS, Voice, WhatsApp, webhooks — the providers this platform is built on | ~8.8k tok |
 
-The Twilio one is not free: ~8.8k tokens on every session. It earns that in a codebase whose whole customer surface is Twilio and Meta WhatsApp, but if a session is doing something unrelated it is one line in `enabledPlugins` to drop.
+**`twilio-developer-kit` (`twilio/ai`) was tried and deliberately dropped.** Its 57 skills cover SMS, Voice, WhatsApp, webhooks and TwiML — exactly the providers this platform is built on — but they cost **~8.8k tokens on every session, whatever that session is doing**, and the point of this setup was to make sessions cheaper. Twilio specifics are better fetched when a task actually needs them than carried by every session that does not. To put it back:
 
-It also ships one MCP server, `twilio-docs` — an HTTP endpoint at `mcp.twilio.com/docs`, documentation search rather than the Twilio REST API, so it cannot touch a tenant's account. It needs an OAuth flow no web session can run, so it stays unauthenticated and its tools are unavailable; the 57 skills are unaffected. Note that `claude plugin details` reports `MCP servers (0)` for this plugin and is wrong — the server is declared in `mcp.json`, not `plugin.json`.
+```bash
+claude plugin marketplace add twilio/ai --scope project
+claude plugin install twilio-developer-kit@twilio --scope project --yes
+```
+
+Two things to know if you do. It ships one MCP server, `twilio-docs` — an HTTP endpoint at `mcp.twilio.com/docs`, documentation search rather than the Twilio REST API, so it cannot touch a tenant's account; it needs an OAuth flow no web session can run, so it stays unauthenticated and its tools are unavailable while the 57 skills work fine. And `claude plugin details` reports `MCP servers (0)` for it, which is wrong — the server is declared in `mcp.json`, not `plugin.json`. Add the marketplace name to the check loop in `.claude/hooks/session-start.sh` so the hook reports it.
 
 Two things worth knowing before changing this:
 

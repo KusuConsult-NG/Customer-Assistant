@@ -266,7 +266,7 @@ fi
 # the first ten lines of a session rather than inferred later from a skill that
 # would not trigger.
 PLUGIN_ROOT="${HOME}/.claude/plugins/marketplaces"
-for mk in superpowers-dev twilio; do
+for mk in superpowers-dev; do
   if [ -d "$PLUGIN_ROOT/$mk/skills" ]; then
     # Counted by SKILL.md, not by directory: twilio groups its 57 skills into
     # category folders, so counting top-level directories reported 2.
