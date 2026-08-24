@@ -31,6 +31,34 @@ cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}" || exit 0
 
 LOG_DIR="${TMPDIR:-/tmp}/cca-session-start"
 mkdir -p "$LOG_DIR"
+STATUS_FILE="$LOG_DIR/STATUS"
+
+# ─── 0. Detach ──────────────────────────────────────────────────────────────
+# This MUST be the first thing written to stdout: it is the control message
+# that tells the harness to start the session now and let the rest of this
+# script keep running behind it. Everything below therefore races the agent
+# loop — `npx jest` fired while `prisma db push` is still in flight fails in
+# ways that read exactly like a real regression, which is the whole reason
+# wait-for-ready.sh next to this file exists. Put it in front of anything that
+# touches the database or dist/.
+printf '{"async": true, "asyncTimeout": 900000}\n'
+
+# Written before any work, so a session that starts mid-provision cannot read a
+# stale "ready" left by an earlier container and run its tests against half a
+# database.
+printf 'provisioning\n' > "$STATUS_FILE"
+printf '%s\n' "$$" > "$LOG_DIR/PID"
+
+# The PID above, not this trap, is what makes a dead hook detectable. Killing
+# this script mid-run was tested: bash blocked in a foreground child (npm
+# install) does NOT run the trap on SIGTERM, and SIGKILL cannot run one at all,
+# so the marker was left reading "provisioning" and every wait sat out its full
+# timeout reporting a hang where there had been a failure. wait-for-ready.sh
+# therefore checks the process is still alive rather than trusting this to
+# report its own death. The trap stays for the case it does cover — an
+# unexpected exit, e.g. `set -u` on an unset variable — and the grep guard
+# keeps it from overwriting an outcome already written.
+trap 'grep -qx provisioning "$STATUS_FILE" 2>/dev/null && printf "failed\n" > "$STATUS_FILE"' EXIT INT TERM
 
 READY=(); MISSING=()
 ok()   { READY+=("$1");  printf '  \033[32m*\033[0m %s\n' "$1"; }
@@ -257,4 +285,19 @@ cat <<'NEXT'
   and stale chunk URLs 404 into test failures that read like real regressions.
 
 NEXT
+
+# Released last, and only now: this is what wait-for-ready.sh is blocking on,
+# so writing it any earlier would hand the session a database that is still
+# being built. Degraded is not failed — the layers that came up are usable, and
+# naming the ones that did not is what stops the next hour being spent on a
+# missing service that looks like a bug in the code.
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  {
+    printf 'degraded\n'
+    for m in "${MISSING[@]}"; do printf -- '  - %s\n' "$m"; done
+  } > "$STATUS_FILE"
+else
+  printf 'ready\n' > "$STATUS_FILE"
+fi
+
 exit 0
