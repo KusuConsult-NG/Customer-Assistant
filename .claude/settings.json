@@ -68,20 +68,13 @@
     ]
   },
   "enabledPlugins": {
-    "superpowers@superpowers-dev": true,
-    "twilio-developer-kit@twilio": true
+    "superpowers@superpowers-dev": true
   },
   "extraKnownMarketplaces": {
     "superpowers-dev": {
       "source": {
         "source": "github",
         "repo": "obra/superpowers"
-      }
-    },
-    "twilio": {
-      "source": {
-        "source": "github",
-        "repo": "twilio/ai"
       }
     }
   }
