@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { prisma } from '@ace/database';
+import { OnboardingService } from '../onboarding/onboarding.service';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('BillingService');
@@ -51,6 +52,7 @@ const PLAN_PRICES_KOBO: Record<SubscriptionPlan, number> = Object.fromEntries(
  */
 @Injectable()
 export class BillingService {
+  constructor(private readonly onboarding: OnboardingService) {}
 
   async getSubscriptionDetails(organizationId: string) {
     const org = await prisma.organization.findUnique({
@@ -500,6 +502,24 @@ export class BillingService {
             hasOrgId: !!organizationId,
             hasPlan:  !!plan,
           });
+
+          // Paystack allows ONE webhook URL per account, so a citizen premium
+          // payment arrives here too. Until this dispatch existed it fell
+          // through the branch above and was dropped — which is survivable only
+          // because nothing was relying on it yet: the old citizen path marked
+          // people PAID straight from the browser and never waited for a
+          // webhook at all. This is now the only writer of enrollment state.
+          //
+          // An unknown reference is normal traffic (a one-off service charge),
+          // not an error, so it is logged at info and still returns 200.
+          const settlement = await this.onboarding.settleEnrolleePayment(
+            reference,
+            body.data ?? {}
+          );
+          if (settlement.settled || settlement.reason !== 'unknown_reference') {
+            log.info('enrollee_premium_webhook', { reference, ...settlement });
+            return { processed: settlement.settled, event };
+          }
           break;
         }
 

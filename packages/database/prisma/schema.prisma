@@ -195,6 +195,8 @@ model Organization {
   broadcastCampaigns   BroadcastCampaign[]
   workflows            Workflow[]
   selfieRequests       SelfieRequest[]
+  payments             Payment[]
+  auditLogs            AuditLog[]
 
   // White-label webhook settings
   webhookUrl           String?
@@ -338,6 +340,7 @@ model Contact {
   reservations   Reservation[]
   notes          Note[]
   selfieRequests SelfieRequest[]
+  payments       Payment[]
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
@@ -959,4 +962,104 @@ model HostedAgentConfig {
   updatedAt DateTime @updatedAt
 
   @@map("hosted_agent_configs")
+}
+
+/// What the payment gateway says happened. Only the gateway may move a payment
+/// to SUCCEEDED — nothing a browser sends can, which is the entire reason this
+/// model exists.
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  ABANDONED
+}
+
+/// A citizen-facing payment, recorded as its own row rather than as fields on
+/// the customer.
+///
+/// Payment state used to live in `Contact.metadata` — a nullable, freely-mutable
+/// Json column — written by an unauthenticated endpoint that took the amount
+/// from the request body and never contacted a gateway. Four properties this
+/// model provides that arrangement could not:
+///
+///  - **Idempotency.** `gatewayReference` is UNIQUE, so a replayed webhook is a
+///    P2002 rather than a silent second overwrite of the amount and timestamp.
+///  - **Something to reconcile.** One row per attempt, carrying the amount the
+///    SERVER resolved, so a gateway settlement report has a counterpart. There
+///    was previously no row to reconcile against at all.
+///  - **Survives the customer.** `contactId` is nullable and `SetNull`, not
+///    `Cascade`: deleting a contact must not destroy the record of what they
+///    paid. `organizationId` is `Restrict` for the same reason — an organization
+///    with payments cannot be deleted out from under its financial history, and
+///    that refusal is deliberate rather than an oversight.
+///  - **Money as an integer.** `amountKobo` is the gateway's own unit. Naira as
+///    a float rounds, and a rounded amount is a discrepancy nobody can explain.
+model Payment {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  /// The gateway's reference, and the idempotency key. Generated server-side:
+  /// the browser used to mint this as `PAY-PLS-${Date.now()}-${Math.random()}`.
+  gatewayReference String @unique
+  gateway          String @default("paystack")
+
+  /// Resolved server-side from the plan. Never read from the request body.
+  amountKobo Int
+  currency   String @default("NGN")
+
+  status  PaymentStatus @default(PENDING)
+  /// What this paid for, e.g. `plaschema_premium`.
+  purpose String
+
+  /// Kept verbatim for reconciliation disputes: what the gateway actually said,
+  /// not our summary of it.
+  gatewayPayload Json?
+
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([organizationId, createdAt])
+  @@index([contactId])
+  @@map("payments")
+}
+
+/// Append-only record of who changed what.
+///
+/// The only previous trace of a financial state change was a free-text `Note`
+/// created inside `.catch(() => {})` — so its failure was swallowed, and it
+/// recorded no actor, no address, no previous value and no new value, while
+/// being itself mutable and cascade-deletable.
+///
+/// Nothing in the application updates or deletes rows here. `organizationId` is
+/// `SetNull` rather than `Cascade` so that deleting a tenant does not erase the
+/// evidence of what was done to it.
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  /// Who acted: a user id, `system:<name>` for unattended writers, or
+  /// `public:<ip>` for unauthenticated callers. Never null — a row that cannot
+  /// name an actor is not an audit record.
+  actor      String
+  action     String
+  targetType String
+  targetId   String
+
+  previousValue Json?
+  newValue      Json?
+
+  requestId String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
 }

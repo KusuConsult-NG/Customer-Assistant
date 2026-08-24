@@ -8,19 +8,26 @@ import {
   AlertCircle, FileText, Printer, ArrowLeft
 } from 'lucide-react';
 
+/**
+ * What the lookup returns now.
+ *
+ * Deliberately smaller than it was. The endpoint is unauthenticated and takes
+ * only a phone number, so it used to hand anyone who asked a full record: exact
+ * name and number, LGA, preferred hospital, policy id and the complete
+ * dependants list. It now returns a masked name and what is owed — enough for
+ * the right person to recognise their record, not enough to make the endpoint a
+ * directory. `contactId` is gone from the wire entirely; the server re-resolves
+ * the enrollee from the phone number on each call.
+ */
 interface EnrolleeData {
-  contactId: string;
-  fullName: string;
-  phoneNumber: string;
+  enrollee: string;
   planType: string;
-  lga: string;
-  preferredHospital: string;
-  policyId: string;
-  amount: number;
+  plan: 'INDIVIDUAL' | 'FAMILY';
+  isEquity: boolean;
+  amountNgn: number;
   paymentStatus: string;
   enrollmentStatus: string;
-  hasPhoto: boolean;
-  dependents: Array<{ fullName: string; relationship: string }>;
+  paidAt: string | null;
 }
 
 export default function InformalPaymentPage() {
@@ -32,7 +39,7 @@ export default function InformalPaymentPage() {
   const [selectedPlan, setSelectedPlan] = useState<'INDIVIDUAL' | 'FAMILY' | 'EQUITY'>('INDIVIDUAL');
   const [equityCategory, setEquityCategory] = useState('Pregnant Mother / Maternal Care');
   const [paying, setPaying] = useState(false);
-  const [paidResult, setPaidResult] = useState<{ policyId: string; fullName: string; isEquity?: boolean } | null>(null);
+  const [paidResult, setPaidResult] = useState<{ enrollee: string; isEquity: boolean } | null>(null);
 
   const handleLookup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -51,15 +58,12 @@ export default function InformalPaymentPage() {
         setEnrollee(null);
       } else {
         setEnrollee(data);
-        if (data.isEquity || data.planType?.toLowerCase().includes('equity') || data.planType?.toLowerCase().includes('bhcpf')) {
-          setSelectedPlan('EQUITY');
-        } else if (data.planType?.toLowerCase().includes('family') || data.dependents?.length > 0) {
-          setSelectedPlan('FAMILY');
-        } else {
-          setSelectedPlan('INDIVIDUAL');
-        }
-        if (data.paymentStatus === 'PAID' || data.paymentStatus === 'WAIVED_SUBSIDIZED') {
-          setPaidResult({ policyId: data.policyId, fullName: data.fullName, isEquity: data.isEquity });
+        // The server decides which plan this enrollee is on, and returns it.
+        // The client used to infer it from the plan name and the length of the
+        // dependants list, then send back a price of its own choosing.
+        setSelectedPlan(data.isEquity ? 'EQUITY' : data.plan);
+        if (data.paymentStatus === 'PAID') {
+          setPaidResult({ enrollee: data.enrollee, isEquity: false });
         }
       }
     } catch {
@@ -69,35 +73,57 @@ export default function InformalPaymentPage() {
     }
   };
 
+  /**
+   * Hands off to Paystack, or files an equity application.
+   *
+   * What this used to do: mint a payment reference in the browser
+   * (`PAY-PLS-${Date.now()}-${Math.random()}`), post it with an amount it chose
+   * itself, and render "Coverage Activated!" on the response. The browser was
+   * the only thing asserting that money had moved.
+   *
+   * It now names a plan and nothing else. The server prices it, creates the
+   * transaction, and returns Paystack's hosted checkout URL; enrollment is
+   * written later by the signature-verified webhook. This page never learns
+   * whether payment succeeded — it cannot, and should not.
+   */
   const handlePay = async () => {
     if (!enrollee) return;
     setPaying(true);
     setError(null);
+
     const isEquity = selectedPlan === 'EQUITY';
-    const amount = isEquity ? 0 : selectedPlan === 'FAMILY' ? 50000 : 12000;
-    const ref = isEquity
-      ? `EQUITY-PLS-${Date.now()}-${Math.floor(Math.random() * 10000)}`
-      : `PAY-PLS-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const endpoint = isEquity ? 'equity-application' : 'initialize';
 
     try {
-      const res = await fetch(`${API_URL}/api/public/pay/confirm`, {
+      const res = await fetch(`${API_URL}/api/public/pay/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contactId: enrollee.contactId,
-          paymentReference: ref,
-          amount,
-          equityCategory: isEquity ? equityCategory : undefined,
-        }),
+        body: JSON.stringify(
+          isEquity
+            ? { query: query.trim(), equityCategory }
+            : { query: query.trim(), plan: selectedPlan }
+        ),
       });
       const data = await res.json();
+
       if (!res.ok) {
-        setError(data.message || 'Payment confirmation failed.');
-      } else {
-        setPaidResult({ policyId: data.policyId, fullName: data.fullName, isEquity });
+        setError(data.message || 'Could not start that request. Nothing has been charged.');
+        return;
       }
+
+      if (isEquity) {
+        setPaidResult({ enrollee: data.enrollee, isEquity: true });
+        return;
+      }
+
+      if (!data.authorizationUrl) {
+        setError('Could not reach the payment provider. Nothing has been charged.');
+        return;
+      }
+      // Leaves this page. Coverage is activated by the webhook, not by our return.
+      window.location.href = data.authorizationUrl;
     } catch {
-      setError('Failed to confirm application with the server.');
+      setError('Could not reach the PLASCHEMA payment server. Nothing has been charged.');
     } finally {
       setPaying(false);
     }
@@ -127,25 +153,19 @@ export default function InformalPaymentPage() {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                {paidResult.isEquity ? 'Equity Application Filed!' : 'Coverage Activated!'}
+                {paidResult.isEquity ? 'Equity Application Filed' : 'Premium Received'}
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                 {paidResult.isEquity
-                  ? 'Your zero-cost Equity Program application has been registered with Plateau State Government for verification.'
-                  : 'Your annual premium has been confirmed and registered with Plateau State Government.'}
+                  ? 'Your zero-cost Equity Program application has been recorded and sent to PLASCHEMA for verification. Coverage begins once it is approved — this is not yet active cover.'
+                  : 'Your premium payment has been confirmed by the payment provider and your coverage is active.'}
               </p>
             </div>
 
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-left space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500 dark:text-slate-400">Principal Enrollee:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{paidResult.fullName}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Policy / ID Number:</span>
-                <span className="font-mono font-black text-[#558A02] dark:text-[#74BA03] text-sm">
-                  {paidResult.policyId}
-                </span>
+                <span className="font-bold text-slate-900 dark:text-white">{paidResult.enrollee}</span>
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500 dark:text-slate-400">Plan Category:</span>
@@ -232,30 +252,24 @@ export default function InformalPaymentPage() {
                     <span className="text-xs font-extrabold text-[#558A02] dark:text-[#74BA03] uppercase tracking-wider flex items-center gap-1">
                       <ShieldCheck className="w-4 h-4" /> Verified Citizen Record
                     </span>
-                    <span className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
-                      {enrollee.policyId}
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {enrollee.planType}
                     </span>
                   </div>
                   <div className="font-black text-slate-900 dark:text-white text-base">
-                    {enrollee.fullName}
+                    {enrollee.enrollee}
                   </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
-                    <span>LGA: <strong>{enrollee.lga}</strong></span>
-                    <span>Facility: <strong>{enrollee.preferredHospital}</strong></span>
-                  </div>
-
-                  {enrollee.dependents?.length > 0 && (
-                    <div className="pt-2 border-t border-[#74BA03]/20">
-                      <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                        Registered Family Dependents ({enrollee.dependents.length}):
-                      </p>
-                      <ul className="text-[11px] text-slate-600 dark:text-slate-400 list-disc list-inside mt-0.5">
-                        {enrollee.dependents.map((d, i) => (
-                          <li key={i}>{d.fullName} ({d.relationship})</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {/*
+                    The name is shown masked ("Musa A.") and nothing else about
+                    the person is shown at all. This panel used to list LGA,
+                    preferred facility, policy number and every registered
+                    dependant — to anyone who typed a phone number into an
+                    unauthenticated endpoint. If this is not your record, the
+                    masked name is the signal; call the PLASCHEMA desk.
+                  */}
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Name shown partially for your privacy. Contact the PLASCHEMA desk if this is not your record.
+                  </p>
                 </div>
 
                 {/* Step 3: Choose Coverage Plan */}
