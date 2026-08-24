@@ -90,6 +90,26 @@ The session starts immediately rather than waiting out the build, which means th
 - **It always exits 0**, and reports each layer it could not bring up. A hook that fails the session start leaves no session in which to fix the hook, and a layer silently assumed present produces test failures that read exactly like real regressions.
 - **The linter here is the type checker.** There is no ESLint configuration in the repo and `apps/web`'s `next lint` would try to create one interactively; `npm run typecheck` is what actually gates the code.
 
+### Plugins: declared in the repo, because the claude.ai ones do not arrive
+
+The web container sets `SKIP_PLUGIN_MARKETPLACE=true`, so plugins enabled on claude.ai are never delivered to a session — `~/.claude/plugins/synced/` stays empty and none of their skills load. Skills sync is unaffected; only plugins are.
+
+The git marketplace layer is a separate mechanism and still works, so `.claude/settings.json` declares what this repo actually uses, as `extraKnownMarketplaces` + `enabledPlugins`:
+
+| Plugin | Source | Why | Always-on cost |
+|---|---|---|---|
+| `superpowers` | `obra/superpowers` | 14 skills — `systematic-debugging`, `test-driven-development`, `verification-before-completion` | ~688 tok |
+| `twilio-developer-kit` | `twilio/ai` | 57 skills across SMS, Voice, WhatsApp, webhooks — the providers this platform is built on | ~8.8k tok |
+
+The Twilio one is not free: ~8.8k tokens on every session. It earns that in a codebase whose whole customer surface is Twilio and Meta WhatsApp, but if a session is doing something unrelated it is one line in `enabledPlugins` to drop.
+
+It also ships one MCP server, `twilio-docs` — an HTTP endpoint at `mcp.twilio.com/docs`, documentation search rather than the Twilio REST API, so it cannot touch a tenant's account. It needs an OAuth flow no web session can run, so it stays unauthenticated and its tools are unavailable; the 57 skills are unaffected. Note that `claude plugin details` reports `MCP servers (0)` for this plugin and is wrong — the server is declared in `mcp.json`, not `plugin.json`.
+
+Two things worth knowing before changing this:
+
+- **The hook reports plugin state, it does not install it.** Plugin skills load as the session starts, which is while the hook is still running, so anything installed from the hook would first take effect in a session this container will never have. Declaring them in settings is what makes them load; the hook only says whether it worked.
+- **Only 3 of the 20 claude.ai plugins have a git source at all** (`superpowers`, `twilio-developer-kit`, `postiz`). The rest — `engineering`, `finance`, `legal`, `data` and the other first-party ones — are delivered only through the claude.ai channel and cannot be bridged this way. They are business/connector workflows rather than coding tools, so this loses nothing here.
+
 ## Architecture
 
 **Request flow**: Next.js pages call the API directly via `fetch` (`apps/web/src/lib/api.ts` builds the base URL; JWT from `localStorage.ace_token`). The NestJS API is a modular monolith — one module per domain (auth, organizations, crm, whatsapp, telephony, knowledge, scheduling, billing, workflows, analytics, events; `widget` is a retirement stub).
