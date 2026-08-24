@@ -28,7 +28,8 @@
     "selfie:reissue": "node scripts/reissue-selfie-links.js",
     "translations:export": "node scripts/export-translations.js",
     "translations:import": "node scripts/import-translations.js",
-    "parity": "node scripts/agent-parity.js"
+    "parity": "node scripts/agent-parity.js",
+    "audit:enrollments": "node scripts/audit-unverified-enrollments.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",
