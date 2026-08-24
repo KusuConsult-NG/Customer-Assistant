@@ -219,3 +219,39 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
 function firstNameOf(fullName: string | undefined, lang: Language): string {
   return (fullName ?? '').trim().split(/\s+/)[0] || t(lang, 'enrol_friend');
 }
+
+/**
+ * What an enrollment needs, as one list both engines read.
+ *
+ * ── Why this is derived rather than written down ────────────────────────────
+ *
+ * The same seven fields were spelled out in six places: the slots above, the
+ * hosted agent's `register-enrollee` parameters, that tool's `required` array,
+ * its description sentence, and twice in the agent's system prompt — once as a
+ * numbered list and once as "ALL six mandatory fields (name, age/DOB, …)".
+ *
+ * They agreed, and nothing kept them agreeing. A field added here for a card
+ * the scheme now requires would be collected on WhatsApp and never asked for on
+ * the phone, so the same citizen gets a complete record through one channel and
+ * an incomplete one through the other — and nobody finds out until a card is
+ * refused at a desk. This is the same reason `availability.ts` is one shared
+ * search: two implementations of the same question drift, and the drift lands
+ * in what customers are told.
+ *
+ * Mapped off `ENROLLMENT_FLOW.slots` itself, so it cannot describe a form the
+ * live engine does not run.
+ */
+export interface EnrollmentField {
+  name: string;
+  /** False only for the fields a caller may decline — today, just the NIN. */
+  mandatory: boolean;
+}
+
+export const ENROLLMENT_FIELDS: EnrollmentField[] = ENROLLMENT_FLOW.slots.map((slot) => ({
+  name: slot.name,
+  mandatory: !slot.optional,
+}));
+
+export const MANDATORY_ENROLLMENT_FIELDS = ENROLLMENT_FIELDS
+  .filter((f) => f.mandatory)
+  .map((f) => f.name);

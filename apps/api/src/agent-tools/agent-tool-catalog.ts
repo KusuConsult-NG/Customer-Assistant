@@ -35,6 +35,7 @@ import {
   type HeaderValue,
   type ToolParameter,
 } from './elevenlabs-contracts';
+import { ENROLLMENT_FIELDS, type EnrollmentField } from '@ace/orchestrator';
 
 /**
  * The dynamic variable holding the caller's number.
@@ -60,6 +61,121 @@ export const CALLER_VARIABLE = 'system__caller_id';
  * customer reaches for into a hard failure.
  */
 export const CONVERSATION_VARIABLE = 'system__conversation_id';
+
+/**
+ * What the agent asks a caller enrolling, derived from the flow that already
+ * asks it on WhatsApp.
+ *
+ * ── The drift this removes ──────────────────────────────────────────────────
+ *
+ * The field list lived in six places: the orchestrator's enrollment slots, this
+ * tool's parameters, its `required` array, its description sentence, and twice
+ * in the prompt below. They agreed. Nothing kept them agreeing — and the
+ * failure would have been quiet and one-sided: a field added for a card the
+ * scheme now requires gets collected on WhatsApp and never asked for on the
+ * phone, so the same citizen gets a complete record through one channel and an
+ * incomplete one through the other. Nobody learns that at a keyboard; they
+ * learn it at a desk, when the card is refused.
+ *
+ * `ENROLLMENT_FIELDS` is mapped off the live flow's own slots, so the set and
+ * which of them are mandatory can only be said once. What stays here is the
+ * WORDING, because the two audiences differ: the flow writes a question to a
+ * customer in their own language, and this writes an instruction to a model
+ * about how to ask it aloud.
+ */
+interface EnrollmentCopy {
+  /** How the prompt tells the agent to ask for it. */
+  ask: string;
+  /** The short name used in the "you have everything" sentence. */
+  short: string;
+  /** The tool parameter's description. */
+  description: string;
+}
+
+const ENROLLMENT_COPY: Record<string, EnrollmentCopy> = {
+  fullName: {
+    ask: 'Full name (as it will appear on their health ID card)',
+    short: 'name',
+    description: "The caller's full name as it will appear on their health card.",
+  },
+  ageOrDob: {
+    ask: 'Age or Date of Birth — ask: "How old are you, or what is your date of birth?"',
+    short: 'age/DOB',
+    description: "The caller's age in years or date of birth (e.g. '34 years' or '12 May 1990').",
+  },
+  residentialAddress: {
+    ask: 'Residential address — ask: "What is your street address or the area you live in?"',
+    short: 'address',
+    description: "The caller's street address, neighborhood, or village in Plateau State.",
+  },
+  lga: {
+    ask:
+      'LGA (Local Government Area in Plateau State — see approved list below). If a caller ' +
+      'misspells or mispronounces, gently clarify: "Just to confirm — did you mean [correct LGA name]?"',
+    short: 'LGA',
+    description:
+      'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu, Wase, etc.).',
+  },
+  planType: {
+    ask:
+      'Health plan type — explain simply and ask which fits: "Are you employed by a company or ' +
+      'government? Or are you self-employed, a trader or farmer? Or do you fall under our free ' +
+      'programme — for example, are you pregnant, over 65, living with a disability, or is this ' +
+      'for a child under 5?"',
+    short: 'plan',
+    description: 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.',
+  },
+  preferredHospital: {
+    ask: 'Preferred healthcare facility — read 2-3 options from the approved list for their LGA and ask which they prefer.',
+    short: 'preferred facility',
+    description:
+      'The primary hospital or healthcare facility in their LGA where they prefer to access care.',
+  },
+  nin: {
+    ask:
+      'NIN (National Identification Number — optional but helpful, ask: "Do you have your NIN ' +
+      'handy? It\'s not mandatory but it speeds things up.")',
+    short: 'NIN',
+    description: "The caller's National Identification Number (NIN), if provided.",
+  },
+};
+
+/**
+ * The fields with their wording attached, refusing rather than guessing.
+ *
+ * Throws at module load if the flow carries a field this file has no words for.
+ * That reads harsh for a prompt string, but it can only ever fire at
+ * DEVELOPMENT time: both sides are static code, so the first build or test run
+ * after somebody adds a slot fails immediately and names it. The alternative is
+ * an agent that asks for six of seven fields and sounds completely fine doing
+ * it — which is the failure this whole change exists to prevent.
+ */
+function enrollmentFields(): Array<EnrollmentField & EnrollmentCopy> {
+  const missing = ENROLLMENT_FIELDS.filter((f) => !ENROLLMENT_COPY[f.name]).map((f) => f.name);
+  if (missing.length) {
+    throw new Error(
+      `The enrollment flow collects ${missing.join(', ')}, and the agent catalogue has no wording ` +
+        `for ${missing.length === 1 ? 'it' : 'them'}. Add an entry to ENROLLMENT_COPY — the agent ` +
+        `must ask for everything the flow asks for, or the two channels build different records.`
+    );
+  }
+  return ENROLLMENT_FIELDS.map((f) => ({ ...f, ...ENROLLMENT_COPY[f.name] }));
+}
+
+/** The numbered list and the closing instruction, in the prompt's own voice. */
+function enrollmentPromptSection(): string {
+  const fields = enrollmentFields();
+  const numbered = fields.map((f, i) => `${i + 1}. ${f.ask}`).join('\n');
+  const mandatory = fields.filter((f) => f.mandatory);
+  const names = mandatory.map((f) => f.short).join(', ');
+  return (
+    'When a caller wants to join PLASCHEMA or asks about enrollment, collect these details ' +
+    'ONE AT A TIME in this exact order before calling register-enrollee:\n' +
+    `${numbered}\n\n` +
+    `Once you have every mandatory field (${names}), call register-enrollee. ` +
+    'The tool will create their record and send them a photo link on WhatsApp.'
+  );
+}
 
 export const SYSTEM_PROMPT = `You are a warm, experienced customer-care team member at {{organization_name}} who genuinely wants to help. You speak like a caring human colleague — natural, patient, never scripted — and you are honest about what you are.
 
@@ -109,16 +225,7 @@ If a tool returns an error or no result, be honest and helpful: "I wasn't able t
 
 You CAN and SHOULD register callers directly over the phone. This is your most important job. Do NOT tell callers they must visit an office or a portal — you can do it right here on this call.
 
-When a caller wants to join PLASCHEMA or asks about enrollment, collect these details ONE AT A TIME in this exact order before calling register-enrollee:
-1. Full name (as it will appear on their health ID card)
-2. Age or Date of Birth — ask: "How old are you, or what is your date of birth?"
-3. Residential address — ask: "What is your street address or the area you live in?"
-4. LGA (Local Government Area in Plateau State — see approved list below). If a caller misspells or mispronounces, gently clarify: "Just to confirm — did you mean [correct LGA name]?"
-5. Health plan type — explain simply and ask which fits: "Are you employed by a company or government? Or are you self-employed, a trader or farmer? Or do you fall under our free programme — for example, are you pregnant, over 65, living with a disability, or is this for a child under 5?"
-6. Preferred healthcare facility — read 2-3 options from the approved list for their LGA and ask which they prefer.
-7. NIN (National Identification Number — optional but helpful, ask: "Do you have your NIN handy? It's not mandatory but it speeds things up.")
-
-Once you have ALL six mandatory fields (name, age/DOB, address, LGA, plan, preferred facility), call register-enrollee. The tool will create their record and send them a photo link on WhatsApp.
+${enrollmentPromptSection()}
 
 ## Family Enrollment
 
@@ -333,19 +440,19 @@ export function agentToolCatalog(
 
     'register-enrollee': build(
       'register-enrollee',
-      'Register a new PLASCHEMA enrollee online. Call this ONLY after you have collected: fullName, ageOrDob, residentialAddress, lga, planType, and preferredHospital. Never call this tool early or with missing details.',
+      // The sentence names the same fields the prompt asks for and the flow
+      // collects, because all three read one list.
+      `Register a new PLASCHEMA enrollee online. Call this ONLY after you have collected: ${
+        enrollmentFields().filter((f) => f.mandatory).map((f) => f.name).join(', ')
+      }. Never call this tool early or with missing details.`,
       {
         phoneNumber: callerPhone,
-        fullName: askedOf('string', "The caller's full name as it will appear on their health card."),
-        ageOrDob: askedOf('string', "The caller's age in years or date of birth (e.g. '34 years' or '12 May 1990')."),
-        residentialAddress: askedOf('string', "The caller's street address, neighborhood, or village in Plateau State."),
-        lga: askedOf('string', 'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu, Wase, etc.).'),
-        planType: askedOf('string', 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.'),
-        preferredHospital: askedOf('string', 'The primary hospital or healthcare facility in their LGA where they prefer to access care.'),
-        nin: askedOf('string', "The caller's National Identification Number (NIN), if provided."),
+        ...Object.fromEntries(
+          enrollmentFields().map((f) => [f.name, askedOf('string', f.description)])
+        ),
         notes: askedOf('string', 'Any additional notes, such as family size or employer name.'),
       },
-      ['fullName', 'ageOrDob', 'residentialAddress', 'lga', 'planType', 'preferredHospital']
+      enrollmentFields().filter((f) => f.mandatory).map((f) => f.name)
     ),
 
     handoff: build(

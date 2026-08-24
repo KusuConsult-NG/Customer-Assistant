@@ -34,6 +34,7 @@ import {
   type AgentOrganization,
 } from '../src/agent-tools/agent-tool-catalog';
 import { fromSecret } from '../src/agent-tools/elevenlabs-contracts';
+import { ENROLLMENT_FLOW, ENROLLMENT_FIELDS, MANDATORY_ENROLLMENT_FIELDS } from '@ace/orchestrator';
 
 const BASE = 'https://api.example.test';
 const SECRET = 'secret_abc123';
@@ -213,6 +214,79 @@ describe('Agent tool catalogue', () => {
     for (const tool of all) {
       expect(cfg(tool).description.length).toBeGreaterThan(40);
     }
+  });
+});
+
+/**
+ * The two engines must ask a citizen for the same things.
+ *
+ * The enrollment field list used to be written out six times — the flow's
+ * slots, this tool's parameters, its `required` array, its description, and
+ * twice in the prompt. They agreed, and nothing kept them agreeing. The
+ * failure would have been one-sided and quiet: a field added for a card the
+ * scheme now requires would be collected on WhatsApp and never asked for on
+ * the phone, so the same person gets a complete record through one channel and
+ * an incomplete one through the other, and finds out at a desk.
+ *
+ * These tests read the FLOW and check the agent against it, so they fail if
+ * the two ever describe different forms — which is the whole point.
+ */
+describe('the agent asks for what the flow collects', () => {
+  const catalog = agentToolCatalog({
+    baseUrl: BASE,
+    authorization: fromSecret(SECRET),
+    namePrefix: ORG.slug,
+  });
+  const schema = (catalog['register-enrollee'] as any).toolConfig.apiSchema.requestBodySchema;
+
+  it('takes a parameter for every field the flow collects', () => {
+    for (const field of ENROLLMENT_FIELDS) {
+      expect(Object.keys(schema.properties)).toContain(field.name);
+    }
+  });
+
+  it('requires exactly the fields the flow treats as mandatory', () => {
+    // Not a superset and not a subset. Requiring something optional makes the
+    // agent refuse a caller with no NIN; requiring less writes a record the
+    // scheme cannot issue a card against.
+    expect([...schema.required].sort()).toEqual([...MANDATORY_ENROLLMENT_FIELDS].sort());
+  });
+
+  it('names the mandatory fields in the tool description, from the same list', () => {
+    for (const name of MANDATORY_ENROLLMENT_FIELDS) {
+      expect((catalog['register-enrollee'] as any).toolConfig.description).toContain(name);
+    }
+  });
+
+  it('asks for every field in the prompt, in the order the flow asks them', () => {
+    const section = SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf('When a caller wants to join'));
+    const numbered = section.split('\n').filter((l) => /^\d+\. /.test(l));
+    expect(numbered).toHaveLength(ENROLLMENT_FIELDS.length);
+
+    // Order matters to the caller: the LGA is asked before the facility
+    // because the accredited list is per-LGA, so the other order validates a
+    // hospital against nothing.
+    const lga = numbered.findIndex((l) => /LGA/.test(l));
+    const facility = numbered.findIndex((l) => /facility/i.test(l));
+    expect(lga).toBeGreaterThanOrEqual(0);
+    expect(lga).toBeLessThan(facility);
+  });
+
+  it('does not state a field count that a new field would falsify', () => {
+    // It used to say "ALL six mandatory fields". A seventh would have left
+    // that sentence quietly wrong, and prose does not fail a build.
+    const section = SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf('When a caller wants to join'));
+    expect(section).not.toMatch(/ALL (one|two|three|four|five|six|seven|eight|nine|\d+) mandatory/i);
+    expect(section).toContain('every mandatory field');
+  });
+
+  it('still matches the flow the live engine actually runs', () => {
+    // ENROLLMENT_FIELDS is mapped off the slots, so this pins the mapping
+    // rather than a copy of it.
+    expect(ENROLLMENT_FIELDS.map((f) => f.name)).toEqual(ENROLLMENT_FLOW.slots.map((s) => s.name));
+    expect(MANDATORY_ENROLLMENT_FIELDS).toEqual(
+      ENROLLMENT_FLOW.slots.filter((s) => !s.optional).map((s) => s.name)
+    );
   });
 });
 

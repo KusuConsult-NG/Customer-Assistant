@@ -21,7 +21,10 @@ import {
 } from './flows';
 export * from './flows';
 import { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
-export { ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME } from './enrollment-flow';
+export {
+  ENROLLMENT_FLOW, ENROLLMENT_FLOW_NAME,
+  ENROLLMENT_FIELDS, MANDATORY_ENROLLMENT_FIELDS, type EnrollmentField,
+} from './enrollment-flow';
 import {
   RESCHEDULE_FLOW, RESCHEDULE_FLOW_NAME, OPTIONS_KEY, chosenOption,
   type RescheduleOption,
