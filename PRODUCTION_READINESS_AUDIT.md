@@ -156,3 +156,29 @@ No area is marked PASS. Under the brief's evidence rule, nothing verified only b
 ---
 
 *Static source audit. No code was modified, no validation weakened, no test removed or skipped.*
+
+---
+
+## Addendum — re-verified 2026-08-24 against `db0d149`
+
+Added when this document was moved onto `main`. The audit above is unchanged; this records only whether it still holds.
+
+The audit was written against `d8c46a0` on 2026-08-21. `main` has advanced ten pull requests since (#38–#47). **None of them touched this code path, and all seven defects are present today**, re-checked individually against `db0d149`:
+
+| Defect | Status | Where it is now |
+|---|---|---|
+| DEF-01 | Present | `onboarding.controller.ts:124` — `PublicPaymentController`, still no `@UseGuards`; `confirmEnrolleePayment` still writes `PAID` with no gateway call in the path |
+| DEF-02 | Present | `onboarding.service.ts:479` `findFirst` and `:524` `findUnique({where:{id}})` — still no `organizationId` |
+| DEF-03 | Present | Lookup still returns the dependants list; `id: { startsWith: q.toLowerCase() }` still matches on 3 characters |
+| DEF-04 | Present | 28 models in `schema.prisma`, none named Payment/Transaction/Receipt/Invoice/Ledger |
+| DEF-05 | Present | No `AuditLog` model; the `Note` write is still inside `.catch(() => {})` |
+| DEF-06 | Present | No test file references the path — only the two source files and their build artifacts |
+| DEF-07 | Present | `PRODUCTION_CERTIFICATION.md:24` still reads "100% verified and defect-free"; `:33` still marks Authentication & Authorization **PASS** |
+
+One check worth recording, because it is the thing that would have made DEF-01/02/03 false: **there is no global authentication guard.** The only `APP_GUARD` is `ThrottlerGuard` (`app.module.ts:66`), which rate-limits and does not authenticate, and the codebase has no `@Public()` / `IS_PUBLIC` opt-out mechanism. A controller without `@UseGuards` is therefore genuinely unauthenticated, exactly as §4 states.
+
+`amount` is still taken from the request body and written straight to the record. `lookupEnrolleeForPayment` does resolve the real premium server-side (₦12,000 / ₦50,000 / ₦0), but `confirm` never consults it, so the server-side figure constrains nothing.
+
+§1 (audited system ≠ described system) is a finding about the certification brief rather than the code, and is not re-assessed here. This repository is still Customer Care Agent.
+
+**Nothing in this addendum reduces any severity.** Whether DEF-01/02/03 are an active incident or a backlog item still depends on one fact this document cannot establish: whether `/pay/informal` is deployed and reachable.
