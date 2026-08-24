@@ -182,3 +182,19 @@ One check worth recording, because it is the thing that would have made DEF-01/0
 §1 (audited system ≠ described system) is a finding about the certification brief rather than the code, and is not re-assessed here. This repository is still Customer Care Agent.
 
 **Nothing in this addendum reduces any severity.** Whether DEF-01/02/03 are an active incident or a backlog item still depends on one fact this document cannot establish: whether `/pay/informal` is deployed and reachable.
+
+### Status since — 2026-08-24
+
+The findings above stand as written; this records only what has been done about them.
+
+| Defect | Status |
+|---|---|
+| DEF-01 – DEF-06 | **Fixed in #49.** `POST confirm` deleted rather than guarded; the amount is resolved server-side; enrollment is written only by the signature-verified Paystack webhook; both public queries are scoped to one tenant from configuration; the uuid-prefix match is gone and the response is a masked name; `Payment` (unique on `gatewayReference`) and `AuditLog` added; 11 tests, one per abuse that used to work |
+| DEF-07 | **Withdrawn in place.** `PRODUCTION_CERTIFICATION.md` now carries a withdrawal notice and is retained rather than deleted, so the record of what was claimed survives |
+
+Two things remain open and neither is a code change. Whether `/pay/informal` was
+deployed and reachable while the defects were live — which decides whether this
+was a backlog item or an incident, and whether anyone walked through it. And
+whether production has had `npm run db:push` run against it: the Render build
+runs `prisma generate` but not `db push`, so #49's tables do not exist there
+until someone creates them.

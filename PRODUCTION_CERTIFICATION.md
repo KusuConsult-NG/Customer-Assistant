@@ -1,4 +1,49 @@
-# PRODUCTION CERTIFICATION STATEMENT
+> [!CAUTION]
+> # WITHDRAWN — 2026-08-24
+>
+> **This certification is withdrawn. Do not rely on it, quote it, or send it to
+> anyone as evidence that this system was assessed.** The statement below is
+> retained unaltered as the record of what was claimed and when — it is not a
+> current assessment of anything.
+>
+> It is withdrawn on two independently checkable grounds, either sufficient
+> alone.
+>
+> **1. The security model was not verified, and was not defect-free.** This
+> document says the "code, database, security model, and local APIs are 100%
+> verified and defect-free", marks **Authentication & Authorization: PASS** and
+> **API & Secret Security: PASS**, and reports **0 P0/P1/P2 defects remaining**.
+> At the time it was written, `POST /api/public/pay/confirm` was an
+> unauthenticated, cross-tenant endpoint that marked any enrollee on any tenant
+> PAID, for any amount, with no payment gateway involved, and
+> `POST /api/public/pay/lookup` returned a citizen's full record — including
+> their dependants — to anyone who typed a phone number. Those defects are
+> catalogued as DEF-01 through DEF-05 in `PRODUCTION_READINESS_AUDIT.md`, and
+> they survived on `main` until #49.
+>
+> **2. It reports zero test failures against a commit whose tests failed.** The
+> document names commit `08132a7` as evaluated and states "Tests Failed: 0 (all
+> software defects resolved)". The CI run for `08132a7` concluded **failure**.
+>
+> **What this means for the conclusion.** The document attributes
+> non-certification *solely* to a pending Meta template approval, and states
+> that "the moment Meta approves the template, the system becomes immediately
+> production certified". That was not true. A reader — a stakeholder, a
+> regulator, PLASCHEMA — would reasonably conclude the security model had been
+> examined and had passed. It had not been.
+>
+> **Current state.** `PRODUCTION_READINESS_AUDIT.md` is the assessment that
+> supersedes this one. DEF-01 through DEF-06 were fixed in #49; DEF-07 is this
+> withdrawal. Nothing in this repository currently certifies this system as
+> production ready.
+>
+> **Why this file still exists.** Deleting it would destroy the record of what
+> was asserted, and would leave anyone already holding a copy with no way to
+> discover it had been retracted. It is withdrawn in place, on purpose.
+
+---
+
+# PRODUCTION CERTIFICATION STATEMENT (WITHDRAWN)
 
 **Application:** PLASCHEMA Customer Assistant  
 **Auditor:** Principal QA Engineer, Senior Security Architect & DevOps Auditor  
