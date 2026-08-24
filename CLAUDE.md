@@ -73,6 +73,23 @@ Three things that cost real debugging time:
 
 The Playwright suite registers its own org through the real API and injects the JWT into localStorage before each page load — every dashboard page is behind the layout auth guard, so tests cannot simply `goto()` a page. The app shell renders its own `<h1>Customer Care Agent</h1>`, so bare `h1` locators are strict-mode ambiguous; filter by text.
 
+### Claude Code on the web: none of the above has to be done by hand
+
+`.claude/hooks/session-start.sh` runs the whole recipe above at session start — install, `prisma generate`, PostgreSQL 16 + `ace_dev`, `db push`, the EXCLUDE migrations, Redis, `turbo run build` — and exports the resulting `.env` into the session's shell so the package suites find `DATABASE_URL`. A web session therefore begins with `npm run verify` already runnable, instead of spending its first several minutes rebuilding the stack out of this file.
+
+**It is async, so the stack is still being built while the session runs. Gate on it:**
+
+```bash
+./.claude/hooks/wait-for-ready.sh && npm run verify
+```
+
+The session starts immediately rather than waiting out the build, which means the agent loop races the hook. A suite run before `turbo run build` has written `dist/`, or a query issued before `prisma db push` finishes, fails in exactly the way a real regression does — and that misreading is expensive here, which is what the wait script is for. It blocks until provisioning finishes, prints `ready` or the specific gaps, and exits non-zero only if provisioning actually failed; degraded still exits 0, because everything that did come up is still worth debugging against. Off the web container it is a no-op.
+
+- **It only runs when `CLAUDE_CODE_REMOTE=true`.** A local machine has its own PostgreSQL and its own `.env`, and the hook has no business touching either.
+- **It refuses a non-local `DATABASE_URL`** rather than pushing schema into it — same reason as the warning above.
+- **It always exits 0**, and reports each layer it could not bring up. A hook that fails the session start leaves no session in which to fix the hook, and a layer silently assumed present produces test failures that read exactly like real regressions.
+- **The linter here is the type checker.** There is no ESLint configuration in the repo and `apps/web`'s `next lint` would try to create one interactively; `npm run typecheck` is what actually gates the code.
+
 ## Architecture
 
 **Request flow**: Next.js pages call the API directly via `fetch` (`apps/web/src/lib/api.ts` builds the base URL; JWT from `localStorage.ace_token`). The NestJS API is a modular monolith — one module per domain (auth, organizations, crm, whatsapp, telephony, knowledge, scheduling, billing, workflows, analytics, events; `widget` is a retirement stub).
