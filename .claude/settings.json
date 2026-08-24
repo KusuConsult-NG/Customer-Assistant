@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run verify:*)",
+      "Bash(npm run certify:*)",
+      "Bash(npm run parity:*)",
+      "Bash(npm run demo:readiness:*)",
+      "Bash(npm run db:generate:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(npm run db:seed:gatekipa:*)",
+      "Bash(npm install:*)",
+      "Bash(npx turbo run build:*)",
+      "Bash(npx turbo run lint:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(node scripts/:*)",
+      "Bash(node test/run-test.js:*)",
+      "Bash(node -e:*)",
+      "Bash(node -p:*)",
+      "Bash(./scripts/verify-all.sh:*)",
+      "Bash(./scripts/dev-setup.sh:*)",
+      "Bash(psql:*)",
+      "Bash(pg_isready:*)",
+      "Bash(pg_lsclusters:*)",
+      "Bash(redis-cli:*)",
+      "Bash(curl -s http://localhost:*)",
+      "Bash(curl -s http://127.0.0.1:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(sed -n:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(which:*)",
+      "Bash(df:*)",
+      "Bash(du:*)"
+    ]
+  }
+}
