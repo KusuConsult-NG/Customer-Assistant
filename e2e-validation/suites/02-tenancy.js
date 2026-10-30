@@ -226,11 +226,33 @@ module.exports = async function () {
     return res.status === 403 ? { ok: true } : { expected: '403', actual: `${res.status} — AGENT CAN MINT WIDGET KEYS` };
   }, 'CRITICAL');
 
-  await check('TEN-054', 'AGENT cannot activate a paid plan for free', async () => {
-    const res = await api('POST', '/api/billing/activate', { token: agent.token, body: { plan: 'ENTERPRISE' } });
-    const org = await prisma.organization.findUnique({ where: { id: A.orgId } });
-    if (org.subscriptionPlan === 'ENTERPRISE') return { expected: 'refused', actual: 'AGENT SELF-UPGRADED TO ENTERPRISE' };
-    return res.status === 403 ? { ok: true, evidence: '403' } : { expected: '403', actual: `${res.status} (plan unchanged)` };
+  // What stood here probed POST /api/billing/activate — an AGENT granting
+  // themselves the ENTERPRISE plan for free. That route and the whole
+  // subscription surface were removed when the platform was repurposed for the
+  // State, so the check was asserting a 403 against a 404 and reading columns
+  // that no longer exist.
+  //
+  // The self-grant that still matters is the one that crosses the agency
+  // boundary. Platform-operator status reads across every ministry, and it is
+  // closed by the SCHEMA rather than by a guard: `isPlatformAdmin` is a
+  // separate column and deliberately not a `UserRole` value, so this endpoint
+  // cannot express it. Worth proving over HTTP with a real OWNER token,
+  // because the endpoint takes `role: any` and hands it straight to Prisma —
+  // the refusal comes from the column type, not from any code here.
+  await check('TEN-054', 'An agency OWNER cannot grant platform-operator status to anyone', async () => {
+    const res = await api('PATCH', `/api/organizations/members/${agent.userId}/role`, {
+      token: A.token, body: { role: 'PLATFORM_ADMIN' },
+    });
+    const after = await prisma.user.findUnique({
+      where: { id: agent.userId }, select: { isPlatformAdmin: true, role: true },
+    });
+    if (after.isPlatformAdmin) {
+      return { expected: 'refused', actual: 'AN AGENCY OWNER MINTED A PLATFORM OPERATOR' };
+    }
+    if (res.status === 200) {
+      return { expected: 'not 200', actual: `PLATFORM_ADMIN accepted as a tenant role (now ${after.role})` };
+    }
+    return { ok: true, evidence: `${res.status}, isPlatformAdmin=false, role=${after.role}` };
   }, 'CRITICAL');
 
   await check('TEN-055', 'VIEWER cannot delete knowledge documents', async () => {
