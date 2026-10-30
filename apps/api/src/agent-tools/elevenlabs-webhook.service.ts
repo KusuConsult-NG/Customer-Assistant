@@ -46,7 +46,7 @@ const log = new AceLogger('ElevenLabsWebhook');
  *   1. ElevenLabs WhatsApp outbound message — uses POST /v1/convai/whatsapp/outbound-message.
  *      Requires: (a) a WhatsApp Business Account imported in the ElevenLabs dashboard
  *      at elevenlabs.io/app/agents/whatsapp, (b) a Meta-approved message template named
- *      "plaschema_selfie_request" with body params [name, link], and (c)
+ *      the agency's approved template with body params [name, link], and (c)
  *      ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID set in .env (copied from ElevenLabs dashboard).
  *      WhatsApp requires an approved template for the FIRST outbound message to any user;
  *      once they reply, free-form messages are allowed in the 24-h window.
@@ -95,7 +95,7 @@ async function sendPostCallLink(
   // Prerequisites:
   //  • WhatsApp Business Account imported at elevenlabs.io/app/agents/whatsapp
   //  • ELEVENLABS_WHATSAPP_PHONE_NUMBER_ID set in .env (from the ElevenLabs dashboard)
-  //  • Meta-approved template "plaschema_selfie_request" (create in WhatsApp Manager)
+  //  • a Meta-approved template in the agency's own WhatsApp Manager
   //
   // WhatsApp only allows template messages for the first contact with a user.
   // Once the user replies, 24-hour free-form window opens.
@@ -186,8 +186,9 @@ async function sendPostCallLink(
  * Docs: https://elevenlabs.io/docs/eleven-agents/api-reference/whats-app/outbound-message
  *
  * WhatsApp REQUIRES a Meta-approved template for the first message to any user.
- * Template "plaschema_selfie_request" must be created in WhatsApp Manager with
- * two named body variables: {{name}} and {{link}}.
+ * The template is approved inside the AGENCY's own Meta account and named by
+ * ELEVENLABS_WHATSAPP_TEMPLATE_NAME; it must carry two positional body
+ * variables. Unset, this returns false and SMS carries the link instead.
  *
  * whatsapp_user_id must be digits-only E.164 without the leading + (per ElevenLabs docs).
  *   +2348033445566 → "2348033445566"
@@ -204,6 +205,20 @@ async function sendViaElevenLabsWhatsApp(
   correlationId: string,
   contactId: string
 ): Promise<boolean> {
+  // No platform default. A template is approved inside ONE agency's Meta
+  // account, so a hardcoded fallback meant every other agency sent against a
+  // name that does not exist in theirs — rejected by Meta, logged as a
+  // template error, and indistinguishable from the approval genuinely being
+  // pending. Unconfigured, we skip the template send and let SMS carry it.
+  const templateName = process.env.ELEVENLABS_WHATSAPP_TEMPLATE_NAME?.trim();
+  if (!templateName) {
+    log.info('post_call_whatsapp_no_template', {
+      correlationId, contactId,
+      reason: 'ELEVENLABS_WHATSAPP_TEMPLATE_NAME is not set for this deployment.',
+    });
+    return false;
+  }
+
   try {
     // whatsapp_user_id: digits-only, country code, no leading + (ElevenLabs docs requirement)
     const waUserId = toPhone.replace(/^\+/, '').replace(/\D/g, '');
@@ -213,7 +228,7 @@ async function sendViaElevenLabsWhatsApp(
       whatsapp_phone_number_id: waPhoneNumberId,
       whatsapp_user_id: waUserId,
       // Template must be pre-approved in WhatsApp Manager (business.facebook.com)
-      template_name: process.env.ELEVENLABS_WHATSAPP_TEMPLATE_NAME ?? 'plaschema_selfie_request',
+      template_name: templateName,
       template_language_code: process.env.ELEVENLABS_WHATSAPP_TEMPLATE_LANG ?? 'en',
       // template_params: positional parameters matching {{1}}, {{2}} in the template body.
       // Meta ONLY accepts {{1}}, {{2}} numbering — named variables ({{name}}) are rejected.
@@ -268,7 +283,8 @@ async function sendViaElevenLabsWhatsApp(
  * Docs: https://elevenlabs.io/docs/eleven-agents/api-reference/whats-app/outbound-call
  *
  * Meta requires a pre-approved "call permission request" template to be sent first.
- * Create template "plaschema_call_request" in WhatsApp Manager (Category: Utility).
+ * The template is named by ELEVENLABS_WHATSAPP_CALL_TEMPLATE_NAME and approved
+ * in the agency's own WhatsApp Manager (Category: Utility).
  *
  * Use this to proactively call a patient via WhatsApp without going through Twilio —
  * e.g. follow-up after a missed enrollment, appointment reminders, etc.
@@ -294,7 +310,7 @@ export async function initiateWhatsAppCall(
       whatsapp_user_id: waUserId,
       // Meta requires a pre-approved template to request call permission
       whatsapp_call_permission_request_template_name:
-        process.env.ELEVENLABS_WHATSAPP_CALL_TEMPLATE_NAME ?? 'plaschema_call_request',
+        process.env.ELEVENLABS_WHATSAPP_CALL_TEMPLATE_NAME ?? '',
       whatsapp_call_permission_request_template_language_code:
         process.env.ELEVENLABS_WHATSAPP_CALL_TEMPLATE_LANG ?? 'en',
     };

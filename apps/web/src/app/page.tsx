@@ -235,7 +235,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-[#74BA03]/10 via-[#558A02]/10 to-[#74BA03]/5 border border-[#74BA03]/30 dark:border-[#74BA03]/20 shadow-sm">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-[#558A02] dark:text-[#74BA03] mb-1 uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5" /> PLASCHEMA Helpline Command Center
+            <Sparkles className="w-3.5 h-3.5" /> Service Dashboard
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             {firstName ? `Welcome back, ${firstName}` : 'Welcome back'} 👋

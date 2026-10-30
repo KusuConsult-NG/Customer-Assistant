@@ -1,8 +1,12 @@
 /**
- * PLASCHEMA enrollment, as a conversation.
+ * Service registration, as a conversation.
  *
- * This is the flow the whole platform exists for, and until now it could not be
- * completed on WhatsApp at all — the only implementation was the agent tool,
+ * SCHEME-SPECIFIC, and knowingly so. The plans below and the facility list this
+ * reads are the State health scheme's; no other agency uses them. Making
+ * registration configurable per agency is outstanding work recorded in
+ * PROVENANCE.md — this flow is the thing to generalise, not to copy.
+ *
+ * Until now it could not be completed on WhatsApp at all — the only implementation was the agent tool,
  * which works because a language model holds the half-filled form in its head.
  * The live engine had no such memory, so a citizen asking to register got a
  * generic appointment booked instead.
@@ -29,6 +33,13 @@ import {
 import type { FlowDefinition } from './flows';
 import { t, type Language } from './languages';
 
+/**
+ * The STORED name of this flow. It is written into `Conversation.flowState` and
+ * read back to resume a half-finished form, so renaming it would strand every
+ * citizen currently part-way through one — they would be asked everything
+ * again. Kept for the same reason the `ace_` identifiers are: it is functional,
+ * not a display string. `ENROLLMENT_FLOW.title` is what staff actually see.
+ */
 export const ENROLLMENT_FLOW_NAME = 'plaschema-enrollment';
 
 /** The plans a caller can choose, and the words that pick each one. */
@@ -54,7 +65,7 @@ function canonicalLga(text: string): string | null {
 
 export const ENROLLMENT_FLOW: FlowDefinition = {
   name: ENROLLMENT_FLOW_NAME,
-  title: 'PLASCHEMA enrollment',
+  title: 'Service registration',
 
   slots: [
     {
@@ -91,8 +102,8 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
             return { error: t(lang, 'enrol_age_implausible') };
           }
           // Stored in English on purpose, like the plan labels below: this is a
-          // field of the enrollment RECORD, read by desk staff and sent to
-          // PLASCHEMA, not a sentence spoken to the customer. Only the
+          // field of the registration RECORD, read by desk staff and passed to
+          // the agency, not a sentence spoken to the customer. Only the
           // questions and the errors around it change language.
           return { value: `${age} years` };
         }

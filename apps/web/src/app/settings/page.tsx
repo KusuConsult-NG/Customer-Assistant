@@ -78,7 +78,7 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Helpline Settings
+          <Settings className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Agency Settings
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure your official helpline identity, telephony carrier credentials, and Sarah Voice Agent parameters.</p>
       </div>

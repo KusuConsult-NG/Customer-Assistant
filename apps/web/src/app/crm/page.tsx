@@ -355,12 +355,12 @@ export default function CrmPage() {
       
       {/* Digital ID Card Preview Modal */}
       {cardHtml && (
-        <ModalWrapper title="PLASCHEMA Digital ID & Proof of Coverage" onClose={() => setCardHtml(null)}>
+        <ModalWrapper title="Digital Identity Card" onClose={() => setCardHtml(null)}>
           <div className="space-y-4 py-2">
             <div className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 p-2 shadow-2xl flex justify-center">
               <iframe
                 srcDoc={cardHtml}
-                title="PLASCHEMA Digital ID"
+                title="Digital Identity Card"
                 className="w-full h-[520px] rounded-xl border-0"
               />
             </div>

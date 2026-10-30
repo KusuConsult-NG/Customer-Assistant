@@ -107,7 +107,7 @@ export interface FlowDefinition {
   name: string;
   slots: SlotDefinition[];
   /**
-   * What this form is called when shown to staff — "PLASCHEMA enrollment".
+   * What this form is called when shown to staff — "SLASCHEMA enrollment".
    * Falls back to the flow's own name, which is a slug and reads like one.
    */
   title?: string;
@@ -193,7 +193,7 @@ export const isDecline = (text: string) => DECLINE.some((r) => r.test(text ?? ''
  * ── What this is for ────────────────────────────────────────────────────────
  *
  * Asking for a person ALWAYS wins over a flow — that is the rule that keeps a
- * form from being a trap. But it meant a customer six answers into PLASCHEMA
+ * form from being a trap. But it meant a customer six answers into a
  * enrollment could say "let me speak to someone", and the operator who picked
  * the conversation up saw the message thread and nothing else: `flowState`
  * lived on the Conversation row and never left the orchestrator. So the

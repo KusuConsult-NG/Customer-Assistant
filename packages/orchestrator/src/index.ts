@@ -1930,7 +1930,7 @@ export class ConversationOrchestrator {
    *
    * Booking used to take the next free slot and write it, then say which slot
    * it had taken. Honest and reversible, but still a time nobody chose — and
-   * the cost lands on the people least able to absorb it. A PLASCHEMA enrollee
+   * the cost lands on the people least able to absorb it. A citizen
    * travels to a facility; "we have put you down for Tuesday 11:00" to somebody
    * who can only come after work is an appointment they will miss and a slot
    * the clinic holds empty.

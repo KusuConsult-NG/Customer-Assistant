@@ -30,7 +30,8 @@ const mockPrisma = {
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/availability'),
-  ...jest.requireActual('../../database/src/plaschema-facilities'),
+  ...jest.requireActual('../../database/src/state-geography'),
+  ...jest.requireActual('../../database/src/service-locations'),
   prisma: mockPrisma,
   Prisma: { DbNull: null },
 }));
@@ -61,7 +62,7 @@ describe('describing an enrollment in progress', () => {
   it('names the form and the answers already given, in the order they were asked', () => {
     const snap = describeConversationFlow(state, now)!;
 
-    expect(snap.title).toBe('PLASCHEMA enrollment');
+    expect(snap.title).toBe('Service registration');
     expect(snap.answered.map((a) => [a.label, a.value])).toEqual([
       ['Full name', 'Amina Yusuf'],
       ['Age / date of birth', '34 years'],

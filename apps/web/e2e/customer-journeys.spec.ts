@@ -79,7 +79,7 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J2: Telephony Dashboard & Voice Simulator', async ({ page }) => {
     await page.goto('/telephony');
-    await expect(pageHeading(page, /PLASCHEMA.*Helpline/i)).toBeVisible();
+    await expect(pageHeading(page, /Telephone Service/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Start Demo Simulation/i })).toBeVisible();
   });
 
@@ -91,7 +91,7 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J5 & J6: Scheduling & Refund Request Management', async ({ page }) => {
     await page.goto('/scheduling');
-    await expect(pageHeading(page, /PLASCHEMA Enrolment & Clinic Appointments/i)).toBeVisible();
+    await expect(pageHeading(page, /Appointments & Reservations/i)).toBeVisible();
   });
 
   test('J7: Settings & Team Management', async ({ page }) => {
@@ -106,7 +106,7 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J10: Workflows Automation Engine', async ({ page }) => {
     await page.goto('/workflows');
-    await expect(pageHeading(page, /PLASCHEMA Helpline Automation Workflows/i)).toBeVisible();
+    await expect(pageHeading(page, /Automation Workflows/i)).toBeVisible();
   });
 
   test('Auth guard: unauthenticated visitor is redirected to login', async ({ browser }) => {

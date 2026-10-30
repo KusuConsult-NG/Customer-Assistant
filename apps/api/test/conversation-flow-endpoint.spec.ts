@@ -83,7 +83,7 @@ describe('GET /api/conversations/:id/flow', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(res.body.title).toBe('PLASCHEMA enrollment');
+    expect(res.body.title).toBe('Service registration');
     expect(res.body.answered.map((a: any) => [a.label, a.value])).toEqual([
       ['Full name', 'Amina Yusuf'],
       ['Age / date of birth', '34 years'],

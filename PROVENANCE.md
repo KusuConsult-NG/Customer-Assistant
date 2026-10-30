@@ -66,9 +66,26 @@ These were true of the upstream system and remain true here:
   reports metrics and configuration only, never citizen content.
 - **Per-agency service hours.** `BUSINESS_OPEN_HOUR_WAT` / `BUSINESS_CLOSE_HOUR_WAT`
   are platform-wide constants with no per-agency column.
-- **De-scheme the agent prompt and enrolment flow.** `SYSTEM_PROMPT` in
-  `agent-tool-catalog.ts` still carries health plans, accredited facilities by
-  LGA and a scheme pronunciation rule, and is inserted into *every* agency's
-  agent. The enrolment flow and `plaschema-facilities.ts` are likewise
-  health-specific. This content belongs in that agency's own
-  `aiPersonaPrompt`, which is already per-tenant.
+- ~~De-scheme the agent prompt.~~ **Done.** `SYSTEM_PROMPT` went from 443 lines
+  to 61: the health plans, the accredited-facility directory and the scheme
+  pronunciation rule are gone, and it now states that the agency's own
+  instructions are the only source for services, eligibility, fees and
+  locations — and to refuse rather than infer when they do not cover a
+  question. The dashboard shell, the digital ID card, the spoken registration
+  confirmations and the issued reference prefix are all driven by the agency's
+  own record.
+
+- **Per-agency service locations.** `service-locations.ts` (was
+  `plaschema-facilities.ts`) still holds ONE agency's accredited health
+  facilities in platform code. It is labelled as that agency's seed data and
+  no longer defines the State's geography — LGAs moved to `state-geography.ts`
+  as first-class State data — but the honest shape is a per-agency table of
+  offices each ministry maintains itself.
+
+- **Generalise the registration flow.** `enrollment-flow.ts` still offers the
+  health scheme's four plans (Formal, Informal, Equity, BHCPF) and picks from
+  that agency's facility list. The mechanics are generic; the content is not.
+  This needs per-agency configurable forms, which is a build rather than a
+  rename. `ENROLLMENT_FLOW_NAME` stays `'plaschema-enrollment'` deliberately —
+  it is written into `Conversation.flowState`, so renaming it would strand
+  every citizen part-way through a form.

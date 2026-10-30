@@ -1,7 +1,7 @@
 /**
  * Nigerian language support for the deterministic engine.
  *
- * The platform serves Nigerian businesses and MDAs; PLASCHEMA's enrollees are
+ * The platform serves Nigerian State agencies, whose citizens are
  * Plateau State residents, where Hausa is the everyday lingua franca and an
  * English-only assistant simply excludes people. Five languages: English,
  * Nigerian Pidgin (pcm), Hausa (ha), Igbo (ig), Yoruba (yo) — the ISO 639
@@ -33,7 +33,7 @@
  *
  * What is NOT translated, in any language, is a VALUE: the plan names that go
  * on the card, "34 years", an LGA, a facility. Those are fields of a record
- * read by desk staff and sent to PLASCHEMA, not sentences said to a customer.
+ * read by desk staff and passed to the agency, not sentences said to a customer.
  * `t` interpolates them and never touches them.
  *
  * ⚠ NATIVE-SPEAKER REVIEW REQUIRED before production. These renderings are
@@ -258,7 +258,7 @@ type TemplateKey =
   | 'flow_abandoned'
   | 'flow_what_to_change'
 
-  // ── Enrollment (PLASCHEMA) ────────────────────────────────────────────────
+  // ── Registration ────────────────────────────────────────────────
   | 'enrol_name_ask' | 'enrol_name_two_words' | 'enrol_name_digits'
   | 'enrol_age_ask' | 'enrol_age_implausible' | 'enrol_age_unclear'
   | 'enrol_address_ask' | 'enrol_address_short'

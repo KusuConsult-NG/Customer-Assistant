@@ -55,7 +55,7 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="font-bold text-2xl text-white">
-              PLASCHEMA
+              Customer Care Platform
             </h1>
             <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
               Plateau State Contributory Healthcare Management Agency
@@ -82,7 +82,7 @@ export default function LoginPage() {
         </div>
         
         <div className="relative z-10 text-sm text-slate-400">
-          © 2026 PLASCHEMA. All rights reserved.
+          © 2026 Plateau State Government. All rights reserved.
         </div>
       </div>
       
@@ -152,7 +152,7 @@ export default function LoginPage() {
                   Signing in...
                 </>
               ) : (
-                'Sign In to PLASCHEMA Portal'
+                'Sign In'
               )}
             </button>
           </form>

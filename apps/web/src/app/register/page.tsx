@@ -117,7 +117,7 @@ export default function RegisterPage() {
           </div>
           <div>
             <h1 className="font-bold text-2xl text-white">
-              PLASCHEMA
+              Customer Care Platform
             </h1>
             <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
               Plateau State Contributory Healthcare Management Agency
@@ -146,7 +146,7 @@ export default function RegisterPage() {
         </div>
         
         <div className="relative z-10 text-sm text-slate-400">
-          © 2026 PLASCHEMA. All rights reserved.
+          © 2026 Plateau State Government. All rights reserved.
         </div>
       </div>
       
@@ -154,7 +154,7 @@ export default function RegisterPage() {
         <div className="w-full max-w-md space-y-6 py-6">
           <div className="text-center lg:text-left">
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Create Account</h2>
-            <p className="text-slate-600 dark:text-slate-400">Register as a PLASCHEMA official or healthcare provider desk</p>
+            <p className="text-slate-600 dark:text-slate-400">Register your agency on the State customer care platform</p>
           </div>
 
           {status === 'success' && (

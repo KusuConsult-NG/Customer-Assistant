@@ -15,7 +15,7 @@
  */
 import { prisma } from './index';
 import { normalizePhoneNumber, phoneNumberVariants } from './phone-number';
-import { getFacilitiesForLGA } from './plaschema-facilities';
+import { getFacilitiesForLGA } from './service-locations';
 
 export interface EnrolleeInput {
   /**

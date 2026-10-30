@@ -1,12 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PLASCHEMA">
-  <!-- PLASCHEMA Brand Favicon - Official Health Green Cross -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Customer Care Platform">
+  <!--
+    A neutral mark for the platform. This was a health cross, which asserted
+    what the agency does: wrong in the browser tab of a lands registry or a
+    revenue board. An agency's own logo is shown in the dashboard shell; this
+    is only the fallback.
+  -->
   <defs>
-    <linearGradient id="plaschema-grad" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="brand-grad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#558A02"/>
       <stop offset="100%" stop-color="#74BA03"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="url(#plaschema-grad)"/>
-  <!-- Bold Health Cross -->
-  <path d="M26 14h12v12h12v12H38v12H26V38H14V26h12V14z" fill="#ffffff"/>
+  <rect width="64" height="64" rx="16" fill="url(#brand-grad)"/>
+  <!-- Speech mark: the platform answers citizens, whatever the agency does. -->
+  <path d="M16 20a4 4 0 0 1 4-4h24a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H30l-10 8v-8a4 4 0 0 1-4-4V20z" fill="#ffffff"/>
 </svg>

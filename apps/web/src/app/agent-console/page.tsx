@@ -38,19 +38,26 @@ interface Conversation {
 /**
  * Canned replies an agent can insert with one click.
  *
- * Deliberately free of any payment details. One of these used to read
- * "Transfer to Providus Bank Acc: 9928374102" — an account no tenant on this platform
- * owns — one click away from being sent to a paying customer. Payment instructions
- * must come from the organization's own configured details
- * (Settings → payout account), which the AI payment-guidance tool reads.
+ * Deliberately free of any payment details, any price, and any URL. One of
+ * these used to read "Transfer to Providus Bank Acc: 9928374102" — an account
+ * no tenant on this platform owns — one click away from being sent to a paying
+ * customer. Payment instructions must come from the organization's own
+ * configured details (Settings → payout account), which the AI
+ * payment-guidance tool reads.
+ *
+ * The same defect came back in another costume: a reply quoting a health
+ * scheme's two premium amounts and linking to /pay/informal, a page that no
+ * longer exists. An operator sending that gave a citizen a stale price and a
+ * dead link. These are generic on purpose — an agency's own wording belongs in
+ * its knowledge base, not compiled into the console.
  */
 const QUICK_REPLIES = [
-  "Hello! Welcome to the PLASCHEMA Helpline. How can I assist you with your health coverage today?",
-  "Could you please provide your PLASCHEMA ID number or NIN so I can verify your enrollment status?",
-  "Which Local Government Area (LGA) are you calling from so I can locate your nearest accredited facility?",
-  "If the hospital pharmacy is out of stock, you can take your prescription to any PLASCHEMA-accredited pharmacy.",
-  "You can pay your informal sector premium (₦12,000/individual or ₦50,000/family) at https://enrollments.plaschema.app/pay/informal",
-  "I have logged your complaint regarding the facility. Our Quality Control desk will investigate immediately.",
+  "Hello, thank you for contacting us. How can I help you today?",
+  "Could you please confirm your full name and the phone number registered with us?",
+  "Which Local Government Area are you contacting us from, so I can direct you to your nearest office?",
+  "I have logged your request. Your reference number is on the way — please keep it for any follow-up.",
+  "I am passing this to a colleague who can help with it directly. They will come back to you on this number.",
+  "I have logged your complaint. It will be reviewed as a priority and someone will contact you.",
 ];
 
 export default function AgentConsolePage() {

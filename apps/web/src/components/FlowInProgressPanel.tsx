@@ -7,7 +7,7 @@ import { ClipboardList, Clock } from 'lucide-react';
  *
  * Asking for a person always beats a flow — that is what stops a form being a
  * trap — but until now the state it interrupted never left the orchestrator.
- * Somebody six answers into PLASCHEMA enrollment who asked for help reached an
+ * Somebody six answers into a registration form who asked for help reached an
  * operator who could see the message thread and nothing else, and got asked
  * their name, age, address and LGA a second time.
  *

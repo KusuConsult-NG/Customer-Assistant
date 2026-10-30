@@ -653,7 +653,7 @@ export class AgentToolsService {
     }
   }
 
-  // ── PLASCHEMA enrollment registration ──────────────────────────────────────
+  // ── Service registration ───────────────────────────────────────────────────
   /**
    * Creates (or updates) a contact record with enrollment details collected
    * during the call, then fires the selfie-capture link to their WhatsApp.
@@ -808,7 +808,7 @@ export class AgentToolsService {
       const selfieResult = await this.onboarding.requestSelfie(organizationId, {
         contactId: contact.id,
         channel: 'VOICE',
-        purpose: isEquity ? 'PLASCHEMA Equity free coverage verification' : 'PLASCHEMA health plan registration',
+        purpose: isEquity ? 'Eligibility verification for a no-cost service' : 'Service registration',
         expiresInHours: 48,
       });
 
@@ -818,7 +818,7 @@ export class AgentToolsService {
       if (isEquity) {
         return {
           ok: true,
-          speak: `Wonderful news, ${firstName} — you are all set! I have registered your profile for the free PLASCHEMA Equity Programme in ${input.lga}, with ${selectedFacility} as your primary facility. Because you qualify for the Equity Programme, there is absolutely no payment required. Your enrollment reference number is ${refId} — please save that. Right after this call, we will send you an SMS with a secure link to complete your photo upload. Our team will verify your eligibility and issue your health card within 2 working days. Is there anything else I can help you with?`,
+          speak: `You are registered, ${firstName}. I have recorded you in ${input.lga}, with ${selectedFacility} as your chosen location, and there is no payment required for this. Your reference number is ${refId} — please keep it safe. Right after this call we will text you a secure link to add your photograph. Our team will review your eligibility and contact you on this number. Is there anything else I can help you with?`,
           data: {
             contactId: contact.id,
             refId,
@@ -832,7 +832,7 @@ export class AgentToolsService {
 
       return {
         ok: true,
-        speak: `You are all registered, ${firstName}! Your PLASCHEMA ${normalizedPlan} profile has been created in ${input.lga}, with ${selectedFacility} as your primary healthcare facility. Your enrollment reference is ${refId} — please keep that safe. Right after this call ends, we will send you an SMS with a link to upload your photo and complete your profile. Our team will activate your health coverage within 2 working days. Is there anything else I can help you with today?`,
+        speak: `You are registered, ${firstName}. Your ${normalizedPlan} record has been created in ${input.lga}, with ${selectedFacility} as your chosen location. Your reference is ${refId} — please keep it safe. Right after this call we will text you a link to add your photograph. Our team will take it from there and contact you on this number. Is there anything else I can help you with today?`,
         data: {
           contactId: contact.id,
           refId,

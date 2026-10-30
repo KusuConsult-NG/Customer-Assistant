@@ -1,7 +1,29 @@
 /**
- * PLASCHEMA Accredited Healthcare Facilities by LGA
- * Sarah reads from this list — she does NOT accept free-text hospital names.
+ * Service locations a citizen may be directed to, by Local Government Area.
+ *
+ * ── What this is, and what it is not ────────────────────────────────────────
+ *
+ * This is REFERENCE DATA FOR ONE AGENCY — the State health scheme's accredited
+ * facilities. It is not a platform-wide directory, and nothing here describes
+ * where a lands registry or a revenue board does business.
+ *
+ * It lives in code for now because that is where it already was. The honest
+ * shape is a per-agency table of service locations, so each ministry lists its
+ * own offices; that is recorded as outstanding in PROVENANCE.md. Until then,
+ * treat this as that agency's seed data that other agencies simply do not use.
+ *
+ * The agent reads from this list rather than accepting a free-text location,
+ * so a caller cannot be registered against a facility that does not exist.
+ *
+ * ── What changed ────────────────────────────────────────────────────────────
+ *
+ * The State's LGA list used to be DERIVED from the keys here, which made one
+ * agency's service coverage define the geography of the whole platform. LGAs
+ * now come from `state-geography.ts` and this directory is checked against
+ * them.
  */
+
+import { PLATEAU_LGAS } from './state-geography';
 
 export interface AccreditedFacility {
   name: string;
@@ -9,7 +31,7 @@ export interface AccreditedFacility {
   address: string;
 }
 
-export const PLASCHEMA_FACILITIES: Record<string, AccreditedFacility[]> = {
+export const ACCREDITED_FACILITIES: Record<string, AccreditedFacility[]> = {
   "Jos North": [
     { name: "Plateau Specialist Hospital", type: "Specialist Hospital", address: "Plateau Road, Jos" },
     { name: "Jos University Teaching Hospital", type: "Specialist Hospital", address: "Lamingo Road, Jos" },
@@ -92,7 +114,17 @@ export const PLASCHEMA_FACILITIES: Record<string, AccreditedFacility[]> = {
   ],
 };
 
-export const PLATEAU_LGAS = Object.keys(PLASCHEMA_FACILITIES).sort();
+/**
+ * LGAs this directory actually covers. NOT the State's list of LGAs — that is
+ * `PLATEAU_LGAS` in state-geography.ts, and an LGA with no accredited facility
+ * is still a real place somebody lives.
+ */
+export const FACILITY_COVERED_LGAS = Object.keys(ACCREDITED_FACILITIES).sort();
+
+/** LGAs of the State where this agency has no accredited facility at all. */
+export function lgasWithoutFacilities(): string[] {
+  return PLATEAU_LGAS.filter((l) => !ACCREDITED_FACILITIES[l]?.length);
+}
 
 /**
  * Find facilities for an LGA, with fuzzy matching for common speech-to-text
@@ -103,10 +135,10 @@ export function getFacilitiesForLGA(lga: string): AccreditedFacility[] {
   const normalised = lga.trim().toLowerCase().replace(/['']/g, '').replace(/\s+/g, ' ');
 
   // Exact match first (case-insensitive)
-  const exactKey = Object.keys(PLASCHEMA_FACILITIES).find(
+  const exactKey = Object.keys(ACCREDITED_FACILITIES).find(
     k => k.toLowerCase() === lga.trim().toLowerCase()
   );
-  if (exactKey) return PLASCHEMA_FACILITIES[exactKey];
+  if (exactKey) return ACCREDITED_FACILITIES[exactKey];
 
   // Fuzzy alias map — covers common STT (speech-to-text) variants heard in calls
   const ALIASES: Record<string, string> = {
@@ -133,13 +165,13 @@ export function getFacilitiesForLGA(lga: string): AccreditedFacility[] {
   };
 
   const aliasKey = ALIASES[normalised];
-  if (aliasKey && PLASCHEMA_FACILITIES[aliasKey]) return PLASCHEMA_FACILITIES[aliasKey];
+  if (aliasKey && ACCREDITED_FACILITIES[aliasKey]) return ACCREDITED_FACILITIES[aliasKey];
 
   // Partial / starts-with match as last resort
-  const partialKey = Object.keys(PLASCHEMA_FACILITIES).find(
+  const partialKey = Object.keys(ACCREDITED_FACILITIES).find(
     k => k.toLowerCase().startsWith(normalised) || normalised.startsWith(k.toLowerCase().split(' ')[0])
   );
-  return partialKey ? PLASCHEMA_FACILITIES[partialKey] : [];
+  return partialKey ? ACCREDITED_FACILITIES[partialKey] : [];
 }
 
 export function isAccreditedFacility(lga: string, hospitalName: string): boolean {
