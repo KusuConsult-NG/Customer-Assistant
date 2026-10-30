@@ -77,17 +77,19 @@ These were true of the upstream system and remain true here:
   confirmations and the issued reference prefix are all driven by the agency's
   own record.
 
-- **Per-agency service locations.** `service-locations.ts` (was
-  `plaschema-facilities.ts`) still holds ONE agency's accredited health
-  facilities in platform code. It is labelled as that agency's seed data and
-  no longer defines the State's geography — LGAs moved to `state-geography.ts`
-  as first-class State data — but the honest shape is a per-agency table of
-  offices each ministry maintains itself.
+- ~~Per-agency service locations.~~ **Done.** `ServiceLocation` rows per
+  agency, keyed by LGA, replacing the hardcoded hospital directory.
 
-- **Generalise the registration flow.** `enrollment-flow.ts` still offers the
-  health scheme's four plans (Formal, Informal, Equity, BHCPF) and picks from
-  that agency's facility list. The mechanics are generic; the content is not.
-  This needs per-agency configurable forms, which is a build rather than a
-  rename. `ENROLLMENT_FLOW_NAME` stays `'plaschema-enrollment'` deliberately —
-  it is written into `Conversation.flowState`, so renaming it would strand
-  every citizen part-way through a form.
+- ~~Generalise the registration flow.~~ **Done.** `ServiceOption` rows per
+  agency replace the four hardcoded health plans, and the flow reads whichever
+  the agency configured. `npm run catalogue:seed <slug> --apply` moved the
+  health scheme's own plans and facilities into its rows, so it kept working.
+  An agency with no services configured cannot run a registration and hands
+  over, rather than asking a citizen to choose from an empty list.
+  `ENROLLMENT_FLOW_NAME` stays `'plaschema-enrollment'` deliberately — it is
+  written into `Conversation.flowState`, so renaming it would strand every
+  citizen part-way through a form.
+
+- **No management screen for the catalogue yet.** Services and locations are
+  loaded with `catalogue:seed` or written directly; Settings has no editor for
+  them. The data layer and the flow are done, the CRUD screen is not.

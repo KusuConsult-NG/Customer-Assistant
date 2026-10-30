@@ -19,6 +19,11 @@ const mockPrisma = {
   documentChunk: { findMany: jest.fn() },
   faqEntry: { findMany: jest.fn() },
   note: { create: jest.fn() },
+  // An agency WITH a catalogue. The orchestrator loads these before the first
+  // question and seeds them into the flow state; without them the flow
+  // correctly refuses to start, because there is nothing to register for.
+  serviceOption: { findMany: jest.fn().mockResolvedValue([]) },
+  serviceLocation: { findMany: jest.fn().mockResolvedValue([]) },
 };
 
 const mockUpsertEnrollee = jest.fn();
@@ -27,6 +32,7 @@ jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/availability'),
   ...jest.requireActual('../../database/src/service-hours'),
+  ...jest.requireActual('../../database/src/service-catalogue'),
   ...jest.requireActual('../../database/src/state-geography'),
   ...jest.requireActual('../../database/src/service-locations'),
   prisma: mockPrisma,
@@ -41,12 +47,51 @@ import {
 } from '../src/flows';
 import { ENROLLMENT_FLOW } from '../src/enrollment-flow';
 import { SUPPORTED_LANGUAGES, type Language } from '../src/languages';
+import { seedCatalogue } from '@ace/database';
 import { ChannelType } from '@ace/shared-types';
 
 const F = ENROLLMENT_FLOW;
 
+/**
+ * The agency's own services and locations, as the orchestrator seeds them.
+ *
+ * The flow no longer carries a health scheme's four plans and hospital
+ * directory in platform code: it reads whatever the agency configured, seeded
+ * into the flow state before the first question. So a test must provide a
+ * catalogue, exactly as a real conversation does — a flow started without one
+ * has nothing to offer and hands over, which is the behaviour an agency with
+ * no services configured should get.
+ */
+const CATALOGUE = {
+  options: [
+    { id: 'o1', name: 'Formal Sector', description: 'Employed workers.',
+      matchPhrases: ['formal', 'civil servant', 'salary'], isNoCost: false, requiresReview: false },
+    { id: 'o2', name: 'Informal Sector', description: 'Traders, farmers, artisans.',
+      matchPhrases: ['informal', 'trader', 'farmer', 'artisan'], isNoCost: false, requiresReview: false },
+    { id: 'o3', name: 'Equity Program', description: 'No cost.',
+      matchPhrases: ['equity', 'pregnan', 'elderly'], isNoCost: true, requiresReview: true },
+    { id: 'o4', name: 'BHCPF', description: 'No cost.',
+      matchPhrases: ['bhcpf', 'basic health'], isNoCost: true, requiresReview: true },
+  ],
+  locations: [
+    { id: 'l1', name: 'Plateau Specialist Hospital', kind: 'Specialist Hospital', address: 'Jos', lga: 'Jos North' },
+    { id: 'l2', name: 'Jos University Teaching Hospital', kind: 'Specialist Hospital', address: 'Jos', lga: 'Jos North' },
+    { id: 'l3', name: 'Gwong Primary Health Centre', kind: 'Primary Health Centre', address: 'Jos', lga: 'Jos North' },
+    { id: 'l4', name: 'Du General Hospital', kind: 'General Hospital', address: 'Du', lga: 'Jos South' },
+  ],
+};
+
+mockPrisma.serviceOption.findMany.mockResolvedValue(CATALOGUE.options as any);
+mockPrisma.serviceLocation.findMany.mockResolvedValue(CATALOGUE.locations as any);
+
+/** A flow state seeded the way the orchestrator seeds a real one. */
+function started(): FlowState {
+  const s = beginFlow(F);
+  return { ...s, collected: seedCatalogue(s.collected, CATALOGUE) };
+}
+
 /** Drive the engine through a list of answers, returning every reply. */
-function play(answers: string[], start: FlowState = beginFlow(F), lang: Language = 'en') {
+function play(answers: string[], start: FlowState = started(), lang: Language = 'en') {
   let state = start;
   const replies: string[] = [];
   let executed = false;
@@ -168,11 +213,11 @@ describe('the form in every language', () => {
    * `prompt: () => '...'` renders the SAME STRING in all five — which is
    * exactly what this catches, at every step, without a phrase list to keep.
    */
-  const english = play(GOOD_ANSWERS, beginFlow(F), 'en');
+  const english = play(GOOD_ANSWERS, started(), 'en');
 
   for (const lang of SUPPORTED_LANGUAGES.filter((l) => l !== 'en')) {
     it(`asks and reads back in ${lang}, sharing no wording with the English form`, () => {
-      const { replies, last } = play(GOOD_ANSWERS, beginFlow(F), lang);
+      const { replies, last } = play(GOOD_ANSWERS, started(), lang);
 
       // Every question was asked, plus the read-back.
       expect(replies.length).toBe(GOOD_ANSWERS.length + 1);
@@ -193,12 +238,12 @@ describe('the form in every language', () => {
     });
 
     it(`reports a validation error in ${lang} rather than falling back to English`, () => {
-      const badName = play(['Amina'], beginFlow(F), lang);
-      expect(badName.last).not.toBe(play(['Amina'], beginFlow(F), 'en').last);
+      const badName = play(['Amina'], started(), lang);
+      expect(badName.last).not.toBe(play(['Amina'], started(), 'en').last);
 
-      const badLga = play([...GOOD_ANSWERS.slice(0, 3), 'Ikeja'], beginFlow(F), lang);
+      const badLga = play([...GOOD_ANSWERS.slice(0, 3), 'Ikeja'], started(), lang);
       expect(badLga.last).not.toBe(
-        play([...GOOD_ANSWERS.slice(0, 3), 'Ikeja'], beginFlow(F), 'en').last
+        play([...GOOD_ANSWERS.slice(0, 3), 'Ikeja'], started(), 'en').last
       );
       // …and still names the LGAs it will accept, so the error is actionable.
       expect(badLga.last).toContain('Jos North');
@@ -217,7 +262,7 @@ describe('the form in every language', () => {
   ];
   for (const [lang, no] of NO) {
     it(`declines the optional NIN on "${no}" (${lang}) instead of abandoning the form`, () => {
-      const { last, state } = play([...GOOD_ANSWERS.slice(0, 6), no], beginFlow(F), lang);
+      const { last, state } = play([...GOOD_ANSWERS.slice(0, 6), no], started(), lang);
 
       expect(state.collected.nin).toBe('');
       expect(state.confirming).toBe(true);
@@ -236,13 +281,13 @@ describe('the ways a form must not trap someone', () => {
 
   it('abandons in the other supported languages too', () => {
     for (const word of ['ka daina', 'make i stop', 'kwụsị', 'duro']) {
-      const step = advanceFlow(F, beginFlow(F), word, 'en');
+      const step = advanceFlow(F, started(), word, 'en');
       expect(step.kind).toBe('abandon');
     }
   });
 
   it('is forgotten once it goes stale, rather than resuming days later', () => {
-    const fresh = beginFlow(F);
+    const fresh = started();
     expect(isStale(fresh)).toBe(false);
     expect(isStale({ ...fresh, updatedAt: Date.now() - FLOW_TTL_MS - 1 })).toBe(true);
   });
@@ -383,7 +428,7 @@ describe('the ways a form must not trap someone', () => {
 
 describe('asFlowState', () => {
   it('accepts a state it wrote and rejects anything else', () => {
-    const state = beginFlow(F);
+    const state = started();
     expect(asFlowState(JSON.parse(JSON.stringify(state)))?.flow).toBe(state.flow);
     expect(asFlowState(null)).toBeNull();
     expect(asFlowState('nonsense')).toBeNull();

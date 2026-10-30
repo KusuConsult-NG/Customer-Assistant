@@ -78,4 +78,5 @@ export * from './state-geography';
 export * from './service-locations';
 export * from './booking-conflicts';
 export * from './service-hours';
+export * from './service-catalogue';
 export * from './availability';

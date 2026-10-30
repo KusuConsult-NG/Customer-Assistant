@@ -210,6 +210,8 @@ model Organization {
   workflows            Workflow[]
   selfieRequests       SelfieRequest[]
   auditLogs            AuditLog[]
+  serviceOptions       ServiceOption[]
+  serviceLocations     ServiceLocation[]
 
   // White-label webhook settings
   webhookUrl           String?
@@ -1027,4 +1029,82 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([targetType, targetId])
   @@map("audit_logs")
+}
+
+
+/// A service an agency registers citizens for.
+///
+/// These used to be four health plans hardcoded in the orchestrator — Formal
+/// Sector, Informal Sector, Equity, BHCPF — so every agency on the platform
+/// offered a health scheme's products. A lands registry registers people for
+/// a Certificate of Occupancy, not an Informal Sector plan.
+model ServiceOption {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// What the citizen is registering for, as written on the record.
+  name String
+  /// Shown when the options are read out. Optional.
+  description String?
+
+  /// Words that pick this option out of what the citizen said, lowercase.
+  /// "civil servant", "trader", "renew my vehicle". Matched as substrings, so
+  /// an option with none can still be chosen by its number in the list.
+  matchPhrases String[] @default([])
+
+  /// True when the citizen pays nothing — the agency or the State covers it.
+  /// Replaces a regex over the plan NAME (/equity|bhcpf|free/), which decided
+  /// whether somebody owed money by pattern-matching a label.
+  isNoCost Boolean @default(false)
+
+  /// Set when this option needs a human to confirm eligibility before it
+  /// becomes active, rather than completing on the call.
+  requiresReview Boolean @default(false)
+
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive, sortOrder])
+  @@map("service_options")
+}
+
+/// Somewhere an agency actually sees citizens: an office, a centre, a clinic.
+///
+/// This was a hardcoded directory of one health scheme's accredited hospitals,
+/// keyed by LGA, in platform code. Every other agency therefore had no
+/// locations at all and the registration flow offered hospitals regardless of
+/// what the agency does.
+///
+/// `lga` is checked against the State's own list (state-geography.ts) rather
+/// than defining it: an LGA with no office is still a real place somebody
+/// lives.
+model ServiceLocation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name    String
+  /// "Primary Health Centre", "Area Office", "Registry". Shown to the citizen.
+  kind    String?
+  address String?
+  lga     String
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Keyed by LGA as well as name: a referral hospital can serve several LGAs,
+  /// and the question the flow asks is "which location in YOUR area". Keyed on
+  /// name alone, one hospital listed in four LGAs collapsed to a single row
+  /// and citizens in the other three were sent somewhere further away. The
+  /// seed script reported 46 written and 43 existed.
+  @@unique([organizationId, lga, name])
+  @@index([organizationId, lga, isActive])
+  @@map("service_locations")
 }

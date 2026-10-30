@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -731,12 +731,18 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: preferredHospital must be provided
-      if (!input.preferredHospital?.trim()) {
-        const facs = getFacilitiesForLGA(input.lga).slice(0, 3).map((f) => f.name).join(', ');
+      // The agency's own services and locations, read once. Everything below
+      // checks against these rather than against a directory compiled into
+      // the platform.
+      const catalogue = await loadServiceCatalogue(prisma, organizationId);
+      const lgaFacilities = locationsInLga(catalogue, input.lga);
+
+      // Guard: a location must be provided, where the agency has any here.
+      if (!input.preferredHospital?.trim() && lgaFacilities.length > 0) {
+        const facs = lgaFacilities.slice(0, 3).map((f) => f.name).join(', ');
         return {
           ok: false,
-          speak: `Which primary hospital or healthcare facility in ${input.lga} would you prefer? For example: ${facs || 'your nearest General Hospital'}.`,
+          speak: `Which of our locations in ${input.lga} would you prefer? For example: ${facs}.`,
           data: { reason: 'missing_preferred_hospital' },
         };
       }
@@ -759,11 +765,10 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: the LGA has to be one we have accredited facilities for. Without
-      // this the enrollment lands on a placeholder facility, and the caller is
-      // told they are registered somewhere that does not exist.
-      const lgaFacilities = getFacilitiesForLGA(input.lga);
-      if (lgaFacilities.length === 0) {
+      // Guard: the LGA has to be a real one. Checked against the State's own
+      // list, not against this agency's coverage — an LGA where the agency has
+      // no office is still where somebody lives, and they can still register.
+      if (!resolveLga(input.lga)) {
         return {
           ok: false,
           speak:
@@ -773,16 +778,20 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: and the facility has to be on that LGA's list. A card issued
-      // against an unaccredited hospital is refused at the desk — which the
-      // enrollee discovers while ill.
-      if (!resolveFacility(input.lga, input.preferredHospital)) {
+      // Guard: where the agency HAS locations in that LGA, the one named must
+      // be among them. A record against a location that does not serve them is
+      // a wasted journey, found out on arrival.
+      //
+      // Awaited, and that matters: this was `if (!resolveFacility(...))` after
+      // the function became async, so the condition tested a Promise — always
+      // truthy, so the guard never fired and any name at all was accepted.
+      if (lgaFacilities.length > 0 && !resolveLocation(catalogue, input.lga, input.preferredHospital)) {
         const options = lgaFacilities.slice(0, 3).map((f) => f.name).join(', ');
         return {
           ok: false,
           speak:
-            `That facility is not on our accredited list for ${input.lga}. ` +
-            `The approved options there include: ${options}. Which would you prefer?`,
+            `That is not one of our locations in ${input.lga}. ` +
+            `The options there include: ${options}. Which would you prefer?`,
           data: { reason: 'unaccredited_facility' },
         };
       }

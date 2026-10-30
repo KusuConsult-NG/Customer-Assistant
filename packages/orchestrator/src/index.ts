@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -2883,10 +2883,35 @@ export class ConversationOrchestrator {
         handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
+    let state = beginFlow(flow);
+
+    // Registration asks which service and which location, and both belong to
+    // the AGENCY rather than the platform. They are loaded ONCE here and seeded
+    // into the flow state, because the slots that read them are synchronous —
+    // the flow engine is deliberately free of database access, the same reason
+    // `_targets` is seeded for the appointment flows.
+    if (flow.name === ENROLLMENT_FLOW_NAME) {
+      const catalogue = await loadServiceCatalogue(prisma, context.organizationId);
+      if (!canRegister(catalogue)) {
+        // Nothing to register for. Asking a citizen to choose from an empty
+        // list and refusing every answer is worse than saying so.
+        return {
+          replyText:
+            `I can't take you through registration here — let me bring in a colleague ` +
+            `who can help you sign up.`,
+          intentDetected: 'FLOW_UNAVAILABLE',
+          confidenceScore: 0.9,
+          shouldHandoff: true,
+          handoffReason: HandoffReason.TOOL_FAILURE,
+        };
+      }
+      state = { ...state, collected: seedCatalogue(state.collected, catalogue) };
+    }
+
     // Every flow prompt, validation error and read-back now exists in all five
     // languages, so a flow no longer switches the conversation into English and
     // the notice that used to apologise for it has gone with the reason for it.
-    return this.runFlow(context, conversationId, flow, beginFlow(flow), '', lang);
+    return this.runFlow(context, conversationId, flow, state, '', lang);
   }
 
   /**
