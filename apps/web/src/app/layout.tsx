@@ -22,7 +22,9 @@ import {
   X,
   GitFork,
   Sun,
-  Moon
+  Moon,
+  Landmark,
+  Briefcase
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -41,7 +43,6 @@ const PUBLIC_ROUTES = [
   '/setup-account',
   '/selfie',
   '/pay',
-  '/billing/success',
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -49,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string } | null>(null);
+  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string; isPlatformAdmin?: boolean; logoUrl?: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -191,8 +192,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={theme}>
       <head>
-        <title>PLASCHEMA — Enrollee Helpline &amp; Management System</title>
-        <meta name="description" content="Plateau State Contributory Healthcare Management Agency — Enrollee Services, Knowledge Base &amp; Communications" />
+        <title>Customer Care Platform</title>
+        <meta name="description" content="Citizen customer care for State ministries, departments and agencies — conversations, cases, appointments and reporting." />
         {/*
           No webfont is fetched from a CDN.
 
@@ -262,14 +263,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 {/* Logo */}
                 <div className={`flex items-center gap-3.5 px-6 py-5 border-b ${theme === 'dark' ? 'border-slate-800/80' : 'border-slate-200/80'}`}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
-                    {/* Health cross icon */}
-                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
-                    </svg>
+                    {/* A neutral mark. This was a health cross, which is a
+                        claim about what the agency does — wrong for a lands
+                        registry or a revenue board. An agency that uploads a
+                        logo shows that instead. */}
+                    {user?.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={user.logoUrl} alt="" className="w-6 h-6 object-contain" />
+                    ) : (
+                      <Landmark className="w-6 h-6 text-white" />
+                    )}
                   </div>
                   <div>
-                    <h1 className={`font-bold text-base tracking-tight leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>PLASCHEMA</h1>
-                    <p className="text-[11px] font-medium" style={{ color: '#74BA03' }}>Enrollee Helpline Portal</p>
+                    <h1 className={`font-bold text-base tracking-tight leading-tight truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user?.organizationName || 'Customer Care'}</h1>
+                    <p className="text-[11px] font-medium" style={{ color: '#74BA03' }}>Citizen Care Portal</p>
                   </div>
                 </div>
 
@@ -282,7 +289,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <div className="flex items-center gap-2 overflow-hidden min-w-0">
                     <Building2 className="w-4 h-4 text-[#74BA03] flex-shrink-0" />
                     <span className={`text-xs font-semibold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
-                      {user?.organizationName || 'PLASCHEMA'}
+                      {user?.organizationName || 'Your agency'}
                     </span>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2 border border-emerald-500/20">LIVE</span>
@@ -290,10 +297,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                 {/* Nav */}
                 <nav className="flex-1 px-3.5 py-3 space-y-1 overflow-y-auto">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Helpline</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Service</p>
                   <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/analytics" icon={<BarChart3 className="w-4 h-4" />} label="Analytics" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="Enrollees & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="Citizens & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Live Conversations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge & FAQs" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
@@ -301,11 +308,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Channels</p>
                   <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Helpline & Telephony" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Telephone Service" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
+                  {/* Shown only to a platform operator. This is a CONVENIENCE,
+                      not a permission — localStorage is editable, and every
+                      /api/platform/* route re-checks the flag against the
+                      database. Someone who forces their way to the page gets a
+                      plain "unavailable" panel, not a broken dashboard. */}
+                  {user?.isPlatformAdmin && (
+                    <>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">State Platform</p>
+                      <SidebarLink href="/platform" icon={<Landmark className="w-4 h-4" />} label="Platform Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                    </>
+                  )}
+
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Administration</p>
-                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing & Plans" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/services" icon={<Briefcase className="w-4 h-4" />} label="Services &amp; Locations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                 </nav>
@@ -348,7 +367,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <Menu className="w-5 h-5" />
                   </button>
                   {/* Breadcrumb */}
-                  <span className="font-semibold" style={{ color: '#74BA03' }}>PLASCHEMA</span>
+                  <span className="font-semibold truncate max-w-[14rem]" style={{ color: '#74BA03' }}>{user?.organizationName || 'Customer Care'}</span>
                   <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                   <span className={`font-semibold capitalize ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     {pathname === '/' ? 'Executive Dashboard' : pathname.slice(1).replace(/-/g, ' ')}

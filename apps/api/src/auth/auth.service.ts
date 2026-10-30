@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { prisma } from '@ace/database';
+import { generateUniqueSlug } from '../common/slug';
 import { UserRole, IndustryType } from '@ace/shared-types';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
@@ -66,7 +67,7 @@ export class AuthService {
       throw new ConflictException('A user with this email already exists.');
     }
 
-    const slug = await this.generateUniqueSlug(dto.organizationName);
+    const slug = await generateUniqueSlug(dto.organizationName);
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     const rawToken = randomBytes(32).toString('hex');
@@ -121,22 +122,6 @@ export class AuthService {
    * Date.now() collides roughly once every 10 000 signups in the same millisecond
    * window and then throws a raw Prisma P2002. Retry with fresh entropy instead.
    */
-  private async generateUniqueSlug(organizationName: string): Promise<string> {
-    const base =
-      organizationName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 48) || 'org';
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const candidate = `${base}-${randomBytes(3).toString('hex')}`;
-      const clash = await prisma.organization.findUnique({ where: { slug: candidate } });
-      if (!clash) return candidate;
-    }
-    return `${base}-${randomBytes(8).toString('hex')}`;
-  }
-
   async login(email: string, password: string) {
     const user = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
@@ -183,6 +168,11 @@ export class AuthService {
         role: user.role,
         organizationId: user.organizationId,
         organizationName: user.organization.name,
+        // Drives the operator's console link in the dashboard. It is a
+        // CONVENIENCE, not a permission: the client cannot be trusted with this
+        // value, and /api/platform/* re-checks it against the database on every
+        // request regardless of what the browser believes.
+        isPlatformAdmin: user.isPlatformAdmin,
       },
       ...tokens,
     };
@@ -353,6 +343,7 @@ export class AuthService {
           role: user.role,
           organizationId: user.organizationId,
           organizationName: user.organization.name,
+          isPlatformAdmin: user.isPlatformAdmin,
         },
         ...tokens,
       };
@@ -508,6 +499,7 @@ export class AuthService {
         role: updated.role,
         organizationId: updated.organizationId,
         organizationName: user.organization.name,
+        isPlatformAdmin: updated.isPlatformAdmin,
       },
       ...tokens,
     };

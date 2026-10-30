@@ -112,17 +112,24 @@ export class PdfGeneratorService {
   }
 
   /**
-   * Generates a digital PLASCHEMA enrollee ID card and certificate of coverage.
+   * Generates a digital identity card for a citizen registered with an agency.
+   *
+   * Every word on it that names an agency comes from `data.organizationName`.
+   * It used to fall back to one scheme's name and title itself "PLASCHEMA
+   * Digital ID", so a card issued by any other agency carried the wrong body's
+   * name — on the one artefact a citizen is most likely to present as proof.
    */
   static generateEnrolleeDigitalCard(data: EnrolleeCardData): { html: string; summaryText: string } {
-    const orgName = data.organizationName || 'PLASCHEMA';
+    // No fallback to a scheme. A card is presented as proof of who registered
+    // the holder; the wrong agency's name on it is worse than none.
+    const orgName = data.organizationName || '';
 
     const html = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8" />
-      <title>PLASCHEMA Digital ID - ${data.policyId}</title>
+      <title>Digital ID - ${data.policyId}</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -171,7 +178,7 @@ export class PdfGeneratorService {
             </div>
             <div>
               <div class="info-row">
-                <span class="info-label">Plan Type</span>
+                <span class="info-label">Service</span>
                 ${data.planType} ${data.ageOrDob ? `• Age: ${data.ageOrDob}` : ''}
               </div>
               <div class="info-row">
@@ -196,7 +203,7 @@ export class PdfGeneratorService {
         }
 
         <div class="facility-box">
-          <div class="facility-title">Primary Healthcare Provider (PHCP)</div>
+          <div class="facility-title">Assigned Location</div>
           <div class="facility-name">${data.preferredHospital}</div>
         </div>
 

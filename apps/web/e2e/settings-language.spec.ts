@@ -53,11 +53,11 @@ async function openGeneralTab(page: Page) {
 
 /** The one <select> that sits under the Default Language label. */
 function languageSelect(page: Page) {
-  return page
-    .locator('div')
-    .filter({ has: page.locator('label', { hasText: 'Default Language' }) })
-    .locator('select')
-    .last();
+  // By accessible name, not by position. This used to take the LAST <select>
+  // under the label's container, which silently started matching an unrelated
+  // control the moment the form grew a second select — and reported it as the
+  // language list having 24 options.
+  return page.getByLabel('Default Language');
 }
 
 test.describe('Settings — default language', () => {

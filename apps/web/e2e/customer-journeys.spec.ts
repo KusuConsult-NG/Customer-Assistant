@@ -79,19 +79,19 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J2: Telephony Dashboard & Voice Simulator', async ({ page }) => {
     await page.goto('/telephony');
-    await expect(pageHeading(page, /PLASCHEMA.*Helpline/i)).toBeVisible();
+    await expect(pageHeading(page, /Telephone Service/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Start Demo Simulation/i })).toBeVisible();
   });
 
   test('J3: CRM Pipeline & Contacts Board', async ({ page }) => {
     await page.goto('/crm');
-    await expect(pageHeading(page, /Enrollee & Beneficiary Management/i)).toBeVisible();
+    await expect(pageHeading(page, /Citizens & Contacts/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Contacts/i }).first()).toBeVisible();
   });
 
   test('J5 & J6: Scheduling & Refund Request Management', async ({ page }) => {
     await page.goto('/scheduling');
-    await expect(pageHeading(page, /PLASCHEMA Enrolment & Clinic Appointments/i)).toBeVisible();
+    await expect(pageHeading(page, /Appointments & Reservations/i)).toBeVisible();
   });
 
   test('J7: Settings & Team Management', async ({ page }) => {
@@ -99,14 +99,14 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
     await expect(pageHeading(page, /Settings/i)).toBeVisible();
   });
 
-  test('J8: Billing & Plan Comparison', async ({ page }) => {
-    await page.goto('/billing');
-    await expect(pageHeading(page, /Billing/i)).toBeVisible();
-  });
+  // J8 covered /billing, which no longer exists: subscription billing was
+  // removed when this became a State platform. The numbering is left with its
+  // gap rather than resequenced, so the journeys keep the names they are
+  // referred to by elsewhere.
 
   test('J10: Workflows Automation Engine', async ({ page }) => {
     await page.goto('/workflows');
-    await expect(pageHeading(page, /PLASCHEMA Helpline Automation Workflows/i)).toBeVisible();
+    await expect(pageHeading(page, /Automation Workflows/i)).toBeVisible();
   });
 
   test('Auth guard: unauthenticated visitor is redirected to login', async ({ browser }) => {

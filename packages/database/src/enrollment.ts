@@ -15,7 +15,7 @@
  */
 import { prisma } from './index';
 import { normalizePhoneNumber, phoneNumberVariants } from './phone-number';
-import { getFacilitiesForLGA } from './plaschema-facilities';
+import { loadServiceCatalogue, locationsInLga, resolveLocation, resolveServiceOption } from './service-catalogue';
 
 export interface EnrolleeInput {
   /**
@@ -51,9 +51,19 @@ export interface EnrolleeResult {
   isEquity: boolean;
 }
 
-/** Free at the point of use: the state pays. */
-export function isEquityPlan(planType: string): boolean {
-  return /equity|bhcpf|vulnerable|free/i.test(planType);
+/**
+ * Whether a service costs the citizen nothing.
+ *
+ * This used to be a regex over the service NAME (/equity|bhcpf|free/), so
+ * whether somebody owed money was decided by pattern-matching a label — an
+ * agency naming a paid service "Freehold Title" would have had it waived. The
+ * agency now states it on the `ServiceOption` row, and the name is just a
+ * name. The regex survives only as a fallback for records written before the
+ * catalogue existed.
+ */
+export function isNoCostService(serviceName: string, known?: { isNoCost: boolean } | null): boolean {
+  if (known) return known.isNoCost;
+  return /equity|bhcpf|vulnerable|free/i.test(serviceName);
 }
 
 /**
@@ -63,21 +73,14 @@ export function isEquityPlan(planType: string): boolean {
  * rather than silently enrolling somebody at a hospital that is not on the
  * accredited list — which is a card that gets refused at the desk.
  */
-export function resolveFacility(lga: string, requested?: string): string | null {
-  const facilities = getFacilitiesForLGA(lga);
-  const asked = requested?.trim();
-
-  if (asked && facilities.length > 0) {
-    const lower = asked.toLowerCase();
-    const matched =
-      facilities.find((f) => f.name.toLowerCase() === lower) ??
-      facilities.find((f) => f.name.toLowerCase().includes(lower)) ??
-      facilities.find((f) => lower.includes(f.name.toLowerCase()));
-    if (matched) return matched.name;
-    return null; // named something, and it is not accredited here
-  }
-  if (asked && facilities.length === 0) return null; // unknown LGA
-  return null; // nothing asked for
+export async function resolveFacility(
+  organizationId: string,
+  lga: string,
+  requested?: string
+): Promise<string | null> {
+  if (!requested?.trim()) return null;
+  const catalogue = await loadServiceCatalogue(prisma, organizationId);
+  return resolveLocation(catalogue, lga, requested)?.name ?? null;
 }
 
 export async function upsertEnrollee(
@@ -92,16 +95,23 @@ export async function upsertEnrollee(
   if (!input.planType?.trim()) throw new Error('planType is required to enroll');
 
   const phone = normalizePhoneNumber(input.phoneNumber);
-  const isEquity = isEquityPlan(input.planType);
-  const planType = isEquity ? 'Equity / BHCPF Subsidized Plan' : input.planType.trim();
 
-  // Whatever the caller resolved, falling back to the LGA's first accredited
-  // facility rather than a free-text name that no desk would recognise.
-  const facilities = getFacilitiesForLGA(input.lga);
+  // The agency's own catalogue decides what this service is called and whether
+  // it costs anything, rather than a regex over the label.
+  const catalogue = await loadServiceCatalogue(prisma, organizationId);
+  const option = resolveServiceOption(catalogue, input.planType);
+  const isEquity = isNoCostService(input.planType, option);
+  const planType = option?.name ?? input.planType.trim();
+
+  // Whatever the caller resolved, falling back to the agency's first location
+  // in that LGA rather than a free-text name no desk would recognise. Null
+  // when the agency has nowhere there: a human assigns one, which is honest,
+  // where inventing a placeholder put a name on a card that means nothing.
+  const here = locationsInLga(catalogue, input.lga);
   const facility =
-    resolveFacility(input.lga, input.preferredHospital) ??
-    facilities[0]?.name ??
-    'Accredited Primary Healthcare Provider';
+    resolveLocation(catalogue, input.lga, input.preferredHospital)?.name ??
+    here[0]?.name ??
+    null;
 
   const enrollmentMetadata = {
     residentialAddress: input.residentialAddress ?? null,

@@ -155,6 +155,24 @@ model Organization {
   defaultLanguage      String       @default("en")
   phone                String?
   logoUrl              String?
+  // ─── When this agency serves citizens ────────────────────────────────────
+  // Appointment search used to assume Mon–Fri 08:00–18:00 for everyone. A
+  // teaching hospital is not closed at weekends and a registry does not open
+  // at eight, so the platform was refusing to offer times that were genuinely
+  // free and offering times nobody was there for.
+  //
+  // Hours are whole hours in West Africa Time; serviceDays uses 0 = Sunday
+  // through 6 = Saturday. The defaults reproduce the old constants exactly, so
+  // every existing agency keeps the behaviour it had.
+  openingHour          Int          @default(8)
+  closingHour          Int          @default(18)
+  serviceDays          Int[]        @default([1, 2, 3, 4, 5])
+  /// Set by the operating ministry to take an agency out of service. Members of
+  /// a suspended agency are refused at authentication, so the agency stops
+  /// answering citizens immediately rather than at token expiry. Platform
+  /// operators are exempt, or a suspension could not be lifted.
+  suspendedAt          DateTime?
+  suspendedReason      String?
   aiPersonaPrompt      String?      @db.Text
   welcomeMessage       String?      @db.Text
   // ─── Embedded widget appearance ────────────────────────────────────────────
@@ -167,10 +185,6 @@ model Organization {
   widgetPosition       String?      @default("bottom-right")
   // ─── Subscription & Billing ────────────────────────────────────────────────
   // Updated by BillingService when Paystack fires charge.success webhook.
-  // subscriptionPlan matches SubscriptionPlan enum values: STARTER | PROFESSIONAL | BUSINESS | ENTERPRISE
-  subscriptionPlan     String?
-  subscriptionStatus   String?      @default("TRIAL") // TRIAL | ACTIVE | CANCELLED | PAST_DUE
-  subscriptionRenewsAt DateTime?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
@@ -195,8 +209,9 @@ model Organization {
   broadcastCampaigns   BroadcastCampaign[]
   workflows            Workflow[]
   selfieRequests       SelfieRequest[]
-  payments             Payment[]
   auditLogs            AuditLog[]
+  serviceOptions       ServiceOption[]
+  serviceLocations     ServiceLocation[]
 
   // White-label webhook settings
   webhookUrl           String?
@@ -245,6 +260,19 @@ model User {
   // NAT address. Cleared on successful sign-in and on password reset.
   failedLoginAttempts    Int          @default(0)
   lockedUntil            DateTime?
+  // ─── Platform operator ───────────────────────────────────────────────────
+  // The ONE flag that crosses the agency boundary every other query respects.
+  //
+  // Deliberately NOT a UserRole value. UserRole is what the tenant-facing
+  // endpoint `PATCH /api/organizations/members/:id/role` writes, so a platform
+  // role listed there would be grantable by any agency ADMIN to themselves.
+  // As a separate column of a different type, that endpoint cannot express it
+  // at all — the escalation is closed by the schema, not by a check somebody
+  // has to remember.
+  //
+  // Nothing in the HTTP API sets this. It is granted at the database by
+  // `npm run platform:grant`, which requires direct database access.
+  isPlatformAdmin        Boolean      @default(false)
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
@@ -340,7 +368,6 @@ model Contact {
   reservations   Reservation[]
   notes          Note[]
   selfieRequests SelfieRequest[]
-  payments       Payment[]
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
@@ -964,76 +991,16 @@ model HostedAgentConfig {
   @@map("hosted_agent_configs")
 }
 
-/// What the payment gateway says happened. Only the gateway may move a payment
-/// to SUCCEEDED — nothing a browser sends can, which is the entire reason this
-/// model exists.
-enum PaymentStatus {
-  PENDING
-  SUCCEEDED
-  FAILED
-  ABANDONED
-}
-
-/// A citizen-facing payment, recorded as its own row rather than as fields on
-/// the customer.
-///
-/// Payment state used to live in `Contact.metadata` — a nullable, freely-mutable
-/// Json column — written by an unauthenticated endpoint that took the amount
-/// from the request body and never contacted a gateway. Four properties this
-/// model provides that arrangement could not:
-///
-///  - **Idempotency.** `gatewayReference` is UNIQUE, so a replayed webhook is a
-///    P2002 rather than a silent second overwrite of the amount and timestamp.
-///  - **Something to reconcile.** One row per attempt, carrying the amount the
-///    SERVER resolved, so a gateway settlement report has a counterpart. There
-///    was previously no row to reconcile against at all.
-///  - **Survives the customer.** `contactId` is nullable and `SetNull`, not
-///    `Cascade`: deleting a contact must not destroy the record of what they
-///    paid. `organizationId` is `Restrict` for the same reason — an organization
-///    with payments cannot be deleted out from under its financial history, and
-///    that refusal is deliberate rather than an oversight.
-///  - **Money as an integer.** `amountKobo` is the gateway's own unit. Naira as
-///    a float rounds, and a rounded amount is a discrepancy nobody can explain.
-model Payment {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-
-  contactId String?
-  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
-
-  /// The gateway's reference, and the idempotency key. Generated server-side:
-  /// the browser used to mint this as `PAY-PLS-${Date.now()}-${Math.random()}`.
-  gatewayReference String @unique
-  gateway          String @default("paystack")
-
-  /// Resolved server-side from the plan. Never read from the request body.
-  amountKobo Int
-  currency   String @default("NGN")
-
-  status  PaymentStatus @default(PENDING)
-  /// What this paid for, e.g. `plaschema_premium`.
-  purpose String
-
-  /// Kept verbatim for reconciliation disputes: what the gateway actually said,
-  /// not our summary of it.
-  gatewayPayload Json?
-
-  paidAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([organizationId, createdAt])
-  @@index([contactId])
-  @@map("payments")
-}
-
 /// Append-only record of who changed what.
 ///
-/// The only previous trace of a financial state change was a free-text `Note`
+/// The only previous trace of a sensitive state change was a free-text `Note`
 /// created inside `.catch(() => {})` — so its failure was swallowed, and it
 /// recorded no actor, no address, no previous value and no new value, while
 /// being itself mutable and cascade-deletable.
+///
+/// This is what lets the operating ministry answer "who changed this citizen's
+/// record, when, and what did it say before" across every agency on the
+/// platform.
 ///
 /// Nothing in the application updates or deletes rows here. `organizationId` is
 /// `SetNull` rather than `Cascade` so that deleting a tenant does not erase the
@@ -1062,4 +1029,82 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([targetType, targetId])
   @@map("audit_logs")
+}
+
+
+/// A service an agency registers citizens for.
+///
+/// These used to be four health plans hardcoded in the orchestrator — Formal
+/// Sector, Informal Sector, Equity, BHCPF — so every agency on the platform
+/// offered a health scheme's products. A lands registry registers people for
+/// a Certificate of Occupancy, not an Informal Sector plan.
+model ServiceOption {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// What the citizen is registering for, as written on the record.
+  name String
+  /// Shown when the options are read out. Optional.
+  description String?
+
+  /// Words that pick this option out of what the citizen said, lowercase.
+  /// "civil servant", "trader", "renew my vehicle". Matched as substrings, so
+  /// an option with none can still be chosen by its number in the list.
+  matchPhrases String[] @default([])
+
+  /// True when the citizen pays nothing — the agency or the State covers it.
+  /// Replaces a regex over the plan NAME (/equity|bhcpf|free/), which decided
+  /// whether somebody owed money by pattern-matching a label.
+  isNoCost Boolean @default(false)
+
+  /// Set when this option needs a human to confirm eligibility before it
+  /// becomes active, rather than completing on the call.
+  requiresReview Boolean @default(false)
+
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive, sortOrder])
+  @@map("service_options")
+}
+
+/// Somewhere an agency actually sees citizens: an office, a centre, a clinic.
+///
+/// This was a hardcoded directory of one health scheme's accredited hospitals,
+/// keyed by LGA, in platform code. Every other agency therefore had no
+/// locations at all and the registration flow offered hospitals regardless of
+/// what the agency does.
+///
+/// `lga` is checked against the State's own list (state-geography.ts) rather
+/// than defining it: an LGA with no office is still a real place somebody
+/// lives.
+model ServiceLocation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name    String
+  /// "Primary Health Centre", "Area Office", "Registry". Shown to the citizen.
+  kind    String?
+  address String?
+  lga     String
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Keyed by LGA as well as name: a referral hospital can serve several LGAs,
+  /// and the question the flow asks is "which location in YOUR area". Keyed on
+  /// name alone, one hospital listed in four LGAs collapsed to a single row
+  /// and citizens in the other three were sent somewhere further away. The
+  /// seed script reported 46 written and 43 existed.
+  @@unique([organizationId, lga, name])
+  @@index([organizationId, lga, isActive])
+  @@map("service_locations")
 }

@@ -43,8 +43,6 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'WHATSAPP_VERIFY_TOKEN', required: true, description: 'Webhook verify token set on Meta Developer Console', rejectPlaceholder: true },
 
   // ─── Paystack (Optional until payments enabled) ────────────────────────────────
-  { key: 'PAYSTACK_SECRET_KEY', required: false, description: 'Paystack secret key (sk_live_... or sk_test_...)' },
-  { key: 'PAYSTACK_WEBHOOK_SECRET', required: false, description: 'Paystack webhook signature secret' },
 
   // ─── Vector Search & Caching (Optional — falls back gracefully) ────────────────
   { key: 'QDRANT_URL', required: false, description: 'Qdrant Vector Engine URL' },
@@ -65,11 +63,7 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
   { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
   { key: 'RESEND_API_KEY', required: false, description: 'Resend API key (required for verification/reset/booking emails)' },
-  // Names the ONE tenant that /api/public/pay/* may read and charge against.
-  // Unset, the portal refuses every request rather than falling back to a
-  // lookup across all tenants — which is what it used to do.
-  { key: 'PUBLIC_PAYMENT_ORG_SLUG', required: false, description: 'Organization slug that owns the public premium payment portal; unset disables those routes' },
-  { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in Paystack callbacks and TwiML stream URLs)' },
+  { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in TwiML stream URLs and agent tool callbacks)' },
   { key: 'WEB_BASE_URL', required: false, description: 'Public dashboard URL (used in emailed links; defaults to localhost)' },
 ];
 

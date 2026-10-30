@@ -98,7 +98,7 @@ export class ConversationsController {
    *
    * Asking for a person always beats a flow — that is what stops a form being
    * a trap — but the state it interrupts lived only inside the orchestrator.
-   * A citizen six answers into PLASCHEMA enrollment who asked for help was
+   * A citizen six answers into a registration form who asked for help was
    * handed to somebody who could see the message thread and nothing else, so
    * they were asked their name, age, address and LGA a second time.
    *

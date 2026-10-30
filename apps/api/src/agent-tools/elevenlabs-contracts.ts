@@ -148,7 +148,7 @@ export interface AgentSpec {
   /**
    * Pronunciation dictionary locators to attach to the TTS engine.
    * Each entry ties a specific dictionary version to this agent so custom
-   * phoneme rules (e.g. PLASCHEMA → PLAS-CHEH-MA) survive every sync.
+   * phoneme rules for an agency's own name survive every sync.
    */
   pronunciationDictionaryLocators?: Array<{ pronunciationDictionaryId: string; versionId: string }>;
 }

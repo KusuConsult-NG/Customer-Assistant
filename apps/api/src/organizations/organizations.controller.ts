@@ -26,6 +26,7 @@ export class OrganizationsController {
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;
+      openingHour?: number; closingHour?: number; serviceDays?: number[];
     }
   ) {
     return this.orgsService.updateSettings(req.user.organizationId, body);

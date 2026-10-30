@@ -8,6 +8,25 @@ import { LeadStatus, DealStage, TicketStatus, TicketPriority } from '@ace/shared
 import { PdfGeneratorService } from '@ace/pdf-generator';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 
+/**
+ * A reference prefix derived from the agency's own name.
+ *
+ * Every agency used to issue `PLS/<year>/<id>` — one scheme's initials on a
+ * lands registry's reference number. An existing `metadata.policyId` always
+ * wins, so numbers already issued are untouched; only new ones take the
+ * agency's initials.
+ */
+function referencePrefix(organizationName: string | null | undefined): string {
+  const initials = (organizationName ?? '')
+    .replace(/[^A-Za-z ]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2)          // skip "of", "and", "the"
+    .map((w) => w[0]!.toUpperCase())
+    .join('')
+    .slice(0, 4);
+  return initials || 'REF';
+}
+
 @Injectable()
 export class CrmService {
   constructor(
@@ -451,7 +470,9 @@ export class CrmService {
     if (!contact) throw new NotFoundException('Contact not found');
 
     const meta = (contact.metadata as Record<string, any>) || {};
-    const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+    const policyId =
+      meta.policyId ||
+      `${referencePrefix(contact.organization?.name)}/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
     const selfie = contact.selfieRequests[0];
     const photoUrl = selfie?.storagePath ? `/api/onboarding/selfies/${selfie.id}` : undefined;
 
@@ -469,16 +490,26 @@ export class CrmService {
       dependents: meta.dependents || undefined,
       issuedAt: meta.approvedAt ? new Date(meta.approvedAt).toLocaleDateString('en-NG') : new Date().toLocaleDateString('en-NG'),
       expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-NG'),
-      organizationName: contact.organization?.name || 'PLASCHEMA',
+      // No fallback to a scheme name. A card is an identity document: printing
+      // one agency's name on another agency's card is worse than printing none.
+      organizationName: contact.organization?.name ?? '',
     });
   }
 
   async approveEnrollee(contactId: string, organizationId: string) {
-    const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
+    // The organization is included because the reference number is built from
+    // its name. Without it the prefix silently degraded to "REF" on the one
+    // call that ISSUES the number, which is the hardest place to notice.
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, organizationId },
+      include: { organization: { select: { name: true } } },
+    });
     if (!contact) throw new NotFoundException('Contact not found');
 
     const meta = (contact.metadata as Record<string, any>) || {};
-    const policyId = meta.policyId || `PLS/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
+    const policyId =
+      meta.policyId ||
+      `${referencePrefix(contact.organization?.name)}/${new Date().getFullYear()}/${contact.id.slice(0, 8).toUpperCase()}`;
 
     const updated = await prisma.contact.update({
       where: { id: contactId },

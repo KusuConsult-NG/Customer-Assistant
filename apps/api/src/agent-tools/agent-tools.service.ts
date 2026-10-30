@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility, findAvailableSlots, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -163,6 +163,9 @@ export class AgentToolsService {
       const duration = Number(input.durationMinutes) > 0 ? Number(input.durationMinutes) : 30;
       const limit = Math.min(Math.max(Number(input.limit) || 5, 1), 10);
 
+      // The agency's own hours, not a platform-wide working week.
+      const hours = await serviceHoursFrom(prisma, organizationId);
+
       const slots = await findAvailableSlots(
         (from, to) =>
           prisma.booking.findMany({
@@ -174,7 +177,8 @@ export class AgentToolsService {
             select: { startTime: true, endTime: true },
           }),
         duration,
-        limit
+        limit,
+        hours
       );
 
       if (slots.length === 0) {
@@ -361,12 +365,18 @@ export class AgentToolsService {
     try {
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
       const text = `${input.subject} ${input.description}`.toLowerCase();
-      const isHospitalMisconduct =
-        /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|no drug|medicine|mistreat/i.test(text);
 
-      const priority = isHospitalMisconduct ? TicketPriority.URGENT : TicketPriority.HIGH;
-      const subject = isHospitalMisconduct
-        ? `[QA ESCALATION] ${input.subject}`
+      // A citizen reporting that they were asked for money, refused service or
+      // mistreated is a service-integrity complaint at ANY agency, not only a
+      // hospital — so the escalation is kept and only the health-specific
+      // wording is gone. What the citizen is told names no scheme, no card and
+      // no helpline the agency may not have.
+      const isIntegrityComplaint =
+        /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|mistreat/i.test(text);
+
+      const priority = isIntegrityComplaint ? TicketPriority.URGENT : TicketPriority.HIGH;
+      const subject = isIntegrityComplaint
+        ? `[INTEGRITY ESCALATION] ${input.subject}`
         : input.subject;
 
       const ticket = await this.crm.createTicket(organizationId, {
@@ -376,22 +386,21 @@ export class AgentToolsService {
         priority,
       });
 
-      // If it is hospital misconduct, add an audit note
-      if (isHospitalMisconduct) {
+      if (isIntegrityComplaint) {
         await prisma.note.create({
           data: {
             contactId: contact.id,
-            content: `🚨 URGENT HOSPITAL GRIEVANCE LOGGED: ${input.subject} — Escalated to PLASCHEMA Quality Assurance & Standards Division.`,
+            content: `🚨 URGENT SERVICE-INTEGRITY COMPLAINT LOGGED: ${input.subject} — escalated for review.`,
           },
         }).catch(() => {});
       }
 
       return {
         ok: true,
-        speak: isHospitalMisconduct
-          ? `I have logged this as an urgent grievance for our Quality Assurance desk. Your complaint reference number is ${ticket.id.slice(0, 8)}. Our team will investigate with the hospital medical director immediately. Please keep your PLASCHEMA card with you, and call us back on 0700-700-1111 if you need immediate assistance.`
+        speak: isIntegrityComplaint
+          ? `I have logged this as an urgent complaint for review. Your reference number is ${ticket.id.slice(0, 8)} — please keep it. Someone will look into this as a priority and come back to you on this number.`
           : `I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will come back to you on this number.`,
-        data: { ticketId: ticket.id, isEscalated: isHospitalMisconduct },
+        data: { ticketId: ticket.id, isEscalated: isIntegrityComplaint },
       };
     } catch (e) {
       return this.failed('create_ticket', e);
@@ -648,7 +657,7 @@ export class AgentToolsService {
     }
   }
 
-  // ── PLASCHEMA enrollment registration ──────────────────────────────────────
+  // ── Service registration ───────────────────────────────────────────────────
   /**
    * Creates (or updates) a contact record with enrollment details collected
    * during the call, then fires the selfie-capture link to their WhatsApp.
@@ -722,12 +731,18 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: preferredHospital must be provided
-      if (!input.preferredHospital?.trim()) {
-        const facs = getFacilitiesForLGA(input.lga).slice(0, 3).map((f) => f.name).join(', ');
+      // The agency's own services and locations, read once. Everything below
+      // checks against these rather than against a directory compiled into
+      // the platform.
+      const catalogue = await loadServiceCatalogue(prisma, organizationId);
+      const lgaFacilities = locationsInLga(catalogue, input.lga);
+
+      // Guard: a location must be provided, where the agency has any here.
+      if (!input.preferredHospital?.trim() && lgaFacilities.length > 0) {
+        const facs = lgaFacilities.slice(0, 3).map((f) => f.name).join(', ');
         return {
           ok: false,
-          speak: `Which primary hospital or healthcare facility in ${input.lga} would you prefer? For example: ${facs || 'your nearest General Hospital'}.`,
+          speak: `Which of our locations in ${input.lga} would you prefer? For example: ${facs}.`,
           data: { reason: 'missing_preferred_hospital' },
         };
       }
@@ -750,11 +765,10 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: the LGA has to be one we have accredited facilities for. Without
-      // this the enrollment lands on a placeholder facility, and the caller is
-      // told they are registered somewhere that does not exist.
-      const lgaFacilities = getFacilitiesForLGA(input.lga);
-      if (lgaFacilities.length === 0) {
+      // Guard: the LGA has to be a real one. Checked against the State's own
+      // list, not against this agency's coverage — an LGA where the agency has
+      // no office is still where somebody lives, and they can still register.
+      if (!resolveLga(input.lga)) {
         return {
           ok: false,
           speak:
@@ -764,16 +778,20 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: and the facility has to be on that LGA's list. A card issued
-      // against an unaccredited hospital is refused at the desk — which the
-      // enrollee discovers while ill.
-      if (!resolveFacility(input.lga, input.preferredHospital)) {
+      // Guard: where the agency HAS locations in that LGA, the one named must
+      // be among them. A record against a location that does not serve them is
+      // a wasted journey, found out on arrival.
+      //
+      // Awaited, and that matters: this was `if (!resolveFacility(...))` after
+      // the function became async, so the condition tested a Promise — always
+      // truthy, so the guard never fired and any name at all was accepted.
+      if (lgaFacilities.length > 0 && !resolveLocation(catalogue, input.lga, input.preferredHospital)) {
         const options = lgaFacilities.slice(0, 3).map((f) => f.name).join(', ');
         return {
           ok: false,
           speak:
-            `That facility is not on our accredited list for ${input.lga}. ` +
-            `The approved options there include: ${options}. Which would you prefer?`,
+            `That is not one of our locations in ${input.lga}. ` +
+            `The options there include: ${options}. Which would you prefer?`,
           data: { reason: 'unaccredited_facility' },
         };
       }
@@ -803,7 +821,7 @@ export class AgentToolsService {
       const selfieResult = await this.onboarding.requestSelfie(organizationId, {
         contactId: contact.id,
         channel: 'VOICE',
-        purpose: isEquity ? 'PLASCHEMA Equity free coverage verification' : 'PLASCHEMA health plan registration',
+        purpose: isEquity ? 'Eligibility verification for a no-cost service' : 'Service registration',
         expiresInHours: 48,
       });
 
@@ -813,7 +831,7 @@ export class AgentToolsService {
       if (isEquity) {
         return {
           ok: true,
-          speak: `Wonderful news, ${firstName} — you are all set! I have registered your profile for the free PLASCHEMA Equity Programme in ${input.lga}, with ${selectedFacility} as your primary facility. Because you qualify for the Equity Programme, there is absolutely no payment required. Your enrollment reference number is ${refId} — please save that. Right after this call, we will send you an SMS with a secure link to complete your photo upload. Our team will verify your eligibility and issue your health card within 2 working days. Is there anything else I can help you with?`,
+          speak: `You are registered, ${firstName}. I have recorded you in ${input.lga}, with ${selectedFacility} as your chosen location, and there is no payment required for this. Your reference number is ${refId} — please keep it safe. Right after this call we will text you a secure link to add your photograph. Our team will review your eligibility and contact you on this number. Is there anything else I can help you with?`,
           data: {
             contactId: contact.id,
             refId,
@@ -827,7 +845,7 @@ export class AgentToolsService {
 
       return {
         ok: true,
-        speak: `You are all registered, ${firstName}! Your PLASCHEMA ${normalizedPlan} profile has been created in ${input.lga}, with ${selectedFacility} as your primary healthcare facility. Your enrollment reference is ${refId} — please keep that safe. Right after this call ends, we will send you an SMS with a link to upload your photo and complete your profile. Our team will activate your health coverage within 2 working days. Is there anything else I can help you with today?`,
+        speak: `You are registered, ${firstName}. Your ${normalizedPlan} record has been created in ${input.lga}, with ${selectedFacility} as your chosen location. Your reference is ${refId} — please keep it safe. Right after this call we will text you a link to add your photograph. Our team will take it from there and contact you on this number. Is there anything else I can help you with today?`,
         data: {
           contactId: contact.id,
           refId,

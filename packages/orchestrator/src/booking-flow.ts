@@ -9,7 +9,7 @@
  * did, and the customer can move it — but it is the same shape: one message in,
  * one write out, and a time nobody chose.
  *
- * The cost lands on the people least able to absorb it. A PLASCHEMA enrollee
+ * The cost lands on the people least able to absorb it. A citizen
  * travels to a facility; "we have put you down for Tuesday 11:00" to somebody
  * who can only come after work is an appointment they will miss, a slot the
  * clinic holds empty, and a second conversation to undo it.

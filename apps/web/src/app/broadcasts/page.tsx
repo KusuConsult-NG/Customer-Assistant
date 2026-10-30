@@ -227,7 +227,7 @@ export default function BroadcastsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Send className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Enrollee WhatsApp Broadcasts
+            <Send className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> WhatsApp Broadcasts
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Send policy updates, renewal reminders, facility announcements, and maternal health alerts to Plateau State enrollees.
@@ -245,7 +245,7 @@ export default function BroadcastsPage() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
             style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
           >
-            <Send className="w-4 h-4" /> New Enrollee Broadcast
+            <Send className="w-4 h-4" /> New Broadcast
           </button>
         </div>
       </div>

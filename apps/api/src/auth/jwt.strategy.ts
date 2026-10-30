@@ -36,7 +36,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    *     whenever their token happens to expire, up to a day later;
    *   - logout / password change / password reset genuinely revoke outstanding
    *     tokens, via the tokenVersion counter;
-   *   - a token naming a deleted user cannot keep addressing that organization.
+   *   - a token naming a deleted user cannot keep addressing that organization;
+   *   - a suspended agency stops serving on the next request;
+   *   - platform-operator status is read from the database, never from the
+   *     token, so revoking it takes effect at once and a stale token cannot
+   *     carry it.
    *
    * This is one primary-key lookup per authenticated request.
    */
@@ -55,6 +59,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         isActive: true,
         organizationId: true,
         tokenVersion: true,
+        isPlatformAdmin: true,
+        organization: { select: { suspendedAt: true } },
       },
     });
 
@@ -62,6 +68,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user.isActive) throw new UnauthorizedException('Your account has been deactivated.');
     if ((payload.tokenVersion ?? 0) !== user.tokenVersion) {
       throw new UnauthorizedException('This session has been signed out. Please log in again.');
+    }
+
+    // A suspended agency stops answering citizens on the NEXT request, not at
+    // token expiry — same reason the checks above re-read the database. The
+    // platform operator is exempt: they are the only one who can lift it, and
+    // locking them out of a suspension they applied makes it permanent.
+    if (user.organization?.suspendedAt && !user.isPlatformAdmin) {
+      throw new UnauthorizedException(
+        'This agency has been suspended by the platform operator. Contact the Ministry of Information.'
+      );
     }
 
     // Source role and organization from the database, not from the token: a role
@@ -73,6 +89,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       fullName: user.fullName,
       role: user.role as AuthUser['role'],
+      isPlatformAdmin: user.isPlatformAdmin,
     };
   }
 }

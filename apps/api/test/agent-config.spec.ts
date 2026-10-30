@@ -258,8 +258,31 @@ describe('the agent asks for what the flow collects', () => {
     }
   });
 
+  /**
+   * The derived registration block of the prompt.
+   *
+   * These two tests used to slice from `indexOf('When a caller wants to join')`
+   * inline. When that opening sentence was reworded, indexOf returned -1,
+   * slice(-1) handed back the last character of the prompt, and the failure
+   * read "Expected length: 7, Received length: 0" — which looks like the field
+   * derivation broke rather than the anchor moving. Failing on the anchor says
+   * which it is.
+   */
+  function enrollmentSection(): string {
+    const marker = 'collect\nthese details';
+    const at = SYSTEM_PROMPT.indexOf('When a caller wants to register for a service');
+    if (at < 0) {
+      throw new Error(
+        'The registration section of SYSTEM_PROMPT was not found. If its opening ' +
+        'sentence was reworded, update this anchor — do not delete the test: it is ' +
+        `what keeps the prompt and the flow asking for the same fields. (marker: ${marker})`
+      );
+    }
+    return SYSTEM_PROMPT.slice(at);
+  }
+
   it('asks for every field in the prompt, in the order the flow asks them', () => {
-    const section = SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf('When a caller wants to join'));
+    const section = enrollmentSection();
     const numbered = section.split('\n').filter((l) => /^\d+\. /.test(l));
     expect(numbered).toHaveLength(ENROLLMENT_FIELDS.length);
 
@@ -275,7 +298,7 @@ describe('the agent asks for what the flow collects', () => {
   it('does not state a field count that a new field would falsify', () => {
     // It used to say "ALL six mandatory fields". A seventh would have left
     // that sentence quietly wrong, and prose does not fail a build.
-    const section = SYSTEM_PROMPT.slice(SYSTEM_PROMPT.indexOf('When a caller wants to join'));
+    const section = enrollmentSection();
     expect(section).not.toMatch(/ALL (one|two|three|four|five|six|seven|eight|nine|\d+) mandatory/i);
     expect(section).toContain('every mandatory field');
   });

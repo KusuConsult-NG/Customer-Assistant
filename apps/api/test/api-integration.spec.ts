@@ -150,7 +150,6 @@ describe('Customer Care Agent API Integration Tests', () => {
       ['get', '/api/crm/contacts'],
       ['get', '/api/conversations'],
       ['get', '/api/analytics/dashboard'],
-      ['get', '/api/billing/subscription'],
       ['get', '/api/scheduling/bookings'],
       ['get', '/api/knowledge/documents'],
       ['get', '/api/workflows'],
@@ -187,19 +186,7 @@ describe('Customer Care Agent API Integration Tests', () => {
     });
   });
 
-  describe('6. Paystack webhook signature', () => {
-    it('does not report success for an unsigned payload', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/billing/paystack-webhook')
-        .send({ event: 'charge.success', data: { reference: 'forged' } });
-
-      // Must never be `{ status: 'success' }`. The old handler passed the parsed body
-      // into createHmac().update(), threw a TypeError, and 500'd on every delivery.
-      expect(res.body.status).not.toBe('success');
-    });
-  });
-
-  describe('7. SSRF defence on the web crawler', () => {
+  describe('6. SSRF defence on the web crawler', () => {
     it('requires authentication before crawling anything', async () => {
       await request(app.getHttpServer())
         .post('/api/knowledge/crawl-website')

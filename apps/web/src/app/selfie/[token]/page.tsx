@@ -214,12 +214,13 @@ export default function SelfieUploadPage() {
             PLS
           </div>
           <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-            {stage === 'done' ? 'Enrollment Received' : 'PLASCHEMA Photo & Verification'}
+            {stage === 'done' ? 'Submission Received' : 'Photo Verification'}
           </h1>
           {info && stage !== 'done' && (
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
               {info.firstName ? `Hello ${info.firstName} — ` : ''}
-              Please take a clear selfie photo for your official PLASCHEMA Digital ID Card.
+              Please take a clear photo of yourself for your official{' '}
+              {info.organizationName} record.
             </p>
           )}
         </div>
@@ -236,7 +237,7 @@ export default function SelfieUploadPage() {
               </div>
               <p className="text-sm text-slate-700 dark:text-slate-300 font-semibold">{error}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Call the PLASCHEMA Helpline on <strong>0700-700-1111</strong> or WhatsApp us to get a new link.
+                Contact the office that sent you this link to request a new one.
               </p>
             </div>
           )}
@@ -249,29 +250,10 @@ export default function SelfieUploadPage() {
               <div>
                 <h3 className="font-bold text-slate-900 dark:text-white text-base">Photo &amp; Details Submitted!</h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                  Your photo has been attached to your enrollment file. You can now complete your premium payment online.
+                  Your photo has been attached to your record. There is nothing further for you to do —
+                  the office handling your request will be in touch.
                 </p>
               </div>
-
-              <div className="p-4 rounded-2xl bg-[#74BA03]/10 border border-[#74BA03]/30 text-left space-y-2">
-                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center justify-between">
-                  <span>Informal Sector Premium</span>
-                  <span className="text-[#558A02] dark:text-[#74BA03] font-black">₦12,000 / ₦50,000</span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Instant activation upon online payment with immediate digital card issuance.
-                </p>
-                <a
-                  href="/pay/informal"
-                  className="block text-center w-full py-2.5 px-4 rounded-xl text-white font-bold text-xs shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
-                >
-                  Pay Premium Online Now →
-                </a>
-              </div>
-
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Emergency or inquiries? Call PLASCHEMA on <strong>0700-700-1111</strong>.
-              </p>
             </div>
           )}
 
@@ -423,7 +405,7 @@ export default function SelfieUploadPage() {
         {stage !== 'done' && stage !== 'invalid' && (
           <div className="px-6 pb-6">
             <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400 text-center">
-              Plateau State Contributory Healthcare Management Agency (PLASCHEMA).
+              {info?.organizationName ?? ''}
               {info ? ` This photo link expires on ${new Date(info.expiresAt).toLocaleDateString()}.` : ''}
             </p>
           </div>

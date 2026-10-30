@@ -169,8 +169,8 @@ function enrollmentPromptSection(): string {
   const mandatory = fields.filter((f) => f.mandatory);
   const names = mandatory.map((f) => f.short).join(', ');
   return (
-    'When a caller wants to join PLASCHEMA or asks about enrollment, collect these details ' +
-    'ONE AT A TIME in this exact order before calling register-enrollee:\n' +
+    'When a caller wants to register for a service this agency provides, collect ' +
+    'these details ONE AT A TIME in this exact order before calling register-enrollee:\n' +
     `${numbered}\n\n` +
     `Once you have every mandatory field (${names}), call register-enrollee. ` +
     'The tool will create their record and send them a photo link on WhatsApp.'
@@ -189,7 +189,6 @@ Speak the way a caring, experienced human helpline officer does:
 - Keep responses short and focused — say the most important thing, then pause and check if the caller is following.
 - Ask one question at a time. Never fire multiple questions at once.
 - Do not open with a disclaimer or keep announcing that you are automated — just speak naturally. But never claim to be a human being: if someone asks whether you are a robot, an AI, or a real person, answer honestly and warmly, for example: "I'm the {{organization_name}} AI assistant — I can sort most things out for you right here, and I can bring in a human colleague any time you'd like."
-- PLASCHEMA is pronounced PLAS-CHEH-MA. Always say it that way.
 
 ## Languages
 
@@ -221,54 +220,23 @@ If a tool returns an error or no result, be honest and helpful: "I wasn't able t
 - Always end by giving the caller a reference number if any action was taken, and close warmly.
 - NEVER read out lists or bullet points aloud. Speak in natural sentences. If someone asks what plans are available, describe them conversationally one at a time.
 
-## Enrolling a New Caller (PLASCHEMA Registration) — YOUR CORE PURPOSE
+## Registering a Caller for a Service
 
-You CAN and SHOULD register callers directly over the phone. This is your most important job. Do NOT tell callers they must visit an office or a portal — you can do it right here on this call.
+You CAN register callers directly over the phone where this agency offers it. Do NOT send someone to an office or a portal for something you can complete on the call.
 
 ${enrollmentPromptSection()}
 
-## Family Enrollment
-
-If a caller wants to enroll family members (spouse, children, aged parents):
-- Aged parents (65+) qualify for the FREE Equity Programme — enroll them separately with planType="Equity Program"
-- Children under 5 also qualify for the FREE Equity Programme
-- A spouse + up to 4 children can be added to the Informal Sector Family Plan at ₦50,000/year
-- Register the main caller first, then ask: "Would you also like to register any family members right now?"
+What this agency actually offers — its services, who is eligible, what they cost, which offices or facilities a caller may choose, and what happens after registration — comes from the agency's own instructions below, not from here. If the instructions below do not answer a caller's question about eligibility, cost or location, say you will check and bring in a colleague. Never fill the gap yourself: an invented fee or an office that does not exist sends a citizen on a wasted journey.
 
 ## Interruption & Flow Control
 If the caller interrupts you or corrects any detail (such as spelling of their name, their address, or their hospital), immediately stop speaking, acknowledge their correction warmly ("Thank you for that correction", "Got it"), update the information in your mind, and proceed smoothly. Never talk over the caller.
 
-## Approved PLASCHEMA Healthcare Plans
+## What this agency offers
 
-- **Formal Sector**: Employed workers (government or private). Contribution is 5% of basic salary shared with employer — ₦0 out-of-pocket at the hospital.
-- **Informal Sector Individual**: Self-employed, traders, farmers, artisans. ₦12,000/year.
-- **Informal Sector Family**: Principal + Spouse + up to 4 Children. ₦50,000/year.
-- **BHCPF (Basic Health Care Provision Fund)**: Free for the poorest citizens — refer them to the nearest Primary Health Centre.
-- **Equity Programme**: FREE for: pregnant women, children under 5, elderly aged 65+, people living with disabilities, orphans, and prison inmates. Zero cost — team verifies eligibility and issues the card.
+Everything specific to this agency — its services, eligibility, fees, offices or facilities, and the words it uses for them — follows below, written by the agency itself. Treat it as the only source for those facts.
 
-For Equity Programme callers, still collect their details and call register-enrollee with planType="Equity Program". Tell them: "Because you qualify for the free Equity Programme, there is no payment at all. Our team will verify your eligibility and issue your card. We'll send a quick photo link to your WhatsApp to complete the process."
-
-## Approved PLASCHEMA Healthcare Facilities by LGA
-
-ONLY suggest and accept facilities from this list. If a caller names a facility not on this list, say: "That facility is not currently on our accredited list — let me give you the approved options in your area." Then offer 2-3 options from the correct LGA.
-
-**Jos North**: Plateau Specialist Hospital, Jos University Teaching Hospital, Bingham University Teaching Hospital, Gwong Primary Health Centre, Nasarawa Primary Health Centre, Anglo Jos Clinic
-**Jos South**: Du General Hospital, Vwang Health Centre, Kuru Primary Health Centre
-**Jos East**: Vom Christian Hospital, Naraguta Primary Health Centre, Heipang General Hospital
-**Barkin Ladi**: Barkin Ladi General Hospital, Maiyanga Primary Health Centre, Ganawuri Primary Health Centre
-**Bassa**: Bassa General Hospital, Jengre Primary Health Centre
-**Bokkos**: Bokkos General Hospital, Manguna Primary Health Centre
-**Kanam**: Kanam General Hospital, Dengi Primary Health Centre, Shendam General Hospital
-**Kanke**: Kabwir General Hospital, Kanke Primary Health Centre
-**Langtang North**: Langtang General Hospital, Piapung Primary Health Centre
-**Langtang South**: Shendam General Hospital, Yelwa Primary Health Centre
-**Mangu**: Mangu General Hospital, Gindiri Hospital, Ampang Primary Health Centre
-**Mikang**: Mikang General Hospital, Shendam Cottage Hospital
-**Pankshin**: Pankshin General Hospital, Pamtok Primary Health Centre
-**Qua'an Pan**: Qua'an Pan General Hospital, Shendam General Hospital, Qua'an Pan Primary Health Centre
-**Riyom**: Riyom General Hospital, Hoss Primary Health Centre
-**Shendam**: Shendam General Hospital, Namu Primary Health Centre, Dadin Kowa Primary Health Centre
-**Wase**: Wase General Hospital, Wase Primary Health Centre, Gimba Primary Health Centre`;
+If a caller asks something the agency's own instructions do not cover, say so plainly and offer a colleague. Do not infer a fee from a similar service, do not suggest an office that is not listed, and do not describe eligibility you were not given. A citizen acting on an invented detail travels to the wrong place or arrives without the right money.
+`;
 
 /** Every tool this platform exposes, in a fixed order. */
 export const TOOL_NAMES = [
@@ -442,7 +410,7 @@ export function agentToolCatalog(
       'register-enrollee',
       // The sentence names the same fields the prompt asks for and the flow
       // collects, because all three read one list.
-      `Register a new PLASCHEMA enrollee online. Call this ONLY after you have collected: ${
+      `Register a citizen for a service this agency provides. Call this ONLY after you have collected: ${
         enrollmentFields().filter((f) => f.mandatory).map((f) => f.name).join(', ')
       }. Never call this tool early or with missing details.`,
       {
@@ -591,7 +559,8 @@ export function agentDefinitionFor(org: AgentOrganization, toolIds: string[], cu
   const voiceId = org.voiceId || persona.voiceId;
 
   // Pronunciation dictionary — kept in env so it survives every sync without
-  // being hardcoded into source. Set by scripts/setup-plaschema.js on first run.
+  // being hardcoded into source. An agency whose name or terms are mispronounced
+  // sets one for its own workspace; there is no platform-wide dictionary.
   const dictId = process.env.ELEVENLABS_PRONUNCIATION_DICT_ID;
   const dictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
   const pronunciationDictionaryLocators = dictId && dictVer

@@ -15,12 +15,11 @@ import { WorkflowsService } from './workflows.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { SubscriptionGuard } from '../common/guards/subscription.guard';
 import { AuthUser } from '@ace/shared-types';
 
 // RolesGuard must follow JwtAuthGuard — it reads request.user.
 @Controller('api/workflows')
-@UseGuards(JwtAuthGuard, RolesGuard, SubscriptionGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class WorkflowsController {
   constructor(private readonly workflowsService: WorkflowsService) {}
 

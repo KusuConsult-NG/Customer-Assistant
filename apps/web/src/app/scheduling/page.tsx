@@ -244,7 +244,7 @@ export default function SchedulingPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <CalendarIcon className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Enrolment &amp; Clinic Appointments
+            <CalendarIcon className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Appointments &amp; Reservations
           </h1>
           <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Schedule citizen biometrics capture, clinic consultations, and inspect AI booking audit trails.</p>
         </div>

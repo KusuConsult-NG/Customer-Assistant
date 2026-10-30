@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret } from '@ace/database';
+import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
@@ -132,6 +132,11 @@ export class OrganizationsService {
       // nothing, because the orchestrator falls back to English on any value
       // it does not recognise.
       defaultLanguage?: string;
+      // When this agency serves citizens. Appointment search offers nothing
+      // outside these, so a wrong value here is a diary that looks full.
+      openingHour?: number;
+      closingHour?: number;
+      serviceDays?: number[];
     }
   ) {
     if (data.defaultLanguage !== undefined && !SUPPORTED_LANGUAGES.includes(data.defaultLanguage as Language)) {
@@ -139,6 +144,33 @@ export class OrganizationsService {
         `defaultLanguage must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`
       );
     }
+    // Validated here rather than trusted, because availability search throws
+    // on hours that cannot produce a slot — and a 500 from the booking flow is
+    // a citizen told nothing is free, days after somebody saved the form.
+    const hoursTouched =
+      data.openingHour !== undefined ||
+      data.closingHour !== undefined ||
+      data.serviceDays !== undefined;
+
+    if (hoursTouched) {
+      const current = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { openingHour: true, closingHour: true, serviceDays: true },
+      });
+      if (!current) throw new NotFoundException('Organization not found');
+
+      try {
+        assertUsableServiceHours({
+          openHour: data.openingHour ?? current.openingHour,
+          closeHour: data.closingHour ?? current.closingHour,
+          days: data.serviceDays ?? current.serviceDays,
+        });
+      } catch (e: any) {
+        // The message names the actual problem; it is shown in the settings form.
+        throw new BadRequestException(e?.message ?? 'Those serving hours cannot produce an appointment.');
+      }
+    }
+
     return prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -154,6 +186,9 @@ export class OrganizationsService {
         ...(data.payoutAccountNumber !== undefined && { payoutAccountNumber: data.payoutAccountNumber || null }),
         ...(data.payoutUssdCode !== undefined && { payoutUssdCode: data.payoutUssdCode || null }),
         ...(data.defaultLanguage !== undefined && { defaultLanguage: data.defaultLanguage }),
+        ...(data.openingHour !== undefined && { openingHour: data.openingHour }),
+        ...(data.closingHour !== undefined && { closingHour: data.closingHour }),
+        ...(data.serviceDays !== undefined && { serviceDays: data.serviceDays }),
         // The widgetPrimaryColor / widgetSecondaryColor / widgetPosition
         // columns still exist but are no longer writable: the embedded chat
         // channel was retired, so there is nothing left for them to style.
@@ -370,13 +405,6 @@ export class OrganizationsService {
         ADMIN: 'Full Access',
         AGENT: 'View & Reschedule',
         VIEWER: 'View Only',
-      },
-      {
-        module: 'Billing & Subscriptions',
-        OWNER: 'Full Access',
-        ADMIN: 'View Only',
-        AGENT: 'No Access',
-        VIEWER: 'No Access',
       },
       {
         module: 'Organization & Team Settings',

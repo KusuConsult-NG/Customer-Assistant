@@ -4,13 +4,14 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { PlatformModule } from './platform/platform.module';
+import { CatalogueModule } from './catalogue/catalogue.module';
 import { CrmModule } from './crm/crm.module';
 import { TelephonyModule } from './telephony/telephony.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { BillingModule } from './billing/billing.module';
 import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
@@ -47,13 +48,14 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     OnboardingModule,
     AuthModule,
     OrganizationsModule,
+    PlatformModule,
+    CatalogueModule,
     CrmModule,
     TelephonyModule,
     WhatsappModule,
     KnowledgeModule,
     SchedulingModule,
     AnalyticsModule,
-    BillingModule,
     EventsModule,
     WebhooksModule,
     WidgetModule,

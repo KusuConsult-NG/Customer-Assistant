@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -119,13 +119,6 @@ const busyIn = (organizationId: string) => (from: Date, to: Date) =>
     select: { startTime: true, endTime: true },
   });
 const RESCHEDULE_TARGETS_LISTED = 5;
-
-/** Business timezone for all customer-facing times. */
-const BUSINESS_TIMEZONE = 'Africa/Lagos';
-
-/** Operating hours, in West Africa Time (UTC+1, no DST). */
-const BUSINESS_OPEN_HOUR_WAT = 8;
-const BUSINESS_CLOSE_HOUR_WAT = 18;
 
 /** Prior turns handed to the LLM as conversational context. */
 const MAX_HISTORY_TURNS = 12;
@@ -1734,7 +1727,8 @@ export class ConversationOrchestrator {
     const slots = await findAvailableSlots(
       busyIn(context.organizationId),
       DEFAULT_APPOINTMENT_DURATION_MINUTES,
-      RESCHEDULE_OPTIONS_OFFERED
+      RESCHEDULE_OPTIONS_OFFERED,
+      await serviceHoursFrom(prisma, context.organizationId)
     );
     if (slots.length === 0) {
       // Offering nothing is not an option list. Say so and pass it on, rather
@@ -1930,7 +1924,7 @@ export class ConversationOrchestrator {
    *
    * Booking used to take the next free slot and write it, then say which slot
    * it had taken. Honest and reversible, but still a time nobody chose — and
-   * the cost lands on the people least able to absorb it. A PLASCHEMA enrollee
+   * the cost lands on the people least able to absorb it. A citizen
    * travels to a facility; "we have put you down for Tuesday 11:00" to somebody
    * who can only come after work is an appointment they will miss and a slot
    * the clinic holds empty.
@@ -1964,7 +1958,8 @@ export class ConversationOrchestrator {
     const free = await findAvailableSlots(
       busyIn(context.organizationId),
       DEFAULT_APPOINTMENT_DURATION_MINUTES,
-      RESCHEDULE_OPTIONS_OFFERED
+      RESCHEDULE_OPTIONS_OFFERED,
+      await serviceHoursFrom(prisma, context.organizationId)
     );
     if (free.length === 0) {
       return {
@@ -2123,7 +2118,8 @@ export class ConversationOrchestrator {
     const free = await findAvailableSlots(
       busyIn(context.organizationId),
       RESERVATION_DURATION_MINUTES,
-      RESCHEDULE_OPTIONS_OFFERED
+      RESCHEDULE_OPTIONS_OFFERED,
+      await serviceHoursFrom(prisma, context.organizationId)
     );
     if (free.length === 0) {
       return {
@@ -2887,10 +2883,35 @@ export class ConversationOrchestrator {
         handoffReason: HandoffReason.TOOL_FAILURE,
       };
     }
+    let state = beginFlow(flow);
+
+    // Registration asks which service and which location, and both belong to
+    // the AGENCY rather than the platform. They are loaded ONCE here and seeded
+    // into the flow state, because the slots that read them are synchronous —
+    // the flow engine is deliberately free of database access, the same reason
+    // `_targets` is seeded for the appointment flows.
+    if (flow.name === ENROLLMENT_FLOW_NAME) {
+      const catalogue = await loadServiceCatalogue(prisma, context.organizationId);
+      if (!canRegister(catalogue)) {
+        // Nothing to register for. Asking a citizen to choose from an empty
+        // list and refusing every answer is worse than saying so.
+        return {
+          replyText:
+            `I can't take you through registration here — let me bring in a colleague ` +
+            `who can help you sign up.`,
+          intentDetected: 'FLOW_UNAVAILABLE',
+          confidenceScore: 0.9,
+          shouldHandoff: true,
+          handoffReason: HandoffReason.TOOL_FAILURE,
+        };
+      }
+      state = { ...state, collected: seedCatalogue(state.collected, catalogue) };
+    }
+
     // Every flow prompt, validation error and read-back now exists in all five
     // languages, so a flow no longer switches the conversation into English and
     // the notice that used to apologise for it has gone with the reason for it.
-    return this.runFlow(context, conversationId, flow, beginFlow(flow), '', lang);
+    return this.runFlow(context, conversationId, flow, state, '', lang);
   }
 
   /**

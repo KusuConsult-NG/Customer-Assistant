@@ -29,7 +29,8 @@
     "translations:export": "node scripts/export-translations.js",
     "translations:import": "node scripts/import-translations.js",
     "parity": "node scripts/agent-parity.js",
-    "audit:enrollments": "node scripts/audit-unverified-enrollments.js"
+    "platform:grant": "node scripts/grant-platform-admin.js",
+    "catalogue:seed": "node scripts/seed-service-catalogue.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",

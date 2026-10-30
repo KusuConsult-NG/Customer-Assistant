@@ -581,7 +581,7 @@ export default function WorkflowsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <GitFork className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> PLASCHEMA Helpline Automation Workflows
+            <GitFork className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Automation Workflows
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Automate enrollee alerts, grievance escalation triggers, payment confirmations, and webhook dispatches.
@@ -592,7 +592,7 @@ export default function WorkflowsPage() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
           style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
         >
-          <Plus className="w-4 h-4" /> New Helpline Workflow
+          <Plus className="w-4 h-4" /> New Workflow
         </button>
       </div>
 

@@ -211,18 +211,114 @@ export const api = {
     },
   },
 
-  billing: {
-    getSubscription: async () => {
-      const res = await fetch(`${API_URL}/api/billing/subscription`, { headers: getHeaders() });
+  /**
+   * The operating ministry's console. Every one of these refuses a caller who
+   * is not a platform operator, checked server-side against the database — the
+   * `isPlatformAdmin` flag the dashboard stores is only what decides whether to
+   * SHOW the link, never what decides access.
+   */
+  platform: {
+    getOverview: async () => {
+      const res = await fetch(`${API_URL}/api/platform/overview`, { headers: getHeaders() });
       return handleResponse(res);
     },
-    // Route is /api/billing/checkout and it requires a plan. `/initialize-payment`
-    // has never existed on the API, and calling it with no body 404'd every time.
-    checkout: async (plan: string) => {
-      const res = await fetch(`${API_URL}/api/billing/checkout`, {
+    listAgencies: async () => {
+      const res = await fetch(`${API_URL}/api/platform/agencies`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    getAgency: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies/${id}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createAgency: async (body: {
+      name: string;
+      category?: string;
+      ownerEmail: string;
+      ownerFullName: string;
+      phone?: string;
+    }) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies`, {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    suspendAgency: async (id: string, reason: string) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies/${id}/suspend`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ reason }),
+      });
+      return handleResponse(res);
+    },
+    reinstateAgency: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies/${id}/reinstate`, {
+        method: "POST",
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+    getAudit: async (params: { organizationId?: string; limit?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (params.organizationId) q.set("organizationId", params.organizationId);
+      if (params.limit) q.set("limit", String(params.limit));
+      const res = await fetch(`${API_URL}/api/platform/audit?${q.toString()}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+  },
+
+  /**
+   * The agency's own services and locations — what the AI offers a citizen and
+   * where it sends them. Reading is open to any member; writing is OWNER/ADMIN
+   * and the API enforces that, not this.
+   */
+  catalogue: {
+    lgas: async () => {
+      const res = await fetch(`${API_URL}/api/catalogue/lgas`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    listServices: async () => {
+      const res = await fetch(`${API_URL}/api/catalogue/services`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createService: async (body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/services`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    updateService: async (id: string, body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/services/${id}`, {
+        method: "PATCH", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    deleteService: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/catalogue/services/${id}`, {
+        method: "DELETE", headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+    listLocations: async () => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createLocation: async (body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    updateLocation: async (id: string, body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations/${id}`, {
+        method: "PATCH", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    deleteLocation: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations/${id}`, {
+        method: "DELETE", headers: getHeaders(),
       });
       return handleResponse(res);
     },

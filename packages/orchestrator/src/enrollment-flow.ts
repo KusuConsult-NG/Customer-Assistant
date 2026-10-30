@@ -1,8 +1,13 @@
 /**
- * PLASCHEMA enrollment, as a conversation.
+ * Service registration, as a conversation.
  *
- * This is the flow the whole platform exists for, and until now it could not be
- * completed on WhatsApp at all — the only implementation was the agent tool,
+ * AGENCY-CONFIGURABLE. The services offered and the locations a citizen can be
+ * sent to are the agency's own `ServiceOption` and `ServiceLocation` rows, not
+ * a scheme compiled into the platform. The orchestrator loads them once and
+ * seeds them into the flow state before the first question, so these slots
+ * stay synchronous and the flow engine keeps its freedom from the database.
+ *
+ * Until now it could not be completed on WhatsApp at all — the only implementation was the agent tool,
  * which works because a language model holds the half-filled form in its head.
  * The live engine had no such memory, so a citizen asking to register got a
  * generic appointment booked instead.
@@ -23,38 +28,40 @@
  */
 import {
   PLATEAU_LGAS,
-  getFacilitiesForLGA,
-  facilitiesForLGAAsText,
+  resolveLga,
+  readCatalogue,
+  locationsInLga,
+  locationsInLgaAsText,
+  resolveLocation,
+  resolveServiceOption,
+  serviceOptionsAsText,
 } from '@ace/database';
 import type { FlowDefinition } from './flows';
 import { t, type Language } from './languages';
 
+/**
+ * The STORED name of this flow. It is written into `Conversation.flowState` and
+ * read back to resume a half-finished form, so renaming it would strand every
+ * citizen currently part-way through one — they would be asked everything
+ * again. Kept for the same reason the `ace_` identifiers are: it is functional,
+ * not a display string. `ENROLLMENT_FLOW.title` is what staff actually see.
+ */
 export const ENROLLMENT_FLOW_NAME = 'plaschema-enrollment';
 
-/** The plans a caller can choose, and the words that pick each one. */
-const PLANS: Array<{ label: string; match: RegExp }> = [
-  { label: 'Formal Sector', match: /\bformal\b|\b1\b|civil servant|government work|company staff|employed|salary/i },
-  { label: 'Informal Sector', match: /\binformal\b|\b2\b|self.?employed|trader|farmer|artisan|business/i },
-  { label: 'Equity Program', match: /\bequity\b|\b3\b|\bfree\b|pregnan|under.?5|under five|elderly|65|disab|orphan|vulnerable/i },
-  { label: 'BHCPF', match: /\bbhcpf\b|\b4\b|basic health/i },
-];
-
-/** The LGA as the accredited list spells it, or null if it is not one. */
+/**
+ * The LGA as the State spells it, or null.
+ *
+ * Resolved against the State's own list, not against one agency's coverage.
+ * It used to be derived from the facility directory — so an LGA where that
+ * agency had no hospital was not a place a citizen could say they lived.
+ */
 function canonicalLga(text: string): string | null {
-  const asked = text.trim();
-  if (!asked) return null;
-  const exact = PLATEAU_LGAS.find((l) => l.toLowerCase() === asked.toLowerCase());
-  if (exact) return exact;
-  // getFacilitiesForLGA already carries the alias and fuzzy handling built for
-  // speech-to-text variants; if it resolves to a list, the LGA is real.
-  const facilities = getFacilitiesForLGA(asked);
-  if (facilities.length === 0) return null;
-  return PLATEAU_LGAS.find((l) => getFacilitiesForLGA(l)[0]?.name === facilities[0]?.name) ?? null;
+  return resolveLga(text);
 }
 
 export const ENROLLMENT_FLOW: FlowDefinition = {
   name: ENROLLMENT_FLOW_NAME,
-  title: 'PLASCHEMA enrollment',
+  title: 'Service registration',
 
   slots: [
     {
@@ -91,8 +98,8 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
             return { error: t(lang, 'enrol_age_implausible') };
           }
           // Stored in English on purpose, like the plan labels below: this is a
-          // field of the enrollment RECORD, read by desk staff and sent to
-          // PLASCHEMA, not a sentence spoken to the customer. Only the
+          // field of the registration RECORD, read by desk staff and passed to
+          // the agency, not a sentence spoken to the customer. Only the
           // questions and the errors around it change language.
           return { value: `${age} years` };
         }
@@ -137,46 +144,47 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       aliases: ['plan', 'programme', 'program', 'category', 'sector'],
       // Deliberately excludes the bare digits the prompt offers: "3" is a valid
       // plan answer AND a valid age, so as a CORRECTION it identifies nothing.
-      identifies: (text) => /formal|informal|equity|bhcpf/i.test(text),
-      prompt: (_c, lang) => t(lang, 'enrol_plan_ask'),
-      accept: (text, _c, lang) => {
-        const found = PLANS.find((p) => p.match.test(text));
+      // Only a phrase the agency itself registered identifies this slot. A
+      // bare digit does not: "3" is a valid option answer AND a valid age, so
+      // as a CORRECTION it identifies nothing.
+      identifies: (text, c) => {
+        if (/^\d{1,2}$/.test(text.trim())) return false;
+        return resolveServiceOption(readCatalogue(c), text) !== null;
+      },
+      prompt: (c, lang) =>
+        t(lang, 'enrol_plan_ask', { options: serviceOptionsAsText(readCatalogue(c)) }),
+      accept: (text, c, lang) => {
+        const found = resolveServiceOption(readCatalogue(c), text);
         if (!found) {
           return { error: t(lang, 'enrol_plan_unclear') };
         }
-        // `found.label` is the scheme's own name for the plan and stays in
-        // English in every language, for the same reason the age does: it is
-        // the value written to the record. Every translated prompt keeps the
-        // four labels verbatim beside the numbers, so the customer is choosing
-        // from the words that will appear on their card.
-        return { value: found.label };
+        // The agency's own name for the service, stored in English in every
+        // language for the same reason the age is: it is the value written to
+        // the record and read at a desk, not a sentence spoken to the citizen.
+        return { value: found.name };
       },
     },
     {
       name: 'preferredHospital',
       label: 'Preferred facility',
       aliases: ['hospital', 'facility', 'clinic', 'health centre', 'health center', 'primary facility'],
-      identifies: (text, c) =>
-        getFacilitiesForLGA(c.lga ?? '').some((f) =>
-          f.name.toLowerCase().includes(text.trim().toLowerCase())
-        ),
+      identifies: (text, c) => resolveLocation(readCatalogue(c), c.lga, text) !== null,
+      // Skipped where the agency has nowhere in this LGA. Asking a citizen to
+      // choose from an empty list, then refusing every answer, is a trap: the
+      // registration completes without a location and a human assigns one.
+      skipIf: (c) => locationsInLga(readCatalogue(c), c.lga).length === 0,
       prompt: (c, lang) =>
         t(lang, 'enrol_facility_ask', {
           lga: c.lga ?? '',
-          options: facilitiesForLGAAsText(c.lga),
+          options: locationsInLgaAsText(readCatalogue(c), c.lga),
         }),
       accept: (text, c, lang) => {
-        const facilities = getFacilitiesForLGA(c.lga ?? '');
-        const lower = text.trim().toLowerCase();
-        const matched =
-          facilities.find((f) => f.name.toLowerCase() === lower) ??
-          facilities.find((f) => f.name.toLowerCase().includes(lower)) ??
-          facilities.find((f) => lower.includes(f.name.toLowerCase()));
+        const matched = resolveLocation(readCatalogue(c), c.lga, text);
         if (!matched) {
           return {
             error: t(lang, 'enrol_facility_unaccredited', {
               lga: c.lga ?? '',
-              options: facilitiesForLGAAsText(c.lga ?? ''),
+              options: locationsInLgaAsText(readCatalogue(c), c.lga),
             }),
           };
         }
