@@ -150,7 +150,7 @@ export default function TelephonyPage() {
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <PhoneCall className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Telephone Service &amp; Voice AI
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage telephony carriers, test live AI helpline calls with Sarah, and inspect call logs and transcripts.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage telephony carriers, place test calls, and inspect call logs and transcripts.</p>
         </div>
       </div>
 
@@ -453,7 +453,7 @@ export default function TelephonyPage() {
                   <div key={idx} className="flex flex-col space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
                       <span className={t.speaker === 'AI' ? 'text-[#558A02] dark:text-[#74BA03] font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
-                        {t.speaker === 'AI' ? 'AI Helpline Officer (Sarah)' : 'Enrollee'}
+                        {t.speaker === 'AI' ? 'AI assistant' : 'Caller'}
                       </span>
                       <span>{t.time}</span>
                     </div>

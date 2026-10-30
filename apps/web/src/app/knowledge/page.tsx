@@ -315,7 +315,7 @@ export default function KnowledgePage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Brain className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Knowledge Base &amp; FAQs
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Official guidelines, benefit packages, accredited facility lists, and FAQ policies for the Sarah Voice Agent.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Official guidance, service information and FAQ answers the AI assistant draws on. Voice Agent.</p>
         </div>
         <div className="flex gap-2">
           <button

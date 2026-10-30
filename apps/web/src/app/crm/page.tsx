@@ -93,7 +93,7 @@ export default function CrmPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        toast.success(`Enrollee approved! Policy ID: ${data.policyId}`);
+        toast.success(`Registration approved. Reference: ${data.policyId}`);
         fetchAll();
       } else {
         toast.error('Could not approve enrollee.');
@@ -201,7 +201,7 @@ export default function CrmPage() {
   };
 
   const tabs = [
-    { id: 'enrollees' as Tab, label: 'Enrollee Verification Desk', count: contacts.filter(c => (c.tags || []).includes('enrollment-pending') || (c.tags || []).includes('enrolled-active') || c.metadata?.planType).length, icon: <ShieldCheck className="w-4 h-4 text-emerald-500" /> },
+    { id: 'enrollees' as Tab, label: 'Registration Desk', count: contacts.filter(c => (c.tags || []).includes('enrollment-pending') || (c.tags || []).includes('enrolled-active') || c.metadata?.planType).length, icon: <ShieldCheck className="w-4 h-4 text-emerald-500" /> },
     { id: 'contacts' as Tab, label: 'All Contacts & Directory', count: contacts.length, icon: <Users className="w-4 h-4" /> },
     { id: 'leads' as Tab, label: 'Prospects & Inquiries', count: leads.length, icon: <TrendingUp className="w-4 h-4" /> },
     { id: 'deals' as Tab, label: 'Premiums & Plans', count: deals.length, icon: <Briefcase className="w-4 h-4" /> },
@@ -214,7 +214,7 @@ export default function CrmPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Enrollee &amp; Beneficiary Management
+            <Users className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Citizens &amp; Contacts
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage Plateau State citizen enrollments, premium subscriptions, and provider grievance reports.</p>
         </div>
@@ -224,7 +224,7 @@ export default function CrmPage() {
               onClick={exportContactsCsv}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white text-sm font-semibold transition-all shadow-sm"
             >
-              <Download className="w-4 h-4" /> Export Enrollees CSV
+              <Download className="w-4 h-4" /> Export Citizenes CSV
             </button>
           )}
           <button
@@ -233,7 +233,7 @@ export default function CrmPage() {
             style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
           >
             <Plus className="w-4 h-4" />
-            Add {tab === 'contacts' ? 'Enrollee' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Plan' : 'Grievance Ticket'}
+            Add {tab === 'contacts' ? 'Citizen' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Plan' : 'Grievance Ticket'}
           </button>
         </div>
       </div>
@@ -1362,7 +1362,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
   );
 }
 
-// ─────────────────────────── Enrollee Verification Desk Table ────────────────────────────
+// ─────────────────────────── Registration Desk Table ────────────────────────────
 function EnrolleesDeskTable({
   searchQuery,
   onSelectContact,
@@ -1440,14 +1440,14 @@ function EnrolleesDeskTable({
         <SharedEmptyState
           icon={ShieldCheck}
           title="No enrollees registered yet"
-          description="When citizens call Sarah on the helpline (0700-700-1111) to register, their online profile, photo status, and plan details will appear here for staff verification."
+          description="When citizens call or message to register, their profile, photo status and service details appear here for staff verification."
         />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               <tr>
-                <th className="px-5 py-3.5">Citizen / Enrollee</th>
+                <th className="px-5 py-3.5">Citizen</th>
                 <th className="px-5 py-3.5">Plan &amp; LGA</th>
                 <th className="px-5 py-3.5">Primary Facility</th>
                 <th className="px-5 py-3.5">NIN / Ref</th>

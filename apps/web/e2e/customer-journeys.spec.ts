@@ -85,7 +85,7 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
 
   test('J3: CRM Pipeline & Contacts Board', async ({ page }) => {
     await page.goto('/crm');
-    await expect(pageHeading(page, /Enrollee & Beneficiary Management/i)).toBeVisible();
+    await expect(pageHeading(page, /Citizens & Contacts/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Contacts/i }).first()).toBeVisible();
   });
 

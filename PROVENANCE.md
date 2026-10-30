@@ -64,8 +64,10 @@ These were true of the upstream system and remain true here:
   reporting, agency provisioning, suspension and reinstatement, and a
   cross-agency audit trail, with a console at `/platform` in the dashboard. It
   reports metrics and configuration only, never citizen content.
-- **Per-agency service hours.** `BUSINESS_OPEN_HOUR_WAT` / `BUSINESS_CLOSE_HOUR_WAT`
-  are platform-wide constants with no per-agency column.
+- ~~Per-agency service hours.~~ **Done.** `Organization.openingHour`,
+  `closingHour` and `serviceDays` drive appointment search for both engines,
+  editable under Settings → General. Defaults reproduce the old Mon–Fri
+  08:00–18:00 exactly, so no existing agency changed behaviour.
 - ~~De-scheme the agent prompt.~~ **Done.** `SYSTEM_PROMPT` went from 443 lines
   to 61: the health plans, the accredited-facility directory and the scheme
   pronunciation rule are gone, and it now states that the agency's own

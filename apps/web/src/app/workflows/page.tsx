@@ -592,7 +592,7 @@ export default function WorkflowsPage() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
           style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
         >
-          <Plus className="w-4 h-4" /> New Helpline Workflow
+          <Plus className="w-4 h-4" /> New Workflow
         </button>
       </div>
 

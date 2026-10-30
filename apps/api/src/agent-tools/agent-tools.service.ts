@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility, findAvailableSlots, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, getFacilitiesForLGA, isAccreditedFacility, facilitiesForLGAAsText, upsertEnrollee, resolveFacility, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -163,6 +163,9 @@ export class AgentToolsService {
       const duration = Number(input.durationMinutes) > 0 ? Number(input.durationMinutes) : 30;
       const limit = Math.min(Math.max(Number(input.limit) || 5, 1), 10);
 
+      // The agency's own hours, not a platform-wide working week.
+      const hours = await serviceHoursFrom(prisma, organizationId);
+
       const slots = await findAvailableSlots(
         (from, to) =>
           prisma.booking.findMany({
@@ -174,7 +177,8 @@ export class AgentToolsService {
             select: { startTime: true, endTime: true },
           }),
         duration,
-        limit
+        limit,
+        hours
       );
 
       if (slots.length === 0) {

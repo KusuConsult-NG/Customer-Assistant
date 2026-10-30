@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -119,13 +119,6 @@ const busyIn = (organizationId: string) => (from: Date, to: Date) =>
     select: { startTime: true, endTime: true },
   });
 const RESCHEDULE_TARGETS_LISTED = 5;
-
-/** Business timezone for all customer-facing times. */
-const BUSINESS_TIMEZONE = 'Africa/Lagos';
-
-/** Operating hours, in West Africa Time (UTC+1, no DST). */
-const BUSINESS_OPEN_HOUR_WAT = 8;
-const BUSINESS_CLOSE_HOUR_WAT = 18;
 
 /** Prior turns handed to the LLM as conversational context. */
 const MAX_HISTORY_TURNS = 12;
@@ -1734,7 +1727,8 @@ export class ConversationOrchestrator {
     const slots = await findAvailableSlots(
       busyIn(context.organizationId),
       DEFAULT_APPOINTMENT_DURATION_MINUTES,
-      RESCHEDULE_OPTIONS_OFFERED
+      RESCHEDULE_OPTIONS_OFFERED,
+      await serviceHoursFrom(prisma, context.organizationId)
     );
     if (slots.length === 0) {
       // Offering nothing is not an option list. Say so and pass it on, rather
@@ -1964,7 +1958,8 @@ export class ConversationOrchestrator {
     const free = await findAvailableSlots(
       busyIn(context.organizationId),
       DEFAULT_APPOINTMENT_DURATION_MINUTES,
-      RESCHEDULE_OPTIONS_OFFERED
+      RESCHEDULE_OPTIONS_OFFERED,
+      await serviceHoursFrom(prisma, context.organizationId)
     );
     if (free.length === 0) {
       return {
@@ -2123,7 +2118,8 @@ export class ConversationOrchestrator {
     const free = await findAvailableSlots(
       busyIn(context.organizationId),
       RESERVATION_DURATION_MINUTES,
-      RESCHEDULE_OPTIONS_OFFERED
+      RESCHEDULE_OPTIONS_OFFERED,
+      await serviceHoursFrom(prisma, context.organizationId)
     );
     if (free.length === 0) {
       return {

@@ -58,14 +58,14 @@ export default function LoginPage() {
               Customer Care Platform
             </h1>
             <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
-              Plateau State Contributory Healthcare Management Agency
+              Plateau State Government
             </p>
           </div>
         </div>
         
         <div className="relative z-10">
           <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
-            Universal Healthcare Helpline <br/><span style={{ color: '#74BA03' }}>&amp; Enrollee Management Portal</span>
+            State Customer Care <br/><span style={{ color: '#74BA03' }}>&amp; Citizen Services Portal</span>
           </h2>
           <p className="text-slate-300 text-base max-w-md">
             Delivering accessible, affordable, and quality healthcare coverage for every citizen across all 17 LGAs of Plateau State.
@@ -73,7 +73,7 @@ export default function LoginPage() {
 
           <div className="mt-8 p-4 rounded-2xl bg-[#74BA03]/10 border border-[#74BA03]/20 max-w-md">
             <div className="flex items-center gap-2 text-[#74BA03] text-sm font-semibold mb-1">
-              <ShieldCheck className="w-4 h-4" /> Official Government Helpline
+              <ShieldCheck className="w-4 h-4" /> Official Government Service
             </div>
             <p className="text-xs text-slate-300">
               Authorized desk officer and admin access for helpline operations, beneficiary support, provider oversight, and inquiries.
@@ -158,7 +158,7 @@ export default function LoginPage() {
           </form>
 
           <div className="text-center text-sm text-slate-600 dark:text-slate-400">
-            Helpline Enrollee Portal &bull; Plateau State Contributory Healthcare
+            Citizen Care Portal &bull; Plateau State Government
           </div>
         </div>
       </div>

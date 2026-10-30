@@ -241,7 +241,7 @@ export default function DashboardPage() {
             {firstName ? `Welcome back, ${firstName}` : 'Welcome back'} 👋
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            {orgName ? `${orgName} — ` : ''}Plateau State Contributory Healthcare Management Agency &bull; {today}
+            {orgName ? `${orgName} \u2014 ` : ''}Plateau State Government &bull; {today}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -270,7 +270,7 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
-          title="Total Enrollees"
+          title="Total Citizens"
           value={stats.contacts}
           subtitle="Registered Beneficiaries"
           icon={<Users className="w-5 h-5 text-[#558A02] dark:text-[#74BA03]" />}
@@ -286,9 +286,9 @@ export default function DashboardPage() {
           badgeColor="bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20"
         />
         <KpiCard
-          title="Helpline Calls"
+          title="Calls"
           value={stats.calls}
-          subtitle="Handled by Sarah (Voice AI)"
+          subtitle="Handled by the voice assistant"
           icon={<PhoneCall className="w-5 h-5 text-[#558A02] dark:text-[#74BA03]" />}
           badge={`${timeRange} calls`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
@@ -402,11 +402,11 @@ export default function DashboardPage() {
               color="bg-[#74BA03]"
             />
             <ProgressMetric
-              label="Helpline AI Reply Share"
+              label="AI Reply Share"
               percentage={aiReplyRate ?? 'N/A'}
               value={aiReplyRate === null
                 ? 'No messages recorded yet'
-                : `${aiReplyRate}% of all replies handled by Sarah`}
+                : `${aiReplyRate}% of all replies handled by the AI assistant`}
               color="bg-[#558A02]"
             />
             <ProgressMetric
@@ -431,7 +431,7 @@ export default function DashboardPage() {
               <div>
                 {/* Reflects whether analytics actually loaded. */}
                 <p className="text-xs font-bold text-slate-900 dark:text-white">
-                  {dashboardData ? 'Helpline Analytics: Connected' : 'Analytics: Unavailable'}
+                  {dashboardData ? 'Analytics: Connected' : 'Analytics: Unavailable'}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   {dashboardData
@@ -549,17 +549,17 @@ export default function DashboardPage() {
         {/* Quick Launch & System Shortcuts */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
-            <Layers className="w-4 h-4 text-[#74BA03]" /> Helpline Shortcuts
+            <Layers className="w-4 h-4 text-[#74BA03]" /> Shortcuts
           </h3>
 
           <div className="space-y-2">
             {[
               { label: 'Agent Console', href: '/agent-console', desc: 'Real-time conversation management', color: 'text-[#558A02] dark:text-[#74BA03]' },
-              { label: 'Enrollee Database', href: '/crm', desc: 'Manage beneficiaries & contacts', color: 'text-[#558A02] dark:text-[#74BA03]' },
-              { label: 'Knowledge Base', href: '/knowledge', desc: 'Healthcare plans & facility directory', color: 'text-[#558A02] dark:text-[#74BA03]' },
-              { label: 'Helpline & Telephony', href: '/telephony', desc: 'Carrier setup & test call', color: 'text-amber-600 dark:text-amber-400' },
+              { label: 'Citizen Register', href: '/crm', desc: 'Manage beneficiaries & contacts', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Knowledge Base', href: '/knowledge', desc: 'Published answers & documents', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Telephone Service', href: '/telephony', desc: 'Carrier setup & test call', color: 'text-amber-600 dark:text-amber-400' },
               { label: 'Appointments', href: '/scheduling', desc: 'Enrolment clinic bookings', color: 'text-[#558A02] dark:text-[#74BA03]' },
-              { label: 'System Settings', href: '/settings', desc: 'Helpline credentials & prompt', color: 'text-slate-600 dark:text-slate-400' },
+              { label: 'System Settings', href: '/settings', desc: 'Agency credentials & prompt', color: 'text-slate-600 dark:text-slate-400' },
             ].map(s => (
               <Link
                 key={s.href}

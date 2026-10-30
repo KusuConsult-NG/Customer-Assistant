@@ -80,7 +80,7 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Settings className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Agency Settings
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure your official helpline identity, telephony carrier credentials, and Sarah Voice Agent parameters.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure this agency’s identity, serving hours, telephony credentials and voice assistant.</p>
       </div>
 
       {/* Tab bar */}
@@ -216,7 +216,16 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   // What the AI opens conversations in until the customer's own language is
   // detected — once they write in a supported language, the AI follows them.
   const [defaultLanguage, setDefaultLanguage] = useState(org?.defaultLanguage || 'en');
+  // When this agency serves citizens. Appointment search offers nothing outside
+  // these, so they are the difference between a diary that looks full and one
+  // that is. 0 = Sunday … 6 = Saturday.
+  const [openingHour, setOpeningHour] = useState<number>(org?.openingHour ?? 8);
+  const [closingHour, setClosingHour] = useState<number>(org?.closingHour ?? 18);
+  const [serviceDays, setServiceDays] = useState<number[]>(org?.serviceDays ?? [1, 2, 3, 4, 5]);
   const [saving, setSaving] = useState(false);
+
+  const toggleDay = (d: number) =>
+    setServiceDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,9 +236,16 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
         body: JSON.stringify({
           name, aiPersonaPrompt, welcomeMessage, defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
+          openingHour, closingHour, serviceDays,
         }),
       });
-      if (!res.ok) throw new Error('Failed');
+      // The API rejects hours that cannot produce an appointment and says why.
+      // Showing its reason beats a generic failure for a form whose mistakes
+      // are easy to make and invisible until a citizen is told nothing is free.
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || 'Failed');
+      }
       showToast('Settings saved!');
       onSaved();
     } catch { showToast('Failed to save settings', 'error'); }
@@ -275,6 +291,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
         <div>
           <label className={labelCls}>Default Language</label>
           <select
+            aria-label="Default Language"
             value={defaultLanguage}
             onChange={e => setDefaultLanguage(e.target.value)}
             className={inputCls}
@@ -288,6 +305,56 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
             The language the AI uses until a customer&apos;s own language is known. Once someone writes in
             English, Pidgin, Hausa, Igbo or Yoruba, the AI follows their language automatically.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title="Serving Hours"
+        description="When this agency can see citizens. Appointment search offers times inside these hours only — nothing outside them is ever proposed."
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Opens at</label>
+            <select aria-label="Opens at" value={openingHour} onChange={e => setOpeningHour(Number(e.target.value))} className={inputCls}>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Closes at</label>
+            <select aria-label="Closes at" value={closingHour} onChange={e => setClosingHour(Number(e.target.value))} className={inputCls}>
+              {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Days open</label>
+          <div className="flex flex-wrap gap-2 mt-1.5">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, d) => {
+              const on = serviceDays.includes(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => toggleDay(d)}
+                  aria-pressed={on}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                    on
+                      ? 'bg-[#558A02] text-white border-[#558A02]'
+                      : 'bg-transparent text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+            All times are West Africa Time. A 24-hour service sets 00:00 to 24:00 and selects every day.
           </p>
         </div>
       </Section>

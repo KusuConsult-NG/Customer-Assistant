@@ -155,6 +155,18 @@ model Organization {
   defaultLanguage      String       @default("en")
   phone                String?
   logoUrl              String?
+  // ─── When this agency serves citizens ────────────────────────────────────
+  // Appointment search used to assume Mon–Fri 08:00–18:00 for everyone. A
+  // teaching hospital is not closed at weekends and a registry does not open
+  // at eight, so the platform was refusing to offer times that were genuinely
+  // free and offering times nobody was there for.
+  //
+  // Hours are whole hours in West Africa Time; serviceDays uses 0 = Sunday
+  // through 6 = Saturday. The defaults reproduce the old constants exactly, so
+  // every existing agency keeps the behaviour it had.
+  openingHour          Int          @default(8)
+  closingHour          Int          @default(18)
+  serviceDays          Int[]        @default([1, 2, 3, 4, 5])
   /// Set by the operating ministry to take an agency out of service. Members of
   /// a suspended agency are refused at authentication, so the agency stops
   /// answering citizens immediately rather than at token expiry. Platform

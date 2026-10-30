@@ -16,11 +16,16 @@
  * So the search lives here, next to the bookings it reads, and both engines
  * call it.
  *
- * ── The times are platform-wide, deliberately for now ───────────────────────
+ * ── The hours belong to the AGENCY, not the platform ────────────────────────
  *
- * Monday–Friday, 08:00–18:00 West Africa Time. Per-organization hours belong in
- * organization config, and until that exists a wrong constant here is at least
- * wrong in ONE place rather than in each engine separately.
+ * They used to be constants here: Monday–Friday, 08:00–18:00 West Africa Time,
+ * for every tenant. On a State platform that is wrong in both directions — a
+ * teaching hospital was never offered a weekend slot it could actually staff,
+ * and a registry that opens at nine had citizens offered eight o'clock.
+ *
+ * The caller passes the agency's hours. `DEFAULT_SERVICE_HOURS` reproduces the
+ * old constants exactly, so an agency that has never configured them behaves
+ * as before, and the defaults live on the Organization row rather than here.
  *
  * ── Why the query is passed in ──────────────────────────────────────────────
  *
@@ -31,9 +36,54 @@
  * free MEANS stays here.
  */
 export const BUSINESS_TIMEZONE = 'Africa/Lagos';
-export const BUSINESS_OPEN_HOUR_WAT = 8;
-export const BUSINESS_CLOSE_HOUR_WAT = 18;
 const WAT_OFFSET_HOURS = 1;
+
+/** When one agency serves citizens. Hours are whole hours in WAT. */
+export interface ServiceHours {
+  /** First hour open, inclusive. 8 means a 08:00 start. */
+  openHour: number;
+  /** Hour it closes, exclusive. 18 means the last slot ends by 18:00. */
+  closeHour: number;
+  /** Days served, 0 = Sunday … 6 = Saturday. */
+  days: readonly number[];
+}
+
+/**
+ * What every agency got before hours were configurable, and what an agency
+ * that has configured nothing still gets.
+ */
+export const DEFAULT_SERVICE_HOURS: ServiceHours = {
+  openHour: 8,
+  closeHour: 18,
+  days: [1, 2, 3, 4, 5],
+};
+
+/**
+ * Hours that cannot produce a slot are rejected rather than silently used.
+ *
+ * An agency saved with closeHour <= openHour, or with no service days, yields
+ * an empty availability search — the citizen is told there is nothing free for
+ * the next fortnight, which looks like a full diary rather than a
+ * misconfiguration. Falling back to the default would be worse: it would offer
+ * times the agency never agreed to.
+ */
+export function assertUsableServiceHours(h: ServiceHours): void {
+  if (!Number.isInteger(h.openHour) || h.openHour < 0 || h.openHour > 23) {
+    throw new Error(`openHour must be an hour between 0 and 23, got ${h.openHour}`);
+  }
+  if (!Number.isInteger(h.closeHour) || h.closeHour < 1 || h.closeHour > 24) {
+    throw new Error(`closeHour must be an hour between 1 and 24, got ${h.closeHour}`);
+  }
+  if (h.closeHour <= h.openHour) {
+    throw new Error(`closeHour (${h.closeHour}) must be after openHour (${h.openHour})`);
+  }
+  if (h.days.length === 0) {
+    throw new Error('An agency must serve at least one day a week');
+  }
+  if (h.days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+    throw new Error(`service days must be 0-6 (Sunday-Saturday), got ${JSON.stringify(h.days)}`);
+  }
+}
 
 /** How far ahead a search will look before giving up. */
 export const SEARCH_HORIZON_DAYS = 14;
@@ -73,11 +123,13 @@ function watDay(date: Date): number {
   return shifted.getUTCDay();
 }
 
-export function isWithinBusinessHours(date: Date): boolean {
-  const day = watDay(date);
-  if (day === 0 || day === 6) return false; // closed at weekends
+export function isWithinServiceHours(
+  date: Date,
+  hours: ServiceHours = DEFAULT_SERVICE_HOURS
+): boolean {
+  if (!hours.days.includes(watDay(date))) return false;
   const hour = watHour(date);
-  return hour >= BUSINESS_OPEN_HOUR_WAT && hour < BUSINESS_CLOSE_HOUR_WAT;
+  return hour >= hours.openHour && hour < hours.closeHour;
 }
 
 /** A time as the customer will hear it. */
@@ -104,8 +156,10 @@ export function formatLagos(date: Date): string {
 export async function findAvailableSlots(
   loadBusy: BusyLoader,
   durationMinutes: number,
-  limit: number
+  limit: number,
+  hours: ServiceHours = DEFAULT_SERVICE_HOURS
 ): Promise<FreeSlot[]> {
+  assertUsableServiceHours(hours);
   const now = Date.now();
   const horizon = new Date(now + SEARCH_HORIZON_DAYS * 24 * 60 * 60 * 1000);
 
@@ -124,7 +178,7 @@ export async function findAvailableSlots(
   while (cursor.getTime() < horizon.getTime() && found.length < limit) {
     const end = new Date(cursor.getTime() + durationMs);
 
-    if (isWithinBusinessHours(cursor) && isWithinBusinessHours(new Date(end.getTime() - 1))) {
+    if (isWithinServiceHours(cursor, hours) && isWithinServiceHours(new Date(end.getTime() - 1), hours)) {
       const clashes = busy.some(([s, e]) => cursor.getTime() < e && end.getTime() > s);
       if (!clashes) {
         const day = cursor.toISOString().slice(0, 10);
@@ -145,7 +199,8 @@ export async function findAvailableSlots(
 /** The soonest free slot, or null. */
 export async function findNextAvailableSlot(
   loadBusy: BusyLoader,
-  durationMinutes: number
+  durationMinutes: number,
+  hours: ServiceHours = DEFAULT_SERVICE_HOURS
 ): Promise<FreeSlot | null> {
-  return (await findAvailableSlots(loadBusy, durationMinutes, 1))[0] ?? null;
+  return (await findAvailableSlots(loadBusy, durationMinutes, 1, hours))[0] ?? null;
 }

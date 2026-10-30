@@ -27,6 +27,7 @@ const mockPrisma = {
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/availability'),
+  ...jest.requireActual('../../database/src/service-hours'),
   ...jest.requireActual('../../database/src/booking-conflicts'),
   prisma: mockPrisma,
   upsertEnrollee: jest.fn(),

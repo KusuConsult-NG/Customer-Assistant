@@ -120,14 +120,14 @@ export default function RegisterPage() {
               Customer Care Platform
             </h1>
             <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
-              Plateau State Contributory Healthcare Management Agency
+              Plateau State Government
             </p>
           </div>
         </div>
         
         <div className="relative z-10">
           <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
-            Plateau State <br/><span style={{ color: '#74BA03' }}>Enrollee Helpline Portal</span>
+            Plateau State <br/><span style={{ color: '#74BA03' }}>State Customer Care Platform</span>
           </h2>
           <ul className="space-y-4 text-slate-300 text-base">
             <li className="flex items-center gap-3">
