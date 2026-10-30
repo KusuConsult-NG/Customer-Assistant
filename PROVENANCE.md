@@ -62,9 +62,8 @@ These were true of the upstream system and remain true here:
 - ~~A platform administration tier.~~ **Built** — `apps/api/src/platform`, see
   the section in `CLAUDE.md`. State-wide overview, per-agency comparative
   reporting, agency provisioning, suspension and reinstatement, and a
-  cross-agency audit trail. It reports metrics and configuration only, never
-  citizen content. No dashboard UI for it yet: the endpoints exist and are
-  tested, but `apps/web` has no platform console.
+  cross-agency audit trail, with a console at `/platform` in the dashboard. It
+  reports metrics and configuration only, never citizen content.
 - **Per-agency service hours.** `BUSINESS_OPEN_HOUR_WAT` / `BUSINESS_CLOSE_HOUR_WAT`
   are platform-wide constants with no per-agency column.
 - **De-scheme the agent prompt and enrolment flow.** `SYSTEM_PROMPT` in

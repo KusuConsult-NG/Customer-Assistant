@@ -211,6 +211,63 @@ export const api = {
     },
   },
 
+  /**
+   * The operating ministry's console. Every one of these refuses a caller who
+   * is not a platform operator, checked server-side against the database — the
+   * `isPlatformAdmin` flag the dashboard stores is only what decides whether to
+   * SHOW the link, never what decides access.
+   */
+  platform: {
+    getOverview: async () => {
+      const res = await fetch(`${API_URL}/api/platform/overview`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    listAgencies: async () => {
+      const res = await fetch(`${API_URL}/api/platform/agencies`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    getAgency: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies/${id}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createAgency: async (body: {
+      name: string;
+      category?: string;
+      ownerEmail: string;
+      ownerFullName: string;
+      phone?: string;
+    }) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    suspendAgency: async (id: string, reason: string) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies/${id}/suspend`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ reason }),
+      });
+      return handleResponse(res);
+    },
+    reinstateAgency: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/platform/agencies/${id}/reinstate`, {
+        method: "POST",
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+    getAudit: async (params: { organizationId?: string; limit?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (params.organizationId) q.set("organizationId", params.organizationId);
+      if (params.limit) q.set("limit", String(params.limit));
+      const res = await fetch(`${API_URL}/api/platform/audit?${q.toString()}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+  },
+
   telephony: {
     getCallLogs: async () => {
       const res = await fetch(`${API_URL}/api/telephony/calls`, { headers: getHeaders() });

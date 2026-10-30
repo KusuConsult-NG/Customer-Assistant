@@ -16,6 +16,15 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    // Opt-in escape hatch for a container that already has a Chromium at a
+    // fixed path but not the exact build this @playwright/test pins. Without
+    // it every spec fails with "Executable doesn't exist at
+    // .../chromium_headless_shell-<rev>", which reads like a broken suite and
+    // is really a missing download. Unset — as in CI, which runs
+    // `playwright install --with-deps chromium` — nothing changes.
+    ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } }
+      : {}),
   },
   projects: [
     {

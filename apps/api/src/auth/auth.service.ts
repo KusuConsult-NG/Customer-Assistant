@@ -168,6 +168,11 @@ export class AuthService {
         role: user.role,
         organizationId: user.organizationId,
         organizationName: user.organization.name,
+        // Drives the operator's console link in the dashboard. It is a
+        // CONVENIENCE, not a permission: the client cannot be trusted with this
+        // value, and /api/platform/* re-checks it against the database on every
+        // request regardless of what the browser believes.
+        isPlatformAdmin: user.isPlatformAdmin,
       },
       ...tokens,
     };
@@ -338,6 +343,7 @@ export class AuthService {
           role: user.role,
           organizationId: user.organizationId,
           organizationName: user.organization.name,
+          isPlatformAdmin: user.isPlatformAdmin,
         },
         ...tokens,
       };
@@ -493,6 +499,7 @@ export class AuthService {
         role: updated.role,
         organizationId: updated.organizationId,
         organizationName: user.organization.name,
+        isPlatformAdmin: updated.isPlatformAdmin,
       },
       ...tokens,
     };

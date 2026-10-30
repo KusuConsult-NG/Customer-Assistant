@@ -99,10 +99,10 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
     await expect(pageHeading(page, /Settings/i)).toBeVisible();
   });
 
-  test('J8: Billing & Plan Comparison', async ({ page }) => {
-    await page.goto('/billing');
-    await expect(pageHeading(page, /Billing/i)).toBeVisible();
-  });
+  // J8 covered /billing, which no longer exists: subscription billing was
+  // removed when this became a State platform. The numbering is left with its
+  // gap rather than resequenced, so the journeys keep the names they are
+  // referred to by elsewhere.
 
   test('J10: Workflows Automation Engine', async ({ page }) => {
     await page.goto('/workflows');

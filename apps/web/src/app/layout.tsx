@@ -22,7 +22,8 @@ import {
   X,
   GitFork,
   Sun,
-  Moon
+  Moon,
+  Landmark
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -48,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string } | null>(null);
+  const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string; isPlatformAdmin?: boolean } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -302,6 +303,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Helpline & Telephony" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+
+                  {/* Shown only to a platform operator. This is a CONVENIENCE,
+                      not a permission — localStorage is editable, and every
+                      /api/platform/* route re-checks the flag against the
+                      database. Someone who forces their way to the page gets a
+                      plain "unavailable" panel, not a broken dashboard. */}
+                  {user?.isPlatformAdmin && (
+                    <>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">State Platform</p>
+                      <SidebarLink href="/platform" icon={<Landmark className="w-4 h-4" />} label="Platform Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                    </>
+                  )}
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Administration</p>
                   <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
