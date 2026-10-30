@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { PlatformModule } from './platform/platform.module';
 import { CrmModule } from './crm/crm.module';
 import { TelephonyModule } from './telephony/telephony.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
@@ -46,6 +47,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     OnboardingModule,
     AuthModule,
     OrganizationsModule,
+    PlatformModule,
     CrmModule,
     TelephonyModule,
     WhatsappModule,

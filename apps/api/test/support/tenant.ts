@@ -43,7 +43,12 @@ export interface TestTenant {
 export async function createTenant(
   app: INestApplication,
   label: string,
-  options: { role?: 'OWNER' | 'ADMIN' | 'AGENT' | 'VIEWER'; industry?: string } = {}
+  options: {
+    role?: 'OWNER' | 'ADMIN' | 'AGENT' | 'VIEWER';
+    industry?: string;
+    /** Platform operator. Separate from `role` on purpose — see the schema note. */
+    isPlatformAdmin?: boolean;
+  } = {}
 ): Promise<TestTenant> {
   const suffix = randomBytes(4).toString('hex');
   const slug = `${label}-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -61,6 +66,7 @@ export async function createTenant(
       passwordHash: 'not-a-login-path',
       fullName: `${label} Tester`,
       role: (options.role ?? 'OWNER') as any,
+      isPlatformAdmin: options.isPlatformAdmin ?? false,
     },
   });
 
@@ -71,6 +77,9 @@ export async function createTenant(
     fullName: user.fullName,
     role: user.role,
     tokenVersion: user.tokenVersion,
+    // isPlatformAdmin is deliberately NOT signed into the token. JwtStrategy
+    // reads it from the database, so a test cannot grant itself the flag by
+    // minting a token — and neither can anyone else.
   });
 
   return { orgId: org.id, userId: user.id, email: user.email, token };

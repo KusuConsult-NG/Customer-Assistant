@@ -155,6 +155,12 @@ model Organization {
   defaultLanguage      String       @default("en")
   phone                String?
   logoUrl              String?
+  /// Set by the operating ministry to take an agency out of service. Members of
+  /// a suspended agency are refused at authentication, so the agency stops
+  /// answering citizens immediately rather than at token expiry. Platform
+  /// operators are exempt, or a suspension could not be lifted.
+  suspendedAt          DateTime?
+  suspendedReason      String?
   aiPersonaPrompt      String?      @db.Text
   welcomeMessage       String?      @db.Text
   // ─── Embedded widget appearance ────────────────────────────────────────────
@@ -240,6 +246,19 @@ model User {
   // NAT address. Cleared on successful sign-in and on password reset.
   failedLoginAttempts    Int          @default(0)
   lockedUntil            DateTime?
+  // ─── Platform operator ───────────────────────────────────────────────────
+  // The ONE flag that crosses the agency boundary every other query respects.
+  //
+  // Deliberately NOT a UserRole value. UserRole is what the tenant-facing
+  // endpoint `PATCH /api/organizations/members/:id/role` writes, so a platform
+  // role listed there would be grantable by any agency ADMIN to themselves.
+  // As a separate column of a different type, that endpoint cannot express it
+  // at all — the escalation is closed by the schema, not by a check somebody
+  // has to remember.
+  //
+  // Nothing in the HTTP API sets this. It is granted at the database by
+  // `npm run platform:grant`, which requires direct database access.
+  isPlatformAdmin        Boolean      @default(false)
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 

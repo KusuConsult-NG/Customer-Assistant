@@ -253,4 +253,10 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: UserRole;
+  /**
+   * Operator of the whole platform, not a role within an agency. Deliberately
+   * separate from `role`: see the note on `User.isPlatformAdmin` in the schema.
+   * Only `PlatformAdminGuard` reads this; no tenant route may branch on it.
+   */
+  isPlatformAdmin: boolean;
 }
