@@ -10,7 +10,6 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { BillingModule } from './billing/billing.module';
 import { EventsModule } from './events/events.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { WidgetModule } from './widget/widget.module';
@@ -53,7 +52,6 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     KnowledgeModule,
     SchedulingModule,
     AnalyticsModule,
-    BillingModule,
     EventsModule,
     WebhooksModule,
     WidgetModule,

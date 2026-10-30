@@ -211,23 +211,6 @@ export const api = {
     },
   },
 
-  billing: {
-    getSubscription: async () => {
-      const res = await fetch(`${API_URL}/api/billing/subscription`, { headers: getHeaders() });
-      return handleResponse(res);
-    },
-    // Route is /api/billing/checkout and it requires a plan. `/initialize-payment`
-    // has never existed on the API, and calling it with no body 404'd every time.
-    checkout: async (plan: string) => {
-      const res = await fetch(`${API_URL}/api/billing/checkout`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ plan }),
-      });
-      return handleResponse(res);
-    },
-  },
-
   telephony: {
     getCallLogs: async () => {
       const res = await fetch(`${API_URL}/api/telephony/calls`, { headers: getHeaders() });

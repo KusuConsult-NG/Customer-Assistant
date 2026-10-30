@@ -41,7 +41,6 @@ const PUBLIC_ROUTES = [
   '/setup-account',
   '/selfie',
   '/pay',
-  '/billing/success',
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -305,7 +304,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Administration</p>
-                  <SidebarLink href="/billing" icon={<Sparkles className="w-4 h-4" />} label="Billing & Plans" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                 </nav>

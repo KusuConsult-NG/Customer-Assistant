@@ -12,7 +12,6 @@ const log = new AceLogger('OnboardingService');
 export type SelfieChannel = 'WHATSAPP' | 'VOICE' | 'WEB';
 
 /** The two priced plans. EQUITY is not here on purpose: it is an application, not a purchase. */
-export type EnrolleePlan = 'INDIVIDUAL' | 'FAMILY';
 
 /**
  * Onboarding selfie capture.
@@ -122,18 +121,25 @@ export class OnboardingService {
     const firstName = contact.fullName.split(' ')[0] || 'there';
     const reason = purpose ? ` for ${purpose}` : '';
 
-    const webBase = (process.env.WEB_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const payUrl = `${webBase}/pay/informal`;
+    // Everything a citizen reads here names the AGENCY that asked for the photo,
+    // never a scheme baked into the platform. This message used to hardcode one
+    // health scheme's name, its two premium amounts and its helpline, so every
+    // other agency's citizens were told to pay a premium that did not apply to
+    // them and to ring a number that could not help them. An agency with no
+    // published helpline gets no helpline line at all, rather than someone
+    // else's.
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, phone: true },
+    });
+    const agency = org?.name ?? 'our office';
+    const helpline = org?.phone ? `\n\nHelpline: ${org.phone} (${agency})` : '';
 
     const body =
       channel === 'WHATSAPP'
-        ? `Hi ${firstName}, welcome to PLASCHEMA! To finish setting up your healthcare coverage${reason}, please complete your photo upload:\n\n` +
-          `📷 Take your selfie & add family members here:\n${uploadUrl}\n\n` +
-          `💳 Pay Informal Sector Premium (₦12,000 / ₦50,000):\n${payUrl}\n\n` +
-          `Helpline: 0700-700-1111 (Plateau State Contributory Healthcare Agency)`
-        : `Hi ${firstName}, welcome to PLASCHEMA! To complete your health coverage${reason}, please upload your selfie:\n${uploadUrl}\n\n` +
-          `Online Payment: ${payUrl}\n` +
-          `Helpline: 0700-700-1111`;
+        ? `Hi ${firstName}, this is ${agency}. To complete your registration${reason}, please upload your photograph:\n\n` +
+          `📷 Take your photo here:\n${uploadUrl}${helpline}`
+        : `Hi ${firstName}, this is ${agency}. To complete your registration${reason}, please upload your photograph:\n${uploadUrl}${helpline}`;
 
     // 1. Try WhatsApp first
     const config = withWhatsAppCredentials(
@@ -291,7 +297,7 @@ export class OnboardingService {
       organizationName: request.organization.name,
       organizationLogoUrl: request.organization.logoUrl ?? null,
       purpose: request.purpose,
-      planType: meta.planType || 'Healthcare Plan',
+      planType: meta.planType || null,
       isFamilyPlan: (meta.planType || '').toLowerCase().includes('family') || (meta.planType || '').toLowerCase().includes('informal'),
       expiresAt: request.expiresAt,
       maxBytes: MAX_IMAGE_BYTES,
@@ -472,417 +478,5 @@ export class OnboardingService {
 
     log.info('selfie_deleted', { organizationId, requestId, hadImage: Boolean(request.storagePath) });
     return { deleted: true, imageRemoved: Boolean(request.storagePath) };
-  }
-  // ── Citizen premium payment ───────────────────────────────────────────────
-  //
-  // What this path used to do: an unauthenticated endpoint took `contactId` and
-  // `amount` from the request body, wrote `paymentStatus: 'PAID'` and
-  // `enrollmentStatus: 'ENROLLED_ACTIVE'` into `Contact.metadata`, and never
-  // contacted a payment gateway at all — the reference was minted in the browser
-  // as `PAY-PLS-${Date.now()}-${Math.random()}`. Anyone who could reach the URL
-  // could activate health coverage for any enrollee on any tenant, for any
-  // amount, for free. See PRODUCTION_READINESS_AUDIT.md, DEF-01 to DEF-05.
-  //
-  // Three rules hold now, each closing one of those defects:
-  //
-  //   1. The SERVER decides the amount. A request may choose a plan; it may not
-  //      name a price.
-  //   2. The GATEWAY decides whether it was paid. Enrollment state is written
-  //      only by `settleEnrolleePayment`, which is reachable only from a
-  //      signature-verified Paystack webhook. No browser request writes it.
-  //   3. Every query is scoped to the one tenant that owns this portal, taken
-  //      from deployment configuration rather than from the request.
-
-  /** Server-side price list in kobo. The request selects a plan, never a price. */
-  private static readonly PREMIUM_KOBO: Record<EnrolleePlan, number> = {
-    INDIVIDUAL: 12_000 * 100,
-    FAMILY: 50_000 * 100,
-  };
-
-  /**
-   * The single tenant that owns the public payment portal.
-   *
-   * A public endpoint cannot take the organization from the request: that would
-   * let any caller name any tenant and read or mutate its contacts, which is the
-   * same defect in a different costume. Taking it from configuration makes the
-   * blast radius of these routes one tenant by construction.
-   */
-  private async publicPaymentOrganizationId(): Promise<string> {
-    const slug = process.env.PUBLIC_PAYMENT_ORG_SLUG?.trim();
-    if (!slug) {
-      throw new ServiceUnavailableException(
-        'The online premium portal is not configured on this deployment.'
-      );
-    }
-    const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true } });
-    if (!org) {
-      log.error('public_payment_org_missing', new Error(`no organization with slug "${slug}"`));
-      throw new ServiceUnavailableException(
-        'The online premium portal is not configured on this deployment.'
-      );
-    }
-    return org.id;
-  }
-
-  /**
-   * Appends an audit row.
-   *
-   * Never throws into the caller — a financial write must not fail because
-   * logging did — but a failure is logged at error level rather than swallowed.
-   * The previous audit trail was a free-text Note created inside
-   * `.catch(() => {})`, which recorded no actor and reported nothing when it
-   * failed to record even that.
-   */
-  private async writeAudit(entry: {
-    organizationId: string | null;
-    actor: string;
-    action: string;
-    targetType: string;
-    targetId: string;
-    previousValue?: unknown;
-    newValue?: unknown;
-    ipAddress?: string | null;
-  }): Promise<void> {
-    try {
-      await prisma.auditLog.create({
-        data: {
-          organizationId: entry.organizationId,
-          actor: entry.actor,
-          action: entry.action,
-          targetType: entry.targetType,
-          targetId: entry.targetId,
-          previousValue: (entry.previousValue ?? undefined) as never,
-          newValue: (entry.newValue ?? undefined) as never,
-          ipAddress: entry.ipAddress ?? null,
-        },
-      });
-    } catch (e) {
-      log.error('audit_write_failed', e as Error, {
-        action: entry.action,
-        targetId: entry.targetId,
-      });
-    }
-  }
-
-  /**
-   * "Musa Abubakar" → "Musa A."
-   *
-   * Enough for the right person to recognise their own record; not enough to
-   * make this endpoint a directory for someone dialling through phone numbers.
-   * The previous response returned full name, exact phone number, LGA,
-   * preferred hospital, policy id and the complete dependants list to anyone
-   * who asked.
-   */
-  private static maskName(fullName: string | null): string {
-    const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return 'Enrollee';
-    if (parts.length === 1) return parts[0];
-    return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
-  }
-
-  /**
-   * Resolves an enrollee by phone number, within the portal's own tenant.
-   *
-   * Phone number ONLY. The previous version also matched
-   * `id: { startsWith: query.toLowerCase() }`, which turned any three-character
-   * string into a working enumeration oracle over the entire contact table.
-   */
-  private async findEnrollee(organizationId: string, query: string) {
-    const q = (query ?? '').trim();
-    if (q.length < 3) {
-      throw new BadRequestException('Please provide the phone number you registered with.');
-    }
-    const contact = await prisma.contact.findFirst({
-      where: { organizationId, phoneNumber: { in: phoneNumberVariants(q) } },
-      select: { id: true, fullName: true, metadata: true, tags: true },
-    });
-    if (!contact) {
-      throw new NotFoundException('No enrollee found with that phone number.');
-    }
-    return contact;
-  }
-
-  private static planFor(meta: Record<string, any>): { planType: string; isEquity: boolean } {
-    const planType = meta.planType || 'Informal Sector Individual Plan';
-    const isEquity = Boolean(meta.isEquity || /equity|bhcpf|vulnerable|free/i.test(planType));
-    return { planType, isEquity };
-  }
-
-  /**
-   * What the payer needs to confirm they have the right record and what it
-   * costs. Payment status comes from the `Payment` table — the gateway-backed
-   * record — not from `Contact.metadata`, which anything could write.
-   */
-  async lookupEnrolleeForPayment(query: string) {
-    const organizationId = await this.publicPaymentOrganizationId();
-    const contact = await this.findEnrollee(organizationId, query);
-
-    const meta = (contact.metadata as Record<string, any>) ?? {};
-    const { planType, isEquity } = OnboardingService.planFor(meta);
-    const isFamily = planType.toLowerCase().includes('family');
-    const plan: EnrolleePlan = isFamily ? 'FAMILY' : 'INDIVIDUAL';
-
-    const settled = await prisma.payment.findFirst({
-      where: { organizationId, contactId: contact.id, status: 'SUCCEEDED' },
-      orderBy: { paidAt: 'desc' },
-      select: { paidAt: true, amountKobo: true },
-    });
-
-    return {
-      enrollee: OnboardingService.maskName(contact.fullName),
-      planType,
-      plan,
-      isEquity,
-      amountNgn: isEquity ? 0 : OnboardingService.PREMIUM_KOBO[plan] / 100,
-      paymentStatus: settled ? 'PAID' : isEquity ? 'WAIVED_PENDING_VERIFICATION' : 'PENDING',
-      paidAt: settled?.paidAt ?? null,
-      enrollmentStatus:
-        settled ? 'ENROLLED_ACTIVE'
-        : isEquity ? 'PENDING_EQUITY_REVIEW'
-        : 'PENDING_PAYMENT',
-    };
-  }
-
-  /**
-   * Starts a real Paystack transaction and returns its hosted checkout URL.
-   *
-   * The `Payment` row is written PENDING *before* the gateway is called, so a
-   * transaction that succeeds while our process dies still has a row for the
-   * webhook to settle. Nothing here marks anyone enrolled — only the webhook
-   * does.
-   */
-  async initializeEnrolleePayment(query: string, plan: EnrolleePlan, email?: string) {
-    const organizationId = await this.publicPaymentOrganizationId();
-    const contact = await this.findEnrollee(organizationId, query);
-
-    const amountKobo = OnboardingService.PREMIUM_KOBO[plan];
-    if (!amountKobo) {
-      throw new BadRequestException('Choose either the individual or the family plan.');
-    }
-
-    const meta = (contact.metadata as Record<string, any>) ?? {};
-    if (OnboardingService.planFor(meta).isEquity) {
-      throw new BadRequestException(
-        'This enrollee is registered under the equity scheme, which is free. No payment is due.'
-      );
-    }
-
-    const secret = process.env.PAYSTACK_SECRET_KEY;
-    if (!secret) {
-      log.error('paystack_not_configured', new Error('PAYSTACK_SECRET_KEY unset'));
-      throw new ServiceUnavailableException(
-        'Online card payment is unavailable right now. Please pay at a PLASCHEMA desk.'
-      );
-    }
-
-    const reference = `PLS-${randomUUID()}`;
-    await prisma.payment.create({
-      data: {
-        organizationId,
-        contactId: contact.id,
-        gatewayReference: reference,
-        amountKobo,
-        purpose: 'plaschema_premium',
-        status: 'PENDING',
-      },
-    });
-
-    let authorizationUrl: string | undefined;
-    try {
-      const res = await fetch('https://api.paystack.co/transaction/initialize', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email?.trim() || `enrollee-${contact.id}@plaschema.invalid`,
-          amount: amountKobo,
-          reference,
-          // Where Paystack sends the payer's BROWSER afterwards. It must be a
-          // page, not this API: the browser returning is not what activates
-          // coverage — the webhook is — so this page only reports status.
-          callback_url: `${(process.env.WEB_BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '')}/pay/informal`,
-          // Read back by the webhook. The amount is NOT trusted from here — it is
-          // re-checked against the Payment row, which the browser never touched.
-          metadata: { purpose: 'plaschema_premium', organizationId },
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      authorizationUrl = body?.data?.authorization_url;
-      if (!res.ok || !authorizationUrl) {
-        log.error(
-          'paystack_enrollee_init_failed',
-          new Error(`HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}`),
-          { organizationId, reference }
-        );
-      }
-    } catch (e) {
-      log.error('paystack_enrollee_init_error', e as Error, { organizationId, reference });
-    }
-
-    if (!authorizationUrl) {
-      await prisma.payment.update({
-        where: { gatewayReference: reference },
-        data: { status: 'FAILED' },
-      });
-      throw new ServiceUnavailableException(
-        'Could not start the payment session. Nothing has been charged. Please try again.'
-      );
-    }
-
-    await this.writeAudit({
-      organizationId,
-      actor: 'public:portal',
-      action: 'payment.initialized',
-      targetType: 'Payment',
-      targetId: reference,
-      newValue: { plan, amountKobo, contactId: contact.id },
-    });
-
-    return { authorizationUrl, reference, amountNgn: amountKobo / 100 };
-  }
-
-  /**
-   * Settles a payment from a VERIFIED gateway callback. The only writer of
-   * enrollment state.
-   *
-   * Idempotent twice over: `gatewayReference` is unique, and an already-settled
-   * payment returns without a second write. Paystack retries, and a retry must
-   * not overwrite `paidAt` or append a second audit row saying it happened
-   * again.
-   *
-   * Called from the Paystack webhook after its HMAC-SHA256 signature has been
-   * checked. It is never reachable from a browser request.
-   */
-  async settleEnrolleePayment(
-    reference: string,
-    gatewayPayload: Record<string, any>
-  ): Promise<{ settled: boolean; reason: string }> {
-    const payment = await prisma.payment.findUnique({ where: { gatewayReference: reference } });
-    if (!payment) return { settled: false, reason: 'unknown_reference' };
-    if (payment.status === 'SUCCEEDED') return { settled: true, reason: 'already_settled' };
-
-    const paidKobo: number = Number(gatewayPayload?.amount ?? 0);
-
-    // The amount is checked against the row WE wrote, not against anything in
-    // the callback. A crafted or edited payload cannot buy a family plan for ₦1.
-    if (!Number.isFinite(paidKobo) || paidKobo < payment.amountKobo) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'FAILED', gatewayPayload: gatewayPayload as never },
-      });
-      log.warn('enrollee_payment_underpaid', {
-        reference,
-        expectedKobo: payment.amountKobo,
-        paidKobo,
-      });
-      await this.writeAudit({
-        organizationId: payment.organizationId,
-        actor: 'system:paystack-webhook',
-        action: 'payment.rejected_underpaid',
-        targetType: 'Payment',
-        targetId: reference,
-        previousValue: { status: payment.status, expectedKobo: payment.amountKobo },
-        newValue: { status: 'FAILED', paidKobo },
-      });
-      return { settled: false, reason: 'amount_mismatch' };
-    }
-
-    const contact = payment.contactId
-      ? await prisma.contact.findFirst({
-          where: { id: payment.contactId, organizationId: payment.organizationId },
-        })
-      : null;
-
-    const meta = ((contact?.metadata as Record<string, any>) ?? {}) as Record<string, any>;
-    const policyId =
-      meta.policyId ||
-      `PLS/${new Date().getFullYear()}/${(payment.contactId ?? payment.id).slice(0, 8).toUpperCase()}`;
-
-    await prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'SUCCEEDED',
-          paidAt: new Date(),
-          gatewayPayload: gatewayPayload as never,
-        },
-      });
-
-      if (contact) {
-        await tx.contact.update({
-          where: { id: contact.id },
-          data: {
-            tags: Array.from(new Set([...(contact.tags ?? []), 'enrolled-active', 'paid-enrollee'])),
-            metadata: {
-              ...meta,
-              policyId,
-              // Display mirror only. The Payment row is the record; this exists
-              // so the dashboard need not join on every render.
-              paymentStatus: 'PAID',
-              enrollmentStatus: 'ENROLLED_ACTIVE',
-              lastPaymentReference: reference,
-            },
-          },
-        });
-      }
-    });
-
-    await this.writeAudit({
-      organizationId: payment.organizationId,
-      actor: 'system:paystack-webhook',
-      action: 'payment.settled',
-      targetType: 'Payment',
-      targetId: reference,
-      previousValue: { status: payment.status },
-      newValue: { status: 'SUCCEEDED', paidKobo, policyId, contactId: payment.contactId },
-    });
-
-    log.info('enrollee_payment_settled', { reference, organizationId: payment.organizationId });
-    return { settled: true, reason: 'settled' };
-  }
-
-  /**
-   * Records an application for free (equity) coverage.
-   *
-   * This is NOT a payment and must never look like one: it sets
-   * PENDING_EQUITY_REVIEW, never ENROLLED_ACTIVE, and writes no Payment row.
-   * The previous code path treated a ₦0 "payment" as a confirmed transaction and
-   * returned a policy id for it.
-   */
-  async applyForEquityCoverage(query: string, equityCategory?: string) {
-    const organizationId = await this.publicPaymentOrganizationId();
-    const contact = await this.findEnrollee(organizationId, query);
-    const meta = (contact.metadata as Record<string, any>) ?? {};
-
-    await prisma.contact.update({
-      where: { id: contact.id },
-      data: {
-        tags: Array.from(new Set([...(contact.tags ?? []), 'equity-applicant'])),
-        metadata: {
-          ...meta,
-          isEquity: true,
-          equityCategory: equityCategory || meta.equityCategory || null,
-          paymentStatus: 'WAIVED_PENDING_VERIFICATION',
-          enrollmentStatus: 'PENDING_EQUITY_REVIEW',
-        },
-      },
-    });
-
-    await this.writeAudit({
-      organizationId,
-      actor: 'public:portal',
-      action: 'equity.applied',
-      targetType: 'Contact',
-      targetId: contact.id,
-      previousValue: { enrollmentStatus: meta.enrollmentStatus ?? null },
-      newValue: { enrollmentStatus: 'PENDING_EQUITY_REVIEW', equityCategory: equityCategory ?? null },
-    });
-
-    return {
-      submitted: true,
-      enrollee: OnboardingService.maskName(contact.fullName),
-      status: 'PENDING_EQUITY_REVIEW',
-      message:
-        'Your application for free equity coverage has been recorded and sent to the PLASCHEMA verification desk. Coverage begins once it is approved.',
-    };
   }
 }

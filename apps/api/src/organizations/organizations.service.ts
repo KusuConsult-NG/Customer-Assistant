@@ -372,13 +372,6 @@ export class OrganizationsService {
         VIEWER: 'View Only',
       },
       {
-        module: 'Billing & Subscriptions',
-        OWNER: 'Full Access',
-        ADMIN: 'View Only',
-        AGENT: 'No Access',
-        VIEWER: 'No Access',
-      },
-      {
         module: 'Organization & Team Settings',
         OWNER: 'Full Access',
         ADMIN: 'Manage Team',

@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { EnrolleePlan, OnboardingService, SelfieChannel } from './onboarding.service';
+import { OnboardingService, SelfieChannel } from './onboarding.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -120,48 +120,6 @@ export class PublicSelfieController {
 }
 
 /**
- * Public premium payment for PLASCHEMA enrollees.
- *
- * Still unauthenticated, deliberately — a citizen paying a premium has no
- * account to log into — but no longer AUTHORITATIVE, which is the distinction
- * that was missing. Nothing a caller sends here decides that money changed
- * hands: `initialize` starts a real Paystack transaction and returns its
- * checkout URL, and enrollment is written only by the signature-verified
- * webhook.
- *
- * `POST confirm` is gone. It accepted `contactId` and `amount` from the request
- * body and wrote PAID with no gateway involved, on any tenant. There is no
- * safe version of that endpoint, so it was removed rather than guarded.
- */
-@Controller('api/public/pay')
-export class PublicPaymentController {
-  constructor(private readonly onboarding: OnboardingService) {}
-
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  @Post('lookup')
-  async lookup(@Body() body: { query: string }) {
-    return this.onboarding.lookupEnrolleeForPayment(body?.query);
-  }
-
-  /** Starts a real transaction. Returns a checkout URL; enrolls nobody. */
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @Post('initialize')
-  async initialize(@Body() body: { query: string; plan: EnrolleePlan; email?: string }) {
-    if (body?.plan !== 'INDIVIDUAL' && body?.plan !== 'FAMILY') {
-      throw new BadRequestException('Choose either the individual or the family plan.');
-    }
-    return this.onboarding.initializeEnrolleePayment(body.query, body.plan, body.email);
-  }
-
-  /** Free (equity) coverage is an APPLICATION awaiting verification, not a purchase. */
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @Post('equity-application')
-  async equityApplication(@Body() body: { query: string; equityCategory?: string }) {
-    return this.onboarding.applyForEquityCoverage(body?.query, body?.equityCategory);
-  }
-}
-
-/**
  * Full reverse-proxy for patient-facing web pages and their assets.
  *
  * The ngrok tunnel only exposes port 4000 (API). The Next.js web app (port 3000)
@@ -193,11 +151,6 @@ export class SelfieRedirectController {
     @Query() query: Record<string, string>
   ) {
     return this.proxyToWeb(`/selfie/${token}`, query, req.res);
-  }
-
-  @Get('pay')
-  async proxyPay(@Req() req: any, @Query() query: Record<string, string>) {
-    return this.proxyToWeb('/pay', query, req.res);
   }
 
   // ── Static asset routes (required for page JS/CSS to load) ─────────────────

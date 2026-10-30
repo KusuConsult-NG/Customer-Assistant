@@ -142,10 +142,19 @@ async function sendPostCallLink(
     return;
   }
 
+  // Named from the agency that took the call, never from a scheme compiled into
+  // the platform: this SMS used to confirm a health registration and quote a
+  // health helpline to every caller of every agency.
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { name: true, phone: true },
+  }).catch(() => null);
+  const agency = org?.name ?? 'our office';
+
   const smsBody =
-    `Hi ${firstName}, your PLASCHEMA registration is confirmed! ✅\n\n` +
-    `Complete your profile by uploading a selfie here:\n${uploadUrl}\n\n` +
-    `Helpline: 0700-700-1111`;
+    `Hi ${firstName}, this is ${agency}. ✅\n\n` +
+    `Please complete your record by uploading your photo here:\n${uploadUrl}` +
+    (org?.phone ? `\n\nHelpline: ${org.phone}` : '');
 
   try {
     const params = new URLSearchParams({ To: toPhone, From: from, Body: smsBody });

@@ -361,12 +361,18 @@ export class AgentToolsService {
     try {
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
       const text = `${input.subject} ${input.description}`.toLowerCase();
-      const isHospitalMisconduct =
-        /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|no drug|medicine|mistreat/i.test(text);
 
-      const priority = isHospitalMisconduct ? TicketPriority.URGENT : TicketPriority.HIGH;
-      const subject = isHospitalMisconduct
-        ? `[QA ESCALATION] ${input.subject}`
+      // A citizen reporting that they were asked for money, refused service or
+      // mistreated is a service-integrity complaint at ANY agency, not only a
+      // hospital — so the escalation is kept and only the health-specific
+      // wording is gone. What the citizen is told names no scheme, no card and
+      // no helpline the agency may not have.
+      const isIntegrityComplaint =
+        /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|mistreat/i.test(text);
+
+      const priority = isIntegrityComplaint ? TicketPriority.URGENT : TicketPriority.HIGH;
+      const subject = isIntegrityComplaint
+        ? `[INTEGRITY ESCALATION] ${input.subject}`
         : input.subject;
 
       const ticket = await this.crm.createTicket(organizationId, {
@@ -376,22 +382,21 @@ export class AgentToolsService {
         priority,
       });
 
-      // If it is hospital misconduct, add an audit note
-      if (isHospitalMisconduct) {
+      if (isIntegrityComplaint) {
         await prisma.note.create({
           data: {
             contactId: contact.id,
-            content: `🚨 URGENT HOSPITAL GRIEVANCE LOGGED: ${input.subject} — Escalated to PLASCHEMA Quality Assurance & Standards Division.`,
+            content: `🚨 URGENT SERVICE-INTEGRITY COMPLAINT LOGGED: ${input.subject} — escalated for review.`,
           },
         }).catch(() => {});
       }
 
       return {
         ok: true,
-        speak: isHospitalMisconduct
-          ? `I have logged this as an urgent grievance for our Quality Assurance desk. Your complaint reference number is ${ticket.id.slice(0, 8)}. Our team will investigate with the hospital medical director immediately. Please keep your PLASCHEMA card with you, and call us back on 0700-700-1111 if you need immediate assistance.`
+        speak: isIntegrityComplaint
+          ? `I have logged this as an urgent complaint for review. Your reference number is ${ticket.id.slice(0, 8)} — please keep it. Someone will look into this as a priority and come back to you on this number.`
           : `I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will come back to you on this number.`,
-        data: { ticketId: ticket.id, isEscalated: isHospitalMisconduct },
+        data: { ticketId: ticket.id, isEscalated: isIntegrityComplaint },
       };
     } catch (e) {
       return this.failed('create_ticket', e);

@@ -19,30 +19,17 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { SubscriptionGuard } from '../common/guards/subscription.guard';
-import { SkipSubscriptionCheck } from '../common/decorators/skip-subscription-check.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
 
 const log = new AceLogger('WhatsappController');
 
 /**
- * NOTE ON GUARD ORDER
- *
- * SubscriptionGuard was previously applied at the class level with
- * `@UseGuards(SubscriptionGuard)`. Nest runs guards global → controller → route, so
- * it executed BEFORE the per-route JwtAuthGuard and always saw `request.user ===
- * undefined`; its own `if (!user) return true` then waved every request through. The
- * subscription check was therefore dead on this controller. It is now listed after
- * JwtAuthGuard on each protected route, where request.user actually exists.
- */
-
-/**
  * Verifies the X-Hub-Signature-256 header sent by Meta on every webhook POST.
  *
  * Why this matters: Without HMAC verification, any attacker who discovers your
- * webhook URL can inject arbitrary messages, trigger AI responses, create contacts,
- * and exhaust your Paystack billing quota — all without owning a WhatsApp number.
+ * webhook URL can inject arbitrary messages, trigger AI responses, create contacts
+ * and drive provider spend — all without owning a WhatsApp number.
  *
  * Principle: Verify the cryptographic signature BEFORE touching the body.
  * Use timingSafeEqual to prevent timing-oracle attacks.
@@ -71,7 +58,6 @@ export class WhatsappController {
    * @SkipThrottle — Meta calls this exactly once. Throttling it would cause verification to fail.
    */
   @SkipThrottle()
-  @SkipSubscriptionCheck()
   @Get('webhook')
   verifyWebhook(
     @Query('hub.mode') mode: string,
@@ -113,7 +99,6 @@ export class WhatsappController {
    *  Security is handled by signature verification, not rate limiting.
    */
   @SkipThrottle()
-  @SkipSubscriptionCheck()
   @Post('webhook')
   @HttpCode(200)
   async handleWebhook(
@@ -172,7 +157,7 @@ export class WhatsappController {
     return this.whatsappService.getConversations(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('conversations/:id/messages')
   async sendAgentMessage(
     @Param('id') id: string,
@@ -188,7 +173,7 @@ export class WhatsappController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('conversations/:id/handoff')
   async toggleHandoff(
     @Param('id') id: string,
@@ -212,7 +197,7 @@ export class WhatsappController {
     return this.whatsappService.getTemplates(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('templates')
   async createTemplate(
     @Req() req: { user: AuthUser },
@@ -233,7 +218,7 @@ export class WhatsappController {
     return this.whatsappService.createTemplate(req.user.organizationId, body);
   }
 
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard)
   @Delete('templates/:id')
   async deleteTemplate(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.whatsappService.deleteTemplate(req.user.organizationId, id);
@@ -250,7 +235,7 @@ export class WhatsappController {
    * POST /api/whatsapp/broadcasts/send — legacy path kept for backwards-compat.
    * Both delegate to the same handler.
    */
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('broadcasts')
   async createBroadcast(
     @Req() req: { user: AuthUser },
@@ -267,7 +252,7 @@ export class WhatsappController {
     return this.whatsappService.sendBroadcast(req.user.organizationId, body);
   }
 
-  @UseGuards(JwtAuthGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('broadcasts/send')
   async sendBroadcast(
     @Req() req: { user: AuthUser },
