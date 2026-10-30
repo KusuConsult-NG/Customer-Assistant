@@ -24,7 +24,8 @@ import {
   Sun,
   Moon,
   Landmark,
-  Briefcase
+  Briefcase,
+  Bot
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -310,6 +311,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Telephone Service" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  <SidebarLink href="/agent-provisioning" icon={<Bot className="w-4 h-4" />} label="Agent Provisioning" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
                   {/* Shown only to a platform operator. This is a CONVENIENCE,
                       not a permission — localStorage is editable, and every

@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { api, API_URL } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
@@ -856,7 +857,12 @@ function HostedAgentTab({ showToast }: any) {
               ))
             )}
             <p className="text-xs text-slate-500 dark:text-slate-400 pt-1">
-              Provisioning the agent, importing a phone number and attaching a WhatsApp line are not on this screen yet — importing a number changes who answers your customers, so it needs its own confirmation rather than a button here. Use <code className="font-mono">POST /api/agent-provisioning/sync</code> for now.
+              Provisioning the agent, importing a phone number and attaching a WhatsApp line live on{' '}
+              <Link href="/agent-provisioning" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+                Agent Provisioning
+              </Link>
+              , not here — importing a number changes who answers your citizens, so it needs its own
+              confirmation rather than a button on a settings screen.
             </p>
           </div>
         )}
