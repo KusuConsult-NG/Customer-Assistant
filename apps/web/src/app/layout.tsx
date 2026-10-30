@@ -23,7 +23,8 @@ import {
   GitFork,
   Sun,
   Moon,
-  Landmark
+  Landmark,
+  Briefcase
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -323,6 +324,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   )}
 
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Administration</p>
+                  <SidebarLink href="/services" icon={<Briefcase className="w-4 h-4" />} label="Services &amp; Locations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                 </nav>

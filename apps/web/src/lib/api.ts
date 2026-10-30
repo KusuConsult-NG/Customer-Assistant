@@ -268,6 +268,62 @@ export const api = {
     },
   },
 
+  /**
+   * The agency's own services and locations — what the AI offers a citizen and
+   * where it sends them. Reading is open to any member; writing is OWNER/ADMIN
+   * and the API enforces that, not this.
+   */
+  catalogue: {
+    lgas: async () => {
+      const res = await fetch(`${API_URL}/api/catalogue/lgas`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    listServices: async () => {
+      const res = await fetch(`${API_URL}/api/catalogue/services`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createService: async (body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/services`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    updateService: async (id: string, body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/services/${id}`, {
+        method: "PATCH", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    deleteService: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/catalogue/services/${id}`, {
+        method: "DELETE", headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+    listLocations: async () => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createLocation: async (body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    updateLocation: async (id: string, body: Record<string, unknown>) => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations/${id}`, {
+        method: "PATCH", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    deleteLocation: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/catalogue/locations/${id}`, {
+        method: "DELETE", headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+  },
+
   telephony: {
     getCallLogs: async () => {
       const res = await fetch(`${API_URL}/api/telephony/calls`, { headers: getHeaders() });

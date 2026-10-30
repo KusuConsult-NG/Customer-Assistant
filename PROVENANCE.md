@@ -90,6 +90,9 @@ These were true of the upstream system and remain true here:
   written into `Conversation.flowState`, so renaming it would strand every
   citizen part-way through a form.
 
-- **No management screen for the catalogue yet.** Services and locations are
-  loaded with `catalogue:seed` or written directly; Settings has no editor for
-  them. The data layer and the flow are done, the CRUD screen is not.
+- ~~No management screen for the catalogue.~~ **Done.** `/services` in the
+  dashboard, under Administration. Reading is open to any member; writing is
+  OWNER/ADMIN. LGAs are chosen from the State's list rather than typed, and
+  the page states the consequences — an agency with no active services cannot
+  register anyone, and an LGA with no location simply means the assistant does
+  not ask which office.

@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { PlatformModule } from './platform/platform.module';
+import { CatalogueModule } from './catalogue/catalogue.module';
 import { CrmModule } from './crm/crm.module';
 import { TelephonyModule } from './telephony/telephony.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
@@ -48,6 +49,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     AuthModule,
     OrganizationsModule,
     PlatformModule,
+    CatalogueModule,
     CrmModule,
     TelephonyModule,
     WhatsappModule,

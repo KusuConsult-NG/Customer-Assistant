@@ -61,6 +61,7 @@ async function seed(): Promise<Seeded> {
   const ministry = await mkOrg(`${tag} Ministry of Information`);
   const busy = await mkOrg(`${tag} Board of Internal Revenue`);
   const quiet = await mkOrg(`${tag} Water Services Corporation`);
+  createdOrgIds.push(ministry.id, busy.id, quiet.id);
 
   const operator = await prisma.user.create({
     data: {
@@ -109,16 +110,21 @@ async function seed(): Promise<Seeded> {
   return seeded;
 }
 
+/** Only what THIS worker created. See the note in afterAll. */
+const createdOrgIds: string[] = [];
+
 test.afterAll(async () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { prisma } = require('@ace/database');
-  const orgs = await prisma.organization.findMany({
-    where: { slug: { startsWith: 'e2eplat-' } },
-    select: { id: true },
-  });
-  for (const o of orgs) {
-    await prisma.auditLog.deleteMany({ where: { organizationId: o.id } });
-    await prisma.organization.delete({ where: { id: o.id } }).catch(() => {});
+
+  // By id, not by slug prefix. `fullyParallel` runs this file's tests across
+  // workers and each worker builds its own fixtures, so a prefix match deleted
+  // ANOTHER worker's agencies while it was still using them — which surfaced
+  // as this file intermittently failing one assertion in a full run and
+  // passing every time it ran alone.
+  for (const id of createdOrgIds) {
+    await prisma.auditLog.deleteMany({ where: { organizationId: id } });
+    await prisma.organization.delete({ where: { id } }).catch(() => {});
   }
   await prisma.$disconnect();
 });
