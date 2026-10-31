@@ -27,6 +27,8 @@ import request from 'supertest';
 import { prisma } from '@ace/database';
 import { AppModule } from '../src/app.module';
 import { AgentToolsService } from '../src/agent-tools/agent-tools.service';
+import { JwtService } from '@nestjs/jwt';
+import { randomBytes } from 'crypto';
 import { createTenant, dropTenant, TestTenant } from './support/tenant';
 
 describe('FAQ order', () => {
@@ -207,6 +209,85 @@ describe('FAQ order', () => {
         'What are the opening hours?'
       );
       expect(result.speak).toBe('Ours: 8am.');
+    });
+  });
+
+  // ── Who may change what the assistant says ────────────────────────────────
+
+  describe('authorization', () => {
+    /**
+     * A colleague inside the SAME agency, so a refusal is about their role and
+     * not about tenancy — `createTenant` would build them a separate agency,
+     * which proves the wrong thing.
+     */
+    const memberToken = async (role: 'AGENT' | 'VIEWER' | 'ADMIN') => {
+      const user = await prisma.user.create({
+        data: {
+          organizationId: agency.orgId,
+          email: `faq-${role.toLowerCase()}-${randomBytes(3).toString('hex')}@tenant.test`,
+          passwordHash: 'not-a-login-path',
+          fullName: `FAQ ${role}`,
+          role,
+        },
+      });
+      return app.get(JwtService).sign({
+        userId: user.id,
+        organizationId: agency.orgId,
+        email: user.email,
+        fullName: user.fullName,
+        role,
+        tokenVersion: user.tokenVersion,
+      });
+    };
+
+    it.each(['AGENT', 'VIEWER'] as const)('refuses every write for role %s', async (role) => {
+      const token = await memberToken(role);
+      const faq = await addFaq('Existing', 'answer', 0);
+      const auth = (r: any) => r.set('Authorization', `Bearer ${token}`);
+      const http = request(app.getHttpServer());
+
+      // These four were open to any signed-in member, including a VIEWER,
+      // while documents in the sibling controller were OWNER/ADMIN.
+      await auth(http.post('/api/knowledge/faqs')).send({ question: 'q', answer: 'a' }).expect(403);
+      await auth(
+        request(app.getHttpServer()).patch(`/api/knowledge/faqs/${faq.id}`)
+      ).send({ answer: 'rewritten' }).expect(403);
+      await auth(
+        request(app.getHttpServer()).patch('/api/knowledge/faqs/reorder')
+      ).send({ ids: [faq.id] }).expect(403);
+      await auth(
+        request(app.getHttpServer()).delete(`/api/knowledge/faqs/${faq.id}`)
+      ).expect(403);
+
+      // A 403 that changed the row anyway would be worse than no guard.
+      const after = await prisma.faqEntry.findUnique({ where: { id: faq.id } });
+      expect(after?.answer).toBe('answer');
+    });
+
+    it.each(['AGENT', 'VIEWER'] as const)('still lets role %s read them', async (role) => {
+      const token = await memberToken(role);
+      await addFaq('Published answer', 'We open at 8am.', 0);
+
+      // An officer on a call needs to know what the agency has already
+      // committed to saying. Reading is not the privilege.
+      const res = await request(app.getHttpServer())
+        .get('/api/knowledge/faqs')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body.map((f: any) => f.question)).toContain('Published answer');
+    });
+
+    it('lets an ADMIN write, so the guard is a role check and not a lockout', async () => {
+      const token = await memberToken('ADMIN');
+
+      // The counterpart assertion. A guard that refused everyone would pass
+      // every test above and still be broken.
+      await request(app.getHttpServer())
+        .post('/api/knowledge/faqs')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ question: 'Admin may write', answer: 'yes' })
+        .expect(201);
     });
   });
 });

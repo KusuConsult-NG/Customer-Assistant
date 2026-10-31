@@ -240,6 +240,24 @@ export default function KnowledgePage() {
   };
 
   /**
+   * The server's own reason a write was refused.
+   *
+   * These handlers each reported a generic "Could not add/save/delete the
+   * FAQ", which discards the only useful part of the response. Writing is
+   * OWNER/ADMIN, so the commonest failure is now a 403 whose message says
+   * exactly that — and "Could not add the FAQ" would send somebody hunting
+   * for a fault instead of asking an admin.
+   */
+  const refusalFrom = async (res: Response, fallback: string) => {
+    const body = await res.json().catch(() => ({} as any));
+    const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message;
+    if (message) return String(message);
+    return res.status === 403
+      ? 'Only an OWNER or ADMIN can change FAQ answers — they are what the assistant reads to citizens verbatim.'
+      : fallback;
+  };
+
+  /**
    * Move one FAQ up or down the order the AI consults them in.
    *
    * Buttons rather than drag-and-drop, for two reasons that both matter here.
@@ -271,8 +289,7 @@ export default function KnowledgePage() {
         body: JSON.stringify({ ids: next.map(f => f.id) }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({} as any));
-        toast.error(body.message || 'Could not save the new order.');
+        toast.error(await refusalFrom(res, 'Could not save the new order.'));
       }
     } catch {
       toast.error('Could not reach the server to save the new order.');
@@ -342,7 +359,7 @@ export default function KnowledgePage() {
         setFaqQuestion('');
         setFaqAnswer('');
       } else {
-        toast.error('Could not add the FAQ.');
+        toast.error(await refusalFrom(res, 'Could not add the FAQ.'));
       }
     } catch (err) {
       toast.error('Could not reach the server to add the FAQ.');
@@ -361,7 +378,7 @@ export default function KnowledgePage() {
         fetchFaqs();
         setEditingFaq(null);
       } else {
-        toast.error('Could not save the FAQ.');
+        toast.error(await refusalFrom(res, 'Could not save the FAQ.'));
       }
     } catch (err) {
       toast.error('Could not reach the server to save the FAQ.');
@@ -378,7 +395,7 @@ export default function KnowledgePage() {
       if (res.ok) {
         fetchFaqs();
       } else {
-        toast.error('Could not delete the FAQ.');
+        toast.error(await refusalFrom(res, 'Could not delete the FAQ.'));
       }
     } catch (err) {
       toast.error('Could not reach the server to delete the FAQ.');
