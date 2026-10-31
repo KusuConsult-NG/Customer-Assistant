@@ -518,91 +518,323 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
 }
 
 // ─────────────────────── Voice Tab ───────────────────────
+/**
+ * How the agency's phone line is connected.
+ *
+ * Four things here were wrong, and each of them was invisible from the
+ * dashboard — the form saved, or appeared to, and the damage showed up on a
+ * phone line instead.
+ *
+ * **Two of the five providers could never be saved.** The list read
+ * `AFRICA_TALKING` and `NIGERIAN_CARRIER`; the enum says `AFRICAS_TALKING` and
+ * `NIGERIA_CARRIER_FORWARD`. Both reached Prisma and came back as a bare 500,
+ * so choosing either showed "Failed to save" with no reason, every time. The
+ * API now answers 400 with the valid list, and this list is the valid list.
+ *
+ * **Secrets were pre-filled from their own masks.** `GET /me` returns
+ * `••••1234`, this form put that in the input, and saving wrote the mask as the
+ * credential — encrypted, stored, and rejected by Twilio as a bad auth token on
+ * the next call. Nothing is pre-filled now: what is configured is shown as
+ * text, the box starts empty, and an untouched box sends nothing.
+ *
+ * **A SIP trunk could not be configured at all**, so
+ * `/api/agent-provisioning/numbers/import-sip` could only ever answer "No SIP
+ * trunk is configured" — the one path that removes the Twilio dependency, with
+ * no way to fill in its fields.
+ *
+ * **`forwardingNumber` had no field.** Both voice handoff paths refuse with
+ * "Set one under Settings → Telephony and try again", which was a pointer to
+ * somewhere that did not exist.
+ */
+
+/** Providers, with the enum value the API expects and a label a human reads. */
+const VOICE_PROVIDERS: Array<{ value: string; label: string; note?: string }> = [
+  { value: 'TWILIO', label: 'Twilio' },
+  { value: 'SIP_TRUNK', label: 'SIP trunk (local carrier)', note: 'Answered by the hosted agent — no Twilio' },
+  { value: 'AFRICAS_TALKING', label: "Africa's Talking" },
+  { value: 'NIGERIA_CARRIER_FORWARD', label: 'Nigerian carrier forwarding' },
+  { value: 'MTN_ENTERPRISE_SIP', label: 'MTN Business SIP (inbound only)' },
+  { value: 'AIRTEL_BUSINESS_SIP', label: 'Airtel Business SIP (inbound only)' },
+  { value: 'PLIVO', label: 'Plivo' },
+  { value: 'TELNYX', label: 'Telnyx' },
+];
+
+/** Which inbound webhook a provider delivers to, or null when it sends us none. */
+function inboundWebhookPath(provider: string): string | null {
+  switch (provider) {
+    case 'TWILIO':
+    case 'MTN_ENTERPRISE_SIP':
+    case 'AIRTEL_BUSINESS_SIP':
+      // The carrier-SIP arrangements route into a Twilio SIP domain, so the
+      // call arrives on the Twilio webhook.
+      return 'twilio';
+    case 'AFRICAS_TALKING':
+      // The route is 'africa-talking' (singular) while the provider enum is
+      // AFRICAS_TALKING. Spelling it from the enum hands the operator a URL
+      // that 404s, and they would point their carrier at it.
+      return 'africa-talking';
+    case 'NIGERIA_CARRIER_FORWARD':
+      return 'nigeria-carrier';
+    case 'TELNYX':
+      return 'telnyx';
+    // A SIP trunk goes to ElevenLabs, which answers it. Showing a webhook URL
+    // for it would invite an operator to point the trunk back here and undo the
+    // cutover. Plivo has no inbound route in this API.
+    default:
+      return null;
+  }
+}
+
+/**
+ * A labelled control.
+ *
+ * The labels on this form were bare `<label>` elements with no `htmlFor`, so
+ * nothing tied them to their inputs: a screen reader announced an unlabelled
+ * text box, and clicking the label did not focus it. On a government platform
+ * that is a defect in its own right, and it is also why these fields were
+ * unreachable by name from a test.
+ */
+function Field({
+  id,
+  label,
+  hint,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className={labelCls}>{label}</label>
+      {children}
+      {hint && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">{hint}</p>}
+    </div>
+  );
+}
+
+/** What is stored, shown as text — never as the contents of an input. */
+function Configured({ value }: { value?: string | null }) {
+  if (!value) return <span className="text-slate-400 dark:text-slate-500">not set</span>;
+  return <span className="font-mono text-slate-600 dark:text-slate-300">{value}</span>;
+}
+
 function VoiceTab({ org, authHeaders, showToast }: any) {
   const tc = org?.telephonyConfigs?.[0] || {};
   const [provider, setProvider] = useState(tc.provider || 'TWILIO');
   const [phoneNumber, setPhoneNumber] = useState(tc.phoneNumber || '');
-  const [accountSid, setAccountSid] = useState(tc.accountSid || '');
-  const [authToken, setAuthToken] = useState(tc.authToken || '');
-  const [apiKey, setApiKey] = useState(tc.apiKey || '');
+  const [forwardingNumber, setForwardingNumber] = useState(tc.forwardingNumber || '');
+
+  // Credentials start EMPTY and are sent only when typed. See the note above:
+  // pre-filling these from the masked read wrote the mask as the secret.
+  const [accountSid, setAccountSid] = useState('');
+  const [authToken, setAuthToken] = useState('');
+  const [apiKey, setApiKey] = useState('');
+
+  const [sipAddress, setSipAddress] = useState(tc.sipAddress || '');
+  const [sipTransport, setSipTransport] = useState(tc.sipTransport || 'udp');
+  const [sipUsername, setSipUsername] = useState(tc.sipUsername || '');
+  const [sipPassword, setSipPassword] = useState('');
+
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const providers = ['TWILIO', 'AFRICA_TALKING', 'NIGERIAN_CARRIER', 'PLIVO', 'TELNYX'];
+  const isSip = provider === 'SIP_TRUNK';
+  const usesAccount = provider === 'TWILIO' || provider === 'PLIVO';
+  const usesApiKey = provider === 'AFRICAS_TALKING' || provider === 'NIGERIA_CARRIER_FORWARD' || provider === 'TELNYX';
+  const webhookPath = inboundWebhookPath(provider);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
+      const body: Record<string, unknown> = { provider, phoneNumber, forwardingNumber };
+      if (usesAccount) {
+        if (accountSid) body.accountSid = accountSid;
+        if (authToken) body.authToken = authToken;
+      }
+      if (usesApiKey && apiKey) body.apiKey = apiKey;
+      if (isSip) {
+        body.sipAddress = sipAddress;
+        body.sipTransport = sipTransport;
+        body.sipUsername = sipUsername;
+        if (sipPassword) body.sipPassword = sipPassword;
+      }
+
       const res = await apiFetch(`${API_URL}/api/organizations/telephony-config`, {
         method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ provider, phoneNumber, accountSid, authToken, apiKey }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        // The API's message names the field and the valid values. Replacing it
+        // with "Failed to save" is what left an operator with two unsaveable
+        // providers and nothing to go on.
+        throw new Error(
+          Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message || 'Could not save the voice configuration.'
+        );
+      }
+      // Cleared so a saved credential is never sitting in the DOM, and so the
+      // next save does not re-send one the operator did not retype.
+      setAuthToken(''); setApiKey(''); setSipPassword(''); setAccountSid('');
       showToast('Voice config saved!');
-    } catch { showToast('Failed to save', 'error'); }
+    } catch (err: any) {
+      setError(err?.message || 'Could not save the voice configuration.');
+      showToast('Failed to save', 'error');
+    }
     finally { setSaving(false); }
   };
 
   return (
     <form onSubmit={save} className="space-y-5">
-      <Section title="Voice AI Telephony" description="Configure your phone provider for AI voice calls">
-        <div>
-          <label className={labelCls}>Provider</label>
-          <select value={provider} onChange={e => setProvider(e.target.value)} className={selectCls}>
-            {providers.map(p => <option key={p} value={p}>{p.replace(/_/g, ' ')}</option>)}
+      <Section title="Voice AI Telephony" description="How citizens' calls reach this agency">
+        <Field
+          id="voice-provider"
+          label="Provider"
+          hint={VOICE_PROVIDERS.find(p => p.value === provider)?.note}
+        >
+          <select id="voice-provider" value={provider} onChange={e => setProvider(e.target.value)} className={selectCls}>
+            {VOICE_PROVIDERS.map(p => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
           </select>
-        </div>
-        <div>
-          <label className={labelCls}>Phone Number</label>
-          <input type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+12025551234 or +2341234567890" />
-        </div>
-        {(provider === 'TWILIO' || provider === 'PLIVO') && (
+        </Field>
+        <Field id="voice-number" label="Phone Number">
+          <input id="voice-number" type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348012345678" />
+        </Field>
+        <Field
+          id="voice-forwarding"
+          label="Forwarding Number"
+          hint={
+            <>
+              Where a call goes when the AI hands over to a person. With none set, a handover files a
+              high-priority ticket instead and the caller is told so — the AI never claims a transfer it
+              cannot make.
+            </>
+          }
+        >
+          <input id="voice-forwarding" type="tel" value={forwardingNumber} onChange={e => setForwardingNumber(e.target.value)} className={inputCls} placeholder="+2348090000000" />
+        </Field>
+
+        {usesAccount && (
           <>
-            <div>
-              <label className={labelCls}>{provider === 'TWILIO' ? 'Account SID' : 'Auth ID'}</label>
-              <input type="text" value={accountSid} onChange={e => setAccountSid(e.target.value)} className={inputCls} placeholder="AC..." />
-            </div>
-            <div>
-              <label className={labelCls}>Auth Token</label>
+            <Field
+              id="voice-account-sid"
+              label={provider === 'TWILIO' ? 'Account SID' : 'Auth ID'}
+              hint={<>Saved: <Configured value={tc.accountSid} /></>}
+            >
+              <input id="voice-account-sid" type="text" value={accountSid} onChange={e => setAccountSid(e.target.value)} className={inputCls} placeholder="Leave blank to keep the saved value" />
+            </Field>
+            <Field
+              id="voice-auth-token"
+              label="Auth Token"
+              hint={<>Saved: <Configured value={tc.authToken} /></>}
+            >
               <div className="relative">
-                <input type={showSecret ? 'text' : 'password'} value={authToken} onChange={e => setAuthToken(e.target.value)} className={`${inputCls} pr-12`} placeholder="••••••••" />
-                <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
+                <input id="voice-auth-token" type={showSecret ? 'text' : 'password'} value={authToken} onChange={e => setAuthToken(e.target.value)} className={`${inputCls} pr-12`} placeholder="Leave blank to keep the saved value" />
+                <button type="button" onClick={() => setShowSecret(!showSecret)} aria-label={showSecret ? 'Hide secret' : 'Show secret'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700">
                   {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-            </div>
+            </Field>
           </>
         )}
-        {(provider === 'AFRICA_TALKING' || provider === 'NIGERIAN_CARRIER' || provider === 'TELNYX') && (
-          <div>
-            <label className={labelCls}>API Key</label>
+
+        {usesApiKey && (
+          <Field
+            id="voice-api-key"
+            label="API Key"
+            hint={<>Saved: <Configured value={tc.apiKey} /></>}
+          >
             <div className="relative">
-              <input type={showSecret ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)} className={`${inputCls} pr-12`} placeholder="Your API key" />
-              <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300">
+              <input id="voice-api-key" type={showSecret ? 'text' : 'password'} value={apiKey} onChange={e => setApiKey(e.target.value)} className={`${inputCls} pr-12`} placeholder="Leave blank to keep the saved value" />
+              <button type="button" onClick={() => setShowSecret(!showSecret)} aria-label={showSecret ? 'Hide secret' : 'Show secret'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700">
                 {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-          </div>
+          </Field>
         )}
-        <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between gap-3">
-          <div>
-            <strong>Inbound Voice Webhook URL:</strong>
-            <code className="ml-2 font-mono">{API_URL}/api/telephony/inbound/{provider === 'TWILIO' ? 'twilio' : provider === 'AFRICA_TALKING' ? 'africa-talking' : 'nigeria-carrier'}</code>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              const url = `${API_URL}/api/telephony/inbound/${provider === 'TWILIO' ? 'twilio' : provider === 'AFRICA_TALKING' ? 'africa-talking' : 'nigeria-carrier'}`;
-              const ok = await copyToClipboard(url);
-              if (ok) showToast('Telephony Webhook URL copied!');
-            }}
-            className="px-2.5 py-1 rounded bg-amber-100 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200 hover:bg-amber-200 font-semibold text-[11px] flex items-center gap-1"
-          >
-            <Copy className="w-3 h-3" /> Copy
-          </button>
-        </div>
       </Section>
+
+      {isSip && (
+        <Section
+          title="SIP trunk"
+          description="The trunk the hosted agent answers. Your carrier supplies these."
+        >
+          <Field id="sip-address" label="SIP Host Address">
+            <input id="sip-address" type="text" value={sipAddress} onChange={e => setSipAddress(e.target.value)} className={inputCls} placeholder="sip.carrier.ng" />
+          </Field>
+          <Field id="sip-transport" label="Transport">
+            <select id="sip-transport" value={sipTransport} onChange={e => setSipTransport(e.target.value)} className={selectCls}>
+              {['udp', 'tcp', 'tls', 'auto'].map(t => (
+                <option key={t} value={t}>{t.toUpperCase()}</option>
+              ))}
+            </select>
+          </Field>
+          <Field id="sip-username" label="SIP Username">
+            <input id="sip-username" type="text" value={sipUsername} onChange={e => setSipUsername(e.target.value)} className={inputCls} placeholder="Leave blank for an IP-authenticated trunk" />
+          </Field>
+          <Field
+            id="sip-password"
+            label="SIP Password"
+            hint={
+              <>
+                Saved: <Configured value={tc.sipPassword} /> — digest authentication needs a username and a
+                password together, or neither if your carrier authenticates the trunk by IP address.
+              </>
+            }
+          >
+            <div className="relative">
+              <input id="sip-password" type={showSecret ? 'text' : 'password'} value={sipPassword} onChange={e => setSipPassword(e.target.value)} className={`${inputCls} pr-12`} placeholder="Leave blank to keep the saved value" />
+              <button type="button" onClick={() => setShowSecret(!showSecret)} aria-label={showSecret ? 'Hide secret' : 'Show secret'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700">
+                {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </Field>
+          <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
+            Saving the trunk here does not move any calls. Hand it to the agent from{' '}
+            <Link href="/agent-provisioning" className="underline font-semibold">Agent provisioning</Link>, which
+            states what the cutover changes before it happens.
+          </div>
+        </Section>
+      )}
+
+      <Section title="Inbound webhook" description="Where the carrier delivers a call">
+        {webhookPath ? (
+          <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between gap-3">
+            <div>
+              <strong>Inbound Voice Webhook URL:</strong>
+              <code className="ml-2 font-mono break-all">{API_URL}/api/telephony/inbound/{webhookPath}</code>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await copyToClipboard(`${API_URL}/api/telephony/inbound/${webhookPath}`);
+                if (ok) showToast('Telephony Webhook URL copied!');
+              }}
+              className="px-2.5 py-1 rounded bg-amber-100 dark:bg-amber-800/40 text-amber-800 dark:text-amber-200 hover:bg-amber-200 font-semibold text-[11px] flex items-center gap-1 shrink-0"
+            >
+              <Copy className="w-3 h-3" /> Copy
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {isSip
+              ? 'A SIP trunk is answered by the hosted agent, so no call is delivered to this platform. Point the trunk at ElevenLabs, not here.'
+              : 'This provider has no inbound route in this platform. Calls to it do not reach the AI.'}
+          </p>
+        )}
+      </Section>
+
+      {error && (
+        <div className="p-4 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
       <div className="flex justify-end">
         <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

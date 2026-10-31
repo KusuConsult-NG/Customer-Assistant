@@ -201,6 +201,125 @@ export class ElevenLabsNumbersService {
     };
   }
 
+  /**
+   * Hand a SIP trunk to ElevenLabs so the agent answers it — without Twilio.
+   *
+   * ── Why this exists ──────────────────────────────────────────────────────
+   *
+   * ElevenLabs is not a carrier; it sells no numbers. `phoneNumbers.create`
+   * takes `twilio`, `exotel` or `sip_trunk`, and only the Twilio branch was
+   * implemented — which made Twilio a hard dependency for voice. For a State
+   * deployment a local carrier over SIP means local numbers, local
+   * termination, local billing and no overseas intermediary carrying citizen
+   * calls. Exotel is India-only and deliberately not offered here.
+   *
+   * ── What this costs, and why it is refused rather than hidden ────────────
+   *
+   * OPERATOR TAKEOVER DOES NOT WORK ON A SIP TRUNK. The Twilio path can
+   * redirect a live call because the call is a Twilio call and Twilio has a
+   * REST API for it. ElevenLabs has no live-call API at all — its
+   * conversations client is get/list/delete/signed-url/webrtc-token/resolve,
+   * all read-only or post-hoc — and `PhoneNumberTransfer` is agent
+   * CONFIGURATION with a prompt `condition`, i.e. the agent decides, not an
+   * operator mid-call.
+   *
+   * So takeover refuses for a SIP number and says why, exactly as it already
+   * does for WhatsApp. The console must not offer a button that silently does
+   * nothing; that is the same failure as announcing a transfer that never
+   * happened.
+   */
+  async importSipTrunkNumber(
+    organizationId: string,
+    opts: { confirmVoiceCutover: boolean; label?: string }
+  ): Promise<ImportedNumber> {
+    const { config, apiKey, agentId } = await this.tenant(organizationId);
+
+    if (!opts.confirmVoiceCutover) {
+      throw new BadRequestException(
+        'Importing this trunk moves its calls to the ElevenLabs agent. Confirm the cutover explicitly (confirmVoiceCutover) — this is a change in who talks to your citizens, not a settings tweak. Note that operator takeover of a live call is NOT available on a SIP trunk.'
+      );
+    }
+
+    const telephony = withTelephonyCredentials(
+      await prisma.telephonyConfig.findFirst({
+        where: { organizationId, provider: 'SIP_TRUNK' },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      })
+    );
+    if (!telephony) {
+      throw new NotFoundException(
+        'No SIP trunk is configured for this organization. Add one under Settings → Voice before importing it.'
+      );
+    }
+
+    // Named individually so the operator learns which field to fill in rather
+    // than "trunk configuration incomplete".
+    const missing = [
+      !telephony.phoneNumber && 'phone number',
+      !telephony.sipAddress && 'SIP host address',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `The SIP trunk configuration is missing its ${missing.join(' and ')}. ElevenLabs needs both to route the number.`
+      );
+    }
+
+    const client = this.api.for(apiKey);
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true },
+    });
+    const label = opts.label?.trim() || `${org?.name ?? 'Customer Care'} — SIP line`;
+
+    // Digest auth only when a username AND password are both present. A
+    // half-filled pair is not partial authentication, it is none — and
+    // ElevenLabs documents a credential-less trunk as ACL-authenticated, so
+    // sending an empty username would claim a scheme that is not in use.
+    const credentials =
+      telephony.sipUsername && telephony.sipPassword
+        ? { username: telephony.sipUsername, password: telephony.sipPassword }
+        : undefined;
+
+    const transport = (telephony.sipTransport ?? 'udp') as any;
+
+    let created;
+    try {
+      created = await client.conversationalAi.phoneNumbers.create({
+        provider: 'sip_trunk',
+        phoneNumber: telephony.phoneNumber,
+        label,
+        agentId,
+        inboundTrunkConfig: {
+          ...(credentials ? { credentials } : {}),
+          ...(telephony.sipAddress ? { allowedAddresses: [telephony.sipAddress] } : {}),
+        },
+        outboundTrunkConfig: {
+          address: telephony.sipAddress!,
+          transport,
+          ...(credentials ? { credentials } : {}),
+        },
+      } as any);
+    } catch (err) {
+      this.api.fail('the SIP trunk import', err);
+    }
+
+    await prisma.hostedAgentConfig.update({
+      where: { organizationId },
+      data: { phoneNumberId: created.phoneNumberId },
+    });
+    this.log.log(
+      `sip_trunk_imported org=${organizationId} number=${created.phoneNumberId} agent=${agentId}`
+    );
+
+    return {
+      phoneNumberId: created.phoneNumberId,
+      phoneNumber: telephony.phoneNumber,
+      label,
+      assignedAgentId: agentId,
+      isOurs: true,
+    };
+  }
+
   private async fetchNumber(client: any, phoneNumberId: string) {
     try {
       return await client.conversationalAi.phoneNumbers.get(phoneNumberId);

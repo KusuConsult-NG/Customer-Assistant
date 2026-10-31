@@ -112,6 +112,15 @@ export enum TelephonyProviderType {
   TELNYX = 'TELNYX',
   AFRICAS_TALKING = 'AFRICAS_TALKING',
   NIGERIA_CARRIER_FORWARD = 'NIGERIA_CARRIER_FORWARD',
+  /**
+   * A generic SIP trunk from any carrier.
+   *
+   * ElevenLabs sells no numbers — it answers one brought from Twilio, Exotel
+   * or a SIP trunk. This is the option that removes the Twilio dependency
+   * entirely, which for a State deployment means a local carrier: local
+   * numbers, local termination, and no overseas intermediary on citizen calls.
+   */
+  SIP_TRUNK = 'SIP_TRUNK',
   MTN_ENTERPRISE_SIP = 'MTN_ENTERPRISE_SIP',
   AIRTEL_BUSINESS_SIP = 'AIRTEL_BUSINESS_SIP',
 }

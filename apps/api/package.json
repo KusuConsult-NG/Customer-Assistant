@@ -75,6 +75,9 @@
       "<rootDir>/test/support/limit-db-connections.ts",
       "<rootDir>/src/config/load-env.ts"
     ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/test/support/release-db-connections.ts"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

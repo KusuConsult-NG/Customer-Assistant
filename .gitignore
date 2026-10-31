@@ -55,6 +55,9 @@ dump.rdb
 # Playwright artifacts
 apps/web/playwright-report/
 apps/web/test-results/
+# Playwright run from the repo root (wrong cwd) drops its artifacts here.
+/test-results/
+/playwright-report/
 apps/web/playwright.sandbox.config.ts
 data/qdrant/qdrant
 storage/

@@ -47,8 +47,41 @@ function maskedTelephonyConfig<T extends Record<string, any>>(c: T) {
     authToken: maskStoredSecret(c.authToken, `TelephonyConfig ${c.id}.authToken`),
     apiKey: maskStoredSecret(c.apiKey, `TelephonyConfig ${c.id}.apiKey`),
     apiSecret: maskStoredSecret(c.apiSecret, `TelephonyConfig ${c.id}.apiSecret`),
+    // `sipAddress` and `sipUsername` are deliberately NOT masked: they identify
+    // a trunk rather than open it, and an operator comparing our configuration
+    // against their carrier's needs to read them. The password is a credential.
+    sipPassword: maskStoredSecret(c.sipPassword, `TelephonyConfig ${c.id}.sipPassword`),
   };
 }
+
+/**
+ * SIP signalling transports ElevenLabs accepts (`SipTrunkTransportEnum`).
+ *
+ * Validated here, at the settings boundary, rather than at import time: a
+ * rejected transport discovered during the voice cutover is discovered while a
+ * phone line is being moved, which is the worst moment to learn that a form
+ * accepted something the provider does not.
+ */
+const SIP_TRANSPORTS = ['auto', 'udp', 'tcp', 'tls'] as const;
+
+/**
+ * Providers `TelephonyConfig.provider` can hold.
+ *
+ * Kept as a literal list rather than imported from the generated Prisma
+ * namespace so the settings endpoint can answer with the valid values in its
+ * own error message. A value not in here used to reach Prisma and surface as an
+ * unexplained 500.
+ */
+const TELEPHONY_PROVIDERS = [
+  'TWILIO',
+  'PLIVO',
+  'TELNYX',
+  'AFRICAS_TALKING',
+  'NIGERIA_CARRIER_FORWARD',
+  'MTN_ENTERPRISE_SIP',
+  'AIRTEL_BUSINESS_SIP',
+  'SIP_TRUNK',
+] as const;
 
 function maskedWhatsAppConfig<T extends Record<string, any>>(c: T) {
   return {
@@ -97,15 +130,12 @@ export class OrganizationsService {
 
     return {
       ...org,
-      telephonyConfigs: org.telephonyConfigs.map((c) => ({
-        ...c,
-        // accountSid identifies rather than opens, so it is stored in the clear
-        // and masked directly. The other three are encrypted at rest.
-        accountSid: maskSecret(c.accountSid),
-        authToken: maskStoredSecret(c.authToken, `TelephonyConfig ${c.id}.authToken`),
-        apiKey: maskStoredSecret(c.apiKey, `TelephonyConfig ${c.id}.apiKey`),
-        apiSecret: maskStoredSecret(c.apiSecret, `TelephonyConfig ${c.id}.apiSecret`),
-      })),
+      // One masking function, not a second copy of the field list. The list was
+      // duplicated here and in the write path, and a credential column added to
+      // one of them is a column returned in the clear from the other: that is
+      // exactly what happened to `sipPassword`, which the write path masked and
+      // this read handed back as ciphertext.
+      telephonyConfigs: org.telephonyConfigs.map((c) => maskedTelephonyConfig(c)),
       whatsAppConfigs: org.whatsAppConfigs.map((c) => ({
         ...c,
         accessToken: maskStoredSecret(c.accessToken, `WhatsAppConfig ${c.id}.accessToken`),
@@ -347,35 +377,152 @@ export class OrganizationsService {
   }
 
 
+  /**
+   * The agency's one voice line.
+   *
+   * There is a single `TelephonyConfig` row per organization, so saving a
+   * different provider REPLACES the arrangement rather than adding to it. Three
+   * things follow from that, each of which was a real gap:
+   *
+   *  - **A SIP trunk is configurable at all.** `POST
+   *    /api/agent-provisioning/numbers/import-sip` reads `sipAddress` and the
+   *    digest credentials off this row, and nothing could write them — so the
+   *    import could only ever answer "No SIP trunk is configured", which is a
+   *    button that cannot work.
+   *  - **`forwardingNumber` is writable.** Both voice handoff paths refuse with
+   *    "Set one under Settings → Telephony and try again", and that was a
+   *    pointer to a field no form could reach. A refusal naming a fix the
+   *    operator cannot carry out is not an honest refusal.
+   *  - **The previous provider's fields are CLEARED.** Prisma ignores
+   *    `undefined`, so switching Twilio → SIP left the old `accountSid` and
+   *    `authToken` on the row: credentials for an arrangement that no longer
+   *    exists, sitting in a column something later reads. Switching is a
+   *    replacement, so the fields that do not belong to the new provider go to
+   *    null.
+   */
   async updateTelephonyConfig(
     organizationId: string,
-    data: { provider: any; phoneNumber: string; accountSid?: string; authToken?: string; apiKey?: string }
+    data: {
+      provider: any;
+      phoneNumber: string;
+      accountSid?: string;
+      authToken?: string;
+      apiKey?: string;
+      forwardingNumber?: string | null;
+      sipAddress?: string;
+      sipTransport?: string;
+      sipUsername?: string;
+      sipPassword?: string;
+    }
   ) {
+    const provider = String(data.provider ?? '').toUpperCase();
+    const isSip = provider === 'SIP_TRUNK';
+
+    // Validated against the enum, because an unknown value reached Prisma and
+    // came back as a 500 with no reason — and the dashboard's own provider list
+    // carried two values that are not enum members (`AFRICA_TALKING`,
+    // `NIGERIAN_CARRIER`), so two of the five options an operator could pick
+    // returned "Failed to save" and saved nothing, every time.
+    if (!TELEPHONY_PROVIDERS.includes(provider as any)) {
+      throw new BadRequestException(
+        `"${data.provider}" is not a telephony provider this platform supports. Choose one of: ${TELEPHONY_PROVIDERS.join(', ')}.`
+      );
+    }
+
+    if (isSip) {
+      // Named individually, because "invalid SIP configuration" sends an
+      // operator back to their carrier's portal without saying what to copy.
+      if (!data.sipAddress?.trim()) {
+        throw new BadRequestException(
+          'A SIP trunk needs its host address — the hostname or IP your carrier gave you for signalling, e.g. sip.carrier.ng. '
+          + 'ElevenLabs cannot route the number without it.'
+        );
+      }
+      if (data.sipTransport && !SIP_TRANSPORTS.includes(data.sipTransport as any)) {
+        throw new BadRequestException(
+          `sipTransport must be one of ${SIP_TRANSPORTS.join(', ')} — "${data.sipTransport}" is not a transport ElevenLabs accepts.`
+        );
+      }
+    }
+
     const existing = await prisma.telephonyConfig.findFirst({ where: { organizationId } });
+
+    // A half-filled pair is not partial authentication, it is none, and the
+    // import silently drops it. Saying so here is the difference between a
+    // trunk that authenticates and one that is quietly ACL-only.
+    //
+    // Three states, not two, because the form shows a saved password masked and
+    // therefore posts nothing for it:
+    //
+    //  - username, and no password anywhere → rejected, the pair is incomplete
+    //  - password posted with no username   → rejected, an orphan credential
+    //  - no username, password on the row   → ALLOWED: the operator is dropping
+    //    digest auth, and the write below clears the password with it
+    if (isSip) {
+      const username = Boolean(data.sipUsername?.trim());
+      if (username && !data.sipPassword && !existing?.sipPassword) {
+        throw new BadRequestException(
+          'SIP digest authentication needs BOTH a username and a password. Supply a password, or clear the username '
+          + 'for a trunk your carrier authenticates by IP address.'
+        );
+      }
+      if (!username && data.sipPassword) {
+        throw new BadRequestException(
+          'SIP digest authentication needs BOTH a username and a password. Supply a username, or omit the password '
+          + 'for a trunk your carrier authenticates by IP address.'
+        );
+      }
+    }
+
+    // Explicit nulls, not omissions: this row is being replaced, not amended.
+    const sipFields = isSip
+      ? {
+          sipAddress: data.sipAddress!.trim(),
+          sipTransport: data.sipTransport ?? 'udp',
+          sipUsername: data.sipUsername?.trim() || null,
+          // Left untouched when the form posts nothing, so re-saving a trunk to
+          // change its transport does not wipe a password the form only ever
+          // showed masked — but cleared outright when the username goes, since
+          // the pair is the whole credential and half of one is dead weight in
+          // a column.
+          ...(data.sipPassword
+            ? { sipPassword: data.sipPassword }
+            : data.sipUsername?.trim()
+              ? {}
+              : { sipPassword: null }),
+        }
+      : { sipAddress: null, sipTransport: null, sipUsername: null, sipPassword: null };
+
+    const carrierFields = isSip
+      ? { accountSid: null, authToken: null, apiKey: null, apiSecret: null }
+      : {
+          accountSid: data.accountSid,
+          authToken: data.authToken,
+          apiKey: data.apiKey,
+        };
+
+    const common = {
+      provider: provider as any,
+      phoneNumber: data.phoneNumber,
+      // `?? undefined` keeps an unsent field untouched while still allowing an
+      // explicit null to clear a forwarding number that should no longer be used.
+      ...(data.forwardingNumber !== undefined
+        ? { forwardingNumber: data.forwardingNumber?.trim() || null }
+        : {}),
+      ...carrierFields,
+      ...sipFields,
+    };
 
     if (existing) {
       const saved = await prisma.telephonyConfig.update({
         where: { id: existing.id },
-        data: sealTelephonyCredentials({
-          provider: data.provider,
-          phoneNumber: data.phoneNumber,
-          accountSid: data.accountSid,
-          authToken: data.authToken,
-          apiKey: data.apiKey,
-        }),
+        data: sealTelephonyCredentials(common),
       });
       return maskedTelephonyConfig(saved);
     }
 
     const created = await prisma.telephonyConfig.create({
-      data: sealTelephonyCredentials({
-        organizationId,
-        provider: data.provider,
-        phoneNumber: data.phoneNumber,
-        accountSid: data.accountSid,
-        authToken: data.authToken,
-        apiKey: data.apiKey,
-      }),
+      data: sealTelephonyCredentials({ organizationId, ...common }),
     });
     return maskedTelephonyConfig(created);
   }

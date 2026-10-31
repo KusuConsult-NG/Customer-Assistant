@@ -54,7 +54,14 @@ function seal(value: string | null | undefined): string | null | undefined {
  * not open one, and being able to read it in a database console is worth more
  * than hiding it.
  */
-export const TELEPHONY_SECRET_FIELDS = ['authToken', 'apiKey', 'apiSecret'] as const;
+export const TELEPHONY_SECRET_FIELDS = [
+  'authToken',
+  'apiKey',
+  'apiSecret',
+  // SIP digest auth. `sipAddress` and `sipUsername` are deliberately absent:
+  // they name the trunk rather than opening it, exactly as `accountSid` does.
+  'sipPassword',
+] as const;
 
 export interface TelephonyCredentials {
   id?: string;
@@ -62,6 +69,7 @@ export interface TelephonyCredentials {
   authToken?: string | null;
   apiKey?: string | null;
   apiSecret?: string | null;
+  sipPassword?: string | null;
   [key: string]: unknown;
 }
 
@@ -69,7 +77,7 @@ export interface TelephonyCredentials {
  * Return a TelephonyConfig with its credentials readable.
  *
  * Pass the row straight from Prisma; the result is the same object shape with
- * the three credential fields decrypted. Null in, null out — a tenant with no
+ * every credential field decrypted. Null in, null out — a tenant with no
  * Twilio credentials configured is the common case, not an error.
  */
 export function withTelephonyCredentials<T extends TelephonyCredentials | null>(config: T): T {
@@ -80,6 +88,7 @@ export function withTelephonyCredentials<T extends TelephonyCredentials | null>(
     authToken: open(config.authToken, `${label}.authToken`),
     apiKey: open(config.apiKey, `${label}.apiKey`),
     apiSecret: open(config.apiSecret, `${label}.apiSecret`),
+    sipPassword: open(config.sipPassword, `${label}.sipPassword`),
   };
 }
 

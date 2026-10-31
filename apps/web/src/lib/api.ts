@@ -531,6 +531,25 @@ export const api = {
       return handleResponse(res);
     },
 
+    /**
+     * Hand a SIP trunk to the agent instead of a Twilio number — the path
+     * that removes the Twilio dependency for voice entirely.
+     *
+     * Carries one consequence the Twilio import does not: operator takeover
+     * of a live call does not work on a SIP trunk, because ElevenLabs has no
+     * live-call API and the carrier is not one this platform can redirect
+     * through. The server states that in its refusal and the screen states it
+     * in the gate.
+     */
+    importSipTrunk: async (data: { confirmVoiceCutover: boolean; label?: string }) => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/numbers/import-sip`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data),
+      });
+      return handleResponse(res);
+    },
+
     /** Give the number back. Returns a note naming what is left to do in Twilio. */
     releaseNumber: async () => {
       const res = await fetch(`${API_URL}/api/agent-provisioning/numbers/release`, {

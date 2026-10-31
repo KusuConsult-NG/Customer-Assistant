@@ -125,6 +125,9 @@ enum TelephonyProviderType {
   NIGERIA_CARRIER_FORWARD
   MTN_ENTERPRISE_SIP
   AIRTEL_BUSINESS_SIP
+  /// A generic SIP trunk from any carrier — the option that removes the
+  /// Twilio dependency for voice entirely.
+  SIP_TRUNK
 }
 
 enum BookingStatus {
@@ -306,6 +309,22 @@ model TelephonyConfig {
   authToken        String?
   apiKey           String?
   apiSecret        String?
+
+  /// ── SIP trunk ─────────────────────────────────────────────────────────────
+  ///
+  /// ElevenLabs can answer a number from Twilio, Exotel or a generic SIP
+  /// trunk. Only Twilio was implemented, which made Twilio a hard dependency
+  /// for voice — and for a State deployment a local carrier means local
+  /// numbers, local termination and no overseas intermediary carrying citizen
+  /// calls.
+  ///
+  /// The host and username are identifiers and stay readable in a console, for
+  /// the same reason `accountSid` does. `sipPassword` is a credential and is
+  /// encrypted; see TELEPHONY_SECRET_FIELDS.
+  sipAddress       String?
+  sipTransport     String?               @default("udp")
+  sipUsername      String?
+  sipPassword      String?
   phoneNumber      String
   forwardingNumber String? // Nigerian local number forwarding target (e.g. MTN/Airtel/Glo/9mobile)
   isDefault        Boolean               @default(true)

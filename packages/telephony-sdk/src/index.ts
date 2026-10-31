@@ -577,6 +577,90 @@ export class AirtelBusinessSIPProvider implements TelephonyProvider {
   }
 }
 
+/**
+ * A SIP trunk handed to the hosted agent.
+ *
+ * This is the one provider where the platform is not in the call path at all.
+ * `POST /api/agent-provisioning/numbers/import-sip` registers the tenant's own
+ * SIP trunk with ElevenLabs, and from then on ElevenLabs answers the number
+ * directly off the carrier. We hold the trunk's address and digest credentials
+ * so we can hand them over once; we have no SIP stack of our own, no REST API
+ * on the far side, and no leg of the call to act on.
+ *
+ * It exists as a provider for one reason: `TelephonyConfig.provider` can hold
+ * `SIP_TRUNK`, so the factory WILL be asked for it, and the factory's default
+ * branch returns a credential-less `TwilioProvider`. That failed — correctly,
+ * loudly — with "TWILIO cannot place outbound calls: credentials absent",
+ * sending the operator to check Twilio credentials for a tenant that
+ * deliberately has none. The error has to name the real reason.
+ */
+export class SipTrunkProvider implements TelephonyProvider {
+  type = TelephonyProviderType.SIP_TRUNK;
+
+  /**
+   * No SIP stack, so no origination. Not "not yet": placing a call over a trunk
+   * means speaking SIP to the carrier, which is the whole job ElevenLabs was
+   * given the trunk to do.
+   */
+  canPlaceOutboundCalls(): boolean {
+    return false;
+  }
+
+  async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
+    throw new TelephonyNotAvailableError(
+      this.type,
+      'this number is served by a SIP trunk that the hosted agent answers directly. The platform holds no SIP stack, '
+      + 'so it cannot originate a call on the trunk. Outbound calling needs a provider with a REST API — configure '
+      + 'Twilio under Settings → Voice & Telephony alongside the trunk if the agency needs to dial out.'
+    );
+  }
+
+  async transferCall(_options: CallTransferOptions): Promise<{ success: boolean; message: string }> {
+    // Reported as a failure with the reason, never as a success. A live call on
+    // a SIP trunk genuinely cannot be moved from here: ElevenLabs exposes no
+    // live-call API, and the carrier is not one this platform can redirect
+    // through. The agent transferring on its own (PhoneNumberTransfer, which is
+    // agent configuration) is the only route to a person.
+    return {
+      success: false,
+      message:
+        'A live call on a SIP trunk cannot be transferred from the platform: the hosted agent holds the call and '
+        + 'exposes no API to move it. Configure a transfer on the agent itself so it can hand over when asked.',
+    };
+  }
+
+  async endCall(_callId: string): Promise<boolean> {
+    return false;
+  }
+
+  /**
+   * Reachable only through a misconfiguration — on a working SIP cutover the
+   * carrier sends the call to ElevenLabs and our inbound webhook never fires.
+   * If it does fire, the trunk is pointed at the wrong place, and the one thing
+   * that must not happen is connecting the caller to a media stream this tenant
+   * is no longer configured for: they would hear silence and wait.
+   *
+   * So the caller is told, briefly and out loud, that the line is not taking
+   * calls and to try again — then the call ends. An audible honest failure is
+   * worth more to a citizen than a connected call that says nothing.
+   */
+  generateInboundWebhookResponse(_promptText: string, _streamUrl: string): string {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>Sorry, this line is not able to take calls at the moment. Please try again shortly.</Say>
+    <Hangup />
+</Response>`;
+  }
+
+  /**
+   * A trunk can terminate numbers in any country, so the Nigerian-MSISDN check
+   * the carrier-forward providers use would reject a legitimate caller ID.
+   */
+  async verifyCallerId(phoneNumber: string): Promise<boolean> {
+    return isE164(phoneNumber);
+  }
+}
+
 export class TelephonyFactory {
   static createProvider(type: TelephonyProviderType, credentials: Record<string, any> = {}): TelephonyProvider {
     switch (type) {
@@ -594,6 +678,8 @@ export class TelephonyFactory {
         return new MTNEnterpriseSIPProvider();
       case TelephonyProviderType.AIRTEL_BUSINESS_SIP:
         return new AirtelBusinessSIPProvider();
+      case TelephonyProviderType.SIP_TRUNK:
+        return new SipTrunkProvider();
       default:
         return new TwilioProvider();
     }
