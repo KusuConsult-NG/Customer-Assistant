@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours } from '@ace/database';
+import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
@@ -59,6 +59,12 @@ function maskedWhatsAppConfig<T extends Record<string, any>>(c: T) {
       `WhatsAppConfig ${c.id}.webhookVerifyToken`
     ),
   };
+}
+
+/** The signed-in user behind a change, for the audit record. */
+export interface Actor {
+  userId: string;
+  ipAddress?: string | null;
 }
 
 @Injectable()
@@ -200,9 +206,31 @@ export class OrganizationsService {
     });
   }
 
+  /**
+   * Who is making a change, carried from the controller's `req.user`.
+   *
+   * The write methods below took only an organizationId, which is enough to
+   * scope a change and not enough to account for one. Every audited action
+   * needs this, so it is a parameter rather than something the service digs
+   * out of a request it should not know about.
+   */
+  private async auditAgency(
+    actor: Actor,
+    organizationId: string,
+    entry: { action: string; targetType: string; targetId: string; previousValue?: unknown; newValue?: unknown }
+  ) {
+    await recordAudit({
+      actor: actor.userId,
+      organizationId,
+      ipAddress: actor.ipAddress ?? null,
+      ...entry,
+    });
+  }
+
   async addTeamMember(
     organizationId: string,
-    userData: { email: string; fullName: string; role: any }
+    userData: { email: string; fullName: string; role: any },
+    actor: Actor
   ) {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -241,13 +269,39 @@ export class OrganizationsService {
       console.warn(`RESEND_API_KEY not set. Invite link: ${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account?token=${rawToken}&email=${encodeURIComponent(user.email)}`);
     }
 
+    // The role is the point of the record: an invitation is how somebody
+    // acquires access. The invite token is NOT recorded — it is a working
+    // credential until it is used, and the trail is readable by every admin.
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.member.invited',
+      targetType: 'User',
+      targetId: user.id,
+      newValue: { email: user.email, fullName: user.fullName, role: user.role },
+    });
+
     return user;
   }
 
-  async removeTeamMember(organizationId: string, userId: string) {
-    return prisma.user.delete({
+  async removeTeamMember(organizationId: string, userId: string, actor: Actor) {
+    const user = await prisma.user.findFirst({
       where: { id: userId, organizationId },
+      select: { id: true, email: true, fullName: true, role: true },
     });
+    if (!user) throw new NotFoundException('User not found');
+
+    const removed = await prisma.user.delete({ where: { id: userId, organizationId } });
+
+    // Recorded AFTER the delete and with the row's own details, because once
+    // the user is gone there is nothing left to resolve the id against — an
+    // audit row naming only a uuid would describe a person nobody can name.
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.member.removed',
+      targetType: 'User',
+      targetId: user.id,
+      previousValue: { email: user.email, fullName: user.fullName, role: user.role },
+    });
+
+    return removed;
   }
 
   async updateWhatsAppConfig(
@@ -342,24 +396,49 @@ export class OrganizationsService {
     });
   }
 
-  async updateTeamMemberRole(organizationId: string, userId: string, newRole: any) {
+  async updateTeamMemberRole(organizationId: string, userId: string, newRole: any, actor: Actor) {
     const user = await prisma.user.findFirst({ where: { id: userId, organizationId } });
     if (!user) throw new NotFoundException('User not found');
-    return prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: userId },
       data: { role: newRole },
       select: { id: true, email: true, fullName: true, role: true, isActive: true },
     });
+
+    // Both sides of the change. "Who made themselves an admin" is unanswerable
+    // from the new value alone.
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.member.role_changed',
+      targetType: 'User',
+      targetId: user.id,
+      previousValue: { role: user.role },
+      newValue: { role: updated.role, email: updated.email },
+    });
+
+    return updated;
   }
 
-  async updateTeamMemberStatus(organizationId: string, userId: string, isActive: boolean) {
+  async updateTeamMemberStatus(organizationId: string, userId: string, isActive: boolean, actor: Actor) {
     const user = await prisma.user.findFirst({ where: { id: userId, organizationId } });
     if (!user) throw new NotFoundException('User not found');
-    return prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: userId },
       data: { isActive },
       select: { id: true, email: true, fullName: true, role: true, isActive: true },
     });
+
+    // Two actions rather than one with a boolean: a trail is read by someone
+    // scanning for what happened, and "deactivated" is findable in a way
+    // `status_changed {isActive: false}` is not.
+    await this.auditAgency(actor, organizationId, {
+      action: isActive ? 'agency.member.activated' : 'agency.member.deactivated',
+      targetType: 'User',
+      targetId: user.id,
+      previousValue: { isActive: user.isActive },
+      newValue: { isActive: updated.isActive, email: updated.email },
+    });
+
+    return updated;
   }
 
   getPermissionsMatrix() {
@@ -423,11 +502,11 @@ export class OrganizationsService {
     ];
   }
 
-  async regenerateApiKey(organizationId: string) {
+  async regenerateApiKey(organizationId: string, actor: Actor) {
     const crypto = await import('crypto');
     const rawKey = `ace_live_pk_${crypto.randomBytes(16).toString('hex')}`;
     const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    await prisma.apiKey.create({
+    const created = await prisma.apiKey.create({
       data: {
         organizationId,
         keyName: 'Live Production Key',
@@ -435,7 +514,94 @@ export class OrganizationsService {
         keyPrefix: rawKey.slice(0, 16),
       },
     });
+
+    // THE PREFIX, NEVER THE KEY. This method returns a live credential, and
+    // the trail is readable by every admin in the agency — recording the key
+    // itself would turn the audit log into a place to go and collect one.
+    // The prefix is enough to tell which key a row is about.
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.api_key.regenerated',
+      targetType: 'ApiKey',
+      targetId: created.id,
+      newValue: { keyName: created.keyName, keyPrefix: created.keyPrefix },
+    });
+
     return { apiKey: rawKey };
+  }
+
+  // ── The agency's own trail ─────────────────────────────────────────────────
+
+  /**
+   * What has been done to this agency, and by whom.
+   *
+   * Until now the only read of `AuditLog` was `/api/platform/audit`, which is
+   * platform-operators-only — so an agency owner asking "who changed this"
+   * had no answer about their own tenancy, including no answer about what the
+   * ministry had done to them. That is the opposite of what the record is for.
+   *
+   * Two rules:
+   *
+   *   - SCOPED BY organizationId, and null is NOT a match. Rows with no
+   *     organization belong to no single agency (granting platform status, for
+   *     one) and are nobody's tenancy to read.
+   *   - THE ACTOR IS RESOLVED WITHOUT CROSSING THE BOUNDARY. This agency's own
+   *     staff are named; anybody else is described by their role. The agency
+   *     learns that the ministry acted — the accountable fact — without
+   *     learning which official it was.
+   */
+  async auditTrail(
+    organizationId: string,
+    filter: { action?: string; limit?: number } = {}
+  ) {
+    const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
+
+    const entries = await prisma.auditLog.findMany({
+      where: {
+        organizationId,
+        ...(filter.action ? { action: { startsWith: filter.action } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true, actor: true, action: true, targetType: true, targetId: true,
+        previousValue: true, newValue: true, createdAt: true,
+      },
+    });
+
+    const actors = await resolveAuditActors(
+      (ids) =>
+        prisma.user.findMany({
+          // Scoped to this agency on purpose: a user id belonging to another
+          // tenancy must not resolve to a name here, and an unscoped lookup
+          // would happily return the ministry operator's.
+          where: { id: { in: ids }, organizationId },
+          select: { id: true, fullName: true, email: true },
+        }),
+      organizationId,
+      entries.map((e) => e.actor)
+    );
+
+    return {
+      entries: entries.map((e) => {
+        const resolved = actors.get(e.actor)!;
+        return {
+          id: e.id,
+          action: e.action,
+          // `agency.*` is something this agency did; anything else was done to
+          // it. Stated rather than left for the reader to infer from a prefix.
+          origin: e.action.startsWith('agency.') ? 'agency' : 'platform',
+          actor: resolved.label,
+          actorIsOwnStaff: resolved.isOwnStaff,
+          targetType: e.targetType,
+          targetId: e.targetId,
+          previousValue: e.previousValue,
+          newValue: e.newValue,
+          createdAt: e.createdAt,
+        };
+      }),
+      count: entries.length,
+      limit,
+    };
   }
 }
 

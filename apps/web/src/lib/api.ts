@@ -354,6 +354,22 @@ export const api = {
       const res = await fetch(`${API_URL}/api/organizations/me`, { headers: getHeaders() });
       return handleResponse(res);
     },
+    /**
+     * This agency's own audit trail. OWNER/ADMIN.
+     *
+     * Scoped to the caller's organization from the token — there is no
+     * organizationId to pass, deliberately, so there is nothing a caller could
+     * substitute. Actors who are not this agency's own staff come back
+     * described by their role rather than named, so the agency learns that the
+     * ministry acted without learning which official it was.
+     */
+    getAudit: async (params: { action?: string; limit?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (params.action) q.set("action", params.action);
+      if (params.limit) q.set("limit", String(params.limit));
+      const res = await fetch(`${API_URL}/api/organizations/audit?${q.toString()}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
     updateSettings: async (data: any) => {
       const res = await fetch(`${API_URL}/api/organizations/settings`, {
         method: "PATCH",

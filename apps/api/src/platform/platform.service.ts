@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, recordAudit } from '@ace/database';
 import { IndustryType } from '@ace/shared-types';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { generateUniqueSlug } from '../common/slug';
@@ -60,19 +60,13 @@ export class PlatformService {
     ipAddress?: string | null;
     requestId?: string | null;
   }) {
-    await prisma.auditLog.create({
-      data: {
-        organizationId: entry.organizationId ?? null,
-        actor: entry.actorUserId,
-        action: entry.action,
-        targetType: entry.targetType,
-        targetId: entry.targetId,
-        previousValue: (entry.previousValue ?? undefined) as never,
-        newValue: (entry.newValue ?? undefined) as never,
-        ipAddress: entry.ipAddress ?? null,
-        requestId: entry.requestId ?? null,
-      },
-    });
+    // Delegates to the one writer in `@ace/database`. This was the only place
+    // that wrote an audit record, so the agency tier gaining one would have
+    // meant a second implementation of the same contract — and two callers
+    // that disagree about what an audit record contains is precisely the way
+    // a trail becomes untrustworthy.
+    const { actorUserId, ...rest } = entry;
+    await recordAudit({ ...rest, actor: actorUserId });
   }
 
   // ── Cross-agency reporting ─────────────────────────────────────────────────
@@ -317,11 +311,16 @@ export class PlatformService {
       select: { id: true, name: true, slug: true, industry: true },
     });
 
-    const owner = await this.organizations.addTeamMember(organization.id, {
-      email: ownerEmail,
-      fullName: dto.ownerFullName.trim(),
-      role: 'OWNER',
-    });
+    // The operator is the actor, and the NEW agency is the organization the
+    // record belongs to. So the agency's own trail opens with the invitation
+    // that created it, attributed to the ministry — which is exactly what it
+    // should say, and is why the actor is threaded through rather than
+    // defaulted to whoever happens to be convenient.
+    const owner = await this.organizations.addTeamMember(
+      organization.id,
+      { email: ownerEmail, fullName: dto.ownerFullName.trim(), role: 'OWNER' },
+      { userId: actor.userId, ipAddress: actor.ipAddress ?? null }
+    );
 
     await this.audit({
       actorUserId: actor.userId,

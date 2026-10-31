@@ -6,10 +6,10 @@ import { copyToClipboard } from '@/lib/clipboard';
 import {
   Settings, Building2, Bot, Phone, MessageSquare, Users, User,
   Save, CheckCircle2, AlertCircle, AlertTriangle, Eye, EyeOff, Copy, Plus,
-  Globe, Zap, Shield, X, Loader2, ChevronDown, KeyRound
+  Globe, Zap, Shield, X, Loader2, ChevronDown, KeyRound, ScrollText, Landmark
 } from 'lucide-react';
 
-type Tab = 'profile' | 'general' | 'whatsapp' | 'voice' | 'agent' | 'team';
+type Tab = 'profile' | 'general' | 'whatsapp' | 'voice' | 'agent' | 'team' | 'activity';
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
 const selectCls = `${inputCls} appearance-none cursor-pointer`;
@@ -70,6 +70,7 @@ export default function SettingsPage() {
     { id: 'voice' as Tab, label: 'Voice / Telephony', icon: <Phone className="w-4 h-4" /> },
     { id: 'agent' as Tab, label: 'Hosted Agent', icon: <Bot className="w-4 h-4" /> },
     { id: 'team' as Tab, label: 'Team Members', icon: <Users className="w-4 h-4" /> },
+    { id: 'activity' as Tab, label: 'Activity Log', icon: <ScrollText className="w-4 h-4" /> },
   ];
 
   return (
@@ -109,6 +110,7 @@ export default function SettingsPage() {
           {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'agent' && <HostedAgentTab showToast={showToast} />}
           {tab === 'team' && <TeamTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
+          {tab === 'activity' && <ActivityLogTab showToast={showToast} />}
         </>
       )}
     </div>
@@ -868,6 +870,199 @@ function HostedAgentTab({ showToast }: any) {
         )}
       </Section>
     </div>
+  );
+}
+
+// ─────────────────────── Activity Log Tab ───────────────────────
+
+/**
+ * Who changed what, in this agency.
+ *
+ * Until this existed the only reader of the audit table was the ministry's own
+ * console, so an agency could not find out who had promoted somebody, who had
+ * minted an API key, or — the part that matters most — what the ministry had
+ * done to the agency and why. A record that only the party with the most reach
+ * can read is not accountability.
+ *
+ * Two things the screen states rather than leaves to be inferred:
+ *
+ *   - WHETHER WE DID IT OR IT WAS DONE TO US. The server marks each entry
+ *     `agency` or `platform`. An operator scanning for "why were we suspended"
+ *     should not have to decode an action prefix to find it.
+ *   - THAT AN OUTSIDE ACTOR IS NOT NAMED. The ministry's officials are staff of
+ *     another tenancy, so the trail describes the role instead. Saying so is
+ *     better than letting somebody conclude the record is simply vague.
+ */
+function ActivityLogTab({ showToast }: any) {
+  const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+  const [origin, setOrigin] = useState<'all' | 'agency' | 'platform'>('all');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setForbidden(false);
+    try {
+      const res = await api.organizations.getAudit({ limit: 200 });
+      setEntries(res.entries ?? []);
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      // A 403 is a legitimate answer for an AGENT or VIEWER, not a fault.
+      if (/permission|forbidden|403/i.test(msg)) setForbidden(true);
+      else showToast(msg || 'Could not read the activity log', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (forbidden) {
+    return (
+      <Section
+        title="Activity Log"
+        description="Who changed what in this agency, and what was done to it."
+      >
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Only an OWNER or ADMIN can read the activity log. It names which colleague changed
+          somebody&rsquo;s role or deactivated an account, which is administrative information
+          rather than something needed to handle citizens.
+        </p>
+      </Section>
+    );
+  }
+
+  const shown = entries.filter(e => origin === 'all' || e.origin === origin);
+  const platformCount = entries.filter(e => e.origin === 'platform').length;
+
+  return (
+    <div className="space-y-5">
+      <Section
+        title="Activity Log"
+        description="Append-only. Nothing here can be edited or removed, including by this agency."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            ['all', `Everything (${entries.length})`],
+            ['agency', `By this agency (${entries.length - platformCount})`],
+            ['platform', `By the ministry (${platformCount})`],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setOrigin(id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                origin === id
+                  ? 'bg-[#558A02] text-white border-[#558A02]'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={load}
+            disabled={loading}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            Refresh
+          </button>
+        </div>
+
+        {platformCount > 0 && (
+          <div className="flex gap-2.5 p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
+            <Landmark className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+              {platformCount === 1 ? 'One entry was' : `${platformCount} entries were`} recorded by the
+              operating ministry rather than by this agency. Their officials are staff of another
+              organisation, so the log names the role and not the person — which official it was is a
+              question for the ministry.
+            </p>
+          </div>
+        )}
+
+        {loading && entries.length === 0 ? (
+          <div className="py-10 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" /> Reading the log...
+          </div>
+        ) : shown.length === 0 ? (
+          <p className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+            {entries.length === 0
+              ? 'Nothing has been recorded yet. Changes to team roles, account access and API keys appear here as they happen.'
+              : 'Nothing recorded in this category.'}
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {shown.map(e => (
+              <li key={e.id} className="px-4 py-3 space-y-1">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-lg font-bold border flex-shrink-0 ${
+                      e.origin === 'platform'
+                        ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}>
+                      {e.origin === 'platform' ? 'MINISTRY' : 'THIS AGENCY'}
+                    </span>
+                    <code className="text-xs font-mono font-semibold text-slate-900 dark:text-white truncate">
+                      {e.action}
+                    </code>
+                  </div>
+                  <span className="text-[10px] text-slate-400 flex-shrink-0">
+                    {new Date(e.createdAt).toLocaleString('en-NG')}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  by <span className={e.actorIsOwnStaff ? 'font-semibold text-slate-800 dark:text-slate-200' : 'italic'}>{e.actor}</span>
+                  {' · '}{e.targetType}
+                </p>
+
+                {/* The shape of the change, both sides where there are two.
+                    A role change is unreadable without the value it replaced. */}
+                <ChangeSummary previous={e.previousValue} next={e.newValue} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+/**
+ * Renders a change as the fields that moved.
+ *
+ * Deliberately not a JSON dump: these values are written by code, not by a
+ * person, so a reader wants "role: AGENT → ADMIN", not a brace-delimited blob
+ * they have to parse by eye.
+ */
+function ChangeSummary({ previous, next }: { previous: any; next: any }) {
+  const prev = previous && typeof previous === 'object' ? previous : null;
+  const now = next && typeof next === 'object' ? next : null;
+  if (!prev && !now) return null;
+
+  const keys = Array.from(new Set([...Object.keys(prev ?? {}), ...Object.keys(now ?? {})]));
+  if (keys.length === 0) return null;
+
+  const show = (v: any) => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+  return (
+    <dl className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+      {keys.map(k => {
+        const before = prev?.[k];
+        const after = now?.[k];
+        const changed = prev && now && show(before) !== show(after);
+        return (
+          <div key={k} className="text-[11px]">
+            <dt className="inline text-slate-400">{k}: </dt>
+            <dd className="inline text-slate-700 dark:text-slate-300 font-mono">
+              {changed ? <>{show(before)} <span className="text-slate-400">&rarr;</span> {show(after)}</> : show(after ?? before)}
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
   );
 }
 
