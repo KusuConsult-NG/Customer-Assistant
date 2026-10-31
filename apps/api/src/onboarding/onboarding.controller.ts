@@ -120,20 +120,25 @@ export class PublicSelfieController {
 }
 
 /**
- * Full reverse-proxy for patient-facing web pages and their assets.
+ * Reverse-proxy for the citizen-facing selfie PAGE.
  *
- * The ngrok tunnel only exposes port 4000 (API). The Next.js web app (port 3000)
- * is only reachable from localhost. This controller proxies ALL traffic that
- * the patient's browser needs to render the selfie page:
+ * The tunnel exposes only port 4000 (API); the Next.js web app on 3000 is
+ * reachable from localhost alone. So the HTML a citizen opens from a WhatsApp
+ * link is fetched through here:
  *
- *   GET /selfie/:token        → HTML page from localhost:3000/selfie/:token
- *   GET /_next/static/*       → JS/CSS chunks served by Next.js
- *   GET /_next/image/*        → Next.js image optimiser
- *   GET /icon.svg             → favicon
+ *   GET /selfie/:token  → HTML page from the web app
  *
- * Without the static-asset routes, the selfie page renders as a broken white
- * screen because the browser fetches /_next/static/... from the ngrok URL (the
- * API) and gets 404s for every chunk and stylesheet.
+ * The page's own assets — `/_next/*` and `/icon.svg` — are NOT routed here.
+ * They are served by a middleware in `main.ts` that intercepts those URLs
+ * before Nest's router runs, and without them the page renders as a broken
+ * white screen: the browser requests every chunk and stylesheet from the
+ * tunnel URL, which is this API.
+ *
+ * This doc used to list those three as routes on this controller, and they
+ * did exist here — shadowed by that middleware and therefore never reached,
+ * with `_next/static/*path` using Express 5 wildcard syntax that matched
+ * nothing on Express 4 regardless. They have been removed; the middleware is
+ * the single implementation.
  */
 @Controller()
 export class SelfieRedirectController {
@@ -152,26 +157,20 @@ export class SelfieRedirectController {
     return this.proxyToWeb(`/selfie/${token}`, query, req.res);
   }
 
-  // ── Static asset routes (required for page JS/CSS to load) ─────────────────
-  // Next.js emits chunk URLs relative to the page origin, so when the browser
-  // fetches the HTML from https://ngrok.../selfie/TOKEN it then requests
-  // https://ngrok.../_next/static/css/main.css — which hits this API.
-  // We proxy those straight through to localhost:3000.
-
-  @Get('_next/static/*path')
-  async proxyNextStatic(@Req() req: any) {
-    return this.proxyAsset(req.url, req.res);
-  }
-
-  @Get('_next/image')
-  async proxyNextImage(@Req() req: any) {
-    return this.proxyAsset(req.url, req.res);
-  }
-
-  @Get('icon.svg')
-  async proxyIcon(@Req() req: any) {
-    return this.proxyAsset('/icon.svg', req.res);
-  }
+  // ── Static assets are NOT routed here ──────────────────────────────────────
+  //
+  // Three routes used to sit at this point — `_next/static/*path`,
+  // `_next/image` and `icon.svg` — duplicating a middleware in `main.ts` that
+  // intercepts every `/_next/*` and `/icon.svg` request before Nest's router
+  // sees it. So they were unreachable in the running app, and one of them had
+  // never worked at all: `*path` is Express 5 wildcard syntax and this runs on
+  // Express 4, where it matched nothing.
+  //
+  // Two implementations of one proxy is the drift this codebase keeps warning
+  // about, and the dead copy is the one that looked authoritative because it
+  // sat beside the HTML route. The middleware stays because it is the one that
+  // actually runs; it is covered by the HTTP harness, which exercises the real
+  // bootstrapped server rather than a test module without it.
 
   // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -190,20 +189,5 @@ export class SelfieRedirectController {
     }
   }
 
-  private async proxyAsset(url: string, res: any): Promise<void> {
-    const target = `${this.webBase}${url}`;
-    try {
-      const upstream = await fetch(target);
-      const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
-      const cacheControl = upstream.headers.get('cache-control') ?? 'public, max-age=31536000, immutable';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', cacheControl);
-      // Use arraybuffer for binary assets (fonts, images); text for JS/CSS
-      const buf = Buffer.from(await upstream.arrayBuffer());
-      res.status(upstream.status).send(buf);
-    } catch {
-      res.status(502).send('');
-    }
-  }
 }
 

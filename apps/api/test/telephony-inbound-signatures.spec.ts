@@ -39,6 +39,9 @@ describe('inbound telephony webhook signatures', () => {
   const AT_NUMBER = `+2349${String(Date.now()).slice(-9)}`;
   const TWILIO_TOKEN = 'twilio_auth_token_for_signature_test';
   const AT_KEY = 'africas_talking_api_key_for_test';
+  const CARRIER_NUMBER = `+2346${String(Date.now()).slice(-9)}`;
+  const CARRIER_NUMBER_NO_SECRET = `+2345${String(Date.now()).slice(-9)}`;
+  const CARRIER_SECRET = 'carrier_forward_shared_secret';
 
   let telnyxPublicKeyB64: string;
   let telnyxSign: (message: Buffer) => Buffer;
@@ -96,6 +99,17 @@ describe('inbound telephony webhook signatures', () => {
           authToken: encryptSecret(TWILIO_TOKEN),
         },
         { organizationId: orgId, provider: 'TELNYX', phoneNumber: TELNYX_NUMBER },
+        {
+          organizationId: orgId,
+          provider: 'NIGERIA_CARRIER_FORWARD',
+          phoneNumber: CARRIER_NUMBER,
+          apiSecret: encryptSecret(CARRIER_SECRET),
+        },
+        {
+          organizationId: orgId,
+          provider: 'NIGERIA_CARRIER_FORWARD',
+          phoneNumber: CARRIER_NUMBER_NO_SECRET,
+        },
         {
           organizationId: orgId,
           provider: 'AFRICAS_TALKING',
@@ -307,6 +321,61 @@ describe('inbound telephony webhook signatures', () => {
         .expect(201);
 
       expect(res.text).toContain('<Reject/>');
+    });
+  });
+
+  // ── A carrier that signs nothing ─────────────────────────────────────────
+
+  describe('a forwarding carrier with no signature scheme', () => {
+    const form = (to: string) => ({ From: '+2348031111111', To: to, CallSid: `CF${randomBytes(6).toString('hex')}` });
+
+    it('accepts a call carrying the configured shared secret', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/inbound/nigeria-carrier')
+        .type('form')
+        .set('x-carrier-secret', CARRIER_SECRET)
+        .send(form(CARRIER_NUMBER))
+        .expect(201);
+
+      expect(res.text).not.toMatch(/could not be authenticated/i);
+      expect(res.text).toContain('<Response>');
+    });
+
+    it('REFUSES a call when no shared secret is configured at all', async () => {
+      // This is the branch that differs from every other provider here. The
+      // others SKIP verification when their secret is unset, because for them
+      // that is a misconfiguration of an otherwise-signed channel. A carrier
+      // that signs nothing has no such fallback: skipping would leave the
+      // route permanently open, and it drives the AI and can write bookings.
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/inbound/nigeria-carrier')
+        .type('form')
+        .send(form(CARRIER_NUMBER_NO_SECRET))
+        .expect(201);
+
+      expect(res.text).toMatch(/not configured for forwarded calls/i);
+      expect(res.text).toContain('<Hangup/>');
+    });
+
+    it('rejects a call with the wrong secret', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/inbound/nigeria-carrier')
+        .type('form')
+        .set('x-carrier-secret', 'not-the-secret')
+        .send(form(CARRIER_NUMBER))
+        .expect(201);
+
+      expect(res.text).toMatch(/could not be authenticated/i);
+    });
+
+    it('rejects a call with no secret header against a configured number', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/inbound/nigeria-carrier')
+        .type('form')
+        .send(form(CARRIER_NUMBER))
+        .expect(201);
+
+      expect(res.text).toMatch(/could not be authenticated/i);
     });
   });
 

@@ -245,6 +245,54 @@ export class TelephonyService {
       }
     }
 
+    if (providerType === TelephonyProviderType.NIGERIA_CARRIER_FORWARD) {
+      // ── This provider has no signature scheme, so it gets a shared secret ──
+      //
+      // A carrier forwarding calls over plain HTTP signs nothing. Every other
+      // branch here verifies a real provider signature and SKIPS with a
+      // warning when the secret is unset, because for those an unset secret
+      // is a misconfiguration of an otherwise-authenticated channel.
+      //
+      // That reasoning does not transfer. With nothing to verify, "skip"
+      // means this route is permanently unauthenticated — and it resolves a
+      // tenant from the dialled number and then drives the AI, which answers
+      // the caller and can write bookings and tickets. Anyone who learned the
+      // URL and one configured number had that.
+      //
+      // So the default is REFUSE, not skip. A deployment that wants this
+      // channel sets `apiSecret` on the TelephonyConfig and has the carrier
+      // send it as `x-carrier-secret`. Nothing uses this provider today, so
+      // closing it breaks no integration.
+      const expected = config?.apiSecret;
+      const presented = headers['x-carrier-secret'] as string | undefined;
+
+      if (!expected) {
+        log.warn('telephony_carrier_forward_no_shared_secret', {
+          correlationId,
+          callSid,
+          reason: 'apiSecret_not_configured',
+        });
+        return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This number is not configured for forwarded calls. Please try again later.</Say><Hangup/></Response>`;
+      }
+
+      const expectedBuf = Buffer.from(expected, 'utf8');
+      const presentedBuf = Buffer.from(presented ?? '', 'utf8');
+      const ok =
+        !!presented &&
+        expectedBuf.length === presentedBuf.length &&
+        timingSafeEqual(expectedBuf, presentedBuf);
+
+      if (!ok) {
+        log.warn('telephony_carrier_forward_bad_secret', {
+          correlationId,
+          callSid,
+          secretProvided: !!presented,
+        });
+        return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>This call could not be authenticated. Goodbye.</Say><Hangup/></Response>`;
+      }
+      log.info('telephony_carrier_forward_authenticated', { correlationId, callSid });
+    }
+
     if (providerType === TelephonyProviderType.AFRICAS_TALKING) {
       const apiKey = config?.apiKey ?? process.env.AT_API_KEY;
       const atSig = headers['x-africastalking-signature'] as string | undefined;

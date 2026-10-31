@@ -508,4 +508,53 @@ module.exports = async function () {
     }
     return { ok: true, evidence: `pending before=${before}, request ${after.id.slice(0, 8)} created via workflow, delivered=${step.output.delivered}` };
   }, 'CRITICAL');
+
+  // ── The assets the selfie page cannot render without ──────────────────────
+  //
+  // These are served by a MIDDLEWARE in main.ts, not by a controller route, so
+  // only a check against the real bootstrapped server reaches them — a Nest
+  // testing module has no bootstrap and 404s every one of them.
+  //
+  // That is not incidental. Three controller routes used to duplicate this
+  // middleware and were shadowed by it, with `_next/static/*path` using
+  // Express 5 wildcard syntax that matched nothing on Express 4 anyway. They
+  // were removed; this is what replaces them, at the layer that can see the
+  // difference.
+  //
+  // Without these the citizen opens the WhatsApp link and gets a white screen:
+  // the HTML loads, then every chunk and stylesheet 404s because the browser
+  // asks the tunnel URL, which is this API.
+
+  await check('SEL-060', 'Next.js chunks reach the citizen through the API', async () => {
+    const res = await api('GET', '/_next/static/chunks/__does_not_exist__.js', { raw: true });
+
+    // A 404 RELAYED from the web app is the pass: it proves the request was
+    // proxied rather than rejected by this API's router. Nest's own 404 says
+    // "Cannot GET", which is the failure this distinguishes.
+    if (res.status === 404 && /Cannot GET/i.test(res.text || '')) {
+      return { expected: 'the request proxied to the web app', actual: 'no route matched — Nest refused it before any proxy ran' };
+    }
+    if (res.status === 502) {
+      return { blocked: 'the web app is not reachable from the API, so the proxy cannot be exercised' };
+    }
+    return { ok: true, evidence: `relayed upstream status ${res.status}` };
+  }, 'HIGH');
+
+  await check('SEL-061', 'The favicon is proxied too', async () => {
+    const res = await api('GET', '/icon.svg', { raw: true });
+    if (res.status === 404 && /Cannot GET/i.test(res.text || '')) {
+      return { expected: 'the favicon proxied', actual: 'no route matched' };
+    }
+    if (res.status === 502) return { blocked: 'web app unreachable from the API' };
+    return { ok: true, evidence: `status ${res.status}` };
+  }, 'LOW');
+
+  await check('SEL-062', 'The asset proxy needs no authentication', async () => {
+    // A citizen following a WhatsApp link has no session. A 401 or 403 on an
+    // asset renders the page blank just as surely as a 404.
+    const res = await api('GET', '/icon.svg', { raw: true });
+    return [401, 403].includes(res.status)
+      ? { expected: 'no auth required', actual: `${res.status} — a citizen has no session to present` }
+      : { ok: true, evidence: `status ${res.status}` };
+  }, 'HIGH');
 };
