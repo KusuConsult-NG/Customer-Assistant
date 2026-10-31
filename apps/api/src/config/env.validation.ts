@@ -65,6 +65,12 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'RESEND_API_KEY', required: false, description: 'Resend API key (required for verification/reset/booking emails)' },
   { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in TwiML stream URLs and agent tool callbacks)' },
   { key: 'WEB_BASE_URL', required: false, description: 'Public dashboard URL (used in emailed links; defaults to localhost)' },
+  {
+    key: 'ALLOW_MISSING_BOOKING_CONSTRAINT',
+    required: false,
+    description:
+      'Set to 1 to boot WITHOUT the double-booking guarantee. Only for a deployment that takes no bookings — concurrent bookings for one slot will all succeed',
+  },
 ];
 
 export function validateEnvironment(): void {

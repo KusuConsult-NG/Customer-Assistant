@@ -12,6 +12,7 @@ import { WebSocketServer } from 'ws';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { validateEnvironment } from './config/env.validation';
+import { assertDatabaseGuarantees } from './config/db-readiness';
 import { RedisSocketIoAdapter } from './config/socket-redis-adapter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
@@ -24,6 +25,14 @@ async function bootstrap() {
   validateEnvironment();
 
   const logger = new Logger('CustomerCareAgent');
+
+  // ── 1b. Validate the guarantees the SCHEMA cannot carry ────────────────────
+  // `db push` cannot create the booking EXCLUDE constraint, so a database can
+  // be structurally complete and still allow concurrent double-booking. In
+  // production that is a refusal to start rather than a warning: a container
+  // that will not boot is recoverable, and one that boots without the
+  // constraint is discovered by two citizens arriving for the same slot.
+  await assertDatabaseGuarantees();
 
   // ── 2. Create NestJS app with rawBody enabled ──────────────────────────────
   // rawBody: true is REQUIRED for:
