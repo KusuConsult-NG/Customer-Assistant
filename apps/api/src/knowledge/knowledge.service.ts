@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, recordAgencyAudit, type Actor } from '@ace/database';
 import { assertPublicHttpUrl } from '../common/url-safety';
 import { QdrantRAGService } from '@ace/orchestrator';
 import { Queue } from 'bullmq';
@@ -428,7 +428,7 @@ export class KnowledgeService {
    * Delete a document from both Supabase Storage and the database.
    * Also removes all associated vector chunks from Qdrant (handled by the worker on re-index).
    */
-  async deleteDocument(organizationId: string, documentId: string) {
+  async deleteDocument(organizationId: string, documentId: string, actor: Actor) {
     const doc = await prisma.knowledgeDocument.findFirst({
       where: { id: documentId, organizationId },
     });
@@ -463,6 +463,15 @@ export class KnowledgeService {
       documentId,
       event: 'document_deleted',
     }, timer);
+
+    // Deleting a document removes what the assistant can cite, so "why did it
+    // stop answering that" needs an answer. The title, because the id is gone.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.document.deleted',
+      targetType: 'KnowledgeDocument',
+      targetId: documentId,
+      previousValue: { title: doc.title, fileName: doc.fileName, chunkCount: doc.chunkCount },
+    });
 
     return {
       success: true,

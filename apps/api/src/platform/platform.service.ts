@@ -34,6 +34,14 @@ const log = new AceLogger('PlatformService');
  * trips for one page, and it degrades as the State onboards agencies — which is
  * exactly when the ministry is most likely to be looking at it.
  */
+/**
+ * What the platform tier sees in place of an agency action's values.
+ *
+ * A string rather than null, so a reader can tell "this was withheld" from
+ * "this action recorded nothing".
+ */
+const REDACTED_AGENCY_VALUE = { redacted: 'Agency record details are not visible to the platform tier.' };
+
 @Injectable()
 export class PlatformService {
   constructor(private readonly organizations: OrganizationsService) {}
@@ -450,6 +458,34 @@ export class PlatformService {
         ipAddress: true, createdAt: true,
       },
     });
-    return { entries, count: entries.length, limit };
+
+    return {
+      entries: entries.map((e) => {
+        // ── Agency values are redacted here, deliberately ──────────────────
+        //
+        // This tier reports METRICS AND CONFIGURATION, NEVER CONTENT. An
+        // `agency.*` record carries the shape of what an agency did to its
+        // own records, and for a deleted contact that includes the citizen's
+        // name and phone number — which is exactly what no platform response
+        // may return.
+        //
+        // So the ministry learns THAT an agency deleted a citizen record, who
+        // did it and when, which is the accountable fact. Which citizen is a
+        // question for that agency's own trail, where the reader can already
+        // see every contact they hold.
+        //
+        // `platform.*` rows keep their values: a suspension reason and an
+        // onboarded agency's name are about agencies, not citizens, and the
+        // reason is the point of the record.
+        const isAgencyAction = e.action.startsWith('agency.');
+        return {
+          ...e,
+          previousValue: isAgencyAction ? REDACTED_AGENCY_VALUE : e.previousValue,
+          newValue: isAgencyAction ? REDACTED_AGENCY_VALUE : e.newValue,
+        };
+      }),
+      count: entries.length,
+      limit,
+    };
   }
 }

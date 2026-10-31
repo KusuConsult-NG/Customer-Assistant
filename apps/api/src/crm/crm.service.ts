@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { prisma, normalizePhoneNumber, createTicketWithUniqueNumber } from '@ace/database';
+import { prisma, normalizePhoneNumber, createTicketWithUniqueNumber, recordAgencyAudit, type Actor } from '@ace/database';
 import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -270,14 +270,31 @@ export class CrmService {
     }
   }
 
-  async updateTicketStatus(ticketId: string, status: TicketStatus, organizationId: string) {
+  async updateTicketStatus(
+    ticketId: string,
+    status: TicketStatus,
+    organizationId: string,
+    actor: Actor
+  ) {
     const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, organizationId } });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    return prisma.ticket.update({
+    const updated = await prisma.ticket.update({
       where: { id: ticketId },
       data: { status },
       include: { contact: true },
     });
+
+    // Both sides. "Who closed this citizen's case, and what was it before"
+    // is unanswerable from the new status alone.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.ticket.status_changed',
+      targetType: 'Ticket',
+      targetId: ticketId,
+      previousValue: { status: ticket.status },
+      newValue: { status: updated.status, ticketNumber: updated.ticketNumber },
+    });
+
+    return updated;
   }
 
   async updateDealStage(dealId: string, stage: DealStage, organizationId: string) {
@@ -361,28 +378,76 @@ export class CrmService {
     });
   }
 
-  async deleteContact(contactId: string, organizationId: string) {
+  async deleteContact(contactId: string, organizationId: string, actor: Actor) {
     const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
     if (!contact) throw new NotFoundException('Contact not found');
-    return prisma.contact.delete({ where: { id: contactId } });
+    const removed = await prisma.contact.delete({ where: { id: contactId } });
+
+    // Recorded with the row's own details: once it is deleted there is
+    // nothing left to resolve the id against, and an entry naming only a
+    // uuid describes a record nobody can identify.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.contact.deleted',
+      targetType: 'Contact',
+      targetId: contactId,
+      previousValue: { fullName: contact.fullName, phoneNumber: contact.phoneNumber, email: contact.email },
+    });
+
+    return removed;
   }
 
-  async deleteLead(leadId: string, organizationId: string) {
+  async deleteLead(leadId: string, organizationId: string, actor: Actor) {
     const lead = await prisma.lead.findFirst({ where: { id: leadId, organizationId } });
     if (!lead) throw new NotFoundException('Lead not found');
-    return prisma.lead.delete({ where: { id: leadId } });
+    const removed = await prisma.lead.delete({ where: { id: leadId } });
+
+    // Recorded with the row's own details: once it is deleted there is
+    // nothing left to resolve the id against, and an entry naming only a
+    // uuid describes a record nobody can identify.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.lead.deleted',
+      targetType: 'Lead',
+      targetId: leadId,
+      previousValue: { contactId: lead.contactId, source: lead.source, status: lead.status, score: lead.score },
+    });
+
+    return removed;
   }
 
-  async deleteDeal(dealId: string, organizationId: string) {
+  async deleteDeal(dealId: string, organizationId: string, actor: Actor) {
     const deal = await prisma.deal.findFirst({ where: { id: dealId, organizationId } });
     if (!deal) throw new NotFoundException('Deal not found');
-    return prisma.deal.delete({ where: { id: dealId } });
+    const removed = await prisma.deal.delete({ where: { id: dealId } });
+
+    // Recorded with the row's own details: once it is deleted there is
+    // nothing left to resolve the id against, and an entry naming only a
+    // uuid describes a record nobody can identify.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.deal.deleted',
+      targetType: 'Deal',
+      targetId: dealId,
+      previousValue: { title: deal.title, stage: deal.stage },
+    });
+
+    return removed;
   }
 
-  async deleteTicket(ticketId: string, organizationId: string) {
+  async deleteTicket(ticketId: string, organizationId: string, actor: Actor) {
     const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, organizationId } });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    return prisma.ticket.delete({ where: { id: ticketId } });
+    const removed = await prisma.ticket.delete({ where: { id: ticketId } });
+
+    // Recorded with the row's own details: once it is deleted there is
+    // nothing left to resolve the id against, and an entry naming only a
+    // uuid describes a record nobody can identify.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.ticket.deleted',
+      targetType: 'Ticket',
+      targetId: ticketId,
+      previousValue: { ticketNumber: ticket.ticketNumber, subject: ticket.subject, status: ticket.status },
+    });
+
+    return removed;
   }
 
   async getContactById(contactId: string, organizationId: string) {

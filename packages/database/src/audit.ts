@@ -61,6 +61,12 @@ export interface AuditEntryInput {
   requestId?: string | null;
 }
 
+/** The signed-in user behind a change, carried from the controller's `req.user`. */
+export interface Actor {
+  userId: string;
+  ipAddress?: string | null;
+}
+
 export async function recordAudit(entry: AuditEntryInput): Promise<void> {
   await prisma.auditLog.create({
     data: {
@@ -74,6 +80,33 @@ export async function recordAudit(entry: AuditEntryInput): Promise<void> {
       ipAddress: entry.ipAddress ?? null,
       requestId: entry.requestId ?? null,
     },
+  });
+}
+
+/**
+ * An action an agency took inside its own tenancy.
+ *
+ * Namespaced `agency.*` so a reader can tell "we did this" from "this was
+ * done to us" without resolving the actor at all — and so the platform tier
+ * can redact the values of agency actions, which is what keeps a deleted
+ * citizen's name out of the ministry's console.
+ */
+export async function recordAgencyAudit(
+  actor: Actor,
+  organizationId: string,
+  entry: {
+    action: string;
+    targetType: string;
+    targetId: string;
+    previousValue?: unknown;
+    newValue?: unknown;
+  }
+): Promise<void> {
+  await recordAudit({
+    actor: actor.userId,
+    organizationId,
+    ipAddress: actor.ipAddress ?? null,
+    ...entry,
   });
 }
 
