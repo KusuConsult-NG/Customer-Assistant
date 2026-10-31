@@ -67,6 +67,30 @@ for suite in packages/*/test/run-test.js; do
   fi
 done
 
+# ── Package jest suites ─────────────────────────────────────────────────────
+#
+# `packages/*/test/*.spec.ts` ran NOWHERE. The loop above executes only
+# run-test.js, and the api jest config's rootDir is apps/api — so 290 tests
+# across fourteen suites sat unexecuted while this script reported a clean run.
+#
+# That included every customer-facing flow in the live conversation engine:
+# booking, cancellation, rescheduling, reservations, enrollment, the intent
+# classifier, language selection and flow snapshots. Breaking the booking flow
+# would not have failed the gate.
+#
+# Run through apps/api's jest so the ts-jest transform and env setup are the
+# ones the rest of the suite already uses, with --roots pointing at each
+# package's test directory.
+for pkgtest in packages/*/test; do
+  ls "$pkgtest"/*.spec.ts >/dev/null 2>&1 || continue
+  name=$(basename "$(dirname "$pkgtest")")
+  if (cd apps/api && npx jest --roots="../../$pkgtest" --forceExit) > /tmp/ace-verify-pkgjest.log 2>&1; then
+    pass "$name specs — $(grep -oE 'Tests:.*' /tmp/ace-verify-pkgjest.log | head -1)"
+  else
+    fail "$name specs — $(grep -oE 'Tests:.*' /tmp/ace-verify-pkgjest.log | head -1 || echo 'suite failed to run')"
+  fi
+done
+
 echo
 echo "── 3. API integration suite (Jest) ───────────────────────────────"
 if [ -z "${DATABASE_URL:-}" ]; then

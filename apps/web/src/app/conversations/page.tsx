@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Send, MessageCircle, Phone as WhatsAppIcon, User, Bot, AlertTriangle } from 'lucide-react';
 
-import { API_URL } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import SharedEmptyState from '@/components/ui/EmptyState';
 import FlowInProgressPanel, { type FlowSnapshot } from '@/components/FlowInProgressPanel';
 
@@ -79,7 +79,7 @@ export default function ConversationsPage() {
   const fetchConversations = async () => {
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/whatsapp/conversations`, {
+      const res = await apiFetch(`${API_URL}/api/whatsapp/conversations`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -110,7 +110,7 @@ export default function ConversationsPage() {
   const fetchMessages = async (id: string) => {
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/conversations/${id}/messages`, {
+      const res = await apiFetch(`${API_URL}/api/conversations/${id}/messages`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -134,7 +134,7 @@ export default function ConversationsPage() {
   const fetchFlow = async (id: string) => {
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/conversations/${id}/flow`, {
+      const res = await apiFetch(`${API_URL}/api/conversations/${id}/flow`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setFlow(res.ok ? await res.json() : null);
@@ -161,7 +161,7 @@ export default function ConversationsPage() {
 
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${selectedId}/messages`, {
+      const res = await apiFetch(`${API_URL}/api/whatsapp/conversations/${selectedId}/messages`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -184,7 +184,7 @@ export default function ConversationsPage() {
     if (!selectedId) return;
     try {
       const token = localStorage.getItem('ace_token');
-      await fetch(`${API_URL}/api/whatsapp/conversations/${selectedId}/handoff`, {
+      await apiFetch(`${API_URL}/api/whatsapp/conversations/${selectedId}/handoff`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

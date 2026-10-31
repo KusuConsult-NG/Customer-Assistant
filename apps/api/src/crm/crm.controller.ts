@@ -3,6 +3,7 @@ import { CrmService } from './crm.service';
 import { CrmTimelineService } from './crm-timeline.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, LeadStatus, DealStage, TicketPriority, TicketStatus } from '@ace/shared-types';
+import { actorFrom } from '../common/actor';
 
 
 @Controller('api/crm')
@@ -69,7 +70,7 @@ export class CrmController {
 
   @Patch('tickets/:id/status')
   async updateTicketStatus(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { status: TicketStatus }) {
-    return this.crmService.updateTicketStatus(id, body.status, req.user.organizationId);
+    return this.crmService.updateTicketStatus(id, body.status, req.user.organizationId, actorFrom(req));
   }
 
   @Patch('deals/:id/stage')
@@ -84,22 +85,22 @@ export class CrmController {
 
   @Delete('contacts/:id')
   async deleteContact(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmService.deleteContact(id, req.user.organizationId);
+    return this.crmService.deleteContact(id, req.user.organizationId, actorFrom(req));
   }
 
   @Delete('leads/:id')
   async deleteLead(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmService.deleteLead(id, req.user.organizationId);
+    return this.crmService.deleteLead(id, req.user.organizationId, actorFrom(req));
   }
 
   @Delete('deals/:id')
   async deleteDeal(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmService.deleteDeal(id, req.user.organizationId);
+    return this.crmService.deleteDeal(id, req.user.organizationId, actorFrom(req));
   }
 
   @Delete('tickets/:id')
   async deleteTicket(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmService.deleteTicket(id, req.user.organizationId);
+    return this.crmService.deleteTicket(id, req.user.organizationId, actorFrom(req));
   }
 
   @Get('contacts/search')

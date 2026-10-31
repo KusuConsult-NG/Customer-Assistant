@@ -4,6 +4,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CatalogueService, type OptionInput, type LocationInput } from './catalogue.service';
 import { AuthUser } from '@ace/shared-types';
+import { actorFrom } from '../common/actor';
 
 /**
  * The agency's own services and locations.
@@ -53,7 +54,7 @@ export class CatalogueController {
   @Roles('OWNER', 'ADMIN')
   @Delete('services/:id')
   deleteService(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.catalogue.deleteOption(req.user.organizationId, id);
+    return this.catalogue.deleteOption(req.user.organizationId, id, actorFrom(req));
   }
 
   // ── Locations ─────────────────────────────────────────────────────────────
@@ -82,6 +83,6 @@ export class CatalogueController {
   @Roles('OWNER', 'ADMIN')
   @Delete('locations/:id')
   deleteLocation(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.catalogue.deleteLocation(req.user.organizationId, id);
+    return this.catalogue.deleteLocation(req.user.organizationId, id, actorFrom(req));
   }
 }

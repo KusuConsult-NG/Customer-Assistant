@@ -33,6 +33,9 @@ jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/service-hours'),
   ...jest.requireActual('../../database/src/service-catalogue'),
   prisma: mockPrisma,
+  // Stubbed, not required actual: audit.ts imports the real prisma client
+  // from ./index, and these suites exist to avoid constructing one.
+  recordAgencyAuditBestEffort: jest.fn(),
 }));
 
 import { ConversationOrchestrator } from '../src/index';

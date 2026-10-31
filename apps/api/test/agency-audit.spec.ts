@@ -29,6 +29,7 @@ import request from 'supertest';
 import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { AppModule } from '../src/app.module';
+import { SchedulingService } from '../src/scheduling/scheduling.service';
 import { createTenant, dropTenant, TestTenant } from './support/tenant';
 
 describe('the agency audit trail', () => {
@@ -37,6 +38,7 @@ describe('the agency audit trail', () => {
   let agency: TestTenant;
   let other: TestTenant;
   /** A colleague inside `agency`, to be promoted and deactivated. */
+  let scheduling: SchedulingService;
   let colleagueId: string;
   let colleagueEmail: string;
 
@@ -51,6 +53,7 @@ describe('the agency audit trail', () => {
     }).compile();
     app = moduleFixture.createNestApplication();
     await app.init();
+    scheduling = app.get(SchedulingService);
 
     operator = await createTenant(app, 'audit-ministry', { isPlatformAdmin: true });
     agency = await createTenant(app, 'audit-agency', { role: 'OWNER' });
@@ -211,6 +214,223 @@ describe('the agency audit trail', () => {
       const serialized = JSON.stringify(rows);
       expect(serialized).not.toContain(operator.email);
       expect(serialized).not.toContain(operator.userId);
+    });
+  });
+
+  // ── Domain records: what was done to a citizen's file ─────────────────────
+
+  describe('records the agency changed, not just the access it granted', () => {
+    const contactPayload = () => ({
+      organizationId: agency.orgId,
+      fullName: `Hauwa ${randomBytes(3).toString('hex')}`,
+      phoneNumber: `+2348${String(Date.now()).slice(-9)}`,
+      email: `hauwa-${randomBytes(3).toString('hex')}@citizen.test`,
+    });
+
+    it('names the citizen whose record was deleted', async () => {
+      const contact = await prisma.contact.create({ data: contactPayload() });
+
+      await request(app.getHttpServer())
+        .delete(`/api/crm/contacts/${contact.id}`)
+        .set('Authorization', `Bearer ${agency.token}`)
+        .expect(200);
+
+      // The row is gone, so the id resolves to nothing — the record has to
+      // carry the details or it describes a citizen nobody can identify.
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.contact.deleted' && e.targetId === contact.id
+      );
+      expect(row).toBeDefined();
+      expect(row.previousValue).toMatchObject({
+        fullName: contact.fullName,
+        phoneNumber: contact.phoneNumber,
+      });
+      expect(row.actorIsOwnStaff).toBe(true);
+    });
+
+    it('records a case being closed, with the status it replaced', async () => {
+      const contact = await prisma.contact.create({ data: contactPayload() });
+      const ticket = await prisma.ticket.create({
+        data: {
+          organizationId: agency.orgId,
+          contactId: contact.id,
+          ticketNumber: `AUD-${randomBytes(3).toString('hex')}`,
+          subject: 'Water supply',
+          description: 'No supply for three days.',
+          status: 'OPEN',
+        },
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/api/crm/tickets/${ticket.id}/status`)
+        .set('Authorization', `Bearer ${agency.token}`)
+        .send({ status: 'CLOSED' })
+        .expect(200);
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.ticket.status_changed' && e.targetId === ticket.id
+      );
+      expect(row).toBeDefined();
+      expect(row.previousValue).toMatchObject({ status: 'OPEN' });
+      expect(row.newValue).toMatchObject({ status: 'CLOSED' });
+    });
+
+    it('records a service being withdrawn from citizens', async () => {
+      const option = await prisma.serviceOption.create({
+        data: { organizationId: agency.orgId, name: `Land Title ${randomBytes(2).toString('hex')}` },
+      });
+
+      await request(app.getHttpServer())
+        .delete(`/api/catalogue/services/${option.id}`)
+        .set('Authorization', `Bearer ${agency.token}`)
+        .expect(200);
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.service.deleted' && e.targetId === option.id
+      );
+      expect(row).toBeDefined();
+      expect(row.previousValue).toMatchObject({ name: option.name });
+    });
+  });
+
+  // ── Who moved the appointment: a person, or the AI ────────────────────────
+
+  describe('a change the AI made is attributed to the AI', () => {
+    const makeBooking = async () => {
+      const contact = await prisma.contact.create({
+        data: {
+          organizationId: agency.orgId,
+          fullName: `Booking Citizen ${randomBytes(2).toString('hex')}`,
+          phoneNumber: `+2347${String(Date.now()).slice(-9)}`,
+        },
+      });
+      const start = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+      return prisma.booking.create({
+        data: {
+          organizationId: agency.orgId,
+          contactId: contact.id,
+          serviceName: 'Land title search',
+          startTime: start,
+          endTime: new Date(start.getTime() + 30 * 60 * 1000),
+          status: 'CONFIRMED',
+        },
+      });
+    };
+
+    it('names the officer who cancelled an appointment', async () => {
+      const booking = await makeBooking();
+
+      await request(app.getHttpServer())
+        .patch(`/api/scheduling/bookings/${booking.id}/cancel`)
+        .set('Authorization', `Bearer ${agency.token}`)
+        .send({ reason: 'Office closed that day' })
+        .expect(200);
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.booking.cancelled' && e.targetId === booking.id
+      );
+      expect(row).toBeDefined();
+      expect(row.actorIsOwnStaff).toBe(true);
+      expect(row.actor).toContain(agency.email);
+      // The time the citizen gave up, which the cancellation itself erases.
+      expect(row.previousValue).toMatchObject({ status: 'CONFIRMED' });
+      expect(row.newValue).toMatchObject({ reason: 'Office closed that day' });
+    });
+
+    it('does not file an AI cancellation as though a colleague did it', async () => {
+      const booking = await makeBooking();
+
+      // What the hosted agent passes when a citizen cancels on a call.
+      await scheduling.cancelBooking(
+        agency.orgId,
+        booking.id,
+        'Citizen cancelled on the call',
+        'system:hosted-agent'
+      );
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.booking.cancelled' && e.targetId === booking.id
+      );
+      expect(row).toBeDefined();
+
+      // A trail recording only what humans did would quietly imply the AI
+      // never touched anyone's appointment.
+      expect(row.actorIsOwnStaff).toBe(false);
+      expect(row.actor).toMatch(/automated process/i);
+      expect(row.actor).toContain('hosted-agent');
+
+      // And emphatically not attributed to a member of staff.
+      expect(row.actor).not.toContain(agency.email);
+    });
+
+    it('records a reschedule as the move it was', async () => {
+      const booking = await makeBooking();
+      const later = new Date(Date.now() + 14 * 24 * 3600 * 1000);
+
+      await scheduling.rescheduleBooking(
+        agency.orgId,
+        booking.id,
+        later.toISOString(),
+        30,
+        'system:orchestrator'
+      );
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.booking.rescheduled' && e.targetId === booking.id
+      );
+      expect(row).toBeDefined();
+      expect(row.actor).toContain('orchestrator');
+      // Both times: a reschedule with only the new one does not say what moved.
+      expect(new Date(row.previousValue.startTime).toISOString()).toBe(booking.startTime.toISOString());
+      expect(new Date(row.newValue.startTime).toISOString()).toBe(later.toISOString());
+    });
+  });
+
+  // ── The platform tier must not learn WHICH citizen ────────────────────────
+
+  describe('what the ministry sees of an agency action', () => {
+    it('is told that a citizen record was deleted, but never which one', async () => {
+      const contact = await prisma.contact.create({
+        data: {
+          organizationId: agency.orgId,
+          fullName: 'Confidential Citizen Name',
+          phoneNumber: `+2349${String(Date.now()).slice(-9)}`,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .delete(`/api/crm/contacts/${contact.id}`)
+        .set('Authorization', `Bearer ${agency.token}`)
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/platform/audit?organizationId=${agency.orgId}`)
+        .set('Authorization', `Bearer ${operator.token}`)
+        .expect(200);
+
+      const serialized = JSON.stringify(res.body);
+
+      // The accountable fact survives: the ministry can see the action, the
+      // actor and the time.
+      expect(serialized).toContain('agency.contact.deleted');
+
+      // The citizen does not. This tier reports metrics and configuration,
+      // never content — and an audit row is the one place where an agency
+      // action carries a citizen's name and number.
+      expect(serialized).not.toContain('Confidential Citizen Name');
+      expect(serialized).not.toContain(contact.phoneNumber);
+    });
+
+    it('still shows the reason a suspension was issued', async () => {
+      // platform.* values are about AGENCIES, not citizens, and the reason is
+      // the point of the record — redacting those too would make the tier's
+      // own trail useless.
+      const res = await request(app.getHttpServer())
+        .get(`/api/platform/audit?organizationId=${agency.orgId}`)
+        .set('Authorization', `Bearer ${operator.token}`)
+        .expect(200);
+
+      expect(JSON.stringify(res.body)).toContain('Audit trail fixture');
     });
   });
 

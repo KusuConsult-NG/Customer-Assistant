@@ -5,6 +5,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { CrawlWebsiteDto, UploadDocumentDto } from './knowledge.dto';
+import { actorFrom } from '../common/actor';
 
 // RolesGuard follows JwtAuthGuard: guards execute in the order given, and RolesGuard
 // needs request.user. Registering it globally (as before) ran it first, so every
@@ -85,7 +86,7 @@ export class KnowledgeController {
   @Roles('OWNER', 'ADMIN')
   @Delete('documents/:id')
   async deleteDocument(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.knowledgeService.deleteDocument(req.user.organizationId, id);
+    return this.knowledgeService.deleteDocument(req.user.organizationId, id, actorFrom(req));
   }
 }
 

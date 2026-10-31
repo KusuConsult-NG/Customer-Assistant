@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
   Palette, Globe, Key, Webhook, Save, Copy, RefreshCw,
@@ -50,7 +50,7 @@ export default function WhiteLabelPage() {
 
   const fetchOrg = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
+      const res = await apiFetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
         setOrg(data);
@@ -61,8 +61,16 @@ export default function WhiteLabelPage() {
         setWebhookUrl(data.webhookUrl || '');
         setEnabledEvents(data.enabledWebhookEvents || []);
         if (data.logoUrl) setLogoPreview(data.logoUrl);
+      } else {
+        // Silence here was worse than an error: the form fell back to the
+        // placeholder blue and purple, which look exactly like a deliberate
+        // choice — so an operator could save the defaults over the agency's
+        // real branding without ever being told the load had failed.
+        setToast({ msg: 'Could not load this agency’s branding. Reload before saving, or you may overwrite it with defaults.', type: 'error' });
       }
-    } catch {} finally { setLoading(false); }
+    } catch {
+      setToast({ msg: 'Could not reach the server to load branding. Reload before saving.', type: 'error' });
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchOrg(); }, [fetchOrg]);
@@ -71,7 +79,7 @@ export default function WhiteLabelPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({ name: companyName, primaryColor, secondaryColor, customDomain }),
       });
@@ -85,7 +93,7 @@ export default function WhiteLabelPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({ webhookUrl, enabledWebhookEvents: enabledEvents }),
       });

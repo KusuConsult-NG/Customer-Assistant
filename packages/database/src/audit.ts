@@ -61,6 +61,12 @@ export interface AuditEntryInput {
   requestId?: string | null;
 }
 
+/** The signed-in user behind a change, carried from the controller's `req.user`. */
+export interface Actor {
+  userId: string;
+  ipAddress?: string | null;
+}
+
 export async function recordAudit(entry: AuditEntryInput): Promise<void> {
   await prisma.auditLog.create({
     data: {
@@ -75,6 +81,94 @@ export async function recordAudit(entry: AuditEntryInput): Promise<void> {
       requestId: entry.requestId ?? null,
     },
   });
+}
+
+/**
+ * Who or what made a change, in the forms the `actor` column documents.
+ *
+ * A signed-in person is an `Actor`. An unattended writer is the string
+ * `system:<name>` — the orchestrator and the hosted agent both cancel and
+ * reschedule real appointments, and an audit trail that recorded only the
+ * changes a human made would quietly imply the AI never touched anything.
+ *
+ * Using the vocabulary the schema already states, rather than a new one:
+ * `resolveAuditActors` renders `system:*` as an automated process, so these
+ * rows read correctly in an agency's own trail with no further work.
+ */
+export type AuditActor = Actor | `system:${string}`;
+
+/**
+ * An action an agency took inside its own tenancy.
+ *
+ * Namespaced `agency.*` so a reader can tell "we did this" from "this was
+ * done to us" without resolving the actor at all — and so the platform tier
+ * can redact the values of agency actions, which is what keeps a deleted
+ * citizen's name out of the ministry's console.
+ */
+export async function recordAgencyAudit(
+  actor: AuditActor,
+  organizationId: string,
+  entry: {
+    action: string;
+    targetType: string;
+    targetId: string;
+    previousValue?: unknown;
+    newValue?: unknown;
+  }
+): Promise<void> {
+  const isPerson = typeof actor !== 'string';
+  await recordAudit({
+    actor: isPerson ? actor.userId : actor,
+    organizationId,
+    ipAddress: isPerson ? actor.ipAddress ?? null : null,
+    ...entry,
+  });
+}
+
+/**
+ * The same write, for a path that must not fail because of it.
+ *
+ * `recordAudit` deliberately does not swallow errors: a record that silently
+ * fails to write makes the table look complete when it is not. That is right
+ * for a dashboard request, where a failed audit should fail the action.
+ *
+ * It is wrong inside a live conversation. The orchestrator's contract is that
+ * no tool intent throws to the caller, because an uncaught throw means the
+ * citizen receives no reply at all — and refusing to cancel somebody's
+ * appointment because the audit table was briefly unreachable is a worse
+ * outcome than an incomplete trail. The same reasoning as `serviceHoursFrom`
+ * falling back rather than throwing.
+ *
+ * So this logs loudly and continues. The log line is the backstop, and it
+ * names the action and the target so the gap is recoverable by hand.
+ */
+export async function recordAgencyAuditBestEffort(
+  actor: AuditActor,
+  organizationId: string,
+  entry: {
+    action: string;
+    targetType: string;
+    targetId: string;
+    previousValue?: unknown;
+    newValue?: unknown;
+  }
+): Promise<void> {
+  try {
+    await recordAgencyAudit(actor, organizationId, entry);
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        service: 'AuditLog',
+        event: 'audit_write_failed',
+        organizationId,
+        action: entry.action,
+        targetType: entry.targetType,
+        targetId: entry.targetId,
+        error: (err as any)?.message ?? String(err),
+      })
+    );
+  }
 }
 
 /** An actor as a reader is allowed to see them. */

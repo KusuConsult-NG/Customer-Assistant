@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api, API_URL } from '@/lib/api';
+import { api, API_URL, apiFetch } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
   Settings, Building2, Bot, Phone, MessageSquare, Users, User,
@@ -55,9 +55,19 @@ export default function SettingsPage() {
 
   const fetchOrg = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
-      if (res.ok) setOrg(await res.json());
-    } catch {}
+      const res = await apiFetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
+      if (res.ok) {
+        setOrg(await res.json());
+        return;
+      }
+      // An expired token is handled by apiFetch, which refreshes or signs the
+      // operator out. Anything else reaching here leaves every field on this
+      // screen blank — and a blank settings form will happily save itself
+      // over the agency's real configuration. Say so rather than look loaded.
+      showToast('Could not load this agency’s settings. Reload before saving, or you may overwrite them.', 'error');
+    } catch {
+      showToast('Could not reach the server to load settings. Reload before saving.', 'error');
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -140,7 +150,7 @@ function ProfileTab({ authHeaders, showToast }: any) {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/change-password`, {
+      const res = await apiFetch(`${API_URL}/api/auth/change-password`, {
         method: 'POST', headers: authHeaders,
         body: JSON.stringify({ currentPassword, newPassword }),
       });
@@ -234,7 +244,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
           name, aiPersonaPrompt, welcomeMessage, defaultLanguage,
@@ -259,8 +269,8 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     <form onSubmit={save} className="space-y-5">
       <Section title="Organization Profile" description="Basic info about your business">
         <div>
-          <label className={labelCls}>Organization Name</label>
-          <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services" />
+          <label className={labelCls} htmlFor="org-name">Organization Name</label>
+          <input id="org-name" aria-label="Organization Name" type="text" value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services" />
         </div>
         <div>
           <label className={labelCls}>Industry</label>
@@ -422,7 +432,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/whatsapp-config`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config`, {
         method: 'POST', headers: authHeaders,
         body: JSON.stringify({
           phoneNumberId: phoneNumberId.trim(),
@@ -524,7 +534,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/telephony-config`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/telephony-config`, {
         method: 'POST', headers: authHeaders,
         body: JSON.stringify({ provider, phoneNumber, accountSid, authToken, apiKey }),
       });
@@ -1086,7 +1096,11 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
       ]);
       if (mRes) setMembers(mRes);
       if (pRes) setMatrix(pRes);
-    } catch {}
+    } catch (err: any) {
+      // An empty team list reads as "this agency has one member", which is a
+      // different and much less alarming statement than "we could not ask".
+      showToast(err?.message || 'Could not load the team list.', 'error');
+    }
     finally { setLoadingMembers(false); }
   }, []);
 

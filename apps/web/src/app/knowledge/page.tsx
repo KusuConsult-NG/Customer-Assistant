@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { api, API_URL } from '@/lib/api';
+import { api, API_URL, apiFetch } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import SharedEmptyState from '@/components/ui/EmptyState';
 import { ListSkeleton } from '@/components/ui/Skeleton';
@@ -108,7 +108,7 @@ export default function KnowledgePage() {
     // back under the operator's cursor, then forward again a moment later.
     if (reorderInFlight.current && !force) return;
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/faqs`, { headers: authHeaders });
+      const res = await apiFetch(`${API_URL}/api/knowledge/faqs`, { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
         setFaqs(data || []);
@@ -134,7 +134,7 @@ export default function KnowledgePage() {
     setCrawling(true);
     setCrawlStatus(null);
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/crawl-website`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/crawl-website`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ url: websiteUrl }),
@@ -283,7 +283,7 @@ export default function KnowledgePage() {
     setReordering(true);
     reorderInFlight.current = true;
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/faqs/reorder`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/faqs/reorder`, {
         method: 'PATCH',
         headers: authHeaders,
         body: JSON.stringify({ ids: next.map(f => f.id) }),
@@ -320,7 +320,7 @@ export default function KnowledgePage() {
     setReindexing(true);
     setReindexResult(null);
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/reindex`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/reindex`, {
         method: 'POST',
         headers: authHeaders,
       });
@@ -348,7 +348,7 @@ export default function KnowledgePage() {
     if (!faqQuestion.trim() || !faqAnswer.trim()) return;
 
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/faqs`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/faqs`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ question: faqQuestion, answer: faqAnswer, category: faqCategory })
@@ -369,7 +369,7 @@ export default function KnowledgePage() {
   const handleEditFaq = async (id: string) => {
     if (!editQuestion.trim() || !editAnswer.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/faqs/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/faqs/${id}`, {
         method: 'PATCH',
         headers: authHeaders,
         body: JSON.stringify({ question: editQuestion, answer: editAnswer })
@@ -388,7 +388,7 @@ export default function KnowledgePage() {
   const handleDeleteFaq = async (id: string) => {
     if (!confirm('Delete this FAQ rule?')) return;
     try {
-      const res = await fetch(`${API_URL}/api/knowledge/faqs/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/faqs/${id}`, {
         method: 'DELETE',
         headers: authHeaders
       });
@@ -406,7 +406,7 @@ export default function KnowledgePage() {
     if (!confirm('Delete this document from the knowledge base?')) return;
     setDeletingId(id);
     try {
-      await fetch(`${API_URL}/api/knowledge/documents/${id}`, {
+      await apiFetch(`${API_URL}/api/knowledge/documents/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

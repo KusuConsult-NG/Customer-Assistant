@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -1625,6 +1625,19 @@ export class ConversationOrchestrator {
         },
       });
 
+      // Best-effort, deliberately. This runs mid-conversation, and the
+      // contract here is that nothing throws to the caller — an uncaught
+      // error means the citizen receives no reply at all. Losing an audit row
+      // is worse than nothing but far better than refusing to cancel an
+      // appointment because the audit table was briefly unreachable.
+      await recordAgencyAuditBestEffort('system:orchestrator', context.organizationId, {
+        action: 'agency.booking.cancelled',
+        targetType: 'Booking',
+        targetId: booking.id,
+        previousValue: { status: booking.status, startTime: booking.startTime },
+        newValue: { status: 'CANCELLED', via: 'assistant' },
+      });
+
       return {
         replyText: t(lang, 'booking_cancelled', {
           service: booking.serviceName,
@@ -2044,6 +2057,21 @@ export class ConversationOrchestrator {
       if (isSlotTakenError(err)) return this.bookingSlotTaken(context, slot, lang);
       throw err;
     }
+
+    // An appointment the AI made on a citizen's behalf. Without this the
+    // trail would show staff bookings only, implying the assistant never
+    // wrote one — while it is the path serving every channel today.
+    await recordAgencyAuditBestEffort('system:orchestrator', context.organizationId, {
+      action: 'agency.booking.created',
+      targetType: 'Booking',
+      targetId: booking.id,
+      newValue: {
+        serviceName,
+        startTime: booking.startTime,
+        status: booking.status,
+        via: 'assistant',
+      },
+    });
 
     return {
       replyText: t(lang, 'booking_confirmed', {
@@ -3117,6 +3145,17 @@ export class ConversationOrchestrator {
         if (isSlotTakenError(err)) return this.rescheduleSlotTaken(context, option, lang);
         throw err;
       }
+
+      // After the write, never before: a slot lost to the exclusion
+      // constraint is not a reschedule, and a row for one would describe a
+      // move that never happened.
+      await recordAgencyAuditBestEffort('system:orchestrator', context.organizationId, {
+        action: 'agency.booking.rescheduled',
+        targetType: 'Booking',
+        targetId: booking.id,
+        previousValue: { startTime: booking.startTime, status: booking.status },
+        newValue: { startTime: start, status: 'RESCHEDULED', via: 'assistant' },
+      });
 
       return {
         replyText:

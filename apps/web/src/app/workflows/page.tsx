@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import {
   GitFork,
   Plus,
@@ -196,7 +196,7 @@ export default function WorkflowsPage() {
 
   const fetchCapabilities = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/workflows/capabilities`, { headers: getHeaders() });
+      const res = await apiFetch(`${API_URL}/api/workflows/capabilities`, { headers: getHeaders() });
       if (res.ok) setCapabilities(await res.json());
     } catch {
       /* the editor still works with free-form config if this fails */
@@ -206,7 +206,7 @@ export default function WorkflowsPage() {
   const fetchWorkflows = useCallback(async (selectId?: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/workflows`, { headers: getHeaders() });
+      const res = await apiFetch(`${API_URL}/api/workflows`, { headers: getHeaders() });
       if (res.ok) {
         const data: Workflow[] = await res.json();
         setWorkflows(data || []);
@@ -226,7 +226,7 @@ export default function WorkflowsPage() {
   /** Loads the full record — normalized nodes, problems, and run history. */
   const openWorkflow = async (id: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${id}`, { headers: getHeaders() });
+      const res = await apiFetch(`${API_URL}/api/workflows/${id}`, { headers: getHeaders() });
       if (!res.ok) return;
       const wf: Workflow = await res.json();
       // Prefer the server's normalized view so legacy graphs show what will actually run.
@@ -241,7 +241,7 @@ export default function WorkflowsPage() {
 
   const refreshRuns = async (id: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${id}/runs?limit=25`, { headers: getHeaders() });
+      const res = await apiFetch(`${API_URL}/api/workflows/${id}/runs?limit=25`, { headers: getHeaders() });
       if (res.ok) setRuns(await res.json());
     } catch {
       /* ignore */
@@ -275,7 +275,7 @@ export default function WorkflowsPage() {
     ];
 
     try {
-      const res = await fetch(`${API_URL}/api/workflows`, {
+      const res = await apiFetch(`${API_URL}/api/workflows`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
@@ -310,7 +310,7 @@ export default function WorkflowsPage() {
   const handleSaveWorkflow = async () => {
     if (!activeWorkflow) return;
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${activeWorkflow.id}`, {
+      const res = await apiFetch(`${API_URL}/api/workflows/${activeWorkflow.id}`, {
         method: 'PATCH',
         headers: getHeaders(),
         body: JSON.stringify({
@@ -338,7 +338,7 @@ export default function WorkflowsPage() {
   /** Refreshes only the sidebar list, leaving the open editor untouched. */
   const fetchWorkflowList = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/workflows`, { headers: getHeaders() });
+      const res = await apiFetch(`${API_URL}/api/workflows`, { headers: getHeaders() });
       if (res.ok) setWorkflows(await res.json());
     } catch {
       /* ignore */
@@ -355,7 +355,7 @@ export default function WorkflowsPage() {
     }
 
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${activeWorkflow.id}`, {
+      const res = await apiFetch(`${API_URL}/api/workflows/${activeWorkflow.id}`, {
         method: 'PATCH',
         headers: getHeaders(),
         body: JSON.stringify({ isActive: next }),
@@ -380,7 +380,7 @@ export default function WorkflowsPage() {
   const handleDeleteWorkflow = async (id: string) => {
     if (!confirm('Delete this workflow and its run history?')) return;
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${id}`, { method: 'DELETE', headers: getHeaders() });
+      const res = await apiFetch(`${API_URL}/api/workflows/${id}`, { method: 'DELETE', headers: getHeaders() });
       if (res.ok) {
         setWorkflows((prev) => prev.filter((w) => w.id !== id));
         if (activeWorkflow?.id === id) {
@@ -520,7 +520,7 @@ export default function WorkflowsPage() {
     setTesting(true);
     setLastTest(null);
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${activeWorkflow.id}/execute`, {
+      const res = await apiFetch(`${API_URL}/api/workflows/${activeWorkflow.id}/execute`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ payload: { source: 'manual-test' } }),
@@ -553,7 +553,7 @@ export default function WorkflowsPage() {
   const handleReplay = async (runId: string) => {
     if (!activeWorkflow) return;
     try {
-      const res = await fetch(`${API_URL}/api/workflows/runs/${runId}/replay`, {
+      const res = await apiFetch(`${API_URL}/api/workflows/runs/${runId}/replay`, {
         method: 'POST',
         headers: getHeaders(),
       });

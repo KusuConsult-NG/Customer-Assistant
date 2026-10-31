@@ -91,6 +91,76 @@ const handleResponse = async (res: Response, retryFn?: () => Promise<Response>) 
 };
 
 /**
+ * Rebuilds the request with the token that is in storage RIGHT NOW.
+ *
+ * The dashboard pages capture `authHeaders` once when a component mounts, so
+ * the Authorization they pass is whatever was current then — which is exactly
+ * the token that just got refused. Overriding it here is what makes a retry
+ * mean anything; reusing the caller's header would re-send the dead token and
+ * fail identically.
+ */
+const withCurrentToken = (init: RequestInit): RequestInit => {
+  const headers = new Headers(init.headers as HeadersInit | undefined);
+  const token = typeof window !== "undefined" ? localStorage.getItem("ace_token") : null;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  else headers.delete("Authorization");
+  // Only when there is a body: forcing it on a GET is noise, and on a
+  // multipart upload it would corrupt the boundary.
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  return { ...init, headers };
+};
+
+/**
+ * `fetch`, with the session kept alive.
+ *
+ * Deliberately shaped exactly like the global `fetch` — a URL in, a `Response`
+ * out — because the pages that need it already do their own `res.ok` and
+ * `res.json()` handling. Swapping the function name is the whole migration;
+ * anything that returned parsed JSON instead would have meant rewriting
+ * seventy call sites by hand.
+ *
+ * ── Why this exists at all ─────────────────────────────────────────────────
+ *
+ * `handleResponse` has refreshed a rejected token for some time, but only for
+ * callers that went through the `api` client. Most dashboard pages did not:
+ * they called the API with raw `fetch` and swallowed failures, so an expired
+ * token produced a page with no data, no error and no redirect. The settings
+ * form rendered every field blank — and offered to save that over the
+ * agency's real configuration.
+ *
+ * The layout guard did not catch it either, because it checks whether a token
+ * EXISTS rather than whether the API still accepts one.
+ *
+ * Three outcomes, and none of them is "carry on with nothing":
+ *   - the token still works, or the refresh succeeds → the caller gets its data
+ *   - the refresh fails → the session is cleared and the operator is sent to
+ *     sign in, because there is nothing to recover with
+ *   - any other status → returned untouched, so a 404 or a 400 still reaches
+ *     the caller's own error handling rather than being treated as expiry
+ *
+ * Not for the signed-out pages (register, password reset, email verification,
+ * the citizen's selfie link). They have no session to refresh, and bouncing a
+ * citizen with a bad reset link to /login would be wrong.
+ */
+export const apiFetch = async (input: string, init: RequestInit = {}): Promise<Response> => {
+  const send = () => fetch(input, withCurrentToken(init));
+
+  let res = await send();
+  if (res.status !== 401 || typeof window === "undefined") return res;
+
+  // refreshSession() writes the new token to storage, which is where the
+  // retry picks it up. Concurrent 401s share one in-flight refresh.
+  if (await refreshSession()) {
+    res = await send();
+    if (res.status !== 401) return res;
+  }
+
+  clearSession();
+  window.location.replace("/login");
+  return res;
+};
+
+/**
  * Authenticated fetch that transparently refreshes an expired access token once
  * before giving up and redirecting to /login.
  */
@@ -116,22 +186,6 @@ export const api = {
       });
       return handleResponse(res);
     },
-    register: async (data: any) => {
-      const res = await fetch(`${API_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      return handleResponse(res);
-    },
-    refresh: async (refreshToken: string) => {
-      const res = await fetch(`${API_URL}/api/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
-      });
-      return handleResponse(res);
-    },
   },
 
   crm: {
@@ -147,20 +201,8 @@ export const api = {
       const res = await fetch(`${API_URL}/api/crm/deals`, { headers: getHeaders() });
       return handleResponse(res);
     },
-    getTickets: async () => {
-      const res = await fetch(`${API_URL}/api/crm/tickets`, { headers: getHeaders() });
-      return handleResponse(res);
-    },
     addContact: async (data: any) => {
       const res = await fetch(`${API_URL}/api/crm/contacts`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify(data),
-      });
-      return handleResponse(res);
-    },
-    addLead: async (data: any) => {
-      const res = await fetch(`${API_URL}/api/crm/leads`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify(data),
@@ -170,24 +212,6 @@ export const api = {
   },
 
   conversations: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/api/conversations`, { headers: getHeaders() });
-      return handleResponse(res);
-    },
-    getMessages: async (id: string) => {
-      const res = await fetch(`${API_URL}/api/conversations/${id}/messages`, { headers: getHeaders() });
-      return handleResponse(res);
-    },
-    sendMessage: async (id: string, content: string) => {
-      // `sender` is not part of the API contract and, with the global
-      // ValidationPipe's forbidNonWhitelisted, an unexpected key is a 400.
-      const res = await fetch(`${API_URL}/api/conversations/${id}/messages`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ content }),
-      });
-      return handleResponse(res);
-    },
   },
 
   knowledge: {
@@ -329,31 +353,13 @@ export const api = {
       const res = await fetch(`${API_URL}/api/telephony/calls`, { headers: getHeaders() });
       return handleResponse(res);
     },
-    triggerCall: async (toNumber: string, provider?: string) => {
-      const res = await fetch(`${API_URL}/api/telephony/outbound`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ toNumber, provider }),
-      });
-      return handleResponse(res);
-    },
   },
 
   analytics: {
     // Route is /api/analytics/dashboard. `/overview` has never existed on the API.
-    getDashboard: async (period: '7d' | '30d' | '90d' = '7d') => {
-      const res = await fetch(`${API_URL}/api/analytics/dashboard?period=${period}`, {
-        headers: getHeaders(),
-      });
-      return handleResponse(res);
-    },
   },
 
   organizations: {
-    getMe: async () => {
-      const res = await fetch(`${API_URL}/api/organizations/me`, { headers: getHeaders() });
-      return handleResponse(res);
-    },
     /**
      * This agency's own audit trail. OWNER/ADMIN.
      *
@@ -368,30 +374,6 @@ export const api = {
       if (params.action) q.set("action", params.action);
       if (params.limit) q.set("limit", String(params.limit));
       const res = await fetch(`${API_URL}/api/organizations/audit?${q.toString()}`, { headers: getHeaders() });
-      return handleResponse(res);
-    },
-    updateSettings: async (data: any) => {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
-        method: "PATCH",
-        headers: getHeaders(),
-        body: JSON.stringify(data),
-      });
-      return handleResponse(res);
-    },
-    updateWhatsAppConfig: async (data: any) => {
-      const res = await fetch(`${API_URL}/api/organizations/whatsapp-config`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify(data),
-      });
-      return handleResponse(res);
-    },
-    updateTelephonyConfig: async (data: any) => {
-      const res = await fetch(`${API_URL}/api/organizations/telephony-config`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify(data),
-      });
       return handleResponse(res);
     },
     addTeamMember: async (data: any) => {
@@ -425,14 +407,6 @@ export const api = {
     removeTeamMember: async (userId: string) => {
       const res = await fetch(`${API_URL}/api/organizations/members/${userId}`, {
         method: "DELETE",
-        headers: getHeaders(),
-      });
-      return handleResponse(res);
-    },
-    /** Returns { apiKey } — the plaintext key, shown once and never retrievable again. */
-    regenerateApiKey: async () => {
-      const res = await fetch(`${API_URL}/api/organizations/api-keys/regenerate`, {
-        method: "POST",
         headers: getHeaders(),
       });
       return handleResponse(res);

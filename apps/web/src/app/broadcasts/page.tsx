@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { ListSkeleton } from '@/components/ui/Skeleton';
 import {
@@ -88,9 +88,9 @@ export default function BroadcastsPage() {
     try {
       const headers = getHeaders();
       const [tplRes, bcRes, cRes] = await Promise.allSettled([
-        fetch(`${API_URL}/api/whatsapp/templates`, { headers }),
-        fetch(`${API_URL}/api/whatsapp/broadcasts`, { headers }),
-        fetch(`${API_URL}/api/crm/contacts`, { headers }),
+        apiFetch(`${API_URL}/api/whatsapp/templates`, { headers }),
+        apiFetch(`${API_URL}/api/whatsapp/broadcasts`, { headers }),
+        apiFetch(`${API_URL}/api/crm/contacts`, { headers }),
       ]);
 
       if (tplRes.status === 'fulfilled' && tplRes.value.ok) {
@@ -119,7 +119,7 @@ export default function BroadcastsPage() {
     if (!tplName.trim() || !tplBody.trim()) return;
     setCreatingTemplate(true);
     try {
-      const res = await fetch(`${API_URL}/api/whatsapp/templates`, {
+      const res = await apiFetch(`${API_URL}/api/whatsapp/templates`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
@@ -151,7 +151,7 @@ export default function BroadcastsPage() {
   const handleDeleteTemplate = async (id: string) => {
     if (!confirm('Are you sure you want to delete this WhatsApp template?')) return;
     try {
-      const res = await fetch(`${API_URL}/api/whatsapp/templates/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/whatsapp/templates/${id}`, {
         method: 'DELETE',
         headers: getHeaders(),
       });
@@ -189,7 +189,7 @@ export default function BroadcastsPage() {
     setStatusNotice(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/whatsapp/broadcasts/send`, {
+      const res = await apiFetch(`${API_URL}/api/whatsapp/broadcasts/send`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({

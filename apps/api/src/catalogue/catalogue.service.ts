@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, PLATEAU_LGAS, resolveLga } from '@ace/database';
+import { prisma, PLATEAU_LGAS, resolveLga, recordAgencyAudit, type Actor } from '@ace/database';
 
 /**
  * What an agency offers, and where — the editable side of the catalogue the
@@ -59,9 +59,19 @@ export class CatalogueService {
     }
   }
 
-  async deleteOption(organizationId: string, id: string) {
-    await this.ownOption(organizationId, id);
+  async deleteOption(organizationId: string, id: string, actor: Actor) {
+    const option = await this.ownOption(organizationId, id);
     await prisma.serviceOption.delete({ where: { id } });
+
+    // A removed service stops being offered to citizens entirely, so the
+    // record carries its name — the id resolves to nothing afterwards.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.service.deleted',
+      targetType: 'ServiceOption',
+      targetId: id,
+      previousValue: { name: option.name },
+    });
+
     return { deleted: true };
   }
 
@@ -99,9 +109,19 @@ export class CatalogueService {
     }
   }
 
-  async deleteLocation(organizationId: string, id: string) {
-    await this.ownLocation(organizationId, id);
+  async deleteLocation(organizationId: string, id: string, actor: Actor) {
+    const location = await this.ownLocation(organizationId, id);
     await prisma.serviceLocation.delete({ where: { id } });
+
+    // The LGA too: the same office name can exist in several, so the name
+    // alone does not say which row went.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.location.deleted',
+      targetType: 'ServiceLocation',
+      targetId: id,
+      previousValue: { name: location.name, lga: location.lga },
+    });
+
     return { deleted: true };
   }
 
