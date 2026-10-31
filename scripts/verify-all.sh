@@ -38,6 +38,9 @@ API_URL="${E2E_API_URL:-http://localhost:4000}"
 WEB_URL="${PLAYWRIGHT_TEST_BASE_URL:-http://localhost:3000}"
 
 PASS=(); FAIL=(); SKIP=()
+# Checks that ran but could not reach a verdict for want of a prerequisite.
+# Separate from SKIP, which is a whole LAYER that did not run.
+UNCERTIFIED=()
 pass() { PASS+=("$1"); printf '\033[32m  PASS\033[0m  %s\n' "$1"; }
 fail() { FAIL+=("$1"); printf '\033[31m  FAIL\033[0m  %s\n' "$1"; }
 skip() { SKIP+=("$1 — $2"); printf '\033[33m  SKIP\033[0m  %s \033[2m(%s)\033[0m\n' "$1" "$2"; }
@@ -84,10 +87,19 @@ fi
 echo
 echo "── 4. HTTP validation harness ────────────────────────────────────"
 if ! curl -sf -o /dev/null "$API_URL/api/health" 2>/dev/null; then
-  skip "harness (274 checks)" "no API at $API_URL"
+  # No count here on purpose: it was "274 checks" against an actual 251, and a
+  # number that drifts is worse than no number.
+  skip "harness" "no API at $API_URL"
 else
   if node e2e-validation/harness.js > /tmp/ace-verify-harness.log 2>&1; then
     pass "harness — $(grep -oE 'TOTAL [0-9]+ +PASS [0-9]+ +FAIL [0-9]+.*' /tmp/ace-verify-harness.log | head -1)"
+    # A blocked check is not a passed one. The totals line carries the count,
+    # but this script's own summary said "0 failed" and listed nothing — so
+    # eight uncertified checks, four of them CRITICAL, read as a clean run.
+    blocked_count=$(grep -oE 'BLOCKED [0-9]+' /tmp/ace-verify-harness.log | head -1 | awk '{print $2}')
+    if [ "${blocked_count:-0}" -gt 0 ]; then
+      UNCERTIFIED+=("$blocked_count harness check(s) could not run — see 'NOT CERTIFIED' in /tmp/ace-verify-harness.log")
+    fi
   else
     fail "harness — $(grep -oE 'TOTAL.*' /tmp/ace-verify-harness.log | head -1)"
   fi
@@ -169,6 +181,11 @@ if [ "${#SKIP[@]}" -gt 0 ]; then
   echo
   echo "Skipped (NOT passed):"
   for s in "${SKIP[@]}"; do echo "  · $s"; done
+fi
+if [ "${#UNCERTIFIED[@]}" -gt 0 ]; then
+  echo
+  echo "Not certified (ran, but could not reach a verdict):"
+  for u in "${UNCERTIFIED[@]}"; do echo "  · $u"; done
 fi
 if [ "${#FAIL[@]}" -gt 0 ]; then
   echo

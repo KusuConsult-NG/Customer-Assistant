@@ -22,13 +22,20 @@ import { API_URL } from '@/lib/api';
 
 type Stage = 'loading' | 'invalid' | 'ready' | 'captured' | 'uploading' | 'done';
 
+/**
+ * What the unauthenticated link endpoint returns.
+ *
+ * It once also carried the citizen's full name and plan type. Neither was ever
+ * rendered here — they were declared on this type and read nowhere — so the
+ * page published them to anyone holding the link for no benefit. Keep this
+ * type honest about what the page needs: a field declared here is a field
+ * somebody will eventually display.
+ */
 interface LinkInfo {
   firstName: string;
-  fullName?: string;
   organizationName: string;
   organizationLogoUrl: string | null;
   purpose: string | null;
-  planType?: string;
   isFamilyPlan?: boolean;
   expiresAt: string;
   maxBytes: number;

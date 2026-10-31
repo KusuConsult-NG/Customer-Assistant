@@ -64,7 +64,16 @@ async function check(id, name, fn, severity = 'HIGH') {
   try {
     const r = await fn();
     if (r === true || r === undefined) return record(id, name, 'PASS', '—', '—', '', severity);
-    if (r && r.blocked) return record(id, name, 'BLOCKED', r.expected || '—', r.reason, r.evidence || '', severity);
+    if (r && r.blocked) {
+      // Two call-site shapes grew up side by side: `{blocked: true, reason}`
+      // and `{blocked: '<the reason>'}`. This read only `r.reason`, so every
+      // check using the second form recorded BLOCKED with a null reason — and
+      // a check that refuses to certify something without saying what is
+      // missing is barely better than one that skipped silently. Seven of the
+      // eight blocked checks were in that state, four of them CRITICAL.
+      const why = r.reason || (typeof r.blocked === 'string' ? r.blocked : '—');
+      return record(id, name, 'BLOCKED', r.expected || '—', why, r.evidence || '', severity);
+    }
     if (r && r.warn) return record(id, name, 'WARN', r.expected || '—', r.actual || r.warn, r.evidence || '', severity);
     if (r && r.ok === true) return record(id, name, 'PASS', r.expected || '—', r.actual || '—', r.evidence || '', severity);
     return record(id, name, 'FAIL', (r && r.expected) || 'assertion true', (r && r.actual) || String(r), (r && r.evidence) || '', severity);
@@ -251,6 +260,21 @@ if (require.main === module) {
         console.log(`      expected: ${f.expected}`);
         console.log(`      actual:   ${f.actual}`);
         if (f.evidence) console.log(`      evidence: ${f.evidence}`);
+      }
+    }
+
+    // BLOCKED IS NOT PASSED. The totals line carries a count and nothing
+    // else, so eight uncertified checks — four of them CRITICAL — read as a
+    // clean run to anyone who does not go and open results.json. Naming them
+    // and their missing prerequisite is the difference between "we tested
+    // this" and "we could not".
+    const blocked = results.filter(r => r.status === 'BLOCKED');
+    if (blocked.length) {
+      console.log('\n\x1b[33mNOT CERTIFIED\x1b[0m  (blocked — these did NOT pass, they did not run)');
+      for (const b of blocked) {
+        console.log(`  [${b.severity}] ${b.id} ${b.suite} :: ${b.name}`);
+        console.log(`      missing:  ${b.actual}`);
+        if (b.evidence) console.log(`      evidence: ${b.evidence}`);
       }
     }
 

@@ -80,3 +80,4 @@ export * from './booking-conflicts';
 export * from './service-hours';
 export * from './service-catalogue';
 export * from './availability';
+export * from './audit';

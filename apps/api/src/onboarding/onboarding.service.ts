@@ -286,19 +286,43 @@ export class OnboardingService {
     return request;
   }
 
-  /** What the public upload page needs to render. Deliberately minimal. */
+  /**
+   * What the public upload page needs to render. Deliberately minimal.
+   *
+   * THIS RESPONSE IS UNAUTHENTICATED. Anyone holding the link reads it — and a
+   * link travels by WhatsApp, so it survives in forwarded chats, on a shared
+   * handset and in a screenshot long after the upload is done. The budget is
+   * therefore a first name and the agency's name: enough that the citizen can
+   * tell the request is genuine and meant for them, and not enough to identify
+   * them to somebody who merely came across the link.
+   *
+   * It did not hold that line. `fullName` was returned alongside `firstName` —
+   * directly beneath the comment saying first name only — and `planType` named
+   * the citizen's enrollment category. Neither was ever read by the page: the
+   * only consumer declared both on its type and rendered neither, so the leak
+   * bought nothing at all.
+   *
+   * `isFamilyPlan` stays because the page genuinely branches on it to offer the
+   * dependants form. It is a boolean about the request, not a label on the
+   * person, and dropping it would remove a working feature rather than a leak.
+   *
+   * Anything added here is publicly readable. If a new field names the citizen,
+   * their contact details, their identifiers or what they are enrolled in, it
+   * does not belong in this object.
+   */
   async describeUploadLink(token: string) {
     const request = await this.resolveToken(token);
     const meta = (request.contact.metadata as Record<string, any>) || {};
+    const plan = (meta.planType || '').toLowerCase();
     return {
       // First name only: the page is reachable by anyone holding the link.
       firstName: request.contact.fullName.split(' ')[0] ?? '',
-      fullName: request.contact.fullName,
       organizationName: request.organization.name,
       organizationLogoUrl: request.organization.logoUrl ?? null,
       purpose: request.purpose,
-      planType: meta.planType || null,
-      isFamilyPlan: (meta.planType || '').toLowerCase().includes('family') || (meta.planType || '').toLowerCase().includes('informal'),
+      // Derived, not disclosed: whether to show the dependants form, without
+      // naming which plan the citizen is on.
+      isFamilyPlan: plan.includes('family') || plan.includes('informal'),
       expiresAt: request.expiresAt,
       maxBytes: MAX_IMAGE_BYTES,
     };

@@ -218,3 +218,140 @@ test('the console link is hidden from an agency owner', async ({ page }) => {
   await expect(page.getByText('Platform console unavailable')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('a[href="/platform"]')).toHaveCount(0);
 });
+
+/**
+ * ── The agency detail panel ──────────────────────────────────────────────────
+ *
+ * The table answers "which agency is struggling"; the panel answers
+ * "struggling at WHAT". The assertions below are about the three facts that
+ * cannot be read from a row of totals — whether a citizen can reach the
+ * agency at all, whether anybody ever accepted their invitation, and why a
+ * suspension happened — plus the one that matters most: that opening a new
+ * surface over an agency did not open a window onto its citizens.
+ */
+
+/** An agency that is already out of service, so the reason has something to render. */
+async function seedSuspendedAgency(reason: string) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma } = require('@ace/database');
+  const tag = `e2esusp-${randomBytes(3).toString('hex')}`;
+  const org = await prisma.organization.create({
+    data: {
+      name: `${tag} Bureau of Statistics`,
+      slug: tag,
+      industry: 'GOVERNMENT',
+      suspendedAt: new Date(),
+      suspendedReason: reason,
+    },
+  });
+  createdOrgIds.push(org.id);
+  return org;
+}
+
+async function openDetail(page: Page, agencyName: string) {
+  await page.getByRole('button', { name: agencyName }).first().click();
+  const panel = page.getByRole('dialog', { name: 'Agency detail' });
+  await expect(panel).toBeVisible({ timeout: 10000 });
+
+  // VISIBILITY IS NOT READINESS. The panel renders the moment it is opened,
+  // with "Loading…" as its heading, and fills in when the request returns.
+  // Without this wait, a test that snapshots the document reads it before any
+  // agency data is in it — which is how the privacy assertion below first
+  // passed against a build that was provably leaking a citizen's name and
+  // phone number into this very panel.
+  await expect(panel.getByText('Channels', { exact: true })).toBeVisible({ timeout: 10000 });
+  return panel;
+}
+
+test('the detail panel shows what a row of totals cannot', async ({ page }) => {
+  const s = await seed();
+  await openAs(page, s.operatorToken, true);
+  await expect(page.locator('h1').filter({ hasText: 'Platform Console' })).toBeVisible({ timeout: 15000 });
+
+  const panel = await openDetail(page, s.busyAgencyName);
+
+  // Counts the comparison table does not carry at all.
+  await expect(panel).toContainText('Knowledge docs');
+  await expect(panel).toContainText('Automations');
+
+  // Readiness, which is a different question from activity: this fixture has
+  // neither channel configured, so no citizen can reach it however busy its
+  // totals look.
+  await expect(panel).toContainText('WhatsApp: not connected');
+  await expect(panel).toContainText('Telephone: not connected');
+  await expect(panel).toContainText(/No channel is connected/i);
+});
+
+test('an invitation nobody accepted does not read as a quiet agency', async ({ page }) => {
+  const s = await seed();
+  await openAs(page, s.operatorToken, true);
+  await expect(page.locator('h1').filter({ hasText: 'Platform Console' })).toBeVisible({ timeout: 15000 });
+
+  const panel = await openDetail(page, s.busyAgencyName);
+
+  // The fixture's owner has never verified their email, so they have never
+  // signed in. In the table this agency is indistinguishable from one that is
+  // simply idle, and the remedy is completely different.
+  await expect(panel).toContainText('invitation not accepted');
+});
+
+test('a suspension states its reason in text, not in a tooltip', async ({ page }) => {
+  const s = await seed();
+  const reason = 'Data-protection review pending';
+  const suspended = await seedSuspendedAgency(reason);
+
+  await openAs(page, s.operatorToken, true);
+  await expect(page.locator('h1').filter({ hasText: 'Platform Console' })).toBeVisible({ timeout: 15000 });
+
+  const panel = await openDetail(page, suspended.name);
+
+  // The table could only fit this in a title attribute. It is the whole reason
+  // the agency is off, so it has to be readable.
+  await expect(panel).toContainText('Suspended');
+  await expect(panel).toContainText(reason);
+  await expect(panel).toContainText(/refused on their next request/i);
+  await expect(panel.getByRole('button', { name: /Reinstate this agency/i })).toBeVisible();
+});
+
+test('an agency with no active staff says so plainly', async ({ page }) => {
+  const s = await seed();
+  await openAs(page, s.operatorToken, true);
+  await expect(page.locator('h1').filter({ hasText: 'Platform Console' })).toBeVisible({ timeout: 15000 });
+
+  const panel = await openDetail(page, s.quietAgencyName);
+  await expect(panel).toContainText(/Nobody can sign in to this agency/i);
+});
+
+test('no citizen name, number or message appears in the detail panel either', async ({ page }) => {
+  const s = await seed();
+  await openAs(page, s.operatorToken, true);
+  await expect(page.locator('h1').filter({ hasText: 'Platform Console' })).toBeVisible({ timeout: 15000 });
+
+  // The busy agency is the one holding the seeded citizen and message.
+  await openDetail(page, s.busyAgencyName);
+
+  // The whole rendered document again, not the panel locator: a leak through a
+  // tooltip or a title attribute is still a leak, and this panel added staff
+  // names and an audit trail — two places a citizen could arrive by mistake.
+  const body = await page.locator('body').innerText();
+  const html = await page.content();
+
+  for (const forbidden of [s.citizenName, s.citizenPhone, s.secretMessage]) {
+    expect(body).not.toContain(forbidden);
+    expect(html).not.toContain(forbidden);
+  }
+
+  // And the count itself is still reported, so the absence above is the
+  // boundary holding rather than the panel having failed to load.
+  await expect(page.getByRole('dialog', { name: 'Agency detail' })).toContainText('Citizens');
+});
+
+test('the detail panel closes on Escape', async ({ page }) => {
+  const s = await seed();
+  await openAs(page, s.operatorToken, true);
+  await expect(page.locator('h1').filter({ hasText: 'Platform Console' })).toBeVisible({ timeout: 15000 });
+
+  await openDetail(page, s.quietAgencyName);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Agency detail' })).toHaveCount(0);
+});

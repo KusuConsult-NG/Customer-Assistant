@@ -329,6 +329,64 @@ describe('ElevenLabs numbers and WhatsApp', () => {
       expect(accounts.map((a) => a.phoneNumberId).sort()).toEqual(['wa_free', 'wa_ours']);
     });
 
+    it('reports whether each line is actually being answered', async () => {
+      await provisioned();
+      stubWorkspace((req) =>
+        req.url.endsWith('/whatsapp-accounts') && req.method === 'GET'
+          ? {
+              status: 200,
+              body: {
+                items: [
+                  whatsappAccount({
+                    phone_number_id: 'wa_ours',
+                    assigned_agent_id: OUR_AGENT,
+                    enable_messaging: false,
+                  }),
+                  whatsappAccount({ phone_number_id: 'wa_free' }),
+                ],
+              },
+            }
+          : undefined
+      );
+
+      const byId = Object.fromEntries(
+        (await service.listWhatsAppAccounts(orgId)).map((a) => [a.phoneNumberId, a])
+      );
+      // A paused line is an outage nobody is told about otherwise: messages
+      // keep arriving and nothing answers them.
+      expect(byId['wa_ours'].messagingEnabled).toBe(false);
+      expect(byId['wa_free'].messagingEnabled).toBe(true);
+    });
+
+    it('says it does not know, rather than guessing, when the workspace omits the pause state', async () => {
+      await provisioned();
+      stubWorkspace((req) =>
+        req.url.endsWith('/whatsapp-accounts') && req.method === 'GET'
+          ? {
+              status: 200,
+              body: {
+                items: [
+                  // enable_messaging absent entirely — optional in the SDK's
+                  // own response type.
+                  {
+                    business_account_id: 'ba_1',
+                    phone_number_id: 'wa_ours',
+                    business_account_name: 'Numbers Test Ltd',
+                    phone_number_name: 'Main line',
+                    phone_number: '+2348000000001',
+                    assigned_agent_id: OUR_AGENT,
+                  },
+                ],
+              },
+            }
+          : undefined
+      );
+
+      // Either coercion is a lie: false invents an outage, true hides one.
+      const [account] = await service.listWhatsAppAccounts(orgId);
+      expect(account.messagingEnabled).toBeNull();
+    });
+
     it("refuses to take a WhatsApp line that is already another agent's", async () => {
       await provisioned();
       stubWorkspace((req) =>
@@ -392,6 +450,22 @@ describe('ElevenLabs numbers and WhatsApp', () => {
       await expect(service.attachWhatsAppAccount(orgId, 'wa_missing')).rejects.toThrow(
         /dashboard first/i
       );
+    });
+
+    it('reports the line as answering, not as paused, right after attaching it', async () => {
+      await provisioned();
+      // The workspace copy fetched before the update still says the line is
+      // silenced; the update is what un-silences it. Echoing the stale copy
+      // would show a freshly attached line as paused, and the console offers
+      // a "resume" for exactly that state.
+      stubWorkspace((req) =>
+        req.method === 'GET' && req.url.includes('/whatsapp-accounts/')
+          ? { status: 200, body: whatsappAccount({ enable_messaging: false }) }
+          : undefined
+      );
+
+      const result = await service.attachWhatsAppAccount(orgId, 'wa_free');
+      expect(result.messagingEnabled).toBe(true);
     });
 
     it('detaching stops messaging and clears the record', async () => {

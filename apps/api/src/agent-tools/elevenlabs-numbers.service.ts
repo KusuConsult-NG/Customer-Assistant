@@ -57,6 +57,17 @@ export interface WhatsAppAccount {
   isOurs: boolean;
   /** Meta's token has expired — WhatsApp has stopped working, quietly. */
   isTokenExpired: boolean;
+  /**
+   * Whether the agent is answering this line, or null when the workspace did
+   * not say.
+   *
+   * Deliberately not coerced to a boolean like `isTokenExpired` above. A
+   * `false` here is rendered as a PAUSED line — an outage somebody has to go
+   * and end — so folding a missing field into one of the two states either
+   * invents an outage or hides a real one. The console shows the third state
+   * as the third state.
+   */
+  messagingEnabled: boolean | null;
 }
 
 @Injectable()
@@ -278,6 +289,7 @@ export class ElevenLabsNumbersService {
       assignedAgentId: assigned,
       isOurs: assigned === ourAgentId,
       isTokenExpired: Boolean(raw.isTokenExpired),
+      messagingEnabled: typeof raw.enableMessaging === 'boolean' ? raw.enableMessaging : null,
     };
   }
 
@@ -367,7 +379,16 @@ export class ElevenLabsNumbersService {
     });
     this.log.log(`whatsapp_attached org=${organizationId} number=${phoneNumberId} agent=${agentId}`);
 
-    return { ...this.describeWhatsApp(account, agentId), assignedAgentId: agentId, isOurs: true };
+    // `account` was fetched before the update above, so its enableMessaging is
+    // the state we just changed. Attaching enables messaging, so report that —
+    // echoing the pre-update copy would tell the console a line it just
+    // attached is paused.
+    return {
+      ...this.describeWhatsApp(account, agentId),
+      assignedAgentId: agentId,
+      isOurs: true,
+      messagingEnabled: true,
+    };
   }
 
   /** Stop the agent answering this WhatsApp line. The line itself stays connected. */

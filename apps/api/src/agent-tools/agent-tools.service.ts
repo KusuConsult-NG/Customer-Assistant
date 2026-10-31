@@ -477,10 +477,22 @@ export class AgentToolsService {
           .replace(/\n{3,}/g, '\n\n')
           .trim();
 
-      // Score every active FAQ by keyword overlap with the query
+      // Score every active FAQ by keyword overlap with the query.
+      //
+      // ORDERED BY sortOrder, like the orchestrator. This query had no
+      // ordering at all, so on a score tie the answer a citizen got was
+      // whichever row Postgres happened to return first — while the same
+      // question on WhatsApp got the one the agency had put at the top. Two
+      // engines, two answers, from the same FAQ table.
+      //
+      // `.sort()` is stable per spec, so sorting by score below preserves this
+      // order within a tie: position decides, exactly as it does on the other
+      // path. Both paths must keep the same guarantees, and what an agency is
+      // told its ordering controls is one of them.
       const faqs = await prisma.faqEntry.findMany({
         where: { organizationId, isActive: true },
         select: { question: true, answer: true },
+        orderBy: { sortOrder: 'asc' },
       });
       const needle = q.toLowerCase();
       const needleWords = needle.split(/\s+/).filter((w) => w.length > 3);

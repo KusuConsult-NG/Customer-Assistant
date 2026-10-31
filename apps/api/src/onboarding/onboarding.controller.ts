@@ -127,7 +127,6 @@ export class PublicSelfieController {
  * the patient's browser needs to render the selfie page:
  *
  *   GET /selfie/:token        → HTML page from localhost:3000/selfie/:token
- *   GET /pay                  → HTML page from localhost:3000/pay
  *   GET /_next/static/*       → JS/CSS chunks served by Next.js
  *   GET /_next/image/*        → Next.js image optimiser
  *   GET /icon.svg             → favicon

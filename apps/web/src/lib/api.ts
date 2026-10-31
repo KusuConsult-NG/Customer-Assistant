@@ -354,6 +354,22 @@ export const api = {
       const res = await fetch(`${API_URL}/api/organizations/me`, { headers: getHeaders() });
       return handleResponse(res);
     },
+    /**
+     * This agency's own audit trail. OWNER/ADMIN.
+     *
+     * Scoped to the caller's organization from the token — there is no
+     * organizationId to pass, deliberately, so there is nothing a caller could
+     * substitute. Actors who are not this agency's own staff come back
+     * described by their role rather than named, so the agency learns that the
+     * ministry acted without learning which official it was.
+     */
+    getAudit: async (params: { action?: string; limit?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (params.action) q.set("action", params.action);
+      if (params.limit) q.set("limit", String(params.limit));
+      const res = await fetch(`${API_URL}/api/organizations/audit?${q.toString()}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
     updateSettings: async (data: any) => {
       const res = await fetch(`${API_URL}/api/organizations/settings`, {
         method: "PATCH",
@@ -463,6 +479,118 @@ export const api = {
     /** Read-only comparison of the remote agent against this repo. Writes nothing. */
     getStatus: async () => {
       const res = await fetch(`${API_URL}/api/agent-provisioning/status`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+
+    /**
+     * Create the agent, its tools and its key in the tenant's workspace.
+     * Returns a SyncReport whose `agentKey` is present only on the run that
+     * minted it, and is unrecoverable afterwards.
+     */
+    create: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/create`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+
+    /**
+     * Push this repo's tool catalogue and prompt to the existing agent.
+     * Idempotent, and resumable: each tool id is persisted as it is created.
+     */
+    sync: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/sync`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+
+    /**
+     * Mint a new agent key and revoke the old one.
+     *
+     * The response carries the key ONCE — we store only a SHA-256 hash of it
+     * and the live copy is a workspace secret, so nothing can show it again.
+     */
+    rotateKey: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/rotate-key`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+
+    listNumbers: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/numbers`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+
+    /**
+     * Hand the tenant's Twilio number to ElevenLabs. THIS IS THE VOICE
+     * CUTOVER: afterwards the agent answers the number instead of the
+     * orchestrator. `confirmVoiceCutover` is required by the server and is
+     * never defaulted here either — a client that supplied it silently would
+     * turn a deliberate decision back into a side effect of a button.
+     */
+    importNumber: async (data: { confirmVoiceCutover: boolean; enableSms?: boolean; label?: string }) => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/numbers/import`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data),
+      });
+      return handleResponse(res);
+    },
+
+    /** Give the number back. Returns a note naming what is left to do in Twilio. */
+    releaseNumber: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/numbers/release`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+
+    listWhatsApp: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/whatsapp`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+
+    /**
+     * Point an already-connected line at this agency's agent. Connecting the
+     * line itself is a dashboard step — Meta's embedded signup needs a human,
+     * so there is no endpoint for it and this does not pretend otherwise.
+     */
+    attachWhatsApp: async (phoneNumberId: string) => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/whatsapp/attach`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ phoneNumberId }),
+      });
+      return handleResponse(res);
+    },
+
+    detachWhatsApp: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/whatsapp/detach`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+      return handleResponse(res);
+    },
+
+    /**
+     * Silence the agent on the WHOLE line, or let it answer again.
+     *
+     * Not a takeover: it stops the agent replying to every customer on that
+     * number. The server requires `confirmAffectsEveryConversation` to pause,
+     * and that flag is passed through from the screen rather than assumed.
+     */
+    pauseWhatsApp: async (data: { paused: boolean; confirmAffectsEveryConversation?: boolean }) => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/whatsapp/pause`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data),
+      });
       return handleResponse(res);
     },
   },

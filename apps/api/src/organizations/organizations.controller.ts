@@ -5,12 +5,49 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Query } from '@nestjs/common';
+
+/**
+ * Who is making the change, for the audit record.
+ *
+ * `ip` is optional in the parameter type and present at runtime — Express
+ * populates it — so the existing route signatures satisfy this without every
+ * one of them having to redeclare a field it does not otherwise use.
+ */
+const actor = (req: { user: AuthUser; ip?: string }) => ({
+  userId: req.user.userId,
+  ipAddress: req.ip ?? null,
+});
 
 // Guard order matters: RolesGuard reads request.user, which JwtAuthGuard populates.
 @Controller('api/organizations')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class OrganizationsController {
   constructor(private orgsService: OrganizationsService) {}
+
+  /**
+   * This agency's own audit trail.
+   *
+   * OWNER/ADMIN, not every member. The trail names which colleague changed
+   * somebody's role or deactivated an account, which is administrative
+   * information rather than something an agent needs to do their job.
+   *
+   * Scoped to the caller's own organization by the service, from the token —
+   * there is deliberately no organizationId parameter to pass, so there is
+   * nothing for a caller to substitute.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Get('audit')
+  async auditTrail(
+    @Req() req: { user: AuthUser },
+    @Query('action') action?: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.orgsService.auditTrail(req.user.organizationId, {
+      action,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
 
   @Get('me')
   async getMyOrganization(@Req() req: { user: AuthUser }) {
@@ -38,7 +75,7 @@ export class OrganizationsController {
     @Req() req: { user: AuthUser },
     @Body() body: { email: string; fullName: string; role: any }
   ) {
-    return this.orgsService.addTeamMember(req.user.organizationId, body);
+    return this.orgsService.addTeamMember(req.user.organizationId, body, actor(req));
   }
 
   @Get('members')
@@ -53,7 +90,7 @@ export class OrganizationsController {
     @Param('id') userId: string,
     @Body() body: { role: any }
   ) {
-    return this.orgsService.updateTeamMemberRole(req.user.organizationId, userId, body.role);
+    return this.orgsService.updateTeamMemberRole(req.user.organizationId, userId, body.role, actor(req));
   }
 
   @Roles('OWNER', 'ADMIN')
@@ -63,7 +100,7 @@ export class OrganizationsController {
     @Param('id') userId: string,
     @Body() body: { isActive: boolean }
   ) {
-    return this.orgsService.updateTeamMemberStatus(req.user.organizationId, userId, body.isActive);
+    return this.orgsService.updateTeamMemberStatus(req.user.organizationId, userId, body.isActive, actor(req));
   }
 
   @Get('roles/permissions')
@@ -77,7 +114,7 @@ export class OrganizationsController {
     @Req() req: { user: AuthUser },
     @Param('id') userId: string
   ) {
-    return this.orgsService.removeTeamMember(req.user.organizationId, userId);
+    return this.orgsService.removeTeamMember(req.user.organizationId, userId, actor(req));
   }
 
   @Roles('OWNER', 'ADMIN')
@@ -101,7 +138,7 @@ export class OrganizationsController {
   @Roles('OWNER', 'ADMIN')
   @Post('api-keys/regenerate')
   async regenerateApiKey(@Req() req: { user: AuthUser }) {
-    return this.orgsService.regenerateApiKey(req.user.organizationId);
+    return this.orgsService.regenerateApiKey(req.user.organizationId, actor(req));
   }
 }
 
