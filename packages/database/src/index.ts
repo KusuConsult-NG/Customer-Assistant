@@ -52,17 +52,36 @@ function buildDatabaseUrl(): string | undefined {
   }
 }
 
-let globalPrisma: PrismaClient | undefined;
+/**
+ * The client is cached on `globalThis`, not in a module-level variable.
+ *
+ * A module-level `let` is one client per MODULE REGISTRY, and a registry is not
+ * a process: anything that re-evaluates this module — a bundler reloading, a
+ * dev server recompiling — gets a second client, and a second connection pool
+ * that nothing closes.
+ *
+ * It does NOT fix the same problem under Jest, which gives every test file a
+ * fresh `globalThis` (and a fresh `process`) as well as a fresh registry, so no
+ * in-process cache can be shared between files. That is handled where it has to
+ * be, by releasing the pool when a file ends — see
+ * `apps/api/test/support/release-db-connections.ts`.
+ */
+const PRISMA_SINGLETON = Symbol.for('ace.prisma.client');
+
+interface PrismaGlobal {
+  [PRISMA_SINGLETON]?: PrismaClient;
+}
 
 export function getPrismaClient(): PrismaClient {
-  if (!globalPrisma) {
+  const store = globalThis as unknown as PrismaGlobal;
+  if (!store[PRISMA_SINGLETON]) {
     const url = buildDatabaseUrl();
-    globalPrisma = new PrismaClient({
+    store[PRISMA_SINGLETON] = new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
       ...(url ? { datasources: { db: { url } } } : {}),
     });
   }
-  return globalPrisma;
+  return store[PRISMA_SINGLETON]!;
 }
 
 export const prisma = getPrismaClient();

@@ -206,6 +206,27 @@ export class AgentProvisioningController {
     });
   }
 
+  /**
+   * Hand a SIP trunk to ElevenLabs instead of a Twilio number.
+   *
+   * Same cutover gate as the Twilio import, and one extra consequence stated
+   * in the refusal message: operator takeover of a live call does not work on
+   * a SIP trunk, because ElevenLabs has no live-call API and the carrier is
+   * not one we can redirect through. Takeover refuses for these numbers
+   * rather than offering a button that does nothing.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('numbers/import-sip')
+  importSipTrunk(
+    @Req() req: { user: AuthUser },
+    @Body() body: { confirmVoiceCutover?: boolean; label?: string }
+  ): Promise<ImportedNumber> {
+    return this.numbers.importSipTrunkNumber(req.user.organizationId, {
+      confirmVoiceCutover: body?.confirmVoiceCutover === true,
+      label: body?.label,
+    });
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Post('numbers/release')
   releaseNumber(@Req() req: { user: AuthUser }): Promise<{ released: boolean; note: string }> {

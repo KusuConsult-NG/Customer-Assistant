@@ -130,7 +130,23 @@ export class OrganizationsController {
   @Post('telephony-config')
   async updateTelephonyConfig(
     @Req() req: { user: AuthUser },
-    @Body() body: { provider: any; phoneNumber: string; accountSid?: string; authToken?: string; apiKey?: string }
+    @Body() body: {
+      provider: any;
+      phoneNumber: string;
+      accountSid?: string;
+      authToken?: string;
+      apiKey?: string;
+      // Both voice handoff paths refuse with "Set one under Settings →
+      // Telephony", so it has to be settable there.
+      forwardingNumber?: string | null;
+      // A SIP trunk the hosted agent answers instead of Twilio. `sipAddress` is
+      // required when provider is SIP_TRUNK; the digest pair is optional,
+      // because a carrier may authenticate the trunk by IP instead.
+      sipAddress?: string;
+      sipTransport?: string;
+      sipUsername?: string;
+      sipPassword?: string;
+    }
   ) {
     return this.orgsService.updateTelephonyConfig(req.user.organizationId, body);
   }

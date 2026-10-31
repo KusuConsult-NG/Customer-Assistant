@@ -99,6 +99,10 @@ async function openPage(
     sent.import = r.request().postDataJSON();
     return r.fulfill(json({ phoneNumberId: 'phnum_e2e', phoneNumber: '+2348012340001', label: 'x', assignedAgentId: 'agent_e2e', isOurs: true }));
   });
+  await page.route('**/api/agent-provisioning/numbers/import-sip', r => {
+    sent.importSip = r.request().postDataJSON();
+    return r.fulfill(json({ phoneNumberId: 'phnum_sip', phoneNumber: '+2348012340002', label: 'sip', assignedAgentId: 'agent_e2e', isOurs: true }));
+  });
   await page.route('**/api/agent-provisioning/numbers/release', r => {
     sent.release = r.request().postDataJSON() ?? {};
     return r.fulfill(json({ released: true, note: opts.releaseNote ?? 'Re-point its voice webhook in the Twilio console.' }));
@@ -163,6 +167,35 @@ test.describe('Agent provisioning — the voice cutover', () => {
     // taking that default would change a tenant's Twilio configuration for
     // nothing they asked for.
     await expect.poll(() => sent.import?.enableSms).toBe(false);
+  });
+
+  test('states that a SIP trunk gives up takeover, before anything is sent', async ({ page }) => {
+    const sent = await openPage(page);
+
+    await page.getByRole('button', { name: 'Import a SIP trunk' }).click();
+
+    // The cost has to be on screen at the moment of the decision, not
+    // discovered the first time a call needs rescuing.
+    await expect(page.getByText(/Takeover will not be available on this line/i)).toBeVisible();
+    await expect(page.getByText(/no way to stop or move a call in progress/i)).toBeVisible();
+
+    const importBtn = page.getByRole('button', { name: 'Import the trunk and cut over', exact: true });
+    await expect(importBtn).toBeDisabled();
+    expect(sent.importSip).toBeUndefined();
+
+    await gate(page, 'I understand the agent will answer').check();
+    await expect(importBtn).toBeEnabled();
+    await importBtn.click();
+
+    await expect.poll(() => sent.importSip?.confirmVoiceCutover).toBe(true);
+  });
+
+  test('offers the SIP option without implying ElevenLabs sells the number', async ({ page }) => {
+    await openPage(page);
+
+    // ElevenLabs is not a carrier. The line comes from Twilio, Exotel or a
+    // SIP trunk, and this is the option that removes Twilio from voice.
+    await expect(page.getByText(/lets a local carrier serve the line instead of Twilio/i)).toBeVisible();
   });
 
   test("shows the server's own note about what releasing leaves undone", async ({ page }) => {

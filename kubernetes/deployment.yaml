@@ -31,12 +31,18 @@ spec:
           limits:
             memory: "2Gi"
             cpu: "1000m"
+        # Readiness is the DEEP check: a pod with no database is taken out of
+        # rotation rather than handed traffic it cannot serve.
         readinessProbe:
           httpGet:
-            path: /api/health
+            path: /api/health/ready
             port: 4000
           initialDelaySeconds: 5
           periodSeconds: 10
+        # Liveness stays SHALLOW. A liveness probe that fails on a dependency
+        # restarts the pod, and restarting the API does not fix PostgreSQL —
+        # it would crash-loop the whole deployment through a database
+        # incident.
         livenessProbe:
           httpGet:
             path: /api/health

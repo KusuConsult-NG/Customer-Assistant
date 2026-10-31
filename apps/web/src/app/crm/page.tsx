@@ -119,6 +119,23 @@ export default function CrmPage() {
     }
   };
 
+  /**
+   * The server's own reason a CRM write was refused.
+   *
+   * Deleting a citizen's record, approving an enrollment and exporting the
+   * contact list are OWNER/ADMIN — they were open to every member until now —
+   * so a 403 is the commonest outcome of an agent reaching for one. A generic
+   * "could not" sends them hunting for a fault instead of asking an admin.
+   */
+  const refusalFrom = async (res: Response, fallback: string) => {
+    const body = await res.json().catch(() => ({} as any));
+    const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message;
+    if (message) return String(message);
+    return res.status === 403
+      ? 'Only an OWNER or ADMIN can do that — it destroys or exports citizen records.'
+      : fallback;
+  };
+
   const handleDelete = async (type: string, id: string) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
     try {
@@ -129,7 +146,7 @@ export default function CrmPage() {
       if (res.ok) {
         fetchAll();
       } else {
-        toast.error('Could not delete that record.');
+        toast.error(await refusalFrom(res, 'Could not delete that record.'));
       }
     } catch (err) {
       toast.error('Could not reach the server to delete that record.');
@@ -193,7 +210,7 @@ export default function CrmPage() {
         a.download = `ACE_Contacts_${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
       } else {
-        toast.error('Could not export contacts.');
+        toast.error(await refusalFrom(res, 'Could not export contacts.'));
       }
     } catch {
       toast.error('Could not reach the server to export contacts.');

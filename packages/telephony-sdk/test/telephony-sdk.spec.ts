@@ -4,6 +4,7 @@ import {
   PlivoProvider,
   AfricasTalkingProvider,
   NigeriaCarrierForwardProvider,
+  SipTrunkProvider,
   TelephonyNotAvailableError,
   isE164,
   isNigerianMsisdn,
@@ -136,6 +137,67 @@ describe('Telephony SDK', () => {
         targetPhoneNumber: '+2348031234567',
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('SIP trunk handed to the hosted agent', () => {
+    it('names the SIP trunk, not Twilio, when asked to dial out', async () => {
+      const sip = TelephonyFactory.createProvider(TelephonyProviderType.SIP_TRUNK);
+      expect(sip).toBeInstanceOf(SipTrunkProvider);
+      expect(sip.canPlaceOutboundCalls()).toBe(false);
+
+      // The factory's default branch used to answer SIP_TRUNK with a
+      // credential-less TwilioProvider, so a SIP tenant's outbound attempt
+      // failed with "TWILIO cannot place outbound calls: credentials absent" —
+      // sending the operator to check credentials that deliberately do not
+      // exist.
+      const err: any = await sip
+        .initiateCall({
+          organizationId: 'org_1',
+          fromNumber: '+2348031234567',
+          toNumber: '+2348039876543',
+          provider: TelephonyProviderType.SIP_TRUNK,
+        })
+        .then(() => null, (e) => e);
+
+      expect(err).toBeInstanceOf(TelephonyNotAvailableError);
+      expect(err.message).toContain('SIP trunk');
+      expect(err.message).not.toContain('TWILIO cannot');
+    });
+
+    it('refuses a transfer with the reason instead of reporting one', async () => {
+      const result = await new SipTrunkProvider().transferCall({
+        callId: 'conv_1',
+        targetPhoneNumber: '+2348031234567',
+      });
+
+      // A transfer is never announced before it is known to be possible, and on
+      // a SIP trunk it never is: ElevenLabs holds the call and exposes no API
+      // to move it.
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/cannot be transferred/i);
+      expect(await new SipTrunkProvider().endCall('conv_1')).toBe(false);
+    });
+
+    it('tells a misrouted caller out loud rather than connecting them to silence', () => {
+      const twiml = new SipTrunkProvider().generateInboundWebhookResponse(
+        'Hello',
+        'wss://example.test/telephony/stream/CA1'
+      );
+
+      // Reachable only if the trunk is pointed at us by mistake. Connecting the
+      // call to a media stream this tenant has been cut over from leaves the
+      // citizen holding a silent line.
+      expect(twiml).toContain('<Say>');
+      expect(twiml).toContain('<Hangup />');
+      expect(twiml).not.toContain('<Stream');
+    });
+
+    it('accepts any E.164 caller ID, since a trunk is not Nigeria-only', async () => {
+      const sip = new SipTrunkProvider();
+      await expect(sip.verifyCallerId('+2348031234567')).resolves.toBe(true);
+      await expect(sip.verifyCallerId('+14155552671')).resolves.toBe(true);
+      await expect(sip.verifyCallerId('08031234567')).resolves.toBe(false);
     });
   });
 

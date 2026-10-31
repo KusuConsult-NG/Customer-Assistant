@@ -19,6 +19,8 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { WhatsappService } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
 
@@ -48,6 +50,22 @@ function verifyMetaSignature(rawBody: Buffer, signatureHeader: string | undefine
   }
 }
 
+/**
+ * ── Who may send to a citizen ───────────────────────────────────────────────
+ *
+ * Reading is open to every member: an officer on a call needs to see what the
+ * agency has already told this citizen. Answering a thread and taking it over
+ * are an agent's job, so those stay open too — restricting them to an admin
+ * means the citizen waits for one.
+ *
+ * Creating or deleting a TEMPLATE and sending a BROADCAST are OWNER/ADMIN.
+ * Those decide what citizens are told, and a broadcast sends it to every
+ * number it is given. Every route here previously carried only JwtAuthGuard,
+ * so a VIEWER could message an agency's whole contact list.
+ *
+ * The webhook routes above deliberately carry NO guard — Meta calls them, and
+ * they are protected by HMAC signature verification instead.
+ */
 @Controller('api/whatsapp')
 export class WhatsappController {
   constructor(private whatsappService: WhatsappService) {}
@@ -197,7 +215,8 @@ export class WhatsappController {
     return this.whatsappService.getTemplates(req.user.organizationId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
   @Post('templates')
   async createTemplate(
     @Req() req: { user: AuthUser },
@@ -218,7 +237,8 @@ export class WhatsappController {
     return this.whatsappService.createTemplate(req.user.organizationId, body);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
   @Delete('templates/:id')
   async deleteTemplate(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.whatsappService.deleteTemplate(req.user.organizationId, id);
@@ -235,7 +255,8 @@ export class WhatsappController {
    * POST /api/whatsapp/broadcasts/send — legacy path kept for backwards-compat.
    * Both delegate to the same handler.
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
   @Post('broadcasts')
   async createBroadcast(
     @Req() req: { user: AuthUser },
@@ -252,7 +273,8 @@ export class WhatsappController {
     return this.whatsappService.sendBroadcast(req.user.organizationId, body);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
   @Post('broadcasts/send')
   async sendBroadcast(
     @Req() req: { user: AuthUser },

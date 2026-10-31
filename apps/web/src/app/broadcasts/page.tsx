@@ -157,9 +157,23 @@ export default function BroadcastsPage() {
       });
       if (res.ok) {
         setTemplates(prev => prev.filter(t => t.id !== id));
+      } else {
+        // There was no else at all: a refusal left the template sitting in
+        // the list and said nothing, so the button looked broken. Deleting a
+        // template is OWNER/ADMIN, which makes a 403 the commonest outcome
+        // for an agent clicking it — and the server's message says exactly
+        // that.
+        const err = await res.json().catch(() => ({} as any));
+        const message = Array.isArray(err?.message) ? err.message.join(' ') : err?.message;
+        toast.error(
+          message ||
+            (res.status === 403
+              ? 'Only an OWNER or ADMIN can delete a WhatsApp template.'
+              : 'Could not delete the template.')
+        );
       }
     } catch {
-      toast.error('Could not delete the template.');
+      toast.error('Could not reach the server to delete the template.');
     }
   };
 

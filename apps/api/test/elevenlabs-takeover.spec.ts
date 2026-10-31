@@ -254,6 +254,54 @@ describe('ElevenLabs takeover', () => {
       expect(transfers).toHaveLength(0);
     });
 
+    it('refuses a SIP trunk call rather than offering a transfer it cannot do', async () => {
+      // A SIP-trunk tenant with no Twilio config at all. The Twilio path works
+      // because the call IS a Twilio call and Twilio has a REST redirect;
+      // ElevenLabs has no live-call API, and PhoneNumberTransfer is agent
+      // CONFIGURATION with a prompt condition, so the agent decides and an
+      // operator cannot.
+      await prisma.telephonyConfig.create({
+        data: {
+          organizationId: orgId,
+          provider: 'SIP_TRUNK',
+          phoneNumber: '+2348000000055',
+          sipAddress: 'sip.carrier.ng',
+        },
+      });
+      stub(conversation());
+
+      const outcome = await service.takeOverConversation(orgId, 'conv_live');
+
+      expect(outcome).toMatchObject({ taken: false });
+      expect((outcome as any).reason).toMatch(/SIP trunk/i);
+      // The obvious next question is "so how does a citizen reach a person",
+      // and the answer is in the refusal.
+      expect((outcome as any).reason).toMatch(/transferring on its own/i);
+      // And emphatically nothing was attempted. Announcing a transfer that
+      // did not happen is the failure this whole path is shaped against.
+      expect(transfers).toHaveLength(0);
+    });
+
+    it('still takes over normally when the tenant also has Twilio', async () => {
+      // A tenant mid-migration holds both. Twilio is what can actually move
+      // the call, so its presence is what decides — not the mere existence of
+      // a trunk row.
+      await withTelephony();
+      await prisma.telephonyConfig.create({
+        data: {
+          organizationId: orgId,
+          provider: 'SIP_TRUNK',
+          phoneNumber: '+2348000000056',
+          sipAddress: 'sip.carrier.ng',
+        },
+      });
+      stub(conversation());
+
+      const outcome = await service.takeOverConversation(orgId, 'conv_live');
+      expect(outcome).toMatchObject({ taken: true });
+      expect(transfers).toHaveLength(1);
+    });
+
     it('says the call has already ended rather than failing obscurely', async () => {
       await withTelephony();
       stub(conversation({ status: 'done' }));

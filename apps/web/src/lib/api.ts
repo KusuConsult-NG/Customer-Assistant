@@ -142,6 +142,18 @@ const withCurrentToken = (init: RequestInit): RequestInit => {
  * the citizen's selfie link). They have no session to refresh, and bouncing a
  * citizen with a bad reset link to /login would be wrong.
  */
+/**
+ * Set once the session has been given up on, so the redirect happens once.
+ *
+ * A page issues several requests at a time. When the session cannot be
+ * recovered they ALL reach the sign-out below, and each calling
+ * `location.replace` thrashes navigation — the browser starts the same
+ * navigation repeatedly and may never settle on it. That showed up as this
+ * file's own e2e timing out under a full suite run while passing in
+ * isolation, which is the shape of a race rather than a slow test.
+ */
+let signedOut = false;
+
 export const apiFetch = async (input: string, init: RequestInit = {}): Promise<Response> => {
   const send = () => fetch(input, withCurrentToken(init));
 
@@ -156,7 +168,10 @@ export const apiFetch = async (input: string, init: RequestInit = {}): Promise<R
   }
 
   clearSession();
-  window.location.replace("/login");
+  if (!signedOut) {
+    signedOut = true;
+    window.location.replace("/login");
+  }
   return res;
 };
 
@@ -509,6 +524,25 @@ export const api = {
      */
     importNumber: async (data: { confirmVoiceCutover: boolean; enableSms?: boolean; label?: string }) => {
       const res = await fetch(`${API_URL}/api/agent-provisioning/numbers/import`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data),
+      });
+      return handleResponse(res);
+    },
+
+    /**
+     * Hand a SIP trunk to the agent instead of a Twilio number — the path
+     * that removes the Twilio dependency for voice entirely.
+     *
+     * Carries one consequence the Twilio import does not: operator takeover
+     * of a live call does not work on a SIP trunk, because ElevenLabs has no
+     * live-call API and the carrier is not one this platform can redirect
+     * through. The server states that in its refusal and the screen states it
+     * in the gate.
+     */
+    importSipTrunk: async (data: { confirmVoiceCutover: boolean; label?: string }) => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/numbers/import-sip`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(data),

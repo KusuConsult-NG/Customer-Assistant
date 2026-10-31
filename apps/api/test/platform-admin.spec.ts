@@ -316,11 +316,11 @@ describe('Platform administration tier', () => {
     });
 
     it('refuses an owner email that already exists, creating no agency', async () => {
-      const before = await prisma.organization.count();
+      const name = `Ministry of Duplicates ${randomBytes(4).toString('hex')}`;
 
       await asOperator('post', '/api/platform/agencies')
         .send({
-          name: 'Ministry of Duplicates',
+          name,
           ownerEmail: agencyA.email,
           ownerFullName: 'Someone Else',
         })
@@ -328,7 +328,15 @@ describe('Platform administration tier', () => {
 
       // The clash is checked BEFORE the organization is written, so a failed
       // provisioning does not leave an agency with no owner behind it.
-      expect(await prisma.organization.count()).toBe(before);
+      //
+      // Asserted against THIS agency's name, not a global organization count.
+      // The count version compared a total taken before the request with one
+      // taken after, and Jest runs these suites in parallel workers that
+      // create and drop their own tenants — so any other worker finishing a
+      // teardown in between failed this test with an off-by-one that had
+      // nothing to do with provisioning. Same shape as the e2e that deleted
+      // fixtures by slug prefix across workers.
+      expect(await prisma.organization.findFirst({ where: { name } })).toBeNull();
     });
 
     it('refuses an agency with no named owner', async () => {

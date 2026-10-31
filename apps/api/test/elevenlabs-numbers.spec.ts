@@ -91,6 +91,21 @@ describe('ElevenLabs numbers and WhatsApp', () => {
       data: { organizationId: orgId, agentId: OUR_AGENT, ...extra },
     });
 
+  const sipTrunk = (extra: Record<string, unknown> = {}) =>
+    prisma.telephonyConfig.create({
+      data: {
+        organizationId: orgId,
+        provider: 'SIP_TRUNK',
+        phoneNumber: '+2348000000055',
+        sipAddress: 'sip.carrier.ng',
+        sipTransport: 'tcp',
+        sipUsername: 'ace_trunk',
+        // Encrypted at rest, as the application stores it.
+        sipPassword: encryptSecret('trunk_pass'),
+        ...extra,
+      },
+    });
+
   const twilio = (extra: Record<string, unknown> = {}) =>
     prisma.telephonyConfig.create({
       data: {
@@ -282,6 +297,100 @@ describe('ElevenLabs numbers and WhatsApp', () => {
 
       const result = await service.importTwilioNumber(orgId, { confirmVoiceCutover: true });
       expect(result.phoneNumberId).toBe('phnum_new');
+    });
+  });
+
+  // ── Dropping Twilio entirely ───────────────────────────────────────────────
+
+  describe('importing a SIP trunk', () => {
+    it('refuses without an explicit cutover confirmation, and contacts nobody', async () => {
+      await provisioned();
+      await sipTrunk();
+      stubWorkspace();
+
+      await expect(
+        service.importSipTrunkNumber(orgId, { confirmVoiceCutover: false })
+      ).rejects.toThrow(/confirm the cutover explicitly/i);
+      expect(sent).toHaveLength(0);
+    });
+
+    it('says in the refusal that takeover will not work on it', async () => {
+      await provisioned();
+      await sipTrunk();
+      stubWorkspace();
+
+      // The operator decides the cutover knowing what it costs, rather than
+      // discovering it the first time a call needs rescuing.
+      await expect(
+        service.importSipTrunkNumber(orgId, { confirmVoiceCutover: false })
+      ).rejects.toThrow(/takeover of a live call is NOT available/i);
+    });
+
+    it('sends the trunk address and digest credentials, and assigns the agent', async () => {
+      await provisioned();
+      await sipTrunk();
+      stubWorkspace();
+
+      await service.importSipTrunkNumber(orgId, { confirmVoiceCutover: true });
+
+      const post = sent.find((r) => r.method === 'POST' && r.url.includes('/phone-numbers'));
+      expect(post!.body.provider).toBe('sip_trunk');
+      expect(post!.body.agent_id).toBe(OUR_AGENT);
+      expect(post!.body.outbound_trunk_config.address).toBe('sip.carrier.ng');
+      expect(post!.body.outbound_trunk_config.transport).toBe('tcp');
+      // Decrypted on the way out — a `v1.…` ciphertext here would be rejected
+      // by the carrier as a bad password, pointing at the wrong system.
+      expect(post!.body.outbound_trunk_config.credentials).toMatchObject({
+        username: 'ace_trunk',
+        password: 'trunk_pass',
+      });
+
+      const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId: orgId } });
+      expect(config?.phoneNumberId).toBe('phnum_new');
+    });
+
+    it('omits credentials entirely when only half a pair is configured', async () => {
+      await provisioned();
+      await sipTrunk({ sipPassword: null });
+      stubWorkspace();
+
+      await service.importSipTrunkNumber(orgId, { confirmVoiceCutover: true });
+
+      // A username with no password is not partial authentication, it is
+      // none — and ElevenLabs reads a credential-less trunk as
+      // ACL-authenticated, so sending an empty one would claim a scheme that
+      // is not in use.
+      const post = sent.find((r) => r.method === 'POST' && r.url.includes('/phone-numbers'));
+      expect(post!.body.outbound_trunk_config.credentials).toBeUndefined();
+      expect(post!.body.inbound_trunk_config.credentials).toBeUndefined();
+    });
+
+    it('names the missing field rather than saying the trunk is incomplete', async () => {
+      await provisioned();
+      await sipTrunk({ sipAddress: null });
+      stubWorkspace();
+
+      await expect(
+        service.importSipTrunkNumber(orgId, { confirmVoiceCutover: true })
+      ).rejects.toThrow(/SIP host address/i);
+    });
+
+    it('refuses when no SIP trunk is configured at all', async () => {
+      await provisioned();
+      stubWorkspace();
+
+      await expect(
+        service.importSipTrunkNumber(orgId, { confirmVoiceCutover: true })
+      ).rejects.toThrow(/No SIP trunk is configured/i);
+    });
+
+    it('refuses before an agent has been provisioned', async () => {
+      await sipTrunk();
+      stubWorkspace();
+
+      await expect(
+        service.importSipTrunkNumber(orgId, { confirmVoiceCutover: true })
+      ).rejects.toThrow(/no provisioned agent/i);
     });
   });
 

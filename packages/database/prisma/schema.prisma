@@ -125,6 +125,9 @@ enum TelephonyProviderType {
   NIGERIA_CARRIER_FORWARD
   MTN_ENTERPRISE_SIP
   AIRTEL_BUSINESS_SIP
+  /// A generic SIP trunk from any carrier — the option that removes the
+  /// Twilio dependency for voice entirely.
+  SIP_TRUNK
 }
 
 enum BookingStatus {
@@ -194,7 +197,6 @@ model Organization {
   hostedAgentConfig    HostedAgentConfig?
   whatsAppConfigs      WhatsAppConfig[]
   contacts             Contact[]
-  companies            Company[]
   leads                Lead[]
   deals                Deal[]
   tickets              Ticket[]
@@ -203,7 +205,6 @@ model Organization {
   knowledgeDocuments   KnowledgeDocument[]
   bookings             Booking[]
   reservations         Reservation[]
-  calendarIntegrations CalendarIntegration[]
   faqEntries           FaqEntry[]
   whatsAppTemplates    WhatsAppTemplate[]
   broadcastCampaigns   BroadcastCampaign[]
@@ -308,6 +309,22 @@ model TelephonyConfig {
   authToken        String?
   apiKey           String?
   apiSecret        String?
+
+  /// ── SIP trunk ─────────────────────────────────────────────────────────────
+  ///
+  /// ElevenLabs can answer a number from Twilio, Exotel or a generic SIP
+  /// trunk. Only Twilio was implemented, which made Twilio a hard dependency
+  /// for voice — and for a State deployment a local carrier means local
+  /// numbers, local termination and no overseas intermediary carrying citizen
+  /// calls.
+  ///
+  /// The host and username are identifiers and stay readable in a console, for
+  /// the same reason `accountSid` does. `sipPassword` is a credential and is
+  /// encrypted; see TELEPHONY_SECRET_FIELDS.
+  sipAddress       String?
+  sipTransport     String?               @default("udp")
+  sipUsername      String?
+  sipPassword      String?
   phoneNumber      String
   forwardingNumber String? // Nigerian local number forwarding target (e.g. MTN/Airtel/Glo/9mobile)
   isDefault        Boolean               @default(true)
@@ -343,8 +360,6 @@ model Contact {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  companyId      String?
-  company        Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   fullName       String
   phoneNumber    String
   email          String?
@@ -371,27 +386,7 @@ model Contact {
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
-  @@index([companyId])
   @@map("contacts")
-}
-
-model Company {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  industry       String?
-  website        String?
-  phone          String?
-  email          String?
-  address        String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  contacts Contact[]
-
-  @@index([organizationId])
-  @@map("companies")
 }
 
 model Lead {
@@ -635,21 +630,6 @@ model Reservation {
   @@map("reservations")
 }
 
-model CalendarIntegration {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  provider       String // GOOGLE, OUTLOOK, ICAL
-  accessToken    String       @db.Text
-  refreshToken   String?      @db.Text
-  calendarId     String
-  expiresAt      DateTime?
-  createdAt      DateTime     @default(now())
-
-  @@index([organizationId])
-  @@map("calendar_integrations")
-}
-
 model FaqEntry {
   id             String       @id @default(uuid())
   organizationId String
@@ -694,7 +674,15 @@ model WhatsAppTemplate {
   bodyText       String       @db.Text
   footerText     String?
   buttons        Json?
-  status         String       @default("APPROVED")
+  /// Meta approves templates; this platform does not. The default was
+  /// "APPROVED", so a row created by any path that does not set this
+  /// explicitly — a seed, a direct insert — claimed an approval Meta had
+  /// never given, and the broadcast gate would wave it through.
+  ///
+  /// `createTemplate` has always set PENDING_SUBMISSION itself, so the
+  /// service path was already honest; this aligns the column default with
+  /// it rather than leaving the looser value behind the correct code.
+  status         String       @default("PENDING_SUBMISSION")
   metaTemplateId String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

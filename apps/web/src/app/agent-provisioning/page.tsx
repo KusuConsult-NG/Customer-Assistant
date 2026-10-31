@@ -157,6 +157,8 @@ export default function AgentProvisioningPage() {
   const [mintedKey, setMintedKey] = useState<string | null>(null);
 
   const [cutoverOpen, setCutoverOpen] = useState(false);
+  const [sipOpen, setSipOpen] = useState(false);
+  const [sipAck, setSipAck] = useState(false);
   const [cutoverAck, setCutoverAck] = useState(false);
   const [label, setLabel] = useState('');
   const [enableSms, setEnableSms] = useState(false);
@@ -429,16 +431,90 @@ export default function AgentProvisioningPage() {
               </div>
             )}
           </>
-        ) : !cutoverOpen ? (
+        ) : !cutoverOpen && !sipOpen ? (
           <>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               No number has been handed to the agent. Calls are answered by this platform&rsquo;s own
               call handler.
             </p>
-            <button onClick={() => setCutoverOpen(true)} disabled={busy !== null} className={btnPrimary}>
-              <Link2 className="w-4 h-4" /> Import the Twilio number…
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setCutoverOpen(true)} disabled={busy !== null} className={btnPrimary}>
+                <Link2 className="w-4 h-4" /> Import the Twilio number…
+              </button>
+              <button onClick={() => setSipOpen(true)} disabled={busy !== null} className={btnQuiet}>
+                <Link2 className="w-4 h-4" /> Import a SIP trunk…
+              </button>
+            </div>
+            {/* ElevenLabs sells no numbers — it answers one brought from
+                Twilio, Exotel or a SIP trunk. A local carrier over SIP means
+                local numbers and no overseas intermediary on citizen calls,
+                and it is the option that removes Twilio from voice entirely. */}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              A SIP trunk lets a local carrier serve the line instead of Twilio. It costs one
+              thing: an operator cannot take a live call away from the agent on a SIP trunk, so
+              reaching a person has to be something the agent does itself.
+            </p>
           </>
+        ) : sipOpen ? (
+          <div className="rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-500/[0.07] p-4 space-y-4">
+            <p className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">
+              This changes who talks to your citizens, and gives up takeover
+            </p>
+            <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+              The agent will answer this trunk instead of this platform&rsquo;s call handler, using
+              the SIP host and credentials configured under Voice.
+            </p>
+            <div className="p-3 rounded-lg bg-red-500/[0.07] border border-red-200 dark:border-red-500/30">
+              <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
+                <strong>Takeover will not be available on this line.</strong> A live call can be
+                pulled away from the agent on a Twilio number because the call is a Twilio call and
+                can be redirected. ElevenLabs has no way to stop or move a call in progress, and a
+                SIP carrier is not one this platform can redirect through — so the console will
+                refuse a transfer on this line rather than offer a button that does nothing.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block uppercase tracking-wider">
+                Label (optional)
+              </label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Defaults to the agency name plus “SIP line”"
+                className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              />
+            </div>
+
+            <Gate checked={sipAck} onChange={setSipAck}>
+              I understand the agent will answer <strong>every call on this trunk</strong>, and that
+              an operator will not be able to take a live call over on it.
+            </Gate>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => run('import-sip', () => api.agentProvisioning.importSipTrunk({
+                  // Behind the tick box, like the Twilio cutover. The server
+                  // requires this flag so somebody reads what changes; a
+                  // client that supplied it on a bare click would satisfy the
+                  // server and defeat the point.
+                  confirmVoiceCutover: true,
+                  ...(label.trim() ? { label: label.trim() } : {}),
+                }), () => {
+                  setSipOpen(false);
+                  setSipAck(false);
+                })}
+                disabled={!sipAck || busy !== null}
+                className={btnDanger}
+              >
+                {busy === 'import-sip' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
+                Import the trunk and cut over
+              </button>
+              <button onClick={() => { setSipOpen(false); setSipAck(false); }} className={btnQuiet}>
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-500/[0.07] p-4 space-y-4">
             <p className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">

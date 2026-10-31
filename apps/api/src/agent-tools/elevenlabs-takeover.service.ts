@@ -131,6 +131,35 @@ export class ElevenLabsTakeoverService {
     // unreachable code that reads like a safety net.
     const callSid = phone.callSid ?? phone.call_sid;
 
+    // ── A SIP trunk cannot be taken over, and must not pretend to be ────────
+    //
+    // The Twilio path works because the call IS a Twilio call: ElevenLabs
+    // answers the number with the tenant's own credentials, so Twilio's REST
+    // API can redirect it out from under the agent. A SIP trunk has no such
+    // lever. ElevenLabs offers no live-call API at all — its conversations
+    // client is get/list/delete/signed-url/webrtc-token/resolve, every one
+    // read-only or post-hoc — and `PhoneNumberTransfer` is agent
+    // CONFIGURATION carrying a prompt condition, so the agent decides, never
+    // an operator mid-call.
+    //
+    // Refused with the reason rather than attempted, for the same rule that
+    // governs the whole voice path: a transfer is never announced before it is
+    // known to be possible.
+    const sipTrunk = await prisma.telephonyConfig.findFirst({
+      where: { organizationId, provider: 'SIP_TRUNK' },
+      select: { id: true, phoneNumber: true },
+    });
+    const hasTwilio = await prisma.telephonyConfig.count({
+      where: { organizationId, provider: 'TWILIO' },
+    });
+    if (sipTrunk && hasTwilio === 0) {
+      return {
+        taken: false,
+        reason:
+          'This agency\'s voice line is a SIP trunk, and a live call on one cannot be taken over: ElevenLabs has no API to stop or move a call in progress, and the carrier is not one this platform can redirect through. The caller is still with the agent. Reaching a person means the agent transferring on its own, which is configured on the agent rather than triggered from here.',
+      };
+    }
+
     // Decrypted: the redirect below authenticates to Twilio with these.
     const telephony = withTelephonyCredentials(
       await prisma.telephonyConfig.findFirst({

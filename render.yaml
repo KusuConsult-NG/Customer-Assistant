@@ -36,7 +36,10 @@ services:
       npx prisma generate --schema=packages/database/prisma/schema.prisma &&
       npx turbo run build --filter=@ace/api...
     startCommand: node apps/api/dist/main.js
-    healthCheckPath: /api/health
+    # The DEEP check. Render routes traffic by this, so it must mean "can
+    # serve" and not merely "process is up" — a pod with no database
+    # reporting healthy is a pod being handed requests it will fail.
+    healthCheckPath: /api/health/ready
     envVars:
       - key: NODE_ENV
         value: production
