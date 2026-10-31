@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, API_URL } from '@/lib/api';
+import { api, API_URL, apiFetch } from '@/lib/api';
 import {
   PhoneCall, Sparkles, Phone, CheckCircle, AlertCircle, Radio, ShieldCheck,
   Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft, PhoneOff
@@ -40,8 +40,8 @@ export default function TelephonyPage() {
       const token = localStorage.getItem('ace_token');
       const headers = { Authorization: `Bearer ${token}` };
       const [logsRes, orgRes] = await Promise.allSettled([
-        fetch(`${API_URL}/api/telephony/calls`, { headers }),
-        fetch(`${API_URL}/api/organizations/me`, { headers }),
+        apiFetch(`${API_URL}/api/telephony/calls`, { headers }),
+        apiFetch(`${API_URL}/api/organizations/me`, { headers }),
       ]);
 
       if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
@@ -85,7 +85,7 @@ export default function TelephonyPage() {
 
     const token = localStorage.getItem('ace_token');
     try {
-      const res = await fetch(`${API_URL}/api/telephony/outbound`, {
+      const res = await apiFetch(`${API_URL}/api/telephony/outbound`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

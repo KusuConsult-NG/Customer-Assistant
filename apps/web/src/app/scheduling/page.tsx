@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, API_URL } from '@/lib/api';
+import { api, API_URL, apiFetch } from '@/lib/api';
 import {
   Calendar as CalendarIcon,
   Utensils,
@@ -106,7 +106,7 @@ export default function SchedulingPage() {
     const token = getToken();
     if (!token) return;
     try {
-      const res = await fetch(`${API_URL}/api/scheduling/bookings`, {
+      const res = await apiFetch(`${API_URL}/api/scheduling/bookings`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -122,7 +122,7 @@ export default function SchedulingPage() {
     const token = getToken();
     if (!token) return;
     try {
-      const res = await fetch(`${API_URL}/api/scheduling/reservations`, {
+      const res = await apiFetch(`${API_URL}/api/scheduling/reservations`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -138,7 +138,7 @@ export default function SchedulingPage() {
     const token = getToken();
     if (!token) return;
     try {
-      const res = await fetch(`${API_URL}/api/scheduling/refund-requests`, {
+      const res = await apiFetch(`${API_URL}/api/scheduling/refund-requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -163,7 +163,7 @@ export default function SchedulingPage() {
     e.preventDefault();
     const token = getToken();
     try {
-      const res = await fetch(`${API_URL}/api/scheduling/bookings`, {
+      const res = await apiFetch(`${API_URL}/api/scheduling/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -187,7 +187,7 @@ export default function SchedulingPage() {
     e.preventDefault();
     const token = getToken();
     try {
-      const res = await fetch(`${API_URL}/api/scheduling/reservations`, {
+      const res = await apiFetch(`${API_URL}/api/scheduling/reservations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({

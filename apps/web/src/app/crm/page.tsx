@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { api, API_URL } from '@/lib/api';
+import { api, API_URL, apiFetch } from '@/lib/api';
 import SelfieRequestPanel from '@/components/SelfieRequestPanel';
 import SharedEmptyState from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
@@ -70,7 +70,7 @@ export default function CrmPage() {
   const handleFetchDigitalCard = async (contactId: string) => {
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/crm/contacts/${contactId}/digital-card`, {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts/${contactId}/digital-card`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -87,7 +87,7 @@ export default function CrmPage() {
   const handleApproveEnrollee = async (contactId: string) => {
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/crm/contacts/${contactId}/approve-enrollee`, {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts/${contactId}/approve-enrollee`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -106,7 +106,7 @@ export default function CrmPage() {
   const handleFetchQuotation = async (dealId: string) => {
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/crm/deals/${dealId}/quotation`, {
+      const res = await apiFetch(`${API_URL}/api/crm/deals/${dealId}/quotation`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -122,7 +122,7 @@ export default function CrmPage() {
   const handleDelete = async (type: string, id: string) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
     try {
-      const res = await fetch(`${API_URL}/api/crm/${type}/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/crm/${type}/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${localStorage.getItem('ace_token')}` }
       });
@@ -145,8 +145,8 @@ export default function CrmPage() {
       const [c, l, d, t] = await Promise.allSettled([
         api.crm.getContacts(),
         api.crm.getLeads(),
-        fetch(`${API_URL}/api/crm/deals`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_URL}/api/crm/tickets`, { headers }).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API_URL}/api/crm/deals`, { headers }).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API_URL}/api/crm/tickets`, { headers }).then(r => r.ok ? r.json() : []),
       ]);
       const toArray = (val: any) => {
         if (!val) return [];
@@ -182,7 +182,7 @@ export default function CrmPage() {
 
   const exportContactsCsv = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/crm/export/contacts`, {
+      const res = await apiFetch(`${API_URL}/api/crm/export/contacts`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -608,7 +608,7 @@ function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { sear
 function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
   const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('ace_token');
-    await fetch(`${API_URL}/api/crm/leads/${id}/status`, {
+    await apiFetch(`${API_URL}/api/crm/leads/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ status }),
@@ -749,7 +749,7 @@ function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { d
   const safeData = Array.isArray(data) ? data : [];
   const updateStage = async (id: string, stage: string) => {
     const token = localStorage.getItem('ace_token');
-    await fetch(`${API_URL}/api/crm/deals/${id}/stage`, {
+    await apiFetch(`${API_URL}/api/crm/deals/${id}/stage`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ stage }),
@@ -807,7 +807,7 @@ function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { d
 function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
   const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('ace_token');
-    await fetch(`${API_URL}/api/crm/tickets/${id}/status`, {
+    await apiFetch(`${API_URL}/api/crm/tickets/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ status }),
@@ -982,14 +982,14 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
     setError('');
     try {
       const token = localStorage.getItem('ace_token');
-      const contactRes = await fetch(`${API_URL}/api/crm/contacts`, {
+      const contactRes = await apiFetch(`${API_URL}/api/crm/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ fullName, phoneNumber, tags: ['lead'] }),
       });
       if (!contactRes.ok) throw new Error('Failed to create contact for lead');
       const contact = await contactRes.json();
-      const leadRes = await fetch(`${API_URL}/api/crm/leads`, {
+      const leadRes = await apiFetch(`${API_URL}/api/crm/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ contactId: contact.id, notes }),
@@ -1033,14 +1033,14 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
     setError('');
     try {
       const token = localStorage.getItem('ace_token');
-      const contactRes = await fetch(`${API_URL}/api/crm/contacts`, {
+      const contactRes = await apiFetch(`${API_URL}/api/crm/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ fullName: contactFullName, phoneNumber: contactPhone, tags: ['deal'] }),
       });
       if (!contactRes.ok) throw new Error('Failed to create contact for deal');
       const contact = await contactRes.json();
-      const res = await fetch(`${API_URL}/api/crm/deals`, {
+      const res = await apiFetch(`${API_URL}/api/crm/deals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title, amount: parseFloat(amount) || 0, stage, contactId: contact.id }),
@@ -1092,14 +1092,14 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
     setError('');
     try {
       const token = localStorage.getItem('ace_token');
-      const contactRes = await fetch(`${API_URL}/api/crm/contacts`, {
+      const contactRes = await apiFetch(`${API_URL}/api/crm/contacts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ fullName: contactFullName, phoneNumber: contactPhone, tags: ['support'] }),
       });
       if (!contactRes.ok) throw new Error('Failed to create contact');
       const contact = await contactRes.json();
-      const res = await fetch(`${API_URL}/api/crm/tickets`, {
+      const res = await apiFetch(`${API_URL}/api/crm/tickets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ contactId: contact.id, subject, description, priority }),
@@ -1167,7 +1167,7 @@ function PreferredLanguageControl({ contact }: { contact: any }) {
     setValue(next);
     setStatus('saving');
     try {
-      const res = await fetch(`${API_URL}/api/crm/contacts/${contact.id}`, {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts/${contact.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -1384,7 +1384,7 @@ function EnrolleesDeskTable({
     setLoading(true);
     try {
       const token = localStorage.getItem('ace_token');
-      const res = await fetch(`${API_URL}/api/crm/contacts?limit=100`, {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts?limit=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();

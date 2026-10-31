@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api, API_URL } from '@/lib/api';
+import { api, API_URL, apiFetch } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
   Settings, Building2, Bot, Phone, MessageSquare, Users, User,
@@ -55,7 +55,7 @@ export default function SettingsPage() {
 
   const fetchOrg = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
+      const res = await apiFetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
       if (res.ok) setOrg(await res.json());
     } catch {}
     finally { setLoading(false); }
@@ -140,7 +140,7 @@ function ProfileTab({ authHeaders, showToast }: any) {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/change-password`, {
+      const res = await apiFetch(`${API_URL}/api/auth/change-password`, {
         method: 'POST', headers: authHeaders,
         body: JSON.stringify({ currentPassword, newPassword }),
       });
@@ -234,7 +234,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
           name, aiPersonaPrompt, welcomeMessage, defaultLanguage,
@@ -259,8 +259,8 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
     <form onSubmit={save} className="space-y-5">
       <Section title="Organization Profile" description="Basic info about your business">
         <div>
-          <label className={labelCls}>Organization Name</label>
-          <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services" />
+          <label className={labelCls} htmlFor="org-name">Organization Name</label>
+          <input id="org-name" aria-label="Organization Name" type="text" value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="e.g. Apex Care Services" />
         </div>
         <div>
           <label className={labelCls}>Industry</label>
@@ -422,7 +422,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/whatsapp-config`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config`, {
         method: 'POST', headers: authHeaders,
         body: JSON.stringify({
           phoneNumberId: phoneNumberId.trim(),
@@ -524,7 +524,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/telephony-config`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/telephony-config`, {
         method: 'POST', headers: authHeaders,
         body: JSON.stringify({ provider, phoneNumber, accountSid, authToken, apiKey }),
       });

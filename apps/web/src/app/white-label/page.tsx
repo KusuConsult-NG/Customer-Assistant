@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import {
   Palette, Globe, Key, Webhook, Save, Copy, RefreshCw,
@@ -50,7 +50,7 @@ export default function WhiteLabelPage() {
 
   const fetchOrg = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
+      const res = await apiFetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
         setOrg(data);
@@ -71,7 +71,7 @@ export default function WhiteLabelPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({ name: companyName, primaryColor, secondaryColor, customDomain }),
       });
@@ -85,7 +85,7 @@ export default function WhiteLabelPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/organizations/settings`, {
+      const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({ webhookUrl, enabledWebhookEvents: enabledEvents }),
       });

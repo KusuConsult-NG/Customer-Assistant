@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { API_URL } from '@/lib/api';
+import { API_URL, apiFetch } from '@/lib/api';
 import SelfieRequestPanel from '@/components/SelfieRequestPanel';
 import {
   MessageSquareText, Phone, User, Send, Bot,
@@ -94,7 +94,7 @@ export default function AgentConsolePage() {
 
   const fetchConversations = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/conversations`, { headers });
+      const res = await apiFetch(`${API_URL}/api/conversations`, { headers });
       if (res.ok) {
         const data = await res.json();
         setConversations(data || []);
@@ -111,7 +111,7 @@ export default function AgentConsolePage() {
   const fetchMessages = useCallback(async (convId: string) => {
     setMsgLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/conversations/${convId}/messages`, { headers });
+      const res = await apiFetch(`${API_URL}/api/conversations/${convId}/messages`, { headers });
       if (res.ok) {
         const data = await res.json();
         setMessages(data || []);
@@ -134,7 +134,7 @@ export default function AgentConsolePage() {
    */
   const fetchLive = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/agent-provisioning/live`, { headers });
+      const res = await apiFetch(`${API_URL}/api/agent-provisioning/live`, { headers });
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -302,7 +302,7 @@ export default function AgentConsolePage() {
     setTakingOver(true);
     setTakeoverNote(null);
     try {
-      const res = await fetch(`${API_URL}/api/agent-provisioning/live/${liveId}/takeover`, {
+      const res = await apiFetch(`${API_URL}/api/agent-provisioning/live/${liveId}/takeover`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
       });
@@ -358,7 +358,7 @@ export default function AgentConsolePage() {
     setIsHumanActive(newStatus);
     try {
       // Use WhatsApp-specific endpoint — updates assignedUserId + handoff flag
-      await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/handoff`, {
+      await apiFetch(`${API_URL}/api/whatsapp/conversations/${activeId}/handoff`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ isHumanHandoffActive: newStatus }),

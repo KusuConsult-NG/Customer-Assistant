@@ -43,7 +43,9 @@ const PUBLIC_ROUTES = [
   '/verify-email',
   '/setup-account',
   '/selfie',
-  '/pay',
+  // '/pay' was here until the payment layer was subtracted. The page is gone
+  // and nothing serves that path, so listing it only invited someone to
+  // assume a public payment route still exists.
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
