@@ -9,7 +9,7 @@ import {
   BookOpen, Upload, Search, FileText, Loader2, AlertCircle,
   CheckCircle2, Clock, Globe, Sparkles, Trash2, RefreshCw,
   Plus, X, ExternalLink, Database, Zap, Brain, MessageSquare,
-  ChevronRight, Layers
+  ChevronRight, Layers, ArrowUp, ArrowDown, Info
 } from 'lucide-react';
 
 interface KnowledgeDoc {
@@ -36,6 +36,8 @@ interface FaqPair {
   question: string;
   answer: string;
   category: string;
+  /** Position, not a label. The AI consults these in this order. */
+  sortOrder: number;
 }
 
 export default function KnowledgePage() {
@@ -63,6 +65,9 @@ export default function KnowledgePage() {
   const [faqQuestion, setFaqQuestion] = useState('');
   const [faqAnswer, setFaqAnswer] = useState('');
   const [faqCategory, setFaqCategory] = useState('General');
+  const [reordering, setReordering] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexResult, setReindexResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Website Crawler states
   const [websiteUrl, setWebsiteUrl] = useState('');
@@ -88,7 +93,20 @@ export default function KnowledgePage() {
     }
   }, []);
 
-  const fetchFaqs = useCallback(async () => {
+  /**
+   * True from the moment a reorder is optimistically applied until the server
+   * has been told and re-read.
+   *
+   * A ref rather than the `reordering` state flag, because the poll below
+   * closes over its initial value and would always see `false`.
+   */
+  const reorderInFlight = useRef(false);
+
+  const fetchFaqs = useCallback(async (force = false) => {
+    // The 8-second poll must not land between the optimistic reorder and the
+    // write that confirms it: it would return the OLD order and snap the list
+    // back under the operator's cursor, then forward again a moment later.
+    if (reorderInFlight.current && !force) return;
     try {
       const res = await fetch(`${API_URL}/api/knowledge/faqs`, { headers: authHeaders });
       if (res.ok) {
@@ -218,6 +236,93 @@ export default function KnowledgePage() {
       console.error(err);
     } finally {
       setPasting(false);
+    }
+  };
+
+  /**
+   * Move one FAQ up or down the order the AI consults them in.
+   *
+   * Buttons rather than drag-and-drop, for two reasons that both matter here.
+   * This page REFETCHES EVERY 8 SECONDS, so a drag in progress would be
+   * overwritten mid-gesture by a poll; and a list that decides what citizens
+   * are told should be reorderable from a keyboard, not only with a pointer.
+   *
+   * The whole list is sent, because `sortOrder` is a position: the API refuses
+   * a partial order rather than leaving two entries in the same place.
+   */
+  const moveFaq = async (id: string, direction: -1 | 1) => {
+    const from = faqs.findIndex(f => f.id === id);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= faqs.length) return;
+
+    const next = [...faqs];
+    [next[from], next[to]] = [next[to], next[from]];
+
+    // Shown immediately, then reconciled with the server. If the write fails
+    // the refetch puts the old order back rather than leaving the screen
+    // claiming a change that did not happen.
+    setFaqs(next);
+    setReordering(true);
+    reorderInFlight.current = true;
+    try {
+      const res = await fetch(`${API_URL}/api/knowledge/faqs/reorder`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ ids: next.map(f => f.id) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as any));
+        toast.error(body.message || 'Could not save the new order.');
+      }
+    } catch {
+      toast.error('Could not reach the server to save the new order.');
+    } finally {
+      // `force`, because the guard above is still set — this is the read that
+      // reconciles the optimistic order with what was actually stored, and on
+      // a failed write it is what puts the old order back rather than leaving
+      // the screen claiming a change that did not happen.
+      reorderInFlight.current = false;
+      await fetchFaqs(true);
+      setReordering(false);
+    }
+  };
+
+  /**
+   * Re-embed every stored chunk into the vector index.
+   *
+   * Worth a button because the index and the database can genuinely drift —
+   * documents indexed while Qdrant was unreachable are in Postgres and not in
+   * the vector store, and RAG simply does not find them. Nothing on this page
+   * previously said so or offered a way to fix it.
+   *
+   * The server's own message is shown verbatim, success or failure: it names
+   * the chunk and document counts, and on failure it names what to check
+   * (credits, and the Qdrant URL it actually tried).
+   */
+  const handleReindex = async () => {
+    setReindexing(true);
+    setReindexResult(null);
+    try {
+      const res = await fetch(`${API_URL}/api/knowledge/reindex`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        setReindexResult({ ok: false, text: body.message || `Re-indexing failed (${res.status}).` });
+        return;
+      }
+      // `vectorised: false` with no chunks is not a success to celebrate —
+      // there was nothing to index, and saying "done" would imply otherwise.
+      setReindexResult({
+        ok: body.vectorised === true,
+        text: body.message || 'Re-indexing finished.',
+      });
+      fetchDocs();
+    } catch {
+      setReindexResult({ ok: false, text: 'Could not reach the server to start re-indexing.' });
+    } finally {
+      setReindexing(false);
     }
   };
 
@@ -459,12 +564,45 @@ export default function KnowledgePage() {
         <div className="lg:col-span-3 space-y-3">
           {activeTab === 'documents' ? (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Indexed Knowledge Sources</h2>
-                <button onClick={fetchDocs} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 transition-colors">
-                  <RefreshCw className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleReindex}
+                    disabled={reindexing}
+                    title="Re-embed every stored chunk into the vector index"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-all"
+                  >
+                    {reindexing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                    {reindexing ? 'Re-indexing...' : 'Rebuild search index'}
+                  </button>
+                  <button onClick={fetchDocs} title="Refresh this list" className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 transition-colors">
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
+
+              {/* The server's own words. On failure it names what to check —
+                  the API credits and the Qdrant URL it actually tried — which
+                  is the part an operator has to act on. */}
+              {reindexResult && (
+                <div className={`p-3 rounded-xl flex items-start gap-2 text-xs ${
+                  reindexResult.ok
+                    ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-300'
+                }`}>
+                  {reindexResult.ok
+                    ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                  <p className="leading-relaxed break-words">{reindexResult.text}</p>
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                Rebuild when a document shows as indexed but the assistant cannot find it — a
+                document stored while the vector index was unreachable is in the database and not
+                in the index, and search silently misses it.
+              </p>
               {loading ? (
                 <div className="space-y-2">
                   {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/40 animate-pulse" />)}
@@ -521,11 +659,31 @@ export default function KnowledgePage() {
             </>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Explicit Question & Answer Rules</h2>
+                {reordering && (
+                  <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Saving order
+                  </span>
+                )}
               </div>
+
+              {/* Ordering is not cosmetic, and nothing said so before. When two
+                  FAQs match a question equally well, the one higher up is the
+                  answer the citizen gets. */}
+              {faqs.length > 1 && (
+                <div className="flex gap-2.5 p-3 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
+                  <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                    Order decides ties. When two of these match a citizen&rsquo;s question equally
+                    well, the assistant answers with whichever is higher in this list — so put the
+                    more specific wording above the general one.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-3">
-                {faqs.map((faq) => (
+                {faqs.map((faq, i) => (
                   <div key={faq.id} className="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
                     {editingFaq === faq.id ? (
                       <div className="space-y-3">
@@ -538,9 +696,34 @@ export default function KnowledgePage() {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2 min-w-0">
+                            {/* The position, so "higher in the list" is a thing
+                                an operator can actually see and refer to. */}
+                            <span className="text-[10px] font-bold w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center flex-shrink-0 mt-0.5 tabular-nums">
+                              {i + 1}
+                            </span>
+                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex items-center">
+                              <button
+                                onClick={() => moveFaq(faq.id, -1)}
+                                disabled={i === 0 || reordering}
+                                aria-label={`Move "${faq.question}" up`}
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => moveFaq(faq.id, 1)}
+                                disabled={i === faqs.length - 1 || reordering}
+                                aria-label={`Move "${faq.question}" down`}
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] text-slate-600 dark:text-slate-400">{faq.category}</span>
                             <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Edit</button>
                             <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
