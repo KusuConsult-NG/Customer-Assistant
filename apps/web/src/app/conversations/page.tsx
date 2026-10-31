@@ -29,6 +29,7 @@ export default function ConversationsPage() {
   const [filteredConversations, setFilteredConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -184,17 +185,32 @@ export default function ConversationsPage() {
     if (!selectedId) return;
     try {
       const token = localStorage.getItem('ace_token');
-      await apiFetch(`${API_URL}/api/whatsapp/conversations/${selectedId}/handoff`, {
-        method: 'POST',
-        headers: { 
+      // The channel-agnostic route, which is now the only handoff
+      // implementation — and the one that tells every other console. The
+      // WhatsApp-specific duplicate did the same write without broadcasting,
+      // so a thread released here stayed "taken" on a colleague's screen.
+      const res = await apiFetch(`${API_URL}/api/conversations/${selectedId}/handoff`, {
+        method: 'PATCH',
+        headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ isHumanHandoffActive: false })
+        body: JSON.stringify({ handoff: false })
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          (Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ||
+          'Could not return this conversation to the AI.'
+        );
+      }
       setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, isHumanHandoffActive: false } : c));
-    } catch (err) {
+    } catch (err: any) {
+      // Local state is NOT changed on failure: showing the thread back with the
+      // AI while the server still has it assigned is the same lie as a toast
+      // that says so.
       console.error('Failed to return to AI', err);
+      setHandoffError(err?.message || 'Could not return this conversation to the AI.');
     }
   };
 
@@ -315,6 +331,19 @@ export default function ConversationsPage() {
                   className="text-xs px-3 py-1 rounded-lg font-bold transition-colors bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/30"
                 >
                   Return to AI
+                </button>
+              </div>
+            )}
+
+            {handoffError && (
+              <div className="bg-red-50 dark:bg-red-500/10 border-b border-red-200 dark:border-red-500/20 px-6 py-2 flex items-center justify-between flex-shrink-0 gap-3">
+                <span className="text-xs text-red-700 dark:text-red-300">{handoffError}</span>
+                <button
+                  onClick={() => setHandoffError(null)}
+                  aria-label="Dismiss"
+                  className="text-xs font-bold text-red-700 dark:text-red-300 hover:underline shrink-0"
+                >
+                  Dismiss
                 </button>
               </div>
             )}

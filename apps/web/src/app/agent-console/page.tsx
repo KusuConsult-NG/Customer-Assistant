@@ -67,6 +67,7 @@ export default function AgentConsolePage() {
   const [loading, setLoading] = useState(true);
   const [msgLoading, setMsgLoading] = useState(false);
   const [isHumanActive, setIsHumanActive] = useState(false);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
@@ -357,16 +358,29 @@ export default function AgentConsolePage() {
     const newStatus = !isHumanActive;
     setIsHumanActive(newStatus);
     try {
-      // Use WhatsApp-specific endpoint — updates assignedUserId + handoff flag
-      await apiFetch(`${API_URL}/api/whatsapp/conversations/${activeId}/handoff`, {
-        method: 'POST',
+      // The channel-agnostic route. This used to call a WhatsApp-specific
+      // duplicate, with a comment claiming it was needed because it "updates
+      // assignedUserId + handoff flag" — which this route has always done. The
+      // difference was the other way round: only this one calls
+      // `notifyHandoffChanged`, so taking a thread over was invisible to every
+      // other console and two officers could each think they owned the citizen.
+      const res = await apiFetch(`${API_URL}/api/conversations/${activeId}/handoff`, {
+        method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isHumanHandoffActive: newStatus }),
+        body: JSON.stringify({ handoff: newStatus }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          (Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ||
+          'Could not change who is handling this conversation.'
+        );
+      }
       fetchConversations();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to toggle handoff:', err);
       setIsHumanActive(!newStatus);
+      setHandoffError(err?.message || 'Could not change who is handling this conversation.');
     }
   };
 
@@ -716,6 +730,21 @@ export default function AgentConsolePage() {
                 {isHumanActive ? 'Human Takeover Active' : 'AI Assistant Handling'}
               </button>
             </div>
+
+            {/* The toggle reverts on failure; this says why, because a silent
+                revert reads as a button that does not work. */}
+            {handoffError && (
+              <div className="px-5 py-2 bg-red-50 dark:bg-red-500/10 border-b border-red-200 dark:border-red-500/20 flex items-center justify-between gap-3">
+                <span className="text-xs text-red-700 dark:text-red-300">{handoffError}</span>
+                <button
+                  onClick={() => setHandoffError(null)}
+                  aria-label="Dismiss"
+                  className="text-xs font-bold text-red-700 dark:text-red-300 hover:underline shrink-0"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-5 space-y-3">

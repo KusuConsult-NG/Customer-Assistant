@@ -413,6 +413,23 @@ export class KnowledgeService {
 
     if (!doc) throw new NotFoundException('Document not found');
 
+    // A CRAWLED page has no stored file: `storageUrl` holds the web address it
+    // was read from, not a bucket path (see crawlAndIndexWebsite). Signing that
+    // produces a URL to a bucket object named "https://…" which does not
+    // exist — a link that 404s, handed out as if it worked. The source address
+    // is the honest answer, and it is what the caller actually wants.
+    if (/^https?:\/\//i.test(doc.storageUrl)) {
+      throw new BadRequestException(
+        `"${doc.title}" was indexed by crawling ${doc.storageUrl} — there is no uploaded file to download. Open that address instead.`
+      );
+    }
+
+    if (!doc.storageUrl?.trim()) {
+      throw new BadRequestException(
+        `"${doc.title}" has no stored file, so there is nothing to download.`
+      );
+    }
+
     return signedUrl(KNOWLEDGE_BUCKET, doc.storageUrl, 3600);
   }
 

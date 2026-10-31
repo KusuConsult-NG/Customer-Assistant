@@ -17,14 +17,44 @@ import { prisma } from '@ace/database';
 import { describeConversationFlow } from '@ace/orchestrator';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { AgentConsoleGateway } from './agent-console.gateway';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('ConversationsController');
 
 const MESSAGE_PAGE_SIZE = 200;
 
+/**
+ * Live conversations, across every channel.
+ *
+ * ── This is now the ONLY handoff implementation ─────────────────────────────
+ *
+ * `POST /api/whatsapp/conversations/:id/handoff` did the same write and has
+ * been removed. They were not equivalent: this one calls
+ * `gateway.notifyHandoffChanged`, and the WhatsApp one did not — so when an
+ * officer took a thread over from the console (which called the WhatsApp
+ * route), no other console heard about it, and two officers could each believe
+ * they owned the citizen. The agent-console even carried a comment saying the
+ * WhatsApp route was needed because it "updates assignedUserId + handoff flag",
+ * which this route has always done.
+ *
+ * Handoff is not channel-specific — a VOICE or WEBCHAT conversation can be
+ * handed to a person too — so the channel-agnostic route is the one that
+ * survives.
+ *
+ * ── Authorization ──────────────────────────────────────────────────────────
+ *
+ * Reading is open to every member. WRITING is not: sending a message speaks to
+ * a citizen as the agency, and seizing a thread stops the AI replying to them,
+ * so a VIEWER doing either is an outage for that citizen with nobody handling
+ * it. AGENT is included because this is exactly the front desk's job.
+ *
+ * `RolesGuard` must be listed after `JwtAuthGuard` — it is not global, and
+ * `@Roles` without it is metadata nothing reads.
+ */
 @Controller('api/conversations')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ConversationsController {
   constructor(
     private readonly whatsappService: WhatsappService,
@@ -122,6 +152,7 @@ export class ConversationsController {
    * delivered. Delivery is now attempted on the conversation's own channel, and a
    * failure is reported rather than persisted as a phantom "sent" message.
    */
+  @Roles('OWNER', 'ADMIN', 'AGENT')
   @Post(':id/messages')
   async sendMessage(
     @Req() req: { user: AuthUser },
@@ -184,6 +215,7 @@ export class ConversationsController {
    * PATCH /api/conversations/:id/handoff
    * Toggles human handoff for the conversation.
    */
+  @Roles('OWNER', 'ADMIN', 'AGENT')
   @Patch(':id/handoff')
   async toggleHandoff(
     @Req() req: { user: AuthUser },

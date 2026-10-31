@@ -20,24 +20,75 @@ import {
   X
 } from 'lucide-react';
 
+/**
+ * Appointments and reservations.
+ *
+ * ── What was wrong here ─────────────────────────────────────────────────────
+ *
+ * THE ACTION BUTTONS DID NOTHING. "Cancel Booking", "Reschedule Slot",
+ * "Cancel Reservation" and "Mark Completed" each showed a toast — *"Booking for
+ * Jane Citizen cancelled."* — closed the panel, and made no request at all. The
+ * citizen's appointment was untouched and the officer was told it was cancelled.
+ * Seven endpoints existed for exactly these actions and none was ever called.
+ * That is the first invariant of this repository: never fabricate success shown
+ * to a human.
+ *
+ * THE TYPES DID NOT MATCH THE API. The interfaces declared `contactName`,
+ * `service`, `staff` and `tableOrRoom`; the API returns `contact.fullName`,
+ * `serviceName`, `staffName` and `tableOrRoomNumber`. Every one of those table
+ * cells rendered empty, and the detail panel with them.
+ *
+ * CREATING ONE RETURNED 500. The form posted `{contactName, service, staff}`
+ * where the endpoint requires `{contactId, serviceName, staffName}`. A booking
+ * belongs to a CONTACT — the endpoint checks that contact belongs to this
+ * agency, so another tenant's citizen cannot be booked by id — which is why
+ * there is now a contact picker and not a free-text name box. `if (res.ok)`
+ * with no else meant the failure was silent: no toast, no error, nothing.
+ *
+ * Every action below reports what the server actually did, and re-reads the
+ * list afterwards rather than patching local state to look right.
+ */
+interface Contact {
+  id: string;
+  fullName: string;
+  phoneNumber: string;
+}
+
+type ScheduleStatus = 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+
 interface Booking {
   id: string;
-  contactName: string;
-  service: string;
+  contactId: string;
+  contact?: Contact | null;
+  serviceName: string;
   startTime: string;
-  staff: string;
-  status: 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+  endTime?: string;
+  staffName?: string | null;
+  notes?: string | null;
+  status: ScheduleStatus;
 }
 
 interface Reservation {
   id: string;
-  contactName: string;
+  contactId: string;
+  contact?: Contact | null;
   partySize: number;
   reservationTime: string;
-  tableOrRoom: string;
-  specialRequests: string;
-  status: 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+  tableOrRoomNumber?: string | null;
+  specialRequests?: string | null;
+  status: ScheduleStatus;
 }
+
+/** A booking or reservation is over once it is cancelled or completed. */
+const isOpen = (status: string) => status !== 'CANCELLED' && status !== 'COMPLETED';
+
+/** `datetime-local` wants local time with no zone; the API wants ISO. */
+const toLocalInput = (iso: string) => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 interface RefundRequest {
   id: string;
@@ -50,7 +101,7 @@ interface RefundRequest {
 
 export default function SchedulingPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'bookings' | 'reservations'>('bookings');
+  const [activeTab, setActiveTab] = useState<'bookings' | 'reservations' | 'refunds'>('bookings');
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
   
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -64,22 +115,56 @@ export default function SchedulingPage() {
   const [showAddBookingModal, setShowAddBookingModal] = useState(false);
   const [showAddReservationModal, setShowAddReservationModal] = useState(false);
 
+  // Contacts, for the picker. A booking belongs to a contact id, not a name.
+  const [contacts, setContacts] = useState<Contact[]>([]);
+
   // Create booking state
-  const [bookingName, setBookingName] = useState('');
+  const [bookingContactId, setBookingContactId] = useState('');
   const [bookingService, setBookingService] = useState('Consultation & Onboarding');
   const [bookingTime, setBookingTime] = useState('');
-  const [bookingStaff, setBookingStaff] = useState('Senior Specialist');
+  const [bookingStaff, setBookingStaff] = useState('');
 
   // Create reservation state
-  const [resName, setResName] = useState('');
+  const [resContactId, setResContactId] = useState('');
   const [resPartySize, setResPartySize] = useState('2');
   const [resTime, setResTime] = useState('');
-  const [resTable, setResTable] = useState('Table 4 (Main Hall)');
+  const [resTable, setResTable] = useState('');
   const [resNotes, setResNotes] = useState('');
+
+  // What an action is doing, and what the server said if it refused.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Reschedule prompts for a new time rather than assuming one.
+  const [rescheduleFor, setRescheduleFor] = useState<{ kind: 'booking' | 'reservation'; id: string; name: string } | null>(null);
+  const [newTime, setNewTime] = useState('');
+
+  // Cancelling and refunding both take a reason, because the citizen will ask.
+  const [reasonFor, setReasonFor] = useState<{ kind: 'booking' | 'reservation'; id: string; name: string; action: 'cancel' | 'refund' } | null>(null);
+  const [reason, setReason] = useState('');
 
   const showToast = (message: string) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  /**
+   * The server's own words, or a plain fallback.
+   *
+   * A Nest validation error arrives as an array of messages. Flattening it
+   * matters here: "That slot is already taken by Corporate Partnership Meeting
+   * (14:00)" is the whole reason an officer needs, and "Failed" is not.
+   */
+  const reasonFromResponse = async (res: Response, fallback: string) => {
+    try {
+      const body = await res.json();
+      const m = body?.message;
+      if (Array.isArray(m)) return m.join(' ');
+      if (typeof m === 'string' && m) return m;
+    } catch {
+      // A response with no JSON body is not an error in itself.
+    }
+    return fallback;
   };
 
   const getToken = () => {
@@ -150,61 +235,195 @@ export default function SchedulingPage() {
     }
   };
 
+  const fetchContacts = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts?limit=200`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setContacts(toArray(data));
+      }
+    } catch {
+      setContacts([]);
+    }
+  };
+
   useEffect(() => {
     const loadAllData = async () => {
       setLoading(true);
-      await Promise.all([fetchBookings(), fetchReservations(), fetchRefundRequests()]);
+      await Promise.all([fetchBookings(), fetchReservations(), fetchRefundRequests(), fetchContacts()]);
       setLoading(false);
     };
     loadAllData();
   }, []);
 
+  /**
+   * One place every write goes through.
+   *
+   * It reports the server's own refusal, and re-reads the list on success
+   * instead of patching local state — a row that says CANCELLED because the
+   * browser decided so is the same lie as a toast that says it.
+   */
+  const send = async (
+    label: string,
+    url: string,
+    init: RequestInit,
+    onDone: () => Promise<void> | void
+  ): Promise<boolean> => {
+    const token = getToken();
+    if (!token) return false;
+    setBusy(label);
+    setActionError(null);
+    try {
+      const res = await apiFetch(url, {
+        ...init,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
+      });
+      if (!res.ok) {
+        setActionError(await reasonFromResponse(res, `${label} failed (HTTP ${res.status}).`));
+        return false;
+      }
+      await onDone();
+      return true;
+    } catch (err: any) {
+      setActionError(err?.message || `${label} could not reach the server.`);
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = getToken();
-    try {
-      const res = await apiFetch(`${API_URL}/api/scheduling/bookings`, {
+    // contactId, serviceName, staffName — the names the endpoint reads. The
+    // old payload sent contactName/service/staff and got a 500 every time.
+    const ok = await send(
+      'Create booking',
+      `${API_URL}/api/scheduling/bookings`,
+      {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          contactName: bookingName,
-          service: bookingService,
-          startTime: bookingTime || new Date().toISOString(),
-          staff: bookingStaff,
+          contactId: bookingContactId,
+          serviceName: bookingService,
+          startTime: bookingTime ? new Date(bookingTime).toISOString() : '',
+          ...(bookingStaff.trim() ? { staffName: bookingStaff.trim() } : {}),
         }),
-      });
-      if (res.ok) {
-        showToast('Booking created successfully!');
-        setShowAddBookingModal(false);
-        fetchBookings();
-      }
-    } catch {
-      showToast('Failed to create booking');
+      },
+      fetchBookings
+    );
+    if (ok) {
+      showToast('Booking created.');
+      setShowAddBookingModal(false);
+      setBookingContactId(''); setBookingTime(''); setBookingStaff('');
     }
   };
 
   const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = getToken();
-    try {
-      const res = await apiFetch(`${API_URL}/api/scheduling/reservations`, {
+    const ok = await send(
+      'Create reservation',
+      `${API_URL}/api/scheduling/reservations`,
+      {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          contactName: resName,
-          partySize: parseInt(resPartySize) || 2,
-          reservationTime: resTime || new Date().toISOString(),
-          tableOrRoom: resTable,
-          specialRequests: resNotes,
+          contactId: resContactId,
+          partySize: parseInt(resPartySize, 10) || 1,
+          reservationTime: resTime ? new Date(resTime).toISOString() : '',
+          ...(resTable.trim() ? { tableOrRoomNumber: resTable.trim() } : {}),
+          ...(resNotes.trim() ? { specialRequests: resNotes.trim() } : {}),
         }),
-      });
-      if (res.ok) {
-        showToast('Reservation created successfully!');
-        setShowAddReservationModal(false);
-        fetchReservations();
-      }
-    } catch {
-      showToast('Failed to create reservation');
+      },
+      fetchReservations
+    );
+    if (ok) {
+      showToast('Reservation created.');
+      setShowAddReservationModal(false);
+      setResContactId(''); setResTime(''); setResTable(''); setResNotes('');
+    }
+  };
+
+  /** Cancel, for real. The reason is stored on the record the citizen will ask about. */
+  const doCancel = async () => {
+    if (!reasonFor) return;
+    const { kind, id, name } = reasonFor;
+    const ok = await send(
+      'Cancel',
+      `${API_URL}/api/scheduling/${kind === 'booking' ? 'bookings' : 'reservations'}/${id}/cancel`,
+      { method: 'PATCH', body: JSON.stringify({ reason: reason.trim() || undefined }) },
+      kind === 'booking' ? fetchBookings : fetchReservations
+    );
+    if (ok) {
+      showToast(`${kind === 'booking' ? 'Booking' : 'Reservation'} for ${name} cancelled.`);
+      setReasonFor(null); setReason('');
+      setSelectedBooking(null); setSelectedReservation(null);
+    }
+  };
+
+  /**
+   * A refund request cancels the record too and raises a HIGH-priority ticket,
+   * so the confirmation says so — the officer is doing two things with one
+   * button and should not discover the second one later.
+   */
+  const doRefund = async () => {
+    if (!reasonFor) return;
+    const { kind, id, name } = reasonFor;
+    if (!reason.trim()) {
+      setActionError('A refund request needs a reason — it becomes the body of the ticket somebody has to act on.');
+      return;
+    }
+    const ok = await send(
+      'Refund request',
+      `${API_URL}/api/scheduling/${kind === 'booking' ? 'bookings' : 'reservations'}/${id}/refund-request`,
+      { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) },
+      async () => { await Promise.all([fetchBookings(), fetchReservations(), fetchRefundRequests()]); }
+    );
+    if (ok) {
+      showToast(`Refund ticket raised for ${name}; the ${kind} is cancelled.`);
+      setReasonFor(null); setReason('');
+      setSelectedBooking(null); setSelectedReservation(null);
+    }
+  };
+
+  const doReschedule = async () => {
+    if (!rescheduleFor) return;
+    const { kind, id, name } = rescheduleFor;
+    if (!newTime) {
+      setActionError('Pick the new date and time first.');
+      return;
+    }
+    const iso = new Date(newTime).toISOString();
+    const ok = await send(
+      'Reschedule',
+      `${API_URL}/api/scheduling/${kind === 'booking' ? 'bookings' : 'reservations'}/${id}/reschedule`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(
+          kind === 'booking' ? { newStartTime: iso } : { newReservationTime: iso }
+        ),
+      },
+      kind === 'booking' ? fetchBookings : fetchReservations
+    );
+    if (ok) {
+      showToast(`${name} moved to ${new Date(iso).toLocaleString()}.`);
+      setRescheduleFor(null); setNewTime('');
+      setSelectedBooking(null); setSelectedReservation(null);
+    }
+  };
+
+  /** OWNER/ADMIN only server-side; a refusal is rendered rather than swallowed. */
+  const setBookingStatus = async (id: string, status: ScheduleStatus) => {
+    const ok = await send(
+      'Update status',
+      `${API_URL}/api/scheduling/bookings/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status }) },
+      fetchBookings
+    );
+    if (ok) {
+      showToast(`Marked ${status.toLowerCase()}.`);
+      setSelectedBooking(null);
     }
   };
 
@@ -248,12 +467,14 @@ export default function SchedulingPage() {
           </h1>
           <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Schedule citizen biometrics capture, clinic consultations, and inspect AI booking audit trails.</p>
         </div>
-        <button
-          onClick={() => activeTab === 'bookings' ? setShowAddBookingModal(true) : setShowAddReservationModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
-        >
-          <Plus className="w-4 h-4" /> Create {activeTab === 'bookings' ? 'Booking' : 'Reservation'}
-        </button>
+        {activeTab !== 'refunds' && (
+          <button
+            onClick={() => { setActionError(null); activeTab === 'bookings' ? setShowAddBookingModal(true) : setShowAddReservationModal(true); }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+          >
+            <Plus className="w-4 h-4" /> Create {activeTab === 'bookings' ? 'Booking' : 'Reservation'}
+          </button>
+        )}
       </div>
 
       {/* Tabs Bar */}
@@ -274,6 +495,17 @@ export default function SchedulingPage() {
             }`}
           >
             <Utensils className="w-4 h-4" /> Reservations ({reservations.length})
+          </button>
+          {/* The refund queue was fetched on every load and rendered nowhere —
+              dead state for an endpoint with no screen. The refund button now
+              fills it, so it has to be somewhere an administrator can read. */}
+          <button
+            onClick={() => setActiveTab('refunds')}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'refunds' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+            }`}
+          >
+            <Banknote className="w-4 h-4" /> Refunds ({refundRequests.length})
           </button>
         </div>
 
@@ -356,14 +588,14 @@ export default function SchedulingPage() {
                           <td key={hour} className="border border-slate-200 dark:border-slate-800 p-1.5 bg-white dark:bg-slate-900/80 hover:bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-colors align-top min-h-[80px]">
                             {cellBookings.map(b => (
                               <div key={b.id} onClick={() => setSelectedBooking(b)} className="mb-2 p-2 rounded-lg bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 cursor-pointer hover:bg-blue-600/30">
-                                <div className="text-[10px] font-bold text-blue-700 dark:text-blue-300 truncate">{b.contactName}</div>
-                                <div className="text-[9px] text-slate-600 dark:text-slate-400 truncate">{b.service}</div>
+                                <div className="text-[10px] font-bold text-blue-700 dark:text-blue-300 truncate">{b.contact?.fullName ?? 'Unknown contact'}</div>
+                                <div className="text-[9px] text-slate-600 dark:text-slate-400 truncate">{b.serviceName}</div>
                                 <div className="mt-1 scale-90 origin-left">{getStatusBadge(b.status)}</div>
                               </div>
                             ))}
                             {cellReservations.map(r => (
                               <div key={r.id} onClick={() => setSelectedReservation(r)} className="mb-2 p-2 rounded-lg bg-purple-600/20 border border-purple-200 dark:border-purple-500/30 cursor-pointer hover:bg-purple-600/30">
-                                <div className="text-[10px] font-bold text-purple-700 dark:text-purple-300 truncate">{r.contactName}</div>
+                                <div className="text-[10px] font-bold text-purple-700 dark:text-purple-300 truncate">{r.contact?.fullName ?? 'Unknown contact'}</div>
                                 <div className="text-[9px] text-slate-600 dark:text-slate-400 truncate">{r.partySize} Guests</div>
                                 <div className="mt-1 scale-90 origin-left">{getStatusBadge(r.status)}</div>
                               </div>
@@ -389,6 +621,38 @@ export default function SchedulingPage() {
             </table>
           </div>
         </div>
+      ) : activeTab === 'refunds' ? (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          {refundRequests.length > 0 ? (
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Ticket</th>
+                  <th className="px-6 py-4 font-medium">Subject</th>
+                  <th className="px-6 py-4 font-medium">Citizen</th>
+                  <th className="px-6 py-4 font-medium">Raised</th>
+                  <th className="px-6 py-4 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {refundRequests.map((t) => (
+                  <tr key={t.id}>
+                    <td className="px-6 py-4 font-mono text-xs text-blue-600 dark:text-blue-400">{t.ticketNumber}</td>
+                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">{t.subject}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{t.contactName || '—'}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleString() : '—'}</td>
+                    <td className="px-6 py-4">{getStatusBadge(t.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-16 text-center text-slate-500 dark:text-slate-400 text-sm">
+              No refund requests. Raising one from a booking or reservation cancels it and files a
+              high-priority ticket here.
+            </div>
+          )}
+        </div>
       ) : activeTab === 'bookings' ? (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
           {bookings.length > 0 ? (
@@ -412,11 +676,11 @@ export default function SchedulingPage() {
                   >
                     <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:text-blue-400 transition-colors flex items-center gap-2">
                       <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:text-blue-400" />
-                      {b.contactName}
+                      {b.contact?.fullName ?? 'Unknown contact'}
                     </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.service}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.serviceName}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(b.startTime).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.staff}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.staffName || <span className="text-slate-400 dark:text-slate-500">unassigned</span>}</td>
                     <td className="px-6 py-4">{getStatusBadge(b.status)}</td>
                     <td className="px-6 py-4 text-right text-xs text-blue-600 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
                   </tr>
@@ -452,11 +716,11 @@ export default function SchedulingPage() {
                   >
                     <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:text-blue-400 transition-colors flex items-center gap-2">
                       <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:text-blue-400" />
-                      {r.contactName}
+                      {r.contact?.fullName ?? 'Unknown contact'}
                     </td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-bold">{r.partySize} Guests</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(r.reservationTime).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{r.tableOrRoom}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{r.tableOrRoomNumber || <span className="text-slate-400 dark:text-slate-500">—</span>}</td>
                     <td className="px-6 py-4">{getStatusBadge(r.status)}</td>
                     <td className="px-6 py-4 text-right text-xs text-blue-600 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
                   </tr>
@@ -482,24 +746,49 @@ export default function SchedulingPage() {
               </button>
             </div>
             <form onSubmit={handleCreateBooking} className="space-y-4">
+              {/* A booking belongs to a CONTACT, not a typed name: the endpoint
+                  checks the contact belongs to this agency, so a citizen of
+                  another agency cannot be booked by id. A free-text box could
+                  never satisfy that, which is why creating one returned 500. */}
               <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Customer Full Name</label>
-                <input required type="text" value={bookingName} onChange={e => setBookingName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Tunde Bakare" />
+                <label htmlFor="booking-contact" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Citizen</label>
+                <select
+                  id="booking-contact"
+                  required
+                  value={bookingContactId}
+                  onChange={e => setBookingContactId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Select a citizen…</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.id}>{c.fullName} — {c.phoneNumber}</option>
+                  ))}
+                </select>
+                {contacts.length === 0 && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1.5">
+                    No citizens on record yet. Add one under Contacts first — a booking has to belong to somebody.
+                  </p>
+                )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Service Type</label>
-                <input required type="text" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <label htmlFor="booking-service" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Service Type</label>
+                <input required type="text" id="booking-service" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date & Time</label>
-                <input required type="datetime-local" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <label htmlFor="booking-time" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date &amp; Time</label>
+                <input required type="datetime-local" id="booking-time" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Assigned Staff</label>
-                <input required type="text" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <label htmlFor="booking-staff" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Assigned Staff</label>
+                <input type="text" id="booking-staff" placeholder="Optional — leave blank if nobody is assigned yet" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
-                Confirm & Create Booking
+              {actionError && (
+                <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                  {actionError}
+                </div>
+              )}
+              <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50">
+                {busy === 'Create booking' ? 'Creating…' : 'Confirm & Create Booking'}
               </button>
             </form>
           </div>
@@ -518,25 +807,41 @@ export default function SchedulingPage() {
             </div>
             <form onSubmit={handleCreateReservation} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Guest Full Name</label>
-                <input required type="text" value={resName} onChange={e => setResName(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" placeholder="e.g. Fatima Mohammed" />
+                <label htmlFor="res-contact" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Citizen</label>
+                <select
+                  id="res-contact"
+                  required
+                  value={resContactId}
+                  onChange={e => setResContactId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">Select a citizen…</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.id}>{c.fullName} — {c.phoneNumber}</option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Party Size</label>
-                  <input required type="number" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <label htmlFor="res-party" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Party Size</label>
+                  <input required type="number" id="res-party" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Table / Room</label>
-                  <input required type="text" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <label htmlFor="res-table" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Table / Room</label>
+                  <input type="text" id="res-table" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date & Time</label>
-                <input required type="datetime-local" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <label htmlFor="res-time" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date &amp; Time</label>
+                <input required type="datetime-local" id="res-time" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
               </div>
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20">
-                Confirm & Reserve Slot
+              {actionError && (
+                <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                  {actionError}
+                </div>
+              )}
+              <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50">
+                {busy === 'Create reservation' ? 'Reserving…' : 'Confirm & Reserve Slot'}
               </button>
             </form>
           </div>
@@ -548,8 +853,8 @@ export default function SchedulingPage() {
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-bold">Audit Record Inspector</span>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedBooking.contactName}</h3>
+                <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-bold">Booking Inspector</span>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedBooking.contact?.fullName ?? 'Unknown contact'}</h3>
               </div>
               <button
                 onClick={() => setSelectedBooking(null)}
@@ -571,11 +876,11 @@ export default function SchedulingPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Service Name</span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedBooking.service}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedBooking.serviceName}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Assigned Staff</span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedBooking.staff}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedBooking.staffName || 'unassigned'}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 col-span-2">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Scheduled Date & Time (WAT)</span>
@@ -628,27 +933,72 @@ export default function SchedulingPage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex gap-3">
-              <button
-                onClick={() => {
-                  showToast(`Booking for ${selectedBooking.contactName} cancelled.`);
-                  setSelectedBooking(null);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-xs font-semibold transition-all"
-              >
-                Cancel Booking
-              </button>
-              <button
-                onClick={() => {
-                  showToast(`Reschedule link sent to ${selectedBooking.contactName}.`);
-                  setSelectedBooking(null);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/20"
-              >
-                Reschedule Slot
-              </button>
-            </div>
+            {/* Actions. Each one calls the API and reports what it answered. */}
+            {isOpen(selectedBooking.status) ? (
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setReasonFor({ kind: 'booking', id: selectedBooking.id, name: selectedBooking.contact?.fullName ?? 'this citizen', action: 'cancel' });
+                      setReason(''); setActionError(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-xs font-semibold transition-all"
+                  >
+                    Cancel Booking
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRescheduleFor({ kind: 'booking', id: selectedBooking.id, name: selectedBooking.contact?.fullName ?? 'this booking' });
+                      setNewTime(toLocalInput(selectedBooking.startTime)); setActionError(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/20"
+                  >
+                    Reschedule
+                  </button>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setBookingStatus(selectedBooking.id, 'COMPLETED')}
+                    disabled={busy !== null}
+                    className="flex-1 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 text-xs font-semibold transition-all disabled:opacity-50"
+                  >
+                    Mark Completed
+                  </button>
+                  <button
+                    onClick={() => setBookingStatus(selectedBooking.id, 'NO_SHOW')}
+                    disabled={busy !== null}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700/60 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-all disabled:opacity-50"
+                  >
+                    No Show
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setReasonFor({ kind: 'booking', id: selectedBooking.id, name: selectedBooking.contact?.fullName ?? 'this citizen', action: 'refund' });
+                    setReason(''); setActionError(null);
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-amber-500/[0.12] hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 text-xs font-semibold transition-all"
+                >
+                  Raise a refund request
+                </button>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Marking completed or no-show is restricted to owners and administrators.
+                </p>
+              </div>
+            ) : (
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  This booking is {selectedBooking.status.toLowerCase()}, so there is nothing left to
+                  change. Create a new booking instead of reopening this one.
+                </p>
+              </div>
+            )}
+
+            {actionError && !reasonFor && !rescheduleFor && (
+              <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                {actionError}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -660,7 +1010,7 @@ export default function SchedulingPage() {
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
                 <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedReservation.contactName}</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedReservation.contact?.fullName ?? 'Unknown contact'}</h3>
               </div>
               <button
                 onClick={() => setSelectedReservation(null)}
@@ -686,7 +1036,7 @@ export default function SchedulingPage() {
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Assigned Table / Room</span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedReservation.tableOrRoom}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedReservation.tableOrRoomNumber || '—'}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 col-span-2">
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Special Requests & Dietary Notes</span>
@@ -718,23 +1068,143 @@ export default function SchedulingPage() {
             <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex gap-3">
               <button
                 onClick={() => {
-                  showToast(`Reservation for ${selectedReservation.contactName} cancelled.`);
-                  setSelectedReservation(null);
+                  setReasonFor({ kind: 'reservation', id: selectedReservation.id, name: selectedReservation.contact?.fullName ?? 'this citizen', action: 'cancel' });
+                  setReason(''); setActionError(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-xs font-semibold transition-all"
+                disabled={!isOpen(selectedReservation.status)}
+                className="flex-1 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-xs font-semibold transition-all disabled:opacity-40"
               >
                 Cancel Reservation
               </button>
               <button
                 onClick={() => {
-                  showToast(`Reservation marked completed.`);
-                  setSelectedReservation(null);
+                  setRescheduleFor({ kind: 'reservation', id: selectedReservation.id, name: selectedReservation.contact?.fullName ?? 'this reservation' });
+                  setNewTime(toLocalInput(selectedReservation.reservationTime)); setActionError(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all shadow-lg shadow-purple-500/20"
+                disabled={!isOpen(selectedReservation.status)}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-all shadow-lg shadow-purple-500/20 disabled:opacity-40"
               >
-                Mark Completed
+                Reschedule
               </button>
             </div>
+
+            {isOpen(selectedReservation.status) ? (
+              <button
+                onClick={() => {
+                  setReasonFor({ kind: 'reservation', id: selectedReservation.id, name: selectedReservation.contact?.fullName ?? 'this citizen', action: 'refund' });
+                  setReason(''); setActionError(null);
+                }}
+                className="w-full py-2.5 rounded-xl bg-amber-500/[0.12] hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 text-xs font-semibold transition-all"
+              >
+                Raise a refund request
+              </button>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                This reservation is {selectedReservation.status.toLowerCase()}; there is nothing left to change.
+              </p>
+            )}
+
+            {actionError && !reasonFor && !rescheduleFor && (
+              <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                {actionError}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Reschedule ───────────────────────────────────────────────────────
+          A new time is ASKED FOR rather than assumed. The old button claimed
+          to have "sent a reschedule link", which was neither a reschedule nor
+          a link. */}
+      {rescheduleFor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base">Move {rescheduleFor.name}</h3>
+              <button onClick={() => { setRescheduleFor(null); setActionError(null); }} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <label htmlFor="reschedule-time" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">New date &amp; time</label>
+              <input
+                id="reschedule-time"
+                type="datetime-local"
+                value={newTime}
+                onChange={e => setNewTime(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                The agency's own serving hours and the double-booking constraint both apply — if the
+                slot is taken, the refusal below says which appointment holds it.
+              </p>
+            </div>
+            {actionError && (
+              <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                {actionError}
+              </div>
+            )}
+            <button
+              onClick={doReschedule}
+              disabled={busy !== null}
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all disabled:opacity-50"
+            >
+              {busy === 'Reschedule' ? 'Moving…' : 'Move it'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel / refund, with the reason the citizen will ask about ───── */}
+      {reasonFor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                {reasonFor.action === 'cancel' ? `Cancel for ${reasonFor.name}` : `Refund request for ${reasonFor.name}`}
+              </h3>
+              <button onClick={() => { setReasonFor(null); setActionError(null); }} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {reasonFor.action === 'refund' && (
+              <div className="p-3 rounded-xl bg-amber-500/[0.08] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
+                This raises a <strong>high-priority ticket</strong> and <strong>cancels the {reasonFor.kind}</strong>,
+                freeing the slot. Both happen together.
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="action-reason" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                Reason {reasonFor.action === 'refund' ? '(required)' : '(optional)'}
+              </label>
+              <textarea
+                id="action-reason"
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                placeholder={reasonFor.action === 'refund' ? 'What the citizen asked for, and why' : 'Recorded against the appointment'}
+              />
+            </div>
+
+            {actionError && (
+              <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                {actionError}
+              </div>
+            )}
+
+            <button
+              onClick={reasonFor.action === 'cancel' ? doCancel : doRefund}
+              disabled={busy !== null}
+              className={`w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 ${
+                reasonFor.action === 'cancel' ? 'bg-red-600 hover:bg-red-500' : 'bg-amber-600 hover:bg-amber-500'
+              }`}
+            >
+              {busy ? 'Working…' : reasonFor.action === 'cancel' ? `Cancel this ${reasonFor.kind}` : 'Raise the refund ticket'}
+            </button>
           </div>
         </div>
       )}

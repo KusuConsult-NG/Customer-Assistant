@@ -9,7 +9,7 @@ import {
   BookOpen, Upload, Search, FileText, Loader2, AlertCircle,
   CheckCircle2, Clock, Globe, Sparkles, Trash2, RefreshCw,
   Plus, X, ExternalLink, Database, Zap, Brain, MessageSquare,
-  ChevronRight, Layers, ArrowUp, ArrowDown, Info
+  ChevronRight, Layers, ArrowUp, ArrowDown, Info, Download
 } from 'lucide-react';
 
 interface KnowledgeDoc {
@@ -43,6 +43,8 @@ interface FaqPair {
 export default function KnowledgePage() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'documents' | 'faqs'>('documents');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -402,6 +404,44 @@ export default function KnowledgePage() {
     }
   };
 
+  /**
+   * Retrieve an uploaded document.
+   *
+   * `GET /documents/:id/download` returns a SHORT-LIVED SIGNED URL rather than
+   * the bytes — the bucket is private, which is why `storageUrl` holds a path
+   * and not a URL. So the flow is: ask for the URL, then open it. Nothing is
+   * linked directly, because a direct link to the storage path 404s and a
+   * signed URL pasted into the page would still be in the DOM after it expired.
+   *
+   * A crawled page has no stored file at all. Offering "download" for one would
+   * be a button that can only fail, so the row shows its source link instead.
+   */
+  const handleDownload = async (id: string) => {
+    const token = localStorage.getItem('ace_token');
+    setDownloadingId(id);
+    setDownloadError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/knowledge/documents/${id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.url) {
+        // The service explains the cases it cannot serve — a document that
+        // failed extraction, or one with no stored file. Showing its words
+        // beats "download failed".
+        throw new Error(
+          (Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ||
+          'This document could not be retrieved.'
+        );
+      }
+      window.open(body.url, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      setDownloadError(err?.message || 'This document could not be retrieved.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this document from the knowledge base?')) return;
     setDeletingId(id);
@@ -661,9 +701,33 @@ export default function KnowledgePage() {
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex-shrink-0 ${cfg.className}`}>
                           {cfg.icon} {cfg.label}
                         </div>
+                        {doc.sourceUrl ? (
+                          <a
+                            href={doc.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open the page this was crawled from"
+                            aria-label={`Open the source page for ${doc.title || doc.fileName}`}
+                            className="opacity-0 group-hover:opacity-100 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all p-1 flex-shrink-0"
+                          >
+                            <Globe className="w-4 h-4" />
+                          </a>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDownload(doc.id); }}
+                            disabled={downloadingId === doc.id}
+                            title="Download the uploaded file"
+                            aria-label={`Download ${doc.title || doc.fileName}`}
+                            className="opacity-0 group-hover:opacity-100 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all p-1 flex-shrink-0 disabled:opacity-50"
+                          >
+                            {downloadingId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
                           disabled={deletingId === doc.id}
+                          aria-label={`Delete ${doc.title || doc.fileName}`}
                           className="opacity-0 group-hover:opacity-100 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:text-red-400 transition-all p-1 flex-shrink-0"
                         >
                           {deletingId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -671,6 +735,11 @@ export default function KnowledgePage() {
                       </div>
                     );
                   })}
+                  {downloadError && (
+                    <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                      {downloadError}
+                    </div>
+                  )}
                 </div>
               )}
             </>

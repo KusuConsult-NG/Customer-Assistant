@@ -89,6 +89,7 @@ describe('WhatsApp templates and broadcasts', () => {
   const as = (token: string) => ({
     get: (p: string) => request(app.getHttpServer()).get(p).set('Authorization', `Bearer ${token}`),
     post: (p: string) => request(app.getHttpServer()).post(p).set('Authorization', `Bearer ${token}`),
+    patch: (p: string) => request(app.getHttpServer()).patch(p).set('Authorization', `Bearer ${token}`),
     del: (p: string) => request(app.getHttpServer()).delete(p).set('Authorization', `Bearer ${token}`),
   });
 
@@ -320,9 +321,13 @@ describe('WhatsApp templates and broadcasts', () => {
         .send({ content: 'Looking into that for you now.' });
       expect(reply.status).not.toBe(403);
 
+      // Handoff moved to the channel-agnostic route — the WhatsApp duplicate
+      // wrote the same columns without notifying the console gateway, so a
+      // takeover was invisible to every other console. The guarantee being
+      // pinned is unchanged: an AGENT may take a thread over.
       const handoff = await as(token)
-        .post(`/api/whatsapp/conversations/${conversation.id}/handoff`)
-        .send({ active: true });
+        .patch(`/api/conversations/${conversation.id}/handoff`)
+        .send({ handoff: true });
       expect(handoff.status).not.toBe(403);
     });
 
