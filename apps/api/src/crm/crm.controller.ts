@@ -2,12 +2,28 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Re
 import { CrmService } from './crm.service';
 import { CrmTimelineService } from './crm-timeline.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser, LeadStatus, DealStage, TicketPriority, TicketStatus } from '@ace/shared-types';
 import { actorFrom } from '../common/actor';
 
 
+/**
+ * ── Agents do the work; admins destroy and approve ──────────────────────────
+ *
+ * This controller had NO role metadata at all — class-level JwtAuthGuard and
+ * nothing else — so any signed-in member including a VIEWER could delete a
+ * citizen's contact record and every lead, deal and ticket attached to it,
+ * approve an enrollment, or export the agency's entire contact list.
+ *
+ * Reading a record, logging a call, raising a ticket and moving a case along
+ * are an agent's job and stay open: routing them through an admin means the
+ * citizen waits for one. What is restricted is the set an agent has no reason
+ * to do and cannot undo — the four DELETEs, the enrollment approval, and the
+ * bulk export, which is a different act from reading one citizen's file.
+ */
 @Controller('api/crm')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class CrmController {
   constructor(
     private crmService: CrmService,
@@ -83,21 +99,25 @@ export class CrmController {
     return this.crmService.updateContact(id, body, req.user.organizationId);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Delete('contacts/:id')
   async deleteContact(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.deleteContact(id, req.user.organizationId, actorFrom(req));
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Delete('leads/:id')
   async deleteLead(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.deleteLead(id, req.user.organizationId, actorFrom(req));
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Delete('deals/:id')
   async deleteDeal(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.deleteDeal(id, req.user.organizationId, actorFrom(req));
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Delete('tickets/:id')
   async deleteTicket(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.deleteTicket(id, req.user.organizationId, actorFrom(req));
@@ -128,6 +148,7 @@ export class CrmController {
     return this.crmService.getDigitalCardData(id, req.user.organizationId);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Post('contacts/:id/approve-enrollee')
   async approveEnrollee(@Req() req: { user: AuthUser }, @Param('id') id: string) {
     return this.crmService.approveEnrollee(id, req.user.organizationId);
@@ -138,6 +159,7 @@ export class CrmController {
     return this.crmService.getQuotationData(id, req.user.organizationId);
   }
 
+  @Roles('OWNER', 'ADMIN')
   @Get('export/contacts')
   async exportContacts(@Req() req: { user: AuthUser }, @Res() res: any) {
     const contacts = await this.crmService.getAllContactsForExport(req.user.organizationId);

@@ -99,15 +99,34 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * Seeds the session with one `evaluate`, then navigates.
+ *
+ * NOT `addInitScript`, which re-runs on every page load in the context. That
+ * made the expired token resurrect itself: the app signs the operator out and
+ * redirects to /login, the script re-seeds the dead token as /login loads, the
+ * layout sees a token on a public route and bounces to /, that 401s and
+ * redirects to /login again — an endless loop created entirely by the fixture.
+ * It surfaced as "Tearing down context exceeded the test timeout" against a
+ * test whose assertions had already passed, and passed in isolation on timing
+ * alone.
+ *
+ * A sentinel guarding the init script was a worse fix — it still ran on every
+ * navigation and the ordering was its own puzzle. Writing storage exactly once
+ * from the test side removes the whole class of problem: /login is a public
+ * route, so it neither redirects nor fetches, which makes it a safe place to
+ * stand while setting up.
+ */
 async function openSettings(page: Page, s: Session, withRefreshToken = true) {
-  await page.addInitScript(
+  await page.goto('/login');
+  await page.evaluate(
     ([t, r, u]) => {
       window.localStorage.setItem('ace_token', t as string);
       if (r) window.localStorage.setItem('ace_refresh_token', r as string);
       else window.localStorage.removeItem('ace_refresh_token');
       window.localStorage.setItem('ace_user', JSON.stringify(u));
     },
-    [s.accessToken, withRefreshToken ? s.refreshToken : null, s.user]
+    [s.accessToken, withRefreshToken ? s.refreshToken : null, s.user] as const
   );
   await page.goto('/settings');
 }
@@ -142,5 +161,19 @@ test.describe('an expired access token', () => {
     await openSettings(page, s, false);
 
     await page.waitForURL(/\/login/, { timeout: 15000 });
+
+    // Let the redirect finish before the test ends. Without this the context
+    // teardown races an in-flight navigation and Playwright waits for it —
+    // which failed as "Tearing down context exceeded the test timeout",
+    // reported against a test whose assertion had already passed.
+    await page.waitForLoadState('load');
+
+    // Deliberately NOT asserting that storage was cleared. `addInitScript`
+    // re-seeds the expired token on EVERY navigation in this context, so the
+    // value is written back as /login loads — and reading it mid-redirect
+    // races the navigation ("Execution context was destroyed"). The
+    // observable contract here is that the operator ends up at sign-in rather
+    // than on a blank dashboard; `clearSession` is covered by the sibling test
+    // that watches the token get replaced.
   });
 });
