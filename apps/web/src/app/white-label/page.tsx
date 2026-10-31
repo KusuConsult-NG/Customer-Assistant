@@ -61,8 +61,16 @@ export default function WhiteLabelPage() {
         setWebhookUrl(data.webhookUrl || '');
         setEnabledEvents(data.enabledWebhookEvents || []);
         if (data.logoUrl) setLogoPreview(data.logoUrl);
+      } else {
+        // Silence here was worse than an error: the form fell back to the
+        // placeholder blue and purple, which look exactly like a deliberate
+        // choice — so an operator could save the defaults over the agency's
+        // real branding without ever being told the load had failed.
+        setToast({ msg: 'Could not load this agency’s branding. Reload before saving, or you may overwrite it with defaults.', type: 'error' });
       }
-    } catch {} finally { setLoading(false); }
+    } catch {
+      setToast({ msg: 'Could not reach the server to load branding. Reload before saving.', type: 'error' });
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchOrg(); }, [fetchOrg]);

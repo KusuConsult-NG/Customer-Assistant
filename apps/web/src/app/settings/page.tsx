@@ -56,8 +56,18 @@ export default function SettingsPage() {
   const fetchOrg = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_URL}/api/organizations/me`, { headers: authHeaders });
-      if (res.ok) setOrg(await res.json());
-    } catch {}
+      if (res.ok) {
+        setOrg(await res.json());
+        return;
+      }
+      // An expired token is handled by apiFetch, which refreshes or signs the
+      // operator out. Anything else reaching here leaves every field on this
+      // screen blank — and a blank settings form will happily save itself
+      // over the agency's real configuration. Say so rather than look loaded.
+      showToast('Could not load this agency’s settings. Reload before saving, or you may overwrite them.', 'error');
+    } catch {
+      showToast('Could not reach the server to load settings. Reload before saving.', 'error');
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -1086,7 +1096,11 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
       ]);
       if (mRes) setMembers(mRes);
       if (pRes) setMatrix(pRes);
-    } catch {}
+    } catch (err: any) {
+      // An empty team list reads as "this agency has one member", which is a
+      // different and much less alarming statement than "we could not ask".
+      showToast(err?.message || 'Could not load the team list.', 'error');
+    }
     finally { setLoadingMembers(false); }
   }, []);
 
