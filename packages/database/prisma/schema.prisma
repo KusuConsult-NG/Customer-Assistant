@@ -655,7 +655,15 @@ model WhatsAppTemplate {
   bodyText       String       @db.Text
   footerText     String?
   buttons        Json?
-  status         String       @default("APPROVED")
+  /// Meta approves templates; this platform does not. The default was
+  /// "APPROVED", so a row created by any path that does not set this
+  /// explicitly — a seed, a direct insert — claimed an approval Meta had
+  /// never given, and the broadcast gate would wave it through.
+  ///
+  /// `createTemplate` has always set PENDING_SUBMISSION itself, so the
+  /// service path was already honest; this aligns the column default with
+  /// it rather than leaving the looser value behind the correct code.
+  status         String       @default("PENDING_SUBMISSION")
   metaTemplateId String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
