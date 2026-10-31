@@ -28,9 +28,11 @@
  * rather than opening them, and being able to read them in a database console
  * is worth more than hiding them.
  *
- * CalendarIntegration.accessToken/refreshToken are also plaintext columns, and
- * are deliberately left alone — no code in this repo reads or writes that model
- * at all, so encrypting it would be ceremony over a table nothing uses.
+ * CalendarIntegration used to be named here too, as a plaintext pair left
+ * alone because nothing read or wrote that model. The model has since been
+ * dropped rather than exempted: a credential column nobody uses is not a
+ * column that stays unused, it is somewhere credentials end up later with no
+ * encryption in front of them.
  */
 const path = require('path');
 

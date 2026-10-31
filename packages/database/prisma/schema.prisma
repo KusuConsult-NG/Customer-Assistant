@@ -194,7 +194,6 @@ model Organization {
   hostedAgentConfig    HostedAgentConfig?
   whatsAppConfigs      WhatsAppConfig[]
   contacts             Contact[]
-  companies            Company[]
   leads                Lead[]
   deals                Deal[]
   tickets              Ticket[]
@@ -203,7 +202,6 @@ model Organization {
   knowledgeDocuments   KnowledgeDocument[]
   bookings             Booking[]
   reservations         Reservation[]
-  calendarIntegrations CalendarIntegration[]
   faqEntries           FaqEntry[]
   whatsAppTemplates    WhatsAppTemplate[]
   broadcastCampaigns   BroadcastCampaign[]
@@ -343,8 +341,6 @@ model Contact {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  companyId      String?
-  company        Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   fullName       String
   phoneNumber    String
   email          String?
@@ -371,27 +367,7 @@ model Contact {
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
-  @@index([companyId])
   @@map("contacts")
-}
-
-model Company {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  industry       String?
-  website        String?
-  phone          String?
-  email          String?
-  address        String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  contacts Contact[]
-
-  @@index([organizationId])
-  @@map("companies")
 }
 
 model Lead {
@@ -633,21 +609,6 @@ model Reservation {
   @@index([organizationId, reservationTime])
   @@index([contactId])
   @@map("reservations")
-}
-
-model CalendarIntegration {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  provider       String // GOOGLE, OUTLOOK, ICAL
-  accessToken    String       @db.Text
-  refreshToken   String?      @db.Text
-  calendarId     String
-  expiresAt      DateTime?
-  createdAt      DateTime     @default(now())
-
-  @@index([organizationId])
-  @@map("calendar_integrations")
 }
 
 model FaqEntry {

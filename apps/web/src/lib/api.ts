@@ -142,6 +142,18 @@ const withCurrentToken = (init: RequestInit): RequestInit => {
  * the citizen's selfie link). They have no session to refresh, and bouncing a
  * citizen with a bad reset link to /login would be wrong.
  */
+/**
+ * Set once the session has been given up on, so the redirect happens once.
+ *
+ * A page issues several requests at a time. When the session cannot be
+ * recovered they ALL reach the sign-out below, and each calling
+ * `location.replace` thrashes navigation — the browser starts the same
+ * navigation repeatedly and may never settle on it. That showed up as this
+ * file's own e2e timing out under a full suite run while passing in
+ * isolation, which is the shape of a race rather than a slow test.
+ */
+let signedOut = false;
+
 export const apiFetch = async (input: string, init: RequestInit = {}): Promise<Response> => {
   const send = () => fetch(input, withCurrentToken(init));
 
@@ -156,7 +168,10 @@ export const apiFetch = async (input: string, init: RequestInit = {}): Promise<R
   }
 
   clearSession();
-  window.location.replace("/login");
+  if (!signedOut) {
+    signedOut = true;
+    window.location.replace("/login");
+  }
   return res;
 };
 
