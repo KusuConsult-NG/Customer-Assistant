@@ -36,6 +36,9 @@ jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/state-geography'),
   ...jest.requireActual('../../database/src/service-locations'),
   prisma: mockPrisma,
+  // Stubbed, not required actual: audit.ts imports the real prisma client
+  // from ./index, and these suites exist to avoid constructing one.
+  recordAgencyAuditBestEffort: jest.fn(),
   upsertEnrollee: (...args: any[]) => mockUpsertEnrollee(...args),
   Prisma: { DbNull: null },
 }));

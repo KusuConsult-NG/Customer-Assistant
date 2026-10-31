@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import {
   prisma, phoneNumberVariants,
-  isOverlapViolation, withDeadlockRetry,
-} from '@ace/database';
+  isOverlapViolation, withDeadlockRetry, recordAgencyAudit, type AuditActor } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -224,7 +223,12 @@ export class SchedulingService {
 
   // ─── Bookings: Cancel ─────────────────────────────────────────────────────────
 
-  async cancelBooking(organizationId: string, bookingId: string, reason?: string) {
+  async cancelBooking(
+    organizationId: string,
+    bookingId: string,
+    reason?: string,
+    actor: AuditActor = 'system:orchestrator'
+  ) {
     const booking = await prisma.booking.findFirst({
       where: { id: bookingId, organizationId },
       include: { contact: true },
@@ -242,7 +246,7 @@ export class SchedulingService {
     // that AppointmentReminderService uses for idempotency.
     const cancellationNote = reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer';
 
-    return prisma.booking.update({
+    const cancelled = await prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: BookingStatus.CANCELLED,
@@ -251,6 +255,18 @@ export class SchedulingService {
       },
       include: { contact: true },
     });
+
+    // The time that was given up, so "what appointment did this citizen
+    // lose" survives the cancellation.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.booking.cancelled',
+      targetType: 'Booking',
+      targetId: bookingId,
+      previousValue: { status: booking.status, startTime: booking.startTime },
+      newValue: { status: cancelled.status, reason: reason ?? null },
+    });
+
+    return cancelled;
   }
 
   // ─── Bookings: Reschedule ─────────────────────────────────────────────────────
@@ -259,7 +275,8 @@ export class SchedulingService {
     organizationId: string,
     bookingId: string,
     newStartTime: string,
-    durationMinutes = 30
+    durationMinutes = 30,
+    actor: AuditActor = 'system:orchestrator'
   ) {
     const booking = await prisma.booking.findFirst({
       where: { id: bookingId, organizationId },
@@ -294,8 +311,9 @@ export class SchedulingService {
       );
     }
 
+    let moved;
     try {
-      return await withDeadlockRetry(() => prisma.booking.update({
+      moved = await withDeadlockRetry(() => prisma.booking.update({
         where: { id: bookingId },
         data: {
           status: BookingStatus.RESCHEDULED,
@@ -313,6 +331,19 @@ export class SchedulingService {
       }
       throw err;
     }
+
+    // Recorded only after the write succeeded. A slot lost to the exclusion
+    // constraint is not a reschedule, and an audit row for one would describe
+    // a move that never happened.
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.booking.rescheduled',
+      targetType: 'Booking',
+      targetId: bookingId,
+      previousValue: { startTime: booking.startTime, status: booking.status },
+      newValue: { startTime: moved.startTime, status: moved.status },
+    });
+
+    return moved;
   }
 
   // ─── Bookings: Refund Request ─────────────────────────────────────────────────
@@ -360,13 +391,28 @@ export class SchedulingService {
 
   // ─── Bookings: Legacy status update ──────────────────────────────────────────
 
-  async updateBookingStatus(bookingId: string, status: BookingStatus, organizationId: string) {
+  async updateBookingStatus(
+    bookingId: string,
+    status: BookingStatus,
+    organizationId: string,
+    actor: AuditActor = 'system:orchestrator'
+  ) {
     const booking = await prisma.booking.findFirst({ where: { id: bookingId, organizationId } });
     if (!booking) throw new NotFoundException('Booking not found');
-    return prisma.booking.update({
+    const updated = await prisma.booking.update({
       where: { id: bookingId },
       data: { status, updatedAt: new Date() },
     });
+
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.booking.status_changed',
+      targetType: 'Booking',
+      targetId: bookingId,
+      previousValue: { status: booking.status },
+      newValue: { status: updated.status },
+    });
+
+    return updated;
   }
 
   // ─── Reservations: Read ───────────────────────────────────────────────────────
@@ -422,7 +468,12 @@ export class SchedulingService {
 
   // ─── Reservations: Cancel ─────────────────────────────────────────────────────
 
-  async cancelReservation(organizationId: string, reservationId: string, reason?: string) {
+  async cancelReservation(
+    organizationId: string,
+    reservationId: string,
+    reason?: string,
+    actor: AuditActor = 'system:orchestrator'
+  ) {
     const reservation = await prisma.reservation.findFirst({
       where: { id: reservationId, organizationId },
       include: { contact: true },
@@ -437,7 +488,7 @@ export class SchedulingService {
 
     const cancellationNote = reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer';
 
-    return prisma.reservation.update({
+    const cancelled = await prisma.reservation.update({
       where: { id: reservationId },
       data: {
         status: BookingStatus.CANCELLED,
@@ -446,11 +497,26 @@ export class SchedulingService {
       },
       include: { contact: true },
     });
+
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.reservation.cancelled',
+      targetType: 'Reservation',
+      targetId: reservationId,
+      previousValue: { status: reservation.status, reservationTime: reservation.reservationTime },
+      newValue: { status: cancelled.status, reason: reason ?? null },
+    });
+
+    return cancelled;
   }
 
   // ─── Reservations: Reschedule ─────────────────────────────────────────────────
 
-  async rescheduleReservation(organizationId: string, reservationId: string, newReservationTime: string) {
+  async rescheduleReservation(
+    organizationId: string,
+    reservationId: string,
+    newReservationTime: string,
+    actor: AuditActor = 'system:orchestrator'
+  ) {
     const reservation = await prisma.reservation.findFirst({
       where: { id: reservationId, organizationId },
       include: { contact: true },
@@ -471,7 +537,7 @@ export class SchedulingService {
       throw new BadRequestException('New reservation time cannot be in the past');
     }
 
-    return prisma.reservation.update({
+    const moved = await prisma.reservation.update({
       where: { id: reservationId },
       data: {
         status: BookingStatus.RESCHEDULED,
@@ -480,6 +546,16 @@ export class SchedulingService {
       },
       include: { contact: true },
     });
+
+    await recordAgencyAudit(actor, organizationId, {
+      action: 'agency.reservation.rescheduled',
+      targetType: 'Reservation',
+      targetId: reservationId,
+      previousValue: { reservationTime: reservation.reservationTime, status: reservation.status },
+      newValue: { reservationTime: moved.reservationTime, status: moved.status },
+    });
+
+    return moved;
   }
 
   // ─── Reservations: Refund Request ─────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
 import { SchedulingService } from './scheduling.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, BookingStatus } from '@ace/shared-types';
+import { actorFrom } from '../common/actor';
 
 @Controller('api/scheduling')
 @UseGuards(JwtAuthGuard)
@@ -36,7 +37,7 @@ export class SchedulingController {
     @Param('id') id: string,
     @Body() body: { reason?: string }
   ) {
-    return this.schedulingService.cancelBooking(req.user.organizationId, id, body.reason);
+    return this.schedulingService.cancelBooking(req.user.organizationId, id, body.reason, actorFrom(req));
   }
 
   /**
@@ -53,7 +54,8 @@ export class SchedulingController {
       req.user.organizationId,
       id,
       body.newStartTime,
-      body.durationMinutes
+      body.durationMinutes,
+      actorFrom(req)
     );
   }
 
@@ -79,7 +81,7 @@ export class SchedulingController {
   /** Legacy: direct status override (admin use). */
   @Patch('bookings/:id/status')
   updateBookingStatus(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: { status: BookingStatus }) {
-    return this.schedulingService.updateBookingStatus(id, body.status, req.user.organizationId);
+    return this.schedulingService.updateBookingStatus(id, body.status, req.user.organizationId, actorFrom(req));
   }
 
   // ─── Reservations ─────────────────────────────────────────────────────────────
@@ -113,7 +115,7 @@ export class SchedulingController {
     @Param('id') id: string,
     @Body() body: { reason?: string }
   ) {
-    return this.schedulingService.cancelReservation(req.user.organizationId, id, body.reason);
+    return this.schedulingService.cancelReservation(req.user.organizationId, id, body.reason, actorFrom(req));
   }
 
   /**
@@ -129,7 +131,8 @@ export class SchedulingController {
     return this.schedulingService.rescheduleReservation(
       req.user.organizationId,
       id,
-      body.newReservationTime
+      body.newReservationTime,
+      actorFrom(req)
     );
   }
 

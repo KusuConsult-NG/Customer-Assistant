@@ -29,6 +29,7 @@ import request from 'supertest';
 import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { AppModule } from '../src/app.module';
+import { SchedulingService } from '../src/scheduling/scheduling.service';
 import { createTenant, dropTenant, TestTenant } from './support/tenant';
 
 describe('the agency audit trail', () => {
@@ -37,6 +38,7 @@ describe('the agency audit trail', () => {
   let agency: TestTenant;
   let other: TestTenant;
   /** A colleague inside `agency`, to be promoted and deactivated. */
+  let scheduling: SchedulingService;
   let colleagueId: string;
   let colleagueEmail: string;
 
@@ -51,6 +53,7 @@ describe('the agency audit trail', () => {
     }).compile();
     app = moduleFixture.createNestApplication();
     await app.init();
+    scheduling = app.get(SchedulingService);
 
     operator = await createTenant(app, 'audit-ministry', { isPlatformAdmin: true });
     agency = await createTenant(app, 'audit-agency', { role: 'OWNER' });
@@ -287,6 +290,99 @@ describe('the agency audit trail', () => {
       );
       expect(row).toBeDefined();
       expect(row.previousValue).toMatchObject({ name: option.name });
+    });
+  });
+
+  // ── Who moved the appointment: a person, or the AI ────────────────────────
+
+  describe('a change the AI made is attributed to the AI', () => {
+    const makeBooking = async () => {
+      const contact = await prisma.contact.create({
+        data: {
+          organizationId: agency.orgId,
+          fullName: `Booking Citizen ${randomBytes(2).toString('hex')}`,
+          phoneNumber: `+2347${String(Date.now()).slice(-9)}`,
+        },
+      });
+      const start = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+      return prisma.booking.create({
+        data: {
+          organizationId: agency.orgId,
+          contactId: contact.id,
+          serviceName: 'Land title search',
+          startTime: start,
+          endTime: new Date(start.getTime() + 30 * 60 * 1000),
+          status: 'CONFIRMED',
+        },
+      });
+    };
+
+    it('names the officer who cancelled an appointment', async () => {
+      const booking = await makeBooking();
+
+      await request(app.getHttpServer())
+        .patch(`/api/scheduling/bookings/${booking.id}/cancel`)
+        .set('Authorization', `Bearer ${agency.token}`)
+        .send({ reason: 'Office closed that day' })
+        .expect(200);
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.booking.cancelled' && e.targetId === booking.id
+      );
+      expect(row).toBeDefined();
+      expect(row.actorIsOwnStaff).toBe(true);
+      expect(row.actor).toContain(agency.email);
+      // The time the citizen gave up, which the cancellation itself erases.
+      expect(row.previousValue).toMatchObject({ status: 'CONFIRMED' });
+      expect(row.newValue).toMatchObject({ reason: 'Office closed that day' });
+    });
+
+    it('does not file an AI cancellation as though a colleague did it', async () => {
+      const booking = await makeBooking();
+
+      // What the hosted agent passes when a citizen cancels on a call.
+      await scheduling.cancelBooking(
+        agency.orgId,
+        booking.id,
+        'Citizen cancelled on the call',
+        'system:hosted-agent'
+      );
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.booking.cancelled' && e.targetId === booking.id
+      );
+      expect(row).toBeDefined();
+
+      // A trail recording only what humans did would quietly imply the AI
+      // never touched anyone's appointment.
+      expect(row.actorIsOwnStaff).toBe(false);
+      expect(row.actor).toMatch(/automated process/i);
+      expect(row.actor).toContain('hosted-agent');
+
+      // And emphatically not attributed to a member of staff.
+      expect(row.actor).not.toContain(agency.email);
+    });
+
+    it('records a reschedule as the move it was', async () => {
+      const booking = await makeBooking();
+      const later = new Date(Date.now() + 14 * 24 * 3600 * 1000);
+
+      await scheduling.rescheduleBooking(
+        agency.orgId,
+        booking.id,
+        later.toISOString(),
+        30,
+        'system:orchestrator'
+      );
+
+      const row = (await trail()).find(
+        (e) => e.action === 'agency.booking.rescheduled' && e.targetId === booking.id
+      );
+      expect(row).toBeDefined();
+      expect(row.actor).toContain('orchestrator');
+      // Both times: a reschedule with only the new one does not say what moved.
+      expect(new Date(row.previousValue.startTime).toISOString()).toBe(booking.startTime.toISOString());
+      expect(new Date(row.newValue.startTime).toISOString()).toBe(later.toISOString());
     });
   });
 

@@ -302,7 +302,7 @@ export class AgentToolsService {
           data: { found: false },
         };
       }
-      await this.scheduling.cancelBooking(organizationId, booking.id, reason);
+      await this.scheduling.cancelBooking(organizationId, booking.id, reason, 'system:hosted-agent');
       return {
         ok: true,
         speak: `Your ${booking.serviceName} appointment has been cancelled.`,
@@ -330,7 +330,9 @@ export class AgentToolsService {
       const updated = await this.scheduling.rescheduleBooking(
         organizationId,
         booking.id,
-        newStartTime
+        newStartTime,
+        undefined,
+        'system:hosted-agent'
       );
       const when = new Date(updated.startTime).toLocaleString('en-NG', {
         weekday: 'long',
