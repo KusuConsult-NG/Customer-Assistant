@@ -127,8 +127,19 @@ export class TelephonyService {
     const timer = log.startTimer();
 
     const payload = body?.data?.payload || body;
-    const fromNumber = payload.From || payload.from || query.from || 'UNKNOWN';
-    const toNumber   = payload.To   || payload.to   || query.to   || 'UNKNOWN';
+    // Each carrier names these differently, and the dialled number is the ONLY
+    // tenant identifier a carrier gives us — so a name this list does not know
+    // resolves to no configuration and the caller hears "this number is not
+    // currently configured" however correctly it was set up.
+    //
+    // Africa's Talking sends `callerNumber`/`destinationNumber` and was missing
+    // from here entirely: its route, its provider enum and its HMAC
+    // verification all existed, and every call to it answered "not
+    // configured" before reaching any of them.
+    const fromNumber =
+      payload.From || payload.from || payload.callerNumber || query.from || 'UNKNOWN';
+    const toNumber =
+      payload.To || payload.to || payload.destinationNumber || query.to || 'UNKNOWN';
     const callSid    = payload.CallSid || payload.call_control_id || payload.call_id || payload.sessionId || `CALL_${Date.now()}`;
 
     log.info('telephony_inbound_call_received', {
