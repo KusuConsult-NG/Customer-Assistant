@@ -243,6 +243,32 @@ describe('Scheduling authorization', () => {
     });
   });
 
+  // Not scheduling, but the same hole found by the same audit: a controller
+  // with write routes and no RolesGuard. This one spends money.
+  describe('placing an outbound call', () => {
+    it('refuses a VIEWER, who could otherwise dial anywhere at the agency\u2019s expense', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/outbound')
+        .set('Authorization', `Bearer ${viewer.token}`)
+        .send({ toNumber: '+2348090000009' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('does not refuse an AGENT, because ringing a citizen back is the job', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/outbound')
+        .set('Authorization', `Bearer ${agent.token}`)
+        .send({ toNumber: '+2348090000009' });
+
+      // No carrier credentials in a test environment, so this fails further in
+      // — on purpose. What matters is that it is not refused by the ROLE, and
+      // that the failure is an honest one rather than a fabricated call record.
+      expect(res.status).not.toBe(403);
+      expect(res.status).toBeGreaterThanOrEqual(400);
+    });
+  });
+
   describe('the payload the dashboard sends', () => {
     it('creates a booking from a contact id, the shape the form now posts', async () => {
       const res = await request(app.getHttpServer())

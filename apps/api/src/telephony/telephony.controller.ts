@@ -5,6 +5,8 @@ import {
 import { Response, Request } from 'express';
 import { TelephonyService } from './telephony.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { TelephonyProviderType, AuthUser, CallStatus } from '@ace/shared-types';
 
 @Controller('api/telephony')
@@ -127,7 +129,20 @@ export class TelephonyController {
 
   // ─── Outbound & Admin (JWT protected) ────────────────────────────────────────
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * Place a real call, billed to the agency's own carrier account.
+   *
+   * This was `JwtAuthGuard` alone, so EVERY member could dial any number at the
+   * agency's expense — a VIEWER, the lowest-privileged role in the product,
+   * could run up a telephony bill and call whoever they liked from the
+   * agency's number. The guard list is the only thing standing between a
+   * read-only account and that.
+   *
+   * AGENT is included for the same reason it is on scheduling: ringing a
+   * citizen back is front-desk work. VIEWER is not.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN', 'AGENT')
   @Post('outbound')
   async placeOutboundCall(
     @Req() req: { user: AuthUser },
