@@ -1,6 +1,7 @@
 import { Controller, Get, Logger, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { prisma } from '@ace/database';
+import { bookingGuaranteeStatus, reverifyBookingGuarantee } from './config/db-readiness';
 
 /**
  * Liveness and readiness are different questions, and answering them with one
@@ -75,6 +76,30 @@ export class AppController {
       this.log.error(`readiness_database_unavailable: ${err?.message ?? err}`);
       checks.database = 'unavailable';
       serveable = false;
+    }
+
+    // The double-booking guarantee.
+    //
+    // Boot no longer exits when the database is unreachable — it starts and
+    // records the guarantee as UNVERIFIED, because an instance that listens
+    // and explains itself is diagnosable while one that never opens a port is
+    // not. That trade is only safe if this probe holds the line: an instance
+    // that has never seen `bookings_no_staff_overlap` must take no traffic,
+    // or a citizen gets an appointment written against an unchecked
+    // constraint.
+    //
+    // Re-asked here rather than only at boot, so a database that was waking
+    // up becomes ready on its own instead of needing a redeploy.
+    if (serveable) {
+      const ok = await reverifyBookingGuarantee();
+      if (ok) {
+        checks.bookingGuarantee = 'verified';
+      } else {
+        const { reason } = bookingGuaranteeStatus();
+        this.log.error(`readiness_booking_guarantee_unverified: ${reason}`);
+        checks.bookingGuarantee = 'unverified';
+        serveable = false;
+      }
     }
 
     checks.redis = process.env.REDIS_URL ? 'configured' : 'not configured (optional)';

@@ -20,6 +20,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppController } from '../src/app.controller';
+import { resetBookingGuaranteeStatus } from '../src/config/db-readiness';
 
 // Only the health controller: booting AppModule would require the whole
 // application, and what is under test is two handlers.
@@ -63,11 +64,14 @@ describe('health probes', () => {
   });
 
   describe('readiness — /api/health/ready', () => {
-    it('is ready when the database answers', async () => {
+    it('is ready when the database answers and the guarantee holds', async () => {
       query.mockResolvedValue([{ '?column?': 1 }]);
 
       const res = await request(app.getHttpServer()).get('/api/health/ready').expect(200);
-      expect(res.body).toMatchObject({ status: 'ready', checks: { database: 'ok' } });
+      expect(res.body).toMatchObject({
+        status: 'ready',
+        checks: { database: 'ok', bookingGuarantee: 'verified' },
+      });
     });
 
     it('is NOT ready when the database is unreachable', async () => {
@@ -96,6 +100,35 @@ describe('health probes', () => {
         if (real === undefined) delete process.env.REDIS_URL;
         else process.env.REDIS_URL = real;
       }
+    });
+
+    it('is NOT ready while the double-booking guarantee is unverified', async () => {
+      resetBookingGuaranteeStatus();
+      // `SELECT 1` succeeds, so the database is reachable — but the
+      // constraint lookup comes back empty.
+      query.mockImplementation((sql: string) =>
+        /pg_constraint/.test(sql) ? Promise.resolve([]) : Promise.resolve([{ '?column?': 1 }])
+      );
+
+      // This is what makes it safe for boot to START on an unreachable
+      // database instead of crash-looping: an instance that has never seen
+      // `bookings_no_staff_overlap` must take no traffic, or a citizen gets an
+      // appointment written against an unchecked constraint.
+      const res = await request(app.getHttpServer()).get('/api/health/ready').expect(503);
+      expect(res.body.checks.bookingGuarantee).toBe('unverified');
+    });
+
+    it('becomes ready once the guarantee is verified, without a redeploy', async () => {
+      resetBookingGuaranteeStatus();
+      query.mockRejectedValue(new Error('Connection terminated unexpectedly'));
+      await request(app.getHttpServer()).get('/api/health/ready').expect(503);
+
+      // A paused database that wakes up should bring the instance into
+      // rotation on its own.
+      query.mockReset();
+      query.mockResolvedValue([{ one: 1 }]);
+      const res = await request(app.getHttpServer()).get('/api/health/ready').expect(200);
+      expect(res.body.checks.bookingGuarantee).toBe('verified');
     });
 
     it('does not leak the connection string when it reports a failure', async () => {
