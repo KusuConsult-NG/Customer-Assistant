@@ -191,23 +191,18 @@ export class WhatsappController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('conversations/:id/handoff')
-  async toggleHandoff(
-    @Param('id') id: string,
-    @Req() req: { user: AuthUser },
-    @Body() body: { isHumanHandoffActive: boolean }
-  ) {
-    if (typeof body.isHumanHandoffActive !== 'boolean') {
-      throw new BadRequestException('isHumanHandoffActive must be a boolean');
-    }
-    return this.whatsappService.toggleHumanHandoff(
-      id,
-      body.isHumanHandoffActive,
-      req.user.organizationId,
-      req.user.userId
-    );
-  }
+  // ── Handoff lives at PATCH /api/conversations/:id/handoff ────────────────
+  //
+  // `POST conversations/:id/handoff` used to be here, writing the same three
+  // columns as the channel-agnostic route in ConversationsController. The two
+  // were not equivalent: that one notifies the console gateway and this one did
+  // not, so an officer taking a thread over was invisible to every other
+  // console and two of them could each think they owned the citizen.
+  //
+  // Handing a thread to a person is not WhatsApp-specific — VOICE and WEBCHAT
+  // conversations do it too — so the single implementation is the channel-
+  // agnostic one, and this duplicate is gone rather than left as a second thing
+  // that can silently stop broadcasting.
 
   @UseGuards(JwtAuthGuard)
   @Get('templates')

@@ -621,15 +621,55 @@ function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { sear
   );
 }
 
-// ─────────────────────────── Leads Table ────────────────────────────
-function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
-  const updateStatus = async (id: string, status: string) => {
-    const token = localStorage.getItem('ace_token');
-    await apiFetch(`${API_URL}/api/crm/leads/${id}/status`, {
+/**
+ * Change a record's state, and say so when the server refuses.
+ *
+ * All three of these — a lead's status, a deal's stage, a ticket's status —
+ * fired the request, ignored the response, and re-read the list. The DISPLAY
+ * stayed honest (the refreshed row shows what the server actually holds, not
+ * what was clicked), but the operator got no explanation: the dropdown simply
+ * snapped back. A VIEWER has no write access here, so for them every one of
+ * these was a control that silently did nothing.
+ *
+ * Returns the server's own message on failure, or null on success.
+ */
+async function patchState(url: string, body: Record<string, unknown>): Promise<string | null> {
+  const token = localStorage.getItem('ace_token');
+  try {
+    const res = await apiFetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
     });
+    if (res.ok) return null;
+    const payload = await res.json().catch(() => null);
+    return (
+      (Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message) ||
+      `That change was refused (HTTP ${res.status}).`
+    );
+  } catch {
+    return 'Could not reach the server to make that change.';
+  }
+}
+
+/** A refusal, shown where the operator clicked. */
+function ChangeError({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  if (!message) return null;
+  return (
+    <div className="mx-5 mb-3 p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-3">
+      <span>{message}</span>
+      <button onClick={onDismiss} aria-label="Dismiss" className="font-bold hover:underline shrink-0">
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────── Leads Table ────────────────────────────
+function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const updateStatus = async (id: string, status: string) => {
+    setChangeError(await patchState(`${API_URL}/api/crm/leads/${id}/status`, { status }));
     onRefresh();
   };
 
@@ -647,6 +687,8 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
     />
   );
   return (
+    <>
+      <ChangeError message={changeError} onDismiss={() => setChangeError(null)} />
     <table className="w-full text-sm text-left">
       <thead className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
         <tr>
@@ -695,6 +737,7 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -764,18 +807,15 @@ function DealsTable({ data, loading, onAdd, onDelete, onQuote }: { data: any[]; 
 // ─────────────────────────── Deals Kanban Board ────────────────────────────
 function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
   const safeData = Array.isArray(data) ? data : [];
+  const [changeError, setChangeError] = useState<string | null>(null);
   const updateStage = async (id: string, stage: string) => {
-    const token = localStorage.getItem('ace_token');
-    await apiFetch(`${API_URL}/api/crm/deals/${id}/stage`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ stage }),
-    });
+    setChangeError(await patchState(`${API_URL}/api/crm/deals/${id}/stage`, { stage }));
     onRefresh();
   };
 
   return (
     <div className="p-5 overflow-x-auto">
+      <ChangeError message={changeError} onDismiss={() => setChangeError(null)} />
       <div className="flex gap-4 min-w-[1100px]">
         {DEAL_STAGES.map((stage) => {
           const stageDeals = safeData.filter(d => d.stage === stage);
@@ -822,13 +862,9 @@ function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { d
 
 // ─────────────────────────── Tickets Table ────────────────────────────
 function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
+  const [changeError, setChangeError] = useState<string | null>(null);
   const updateStatus = async (id: string, status: string) => {
-    const token = localStorage.getItem('ace_token');
-    await apiFetch(`${API_URL}/api/crm/tickets/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status }),
-    });
+    setChangeError(await patchState(`${API_URL}/api/crm/tickets/${id}/status`, { status }));
     onRefresh();
   };
 
@@ -852,6 +888,8 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
     />
   );
   return (
+    <>
+      <ChangeError message={changeError} onDismiss={() => setChangeError(null)} />
     <table className="w-full text-sm text-left">
       <thead className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
         <tr>
@@ -889,6 +927,7 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -1230,8 +1269,54 @@ function PreferredLanguageControl({ contact }: { contact: any }) {
   );
 }
 
+/**
+ * One citizen, and what has happened to them.
+ *
+ * `GET /api/crm/contacts/:id/timeline` is assembled by `CrmTimelineService` out
+ * of this citizen's conversations, bookings, tickets, leads and deals — the
+ * answer to "what has this agency already done for them", which is the first
+ * thing an officer picking up a call needs. It had no screen at all, so the
+ * endpoint existed and the officer did not have the answer.
+ */
 function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; onClose: () => void; onOpenTicket: () => void }) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'onboarding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'activity' | 'onboarding'>('overview');
+
+  const [timeline, setTimeline] = useState<any[] | null>(null);
+  const [healthScore, setHealthScore] = useState<number | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Loaded when the tab is opened, not on mount: the drawer opens on every row
+  // click and most of those are looking at the overview.
+  useEffect(() => {
+    if (activeTab !== 'history' || timeline !== null || loadingHistory) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingHistory(true);
+      setHistoryError(null);
+      try {
+        const token = localStorage.getItem('ace_token');
+        const res = await apiFetch(`${API_URL}/api/crm/contacts/${contact.id}/timeline`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(
+            (Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ||
+            'Could not load this citizen\u2019s history.'
+          );
+        }
+        if (cancelled) return;
+        setTimeline(Array.isArray(body?.timeline) ? body.timeline : []);
+        setHealthScore(typeof body?.healthScore === 'number' ? body.healthScore : null);
+      } catch (err: any) {
+        if (!cancelled) setHistoryError(err?.message || 'Could not load this citizen\u2019s history.');
+      } finally {
+        if (!cancelled) setLoadingHistory(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, contact.id, timeline, loadingHistory]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/60 backdrop-blur-sm transition-opacity">
@@ -1314,6 +1399,16 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             Overview
           </button>
           <button
+            onClick={() => setActiveTab('history')}
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
+              activeTab === 'history'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            History
+          </button>
+          <button
             onClick={() => setActiveTab('activity')}
             className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'activity'
@@ -1361,15 +1456,78 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             <SelfieRequestPanel contactId={contact.id} contactName={contact.fullName} />
           )}
 
+          {activeTab === 'history' && (
+            <div className="space-y-3">
+              {healthScore !== null && (
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Engagement score</span>
+                  <span className="text-sm font-extrabold text-indigo-700 dark:text-indigo-300">{healthScore}</span>
+                </div>
+              )}
+
+              {loadingHistory && (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-slate-100 dark:bg-slate-800/60 animate-pulse" />)}
+                </div>
+              )}
+
+              {historyError && (
+                <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
+                  {historyError}
+                </div>
+              )}
+
+              {!loadingHistory && !historyError && timeline?.length === 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 py-6 text-center">
+                  Nothing recorded for this citizen yet — no conversations, bookings or tickets.
+                </p>
+              )}
+
+              {!loadingHistory && !historyError && (timeline?.length ?? 0) > 0 && (
+                <ol className="space-y-2">
+                  {timeline!.map((e: any) => (
+                    <li
+                      key={e.id}
+                      className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">{e.title}</span>
+                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                          {e.timestamp ? new Date(e.timestamp).toLocaleString() : ''}
+                        </span>
+                      </div>
+                      {e.description && (
+                        <p className="text-xs text-slate-600 dark:text-slate-400">{e.description}</p>
+                      )}
+                      {e.type && (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                          {String(e.type).replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+
           {activeTab === 'activity' && (
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
               <h4 className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">Assigned Customer Tags</h4>
               <div className="flex gap-2 flex-wrap">
-                {(contact.tags || ['customer', 'active-lead']).map((t: string) => (
-                  <span key={t} className="px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
-                    #{t}
-                  </span>
-                ))}
+                {/* No invented defaults. This read `contact.tags || ['customer',
+                    'active-lead']`, so a citizen with no tags was shown two
+                    they had never been given — a fabricated fact about a
+                    person, in the record an officer trusts. */}
+                {(contact.tags ?? []).length > 0 ? (
+                  (contact.tags as string[]).map((t: string) => (
+                    <span key={t} className="px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                      #{t}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">No tags assigned.</span>
+                )}
               </div>
             </div>
           )}

@@ -129,7 +129,18 @@ export default function SelfieRequestPanel({ contactId, contactName, conversatio
   };
 
   const cancel = async (id: string) => {
-    await fetch(`${API_URL}/api/onboarding/selfie-requests/${id}/cancel`, { method: 'POST', headers: headers() });
+    // The result was discarded, so a refusal showed nothing at all — the link
+    // stayed live and the operator had no way to know. `remove` below already
+    // reported its failures; this now matches it.
+    const res = await fetch(`${API_URL}/api/onboarding/selfie-requests/${id}/cancel`, { method: 'POST', headers: headers() });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setNotice({
+        type: 'error',
+        text: body.message || 'Could not cancel that request — its upload link is still usable.',
+      });
+      return;
+    }
     setLastLink(null);
     await load();
   };

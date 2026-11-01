@@ -578,32 +578,6 @@ export class WhatsappService {
     return msg;
   }
 
-  async toggleHumanHandoff(
-    conversationId: string,
-    isHumanHandoffActive: boolean,
-    organizationId: string,
-    agentUserId?: string
-  ) {
-    // Tenant-scoped: without this check any authenticated user could seize or release
-    // human handoff on another organization's live conversation.
-    const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, organizationId },
-      select: { id: true },
-    });
-    if (!conversation) throw new NotFoundException(`Conversation not found: ${conversationId}`);
-
-    return prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
-        isHumanHandoffActive,
-        assignedUserId: isHumanHandoffActive ? (agentUserId ?? null) : null,
-        // Clear handoffReason when agent returns conversation to AI
-        handoffReason: isHumanHandoffActive ? undefined : null,
-      },
-      include: { contact: true, messages: { orderBy: { sentAt: 'desc' }, take: 20 } },
-    });
-  }
-
   // ─── Template Management ──────────────────────────────────────────────────
   async getTemplates(organizationId: string) {
     return prisma.whatsAppTemplate.findMany({
