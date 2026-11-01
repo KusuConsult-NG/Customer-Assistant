@@ -266,6 +266,62 @@ test.describe('Scheduling — the list shows what the API returns', () => {
   });
 });
 
+test.describe('Scheduling — when the list cannot be loaded', () => {
+  test('says so, instead of reporting an empty diary', async ({ page }) => {
+    const { token, user } = await getAuth();
+    await page.addInitScript(
+      ([t, u]) => {
+        window.localStorage.setItem('ace_token', t as string);
+        window.localStorage.setItem('ace_user', JSON.stringify(u));
+      },
+      [token, user]
+    );
+    await page.route('**/api/scheduling/bookings', r =>
+      r.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Database unavailable' }) })
+    );
+    await page.route('**/api/scheduling/reservations', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await page.route('**/api/scheduling/refund-requests', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await page.route('**/api/crm/contacts**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) }));
+
+    await page.goto('/scheduling');
+    await expect(page.locator('h1').filter({ hasText: 'Appointments' })).toBeVisible({ timeout: 15000 });
+
+    // "No bookings recorded yet. Click Create Booking above to add one." is a
+    // statement about the agency's diary, and nothing is known about it — an
+    // officer reading that creates a booking that may already exist.
+    await expect(page.getByText('Database unavailable')).toBeVisible();
+    await expect(page.getByText(/No bookings recorded yet/i)).toHaveCount(0);
+    // And the empty state does not contradict the banner above it.
+    await expect(page.getByText(/not the same as having no bookings/i)).toBeVisible();
+  });
+
+  test('hides the refund queue from a role that cannot read it', async ({ page }) => {
+    const { token, user } = await getAuth();
+    await page.addInitScript(
+      ([t, u]) => {
+        window.localStorage.setItem('ace_token', t as string);
+        window.localStorage.setItem('ace_user', JSON.stringify(u));
+      },
+      [token, user]
+    );
+    await page.route('**/api/scheduling/bookings', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await page.route('**/api/scheduling/reservations', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await page.route('**/api/crm/contacts**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) }));
+    // The queue is OWNER/ADMIN; an AGENT gets a 403.
+    await page.route('**/api/scheduling/refund-requests', r =>
+      r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Forbidden' }) })
+    );
+
+    await page.goto('/scheduling');
+    await expect(page.locator('h1').filter({ hasText: 'Appointments' })).toBeVisible({ timeout: 15000 });
+
+    // A tab that answers 403 is not an error worth shouting about — it is a
+    // tab that does not belong to this role.
+    await expect(page.getByRole('button', { name: /Refunds \(/ })).toHaveCount(0);
+    await expect(page.getByText(/Could not load/i)).toHaveCount(0);
+  });
+});
+
 test.describe('Scheduling — creating one', () => {
   test('posts a contact id, not a typed name', async ({ page }) => {
     const sent = await openPage(page);

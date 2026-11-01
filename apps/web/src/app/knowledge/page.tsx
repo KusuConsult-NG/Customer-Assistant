@@ -442,17 +442,34 @@ export default function KnowledgePage() {
     }
   };
 
+  /**
+   * Delete a document, and only then remove it from the list.
+   *
+   * The row used to be filtered out whatever the response was — so a refused
+   * delete (this is OWNER/ADMIN) looked exactly like a successful one, and the
+   * operator walked away believing the document was gone while it was still
+   * indexed and still answering citizens in RAG. Deleting knowledge is one of
+   * the few actions here whose failure is invisible from the outside.
+   */
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this document from the knowledge base?')) return;
     setDeletingId(id);
+    setDownloadError(null);
     try {
-      await apiFetch(`${API_URL}/api/knowledge/documents/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/knowledge/documents/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          (Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ||
+          'That document was not deleted. It is still indexed and still answering questions.'
+        );
+      }
       setDocs(prev => prev.filter(d => d.id !== id));
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setDownloadError(err?.message || 'That document was not deleted.');
     } finally {
       setDeletingId(null);
     }

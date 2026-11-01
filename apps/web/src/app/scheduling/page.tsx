@@ -132,6 +132,8 @@ export default function SchedulingPage() {
   const [resNotes, setResNotes] = useState('');
 
   // What an action is doing, and what the server said if it refused.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refundsVisible, setRefundsVisible] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -187,38 +189,46 @@ export default function SchedulingPage() {
     return [];
   };
 
-  const fetchBookings = async () => {
+  /**
+   * Load a list, and say so when the load fails.
+   *
+   * Each of these used to be `if (res.ok) { … }` with an empty array on
+   * throw — so an API outage, an expired role or a 500 rendered the empty
+   * state: *"No bookings recorded yet. Click Create Booking above to add
+   * one."* That is a statement of fact about the agency's diary, made when
+   * nothing is known about it, and it invites an officer to create a booking
+   * that may already exist.
+   */
+  const loadList = async <T,>(
+    label: string,
+    url: string,
+    set: (rows: T[]) => void
+  ): Promise<void> => {
     const token = getToken();
     if (!token) return;
     try {
-      const res = await apiFetch(`${API_URL}/api/scheduling/bookings`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBookings(toArray(data));
+      const res = await apiFetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setLoadError(
+          (Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ||
+          `Could not load ${label} (HTTP ${res.status}). What is shown below may be incomplete.`
+        );
+        return;
       }
-    } catch (e) {
-      setBookings([]);
+      set(toArray(await res.json()));
+    } catch {
+      setLoadError(`Could not reach the server to load ${label}. What is shown below may be incomplete.`);
     }
   };
 
-  const fetchReservations = async () => {
-    const token = getToken();
-    if (!token) return;
-    try {
-      const res = await apiFetch(`${API_URL}/api/scheduling/reservations`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setReservations(toArray(data));
-      }
-    } catch (e) {
-      setReservations([]);
-    }
-  };
+  const fetchBookings = () => loadList<Booking>('bookings', `${API_URL}/api/scheduling/bookings`, setBookings);
 
+  const fetchReservations = () => loadList<Reservation>('reservations', `${API_URL}/api/scheduling/reservations`, setReservations);
+
+  // The refund queue is OWNER/ADMIN, so an AGENT gets a 403 here. That is not
+  // an error to shout about on a page whose other tabs they may use, so it is
+  // loaded without reporting a refusal.
   const fetchRefundRequests = async () => {
     const token = getToken();
     if (!token) return;
@@ -226,34 +236,19 @@ export default function SchedulingPage() {
       const res = await apiFetch(`${API_URL}/api/scheduling/refund-requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setRefundRequests(toArray(data));
-      }
-    } catch (e) {
-      setRefundRequests([]);
+      if (res.ok) setRefundRequests(toArray(await res.json()));
+      else setRefundsVisible(res.status !== 403);
+    } catch {
+      setRefundsVisible(true);
     }
   };
 
-  const fetchContacts = async () => {
-    const token = getToken();
-    if (!token) return;
-    try {
-      const res = await apiFetch(`${API_URL}/api/crm/contacts?limit=200`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setContacts(toArray(data));
-      }
-    } catch {
-      setContacts([]);
-    }
-  };
+  const fetchContacts = () => loadList<Contact>('the citizen list', `${API_URL}/api/crm/contacts?limit=200`, setContacts);
 
   useEffect(() => {
     const loadAllData = async () => {
       setLoading(true);
+      setLoadError(null);
       await Promise.all([fetchBookings(), fetchReservations(), fetchRefundRequests(), fetchContacts()]);
       setLoading(false);
     };
@@ -499,6 +494,7 @@ export default function SchedulingPage() {
           {/* The refund queue was fetched on every load and rendered nowhere —
               dead state for an endpoint with no screen. The refund button now
               fills it, so it has to be somewhere an administrator can read. */}
+          {refundsVisible && (
           <button
             onClick={() => setActiveTab('refunds')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -507,6 +503,7 @@ export default function SchedulingPage() {
           >
             <Banknote className="w-4 h-4" /> Refunds ({refundRequests.length})
           </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -528,6 +525,18 @@ export default function SchedulingPage() {
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className="p-4 rounded-xl bg-amber-500/[0.08] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-3">
+          <span>{loadError}</span>
+          <button
+            onClick={() => { setLoadError(null); fetchBookings(); fetchReservations(); fetchContacts(); }}
+            className="font-bold hover:underline shrink-0"
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">
@@ -689,7 +698,9 @@ export default function SchedulingPage() {
             </table>
           ) : (
             <div className="py-16 text-center text-slate-500 dark:text-slate-400">
-              No bookings recorded yet. Click "Create Booking" above to add one.
+              {loadError
+                ? 'The diary could not be read, so nothing can be shown here. This is not the same as having no bookings.'
+                : 'No bookings recorded yet. Click "Create Booking" above to add one.'}
             </div>
           )}
         </div>
@@ -729,7 +740,9 @@ export default function SchedulingPage() {
             </table>
           ) : (
             <div className="py-16 text-center text-slate-500 dark:text-slate-400">
-              No reservations recorded yet. Click "Create Reservation" above.
+              {loadError
+                ? 'The reservations could not be read, so nothing can be shown here.'
+                : 'No reservations recorded yet. Click "Create Reservation" above.'}
             </div>
           )}
         </div>

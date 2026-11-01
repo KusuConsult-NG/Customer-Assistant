@@ -621,15 +621,55 @@ function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { sear
   );
 }
 
-// ─────────────────────────── Leads Table ────────────────────────────
-function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
-  const updateStatus = async (id: string, status: string) => {
-    const token = localStorage.getItem('ace_token');
-    await apiFetch(`${API_URL}/api/crm/leads/${id}/status`, {
+/**
+ * Change a record's state, and say so when the server refuses.
+ *
+ * All three of these — a lead's status, a deal's stage, a ticket's status —
+ * fired the request, ignored the response, and re-read the list. The DISPLAY
+ * stayed honest (the refreshed row shows what the server actually holds, not
+ * what was clicked), but the operator got no explanation: the dropdown simply
+ * snapped back. A VIEWER has no write access here, so for them every one of
+ * these was a control that silently did nothing.
+ *
+ * Returns the server's own message on failure, or null on success.
+ */
+async function patchState(url: string, body: Record<string, unknown>): Promise<string | null> {
+  const token = localStorage.getItem('ace_token');
+  try {
+    const res = await apiFetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
     });
+    if (res.ok) return null;
+    const payload = await res.json().catch(() => null);
+    return (
+      (Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message) ||
+      `That change was refused (HTTP ${res.status}).`
+    );
+  } catch {
+    return 'Could not reach the server to make that change.';
+  }
+}
+
+/** A refusal, shown where the operator clicked. */
+function ChangeError({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  if (!message) return null;
+  return (
+    <div className="mx-5 mb-3 p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-3">
+      <span>{message}</span>
+      <button onClick={onDismiss} aria-label="Dismiss" className="font-bold hover:underline shrink-0">
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────── Leads Table ────────────────────────────
+function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const updateStatus = async (id: string, status: string) => {
+    setChangeError(await patchState(`${API_URL}/api/crm/leads/${id}/status`, { status }));
     onRefresh();
   };
 
@@ -647,6 +687,8 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
     />
   );
   return (
+    <>
+      <ChangeError message={changeError} onDismiss={() => setChangeError(null)} />
     <table className="w-full text-sm text-left">
       <thead className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
         <tr>
@@ -695,6 +737,7 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -764,18 +807,15 @@ function DealsTable({ data, loading, onAdd, onDelete, onQuote }: { data: any[]; 
 // ─────────────────────────── Deals Kanban Board ────────────────────────────
 function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void; onQuote: (id: string) => void }) {
   const safeData = Array.isArray(data) ? data : [];
+  const [changeError, setChangeError] = useState<string | null>(null);
   const updateStage = async (id: string, stage: string) => {
-    const token = localStorage.getItem('ace_token');
-    await apiFetch(`${API_URL}/api/crm/deals/${id}/stage`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ stage }),
-    });
+    setChangeError(await patchState(`${API_URL}/api/crm/deals/${id}/stage`, { stage }));
     onRefresh();
   };
 
   return (
     <div className="p-5 overflow-x-auto">
+      <ChangeError message={changeError} onDismiss={() => setChangeError(null)} />
       <div className="flex gap-4 min-w-[1100px]">
         {DEAL_STAGES.map((stage) => {
           const stageDeals = safeData.filter(d => d.stage === stage);
@@ -822,13 +862,9 @@ function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { d
 
 // ─────────────────────────── Tickets Table ────────────────────────────
 function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]; loading: boolean; onAdd: () => void; onRefresh: () => void; onDelete: (id: string) => void }) {
+  const [changeError, setChangeError] = useState<string | null>(null);
   const updateStatus = async (id: string, status: string) => {
-    const token = localStorage.getItem('ace_token');
-    await apiFetch(`${API_URL}/api/crm/tickets/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status }),
-    });
+    setChangeError(await patchState(`${API_URL}/api/crm/tickets/${id}/status`, { status }));
     onRefresh();
   };
 
@@ -852,6 +888,8 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
     />
   );
   return (
+    <>
+      <ChangeError message={changeError} onDismiss={() => setChangeError(null)} />
     <table className="w-full text-sm text-left">
       <thead className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400">
         <tr>
@@ -889,6 +927,7 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 
