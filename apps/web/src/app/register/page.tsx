@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from 'react';
-import { Sparkles, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, Landmark } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -107,19 +107,20 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-900">
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0c1a05] via-[#1a3308] to-[#0c1a05] sticky top-0 h-screen">
-        <div className="absolute inset-0 bg-gradient-to-tr from-[#74BA03]/20 via-transparent to-[#558A02]/20 opacity-40"></div>
+      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-surface-card via-surface-border to-surface-card sticky top-0 h-screen">
+        <div className="absolute inset-0 bg-gradient-to-tr from-brand-500/20 via-transparent to-brand-600/20 opacity-40"></div>
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
-            <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
-            </svg>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}>
+            {/* A neutral mark. This was a medical cross, which is a claim
+                about what the agency does — wrong for a lands registry or a
+                revenue board, and the same reason the sidebar dropped it. */}
+            <Landmark className="w-7 h-7 text-white" />
           </div>
           <div>
             <h1 className="font-bold text-2xl text-white">
               Customer Care Platform
             </h1>
-            <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
+            <p className="text-xs font-semibold text-brand-400">
               Plateau State Government
             </p>
           </div>
@@ -127,20 +128,20 @@ export default function RegisterPage() {
         
         <div className="relative z-10">
           <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
-            Plateau State <br/><span style={{ color: '#74BA03' }}>State Customer Care Platform</span>
+            Plateau State <br/><span className="text-brand-400">Customer Care Platform</span>
           </h2>
           <ul className="space-y-4 text-slate-300 text-base">
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-[#74BA03]/20 text-[#74BA03] flex items-center justify-center text-sm font-bold">✓</span>
-              400+ accredited healthcare facilities across all 17 LGAs
+              <span className="w-6 h-6 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-sm font-bold">✓</span>
+              Every ministry, department and agency, each with its own records
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-[#74BA03]/20 text-[#74BA03] flex items-center justify-center text-sm font-bold">✓</span>
-              24/7 AI-powered voice helpline on 0700-700-1111
+              <span className="w-6 h-6 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-sm font-bold">✓</span>
+              AI-assisted helpline on WhatsApp and by phone, around the clock
             </li>
             <li className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-[#74BA03]/20 text-[#74BA03] flex items-center justify-center text-sm font-bold">✓</span>
-              Comprehensive beneficiary &amp; facility grievance management
+              <span className="w-6 h-6 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-sm font-bold">✓</span>
+              Case handling and escalation to a named desk officer
             </li>
           </ul>
         </div>
@@ -282,7 +283,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={status === 'loading'}
-              className="w-full py-3 mt-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all disabled:opacity-50 flex justify-center items-center"
+              className="w-full py-3 mt-4 rounded-xl bg-brand-600 hover:bg-blue-700 text-white font-medium transition-all disabled:opacity-50 flex justify-center items-center"
             >
               {status === 'loading' ? (
                 <div className="w-5 h-5 border-2 border-slate-200 dark:border-slate-700 border-t-white rounded-full animate-spin"></div>

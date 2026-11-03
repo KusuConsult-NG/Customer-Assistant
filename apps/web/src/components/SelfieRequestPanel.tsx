@@ -221,7 +221,7 @@ export default function SelfieRequestPanel({ contactId, contactName, conversatio
           <button
             onClick={request}
             disabled={requesting || !contactId}
-            className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold disabled:opacity-50"
           >
             {requesting ? 'Requesting…' : channel === 'VOICE' ? 'Send upload link' : 'Ask for a selfie'}
           </button>

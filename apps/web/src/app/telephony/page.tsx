@@ -148,7 +148,7 @@ export default function TelephonyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <PhoneCall className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Telephone Service &amp; Voice AI
+            <PhoneCall className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Telephone Service &amp; Voice AI
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage telephony carriers, place test calls, and inspect call logs and transcripts.</p>
         </div>
@@ -193,7 +193,7 @@ export default function TelephonyPage() {
       {/* Demo Outbound Call Widget Box */}
       <div className="rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-500/10 p-6 space-y-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center font-bold shadow-sm">
             <Phone className="w-5 h-5" />
           </div>
           <div>
@@ -208,13 +208,13 @@ export default function TelephonyPage() {
             value={demoMobileNumber}
             onChange={(e) => setDemoMobileNumber(e.target.value)}
             placeholder="Enter mobile number e.g. +2348031234567"
-            className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-indigo-500 shadow-sm"
+            className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-brand-600 shadow-sm"
             required
           />
           <button
             type="submit"
             disabled={callLoading}
-            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
+            className="px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all shadow-md shadow-brand-600/25 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Sparkles className="w-4 h-4" /> {callLoading ? 'Initiating Call...' : 'Trigger Phone Call'}
           </button>
@@ -372,7 +372,7 @@ export default function TelephonyPage() {
               type="text"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-blue-600 dark:text-blue-400 focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-blue-600 dark:text-blue-400 focus:outline-none focus:border-brand-600"
             />
           </div>
           <div>
@@ -381,7 +381,7 @@ export default function TelephonyPage() {
               type="text"
               value={forwardingTarget}
               onChange={(e) => setForwardingTarget(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand-600"
             />
           </div>
         </div>
@@ -452,7 +452,7 @@ export default function TelephonyPage() {
                 {activeLiveCall.transcript.map((t, idx) => (
                   <div key={idx} className="flex flex-col space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                      <span className={t.speaker === 'AI' ? 'text-[#558A02] dark:text-[#74BA03] font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
+                      <span className={t.speaker === 'AI' ? 'text-brand-700 dark:text-brand-300 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>
                         {t.speaker === 'AI' ? 'AI assistant' : 'Caller'}
                       </span>
                       <span>{t.time}</span>
@@ -501,11 +501,11 @@ export default function TelephonyPage() {
                   name="userSpeech"
                   type="text"
                   placeholder="Speak or type a customer response..."
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-500"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand-600"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs transition-all shadow-lg shadow-brand-600/20"
                 >
                   Speak
                 </button>

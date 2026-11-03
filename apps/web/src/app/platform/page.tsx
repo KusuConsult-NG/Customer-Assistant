@@ -230,7 +230,7 @@ export default function PlatformConsolePage() {
           <button
             onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white shadow-md"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Plus className="w-3.5 h-3.5" />
             Onboard agency
@@ -316,7 +316,7 @@ export default function PlatformConsolePage() {
                       onClick={() => setOpenAgencyId(a.id)}
                       className="text-left group"
                     >
-                      <p className="font-bold text-slate-900 dark:text-white group-hover:text-[#558A02] dark:group-hover:text-[#74BA03] group-hover:underline">
+                      <p className="font-bold text-slate-900 dark:text-white group-hover:text-brand-700 dark:group-hover:text-brand-700 dark:text-brand-300 group-hover:underline">
                         {a.name}
                       </p>
                       <p className="text-[10px] text-slate-400">{a.category}</p>
@@ -794,7 +794,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors ${
         active
-          ? 'border-[#74BA03] text-[#558A02] dark:text-[#74BA03]'
+          ? 'border-brand-600 dark:border-brand-400 text-brand-700 dark:text-brand-300'
           : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
       }`}
     >
@@ -879,7 +879,7 @@ function CreateAgencyDialog({ onClose, onCreated }: { onClose: () => void; onCre
             type="submit"
             disabled={saving}
             className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             {saving ? 'Creating…' : 'Create agency'}
           </button>

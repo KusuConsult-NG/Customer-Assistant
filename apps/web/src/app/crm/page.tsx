@@ -96,7 +96,7 @@ export default function CrmPage() {
         toast.success(`Registration approved. Reference: ${data.policyId}`);
         fetchAll();
       } else {
-        toast.error('Could not approve enrollee.');
+        toast.error('Could not approve this registration.');
       }
     } catch {
       toast.error('Failed to communicate with the verification server.');
@@ -231,7 +231,7 @@ export default function CrmPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Citizens &amp; Contacts
+            <Users className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Citizens &amp; Contacts
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage Plateau State citizen enrollments, premium subscriptions, and provider grievance reports.</p>
         </div>
@@ -247,7 +247,7 @@ export default function CrmPage() {
           <button
             onClick={() => setModalType(tab === 'contacts' ? 'contact' : tab === 'leads' ? 'lead' : tab === 'deals' ? 'deal' : 'ticket')}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Plus className="w-4 h-4" />
             Add {tab === 'contacts' ? 'Citizen' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Plan' : 'Grievance Ticket'}
@@ -264,7 +264,7 @@ export default function CrmPage() {
               onClick={() => { setTab(t.id); setSearch(''); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
                 tab === t.id
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
             >
@@ -282,7 +282,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                viewMode === 'table' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <List className="w-3.5 h-3.5" /> Table
@@ -290,7 +290,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                viewMode === 'kanban' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Kanban Board
@@ -391,7 +391,7 @@ export default function CrmPage() {
                     printWin.print();
                   }
                 }}
-                className="px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
+                className="px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md bg-brand-600 hover:bg-brand-700 transition-all"
               >
                 Print / Download Card
               </button>
@@ -1017,7 +1017,7 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             </select>
           </Field>
         </div>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Contact'}
         </button>
       </form>
@@ -1066,7 +1066,7 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Amaka Osei" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
         <Field label="Notes / Context"><textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className={inputCls} placeholder="How did they find you? What service are they inquiring about?" /></Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Lead'}
         </button>
       </form>
@@ -1125,7 +1125,7 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
             {DEAL_STAGES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
         </Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Create Deal'}
         </button>
       </form>
@@ -1186,7 +1186,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
             {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Create Ticket'}
         </button>
       </form>
@@ -1363,7 +1363,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
           <div className="grid grid-cols-3 gap-2 pt-2">
             <a
               href={`tel:${contact.phoneNumber}`}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all"
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm transition-all"
             >
               <Phone className="w-3.5 h-3.5" /> Call
             </a>
@@ -1577,7 +1577,7 @@ function EnrolleesDeskTable({
       setData(enrolleesList.length > 0 ? enrolleesList : raw);
       setError(null);
     } catch (e: any) {
-      setError(e?.message || 'Could not load enrollees');
+      setError(e?.message || 'Could not load registrations');
     } finally {
       setLoading(false);
     }
@@ -1607,14 +1607,14 @@ function EnrolleesDeskTable({
       ) : error ? (
         <SharedEmptyState
           icon={ShieldCheck}
-          title="Could not load enrollees"
+          title="Could not load registrations"
           description={error}
           actions={[{ label: 'Try again', primary: true, onClick: loadEnrollees }]}
         />
       ) : filteredEnrollees.length === 0 ? (
         <SharedEmptyState
           icon={ShieldCheck}
-          title="No enrollees registered yet"
+          title="No registrations yet"
           description="When citizens call or message to register, their profile, photo status and service details appear here for staff verification."
         />
       ) : (
@@ -1645,11 +1645,11 @@ function EnrolleesDeskTable({
                   >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-[#74BA03]/15 text-[#558A02] dark:text-[#74BA03] font-black text-sm flex items-center justify-center flex-shrink-0 border border-[#74BA03]/30">
+                        <div className="w-10 h-10 rounded-xl bg-brand-500/15 text-brand-700 dark:text-brand-300 font-black text-sm flex items-center justify-center flex-shrink-0 border border-brand-500/30">
                           {(c.fullName || 'U')[0].toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#74BA03] transition-colors">
+                          <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-brand-700 dark:text-brand-300 transition-colors">
                             {c.fullName}
                           </div>
                           <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
@@ -1660,14 +1660,14 @@ function EnrolleesDeskTable({
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-semibold text-slate-800 dark:text-slate-200">
-                        {meta.planType || 'Standard Plan'}
+                        {meta.planType || '—'}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {meta.lga || c.city || 'Plateau State'}
+                        {meta.lga || c.city || '—'}
                       </div>
                     </td>
                     <td className="px-5 py-4 text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">
-                      {meta.preferredHospital || 'General Hospital (Default)'}
+                      {meta.preferredHospital || '—'}
                     </td>
                     <td className="px-5 py-4 text-xs font-mono">
                       {meta.nin ? (
@@ -1694,7 +1694,7 @@ function EnrolleesDeskTable({
                             e.stopPropagation();
                             onApprove(c.id);
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-[#558A02] hover:bg-[#74BA03] text-white text-xs font-bold shadow-sm transition-all"
+                          className="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm transition-all"
                         >
                           Approve &amp; Issue ID
                         </button>
@@ -1706,7 +1706,7 @@ function EnrolleesDeskTable({
                           }}
                           className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all inline-flex items-center gap-1"
                         >
-                          <ShieldCheck className="w-3.5 h-3.5 text-[#74BA03]" /> View Digital ID
+                          <ShieldCheck className="w-3.5 h-3.5 text-brand-700 dark:text-brand-300" /> View Digital ID
                         </button>
                       )}
                       <button

@@ -161,7 +161,7 @@ export default function AnalyticsPage() {
           {(['7d', '30d', '90d'] as Period[]).map((p) => (
             <button key={p} onClick={() => setPeriod(p)}
               className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                period === p ? 'bg-blue-600 text-white' : `${sub} hover:opacity-80`}`}>
+                period === p ? 'bg-brand-600 text-white' : `${sub} hover:opacity-80`}`}>
               {p === '7d' ? 'Last 7 days' : p === '30d' ? 'Last 30 days' : 'Last 90 days'}
             </button>
           ))}

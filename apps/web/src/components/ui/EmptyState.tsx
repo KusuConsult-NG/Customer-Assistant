@@ -53,7 +53,7 @@ export default function EmptyState({ icon: Icon, title, description, actions = [
         <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
           {actions.map((a) => {
             const cls = a.primary
-              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-500/20'
+              ? 'bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/20'
               : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800';
             const inner = (
               <>

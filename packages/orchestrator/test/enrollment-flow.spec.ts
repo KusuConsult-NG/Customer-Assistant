@@ -154,13 +154,19 @@ describe('the enrollment conversation', () => {
     expect(step.kind).toBe('execute');
   });
 
-  it('refuses a hospital that is not accredited in the chosen LGA, and says which are', () => {
+  it('refuses a location the agency does not have in the chosen LGA, and says which it does', () => {
     const { last } = play([...GOOD_ANSWERS.slice(0, 5), 'St Elsewhere Private Clinic']);
 
-    // A card issued against an unaccredited facility is refused at the desk —
-    // while the enrollee is ill and holding a card the state called valid.
-    expect(last).toMatch(/not on the accredited list/i);
+    // Registering somebody at a place the agency does not operate sends them
+    // to a desk that cannot help them.
+    //
+    // This asserted the sentence ("not on the accredited list") rather than
+    // the guarantee, so rewording the copy to stop assuming a health scheme
+    // failed it while the behaviour was identical. What has to hold is that
+    // the answer is REFUSED and that the agency's own locations are named.
+    expect(last).not.toContain('St Elsewhere Private Clinic');
     expect(last).toMatch(/Plateau Specialist Hospital/);
+    expect(last).toMatch(/Jos University Teaching Hospital/);
   });
 
   it('refuses an LGA outside Plateau State and lists the real ones', () => {

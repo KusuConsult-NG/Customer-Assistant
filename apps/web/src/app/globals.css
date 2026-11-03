@@ -10,8 +10,6 @@
     --text-main: #0f172a;
     --text-muted: #64748b;
     --border-main: #e2e8f0;
-    --accent: #558A02;
-    --accent-light: #74BA03;
   }
 
   .dark {
@@ -21,8 +19,6 @@
     --text-main: #f8fafc;
     --text-muted: #94a3b8;
     --border-main: #1c3310;
-    --accent: #74BA03;
-    --accent-light: #8ee008;
   }
 
   /* Force correct body background in both modes */
@@ -39,7 +35,7 @@
 
   /* Checkbox readable in both modes */
   input[type="checkbox"] {
-    accent-color: #558A02;
+    accent-color: #4d7d02;
   }
 }
 
@@ -74,11 +70,11 @@ html, body {
 
 /* Form input — always readable */
 .input-base {
-  @apply w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-[#74BA03]/40 focus:border-[#74BA03] transition-all shadow-sm;
+  @apply w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-600 dark:border-brand-400 transition-all shadow-sm;
 }
 
 .select-base {
-  @apply w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#74BA03]/40 focus:border-[#74BA03] transition-all shadow-sm;
+  @apply w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-600 dark:border-brand-400 transition-all shadow-sm;
 }
 
 /* Custom Scrollbars */

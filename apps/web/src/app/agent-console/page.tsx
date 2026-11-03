@@ -433,7 +433,7 @@ export default function AgentConsolePage() {
                 key={ch}
                 onClick={() => setChannelFilter(ch)}
                 className={`flex-1 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  channelFilter === ch ? 'bg-blue-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800/60'
+                  channelFilter === ch ? 'bg-brand-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800/60'
                 }`}
               >
                 {ch === 'WHATSAPP' ? 'WA' : ch}
@@ -835,7 +835,7 @@ export default function AgentConsolePage() {
                 <button
                   type="submit"
                   disabled={!isHumanActive || !replyText.trim() || sending}
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center disabled:opacity-40 transition-all shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center disabled:opacity-40 transition-all shadow-lg shadow-brand-600/20"
                 >
                   <Send className="w-4 h-4" />
                 </button>

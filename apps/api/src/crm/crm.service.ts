@@ -547,9 +547,14 @@ export class CrmService {
       phoneNumber: contact.phoneNumber,
       residentialAddress: meta.residentialAddress || contact.address || undefined,
       ageOrDob: meta.ageOrDob || undefined,
-      planType: meta.planType || 'Formal / Informal Sector',
-      lga: meta.lga || contact.city || 'Plateau State',
-      preferredHospital: meta.preferredHospital || 'Accredited Primary Healthcare Provider',
+      // Each of these was a fabricated default on an identity document:
+      // one scheme's plan taxonomy, a State name standing in for an LGA, and
+      // a facility claim ("Accredited Primary Healthcare Provider") for a
+      // citizen nobody had assigned anywhere. The card omits a row it has no
+      // value for, so unknown now reads as absent rather than as a fact.
+      planType: meta.planType || undefined,
+      lga: meta.lga || contact.city || undefined,
+      preferredHospital: meta.preferredHospital || undefined,
       nin: meta.nin,
       photoUrl,
       dependents: meta.dependents || undefined,

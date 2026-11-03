@@ -91,7 +91,7 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Agency Settings
+          <Settings className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Agency Settings
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure this agency’s identity, serving hours, telephony credentials and voice assistant.</p>
       </div>
@@ -103,7 +103,7 @@ export default function SettingsPage() {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === t.id ? 'bg-[#558A02] text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
+              tab === t.id ? 'bg-brand-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
             }`}
           >
             {t.icon} {t.label}
@@ -205,7 +205,7 @@ function ProfileTab({ authHeaders, showToast }: any) {
             <input type="password" required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={inputCls} placeholder="Confirm your new password" />
           </div>
           <div className="flex justify-end pt-2">
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
               {saving ? 'Updating...' : 'Update Password'}
             </button>
@@ -359,7 +359,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
                   aria-pressed={on}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
                     on
-                      ? 'bg-[#558A02] text-white border-[#558A02]'
+                      ? 'bg-brand-600 text-white border-brand-600'
                       : 'bg-transparent text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
@@ -402,7 +402,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       </Section>
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
@@ -510,7 +510,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
         </div>
       </Section>
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save WhatsApp Config'}
         </button>
@@ -838,7 +838,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
       )}
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Voice Config'}
         </button>
@@ -976,7 +976,7 @@ function ApiKeyTab({ authHeaders, showToast }: any) {
             <button
               type="button"
               onClick={() => { setConfirming(true); setError(null); }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm"
             >
               <KeyRound className="w-4 h-4" /> Issue a new API key
             </button>
@@ -1204,7 +1204,7 @@ function HostedAgentTab({ showToast }: any) {
             </div>
 
             <div className="flex justify-end pt-1">
-              <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+              <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
                 {saving ? 'Saving...' : 'Save Credentials'}
               </button>
@@ -1342,7 +1342,7 @@ function ActivityLogTab({ showToast }: any) {
               onClick={() => setOrigin(id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                 origin === id
-                  ? 'bg-[#558A02] text-white border-[#558A02]'
+                  ? 'bg-brand-600 text-white border-brand-600'
                   : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
@@ -1624,7 +1624,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
               </select>
             </div>
             <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {saving ? 'Inviting...' : 'Send Invite'}
               </button>

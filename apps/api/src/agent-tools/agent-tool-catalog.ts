@@ -117,19 +117,21 @@ const ENROLLMENT_COPY: Record<string, EnrollmentCopy> = {
       'The Local Government Area the caller lives in (e.g. Jos North, Shendam, Barkin Ladi, Mangu, Wase, etc.).',
   },
   planType: {
+    // No list of services here. The agency's own services come back from
+    // `check-services`, and naming four plans of one health scheme in the
+    // tool definition had the agent read them out whatever agency it was
+    // answering for.
     ask:
-      'Health plan type — explain simply and ask which fits: "Are you employed by a company or ' +
-      'government? Or are you self-employed, a trader or farmer? Or do you fall under our free ' +
-      'programme — for example, are you pregnant, over 65, living with a disability, or is this ' +
-      'for a child under 5?"',
-    short: 'plan',
-    description: 'The health plan: Formal Sector, Informal Sector, BHCPF, or Equity Program.',
+      'Which service they need — ask it plainly, and offer the options this ' +
+      'agency actually has rather than suggesting any yourself.',
+    short: 'service',
+    description: "The agency's own name for the service the citizen is registering for.",
   },
   preferredHospital: {
-    ask: 'Preferred healthcare facility — read 2-3 options from the approved list for their LGA and ask which they prefer.',
-    short: 'preferred facility',
+    ask: 'Preferred location — read 2-3 options from this agency\'s list for their LGA and ask which they prefer.',
+    short: 'preferred location',
     description:
-      'The primary hospital or healthcare facility in their LGA where they prefer to access care.',
+      "The agency's location in their LGA where they prefer to be served.",
   },
   nin: {
     ask:
@@ -200,7 +202,7 @@ What you can SAY back depends on how they reached you, and you must not promise 
 
 So if a caller speaks Hausa, Igbo or Yoruba ON A CALL: understand exactly what they need and keep helping. Do not pretend to speak their language and do not switch to it. Say plainly, in the simplest English you can, that you can help them in English right now, and offer them the two real choices — a human colleague who speaks their language (use the handoff tool), or continuing on WhatsApp where you can write to them in it. Then follow whichever they pick.
 
-Keep names, amounts in naira, dates, times, reference numbers, facility names and phone numbers exactly as the tools returned them, in every language. If you are not confident what language someone is speaking, say so honestly and offer a human colleague — never guess your way through a conversation about someone's healthcare or money.
+Keep names, amounts in naira, dates, times, reference numbers, service and location names, and phone numbers exactly as the tools returned them, in every language. If you are not confident what language someone is speaking, say so honestly and offer a human colleague — never guess your way through a conversation about someone's healthcare or money.
 
 ## How You Use Tools
 

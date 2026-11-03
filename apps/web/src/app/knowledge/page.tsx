@@ -492,14 +492,14 @@ export default function KnowledgePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Brain className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Knowledge Base &amp; FAQs
+            <Brain className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Knowledge Base &amp; FAQs
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Official guidance, service information and FAQ answers the AI assistant draws on. Voice Agent.</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowFaqModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#74BA03]/20 hover:bg-[#74BA03]/30 text-[#558A02] dark:text-[#74BA03] border border-[#74BA03]/30 text-sm font-semibold transition-all"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-brand-500/20 hover:bg-brand-500/30 text-brand-700 dark:text-brand-300 border border-brand-500/30 text-sm font-semibold transition-all"
           >
             <Plus className="w-4 h-4" /> Add FAQ Policy
           </button>
@@ -520,7 +520,7 @@ export default function KnowledgePage() {
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Upload Policy Doc
@@ -598,7 +598,7 @@ export default function KnowledgePage() {
           <button
             type="submit"
             disabled={crawling}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 flex-shrink-0 shadow-lg shadow-blue-500/20"
+            className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all flex items-center gap-2 disabled:opacity-50 flex-shrink-0 shadow-lg shadow-brand-600/20"
           >
             {crawling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {crawling ? 'Crawling Website...' : 'Crawl & Index URL'}
@@ -617,7 +617,7 @@ export default function KnowledgePage() {
         <button
           onClick={() => setActiveTab('documents')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'documents' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+            activeTab === 'documents' ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
           <FileText className="w-4 h-4" /> Documents & Websites ({docs.length})
@@ -625,7 +625,7 @@ export default function KnowledgePage() {
         <button
           onClick={() => setActiveTab('faqs')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'faqs' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+            activeTab === 'faqs' ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
           }`}
         >
           <MessageSquare className="w-4 h-4" /> Custom FAQ Rules ({faqs.length})
@@ -871,7 +871,7 @@ export default function KnowledgePage() {
                 <button
                   type="submit"
                   disabled={searching}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all"
                 >
                   {searching ? 'Searching...' : 'Search'}
                 </button>
@@ -953,7 +953,7 @@ export default function KnowledgePage() {
               <button
                 type="submit"
                 disabled={pasting}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2"
               >
                 {pasting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {pasting ? 'Indexing...' : 'Index Content'}

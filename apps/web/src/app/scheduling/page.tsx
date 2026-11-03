@@ -458,14 +458,14 @@ export default function SchedulingPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <CalendarIcon className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Appointments &amp; Reservations
+            <CalendarIcon className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Appointments &amp; Reservations
           </h1>
-          <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Schedule citizen biometrics capture, clinic consultations, and inspect AI booking audit trails.</p>
+          <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Schedule citizen appointments and reservations, and inspect the AI booking audit trail.</p>
         </div>
         {activeTab !== 'refunds' && (
           <button
             onClick={() => { setActionError(null); activeTab === 'bookings' ? setShowAddBookingModal(true) : setShowAddReservationModal(true); }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all text-sm shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold transition-all text-sm shadow-lg shadow-brand-600/20"
           >
             <Plus className="w-4 h-4" /> Create {activeTab === 'bookings' ? 'Booking' : 'Reservation'}
           </button>
@@ -478,7 +478,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setActiveTab('bookings')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+              activeTab === 'bookings' ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
             }`}
           >
             <CalendarIcon className="w-4 h-4" /> Bookings ({bookings.length})
@@ -486,7 +486,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setActiveTab('reservations')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'reservations' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+              activeTab === 'reservations' ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
             }`}
           >
             <Utensils className="w-4 h-4" /> Reservations ({reservations.length})
@@ -498,7 +498,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setActiveTab('refunds')}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'refunds' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
+              activeTab === 'refunds' ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/20' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200'
             }`}
           >
             <Banknote className="w-4 h-4" /> Refunds ({refundRequests.length})
@@ -510,7 +510,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setViewMode('table')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              viewMode === 'table' ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <List className="w-3.5 h-3.5" /> Table
@@ -518,7 +518,7 @@ export default function SchedulingPage() {
           <button
             onClick={() => setViewMode('calendar')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              viewMode === 'calendar' ? 'bg-brand-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" /> Calendar Grid
@@ -770,7 +770,7 @@ export default function SchedulingPage() {
                   required
                   value={bookingContactId}
                   onChange={e => setBookingContactId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600"
                 >
                   <option value="">Select a citizen…</option>
                   {contacts.map(c => (
@@ -785,22 +785,22 @@ export default function SchedulingPage() {
               </div>
               <div>
                 <label htmlFor="booking-service" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Service Type</label>
-                <input required type="text" id="booking-service" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="text" id="booking-service" value={bookingService} onChange={e => setBookingService(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600" />
               </div>
               <div>
                 <label htmlFor="booking-time" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date &amp; Time</label>
-                <input required type="datetime-local" id="booking-time" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="datetime-local" id="booking-time" value={bookingTime} onChange={e => setBookingTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600" />
               </div>
               <div>
                 <label htmlFor="booking-staff" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Assigned Staff</label>
-                <input type="text" id="booking-staff" placeholder="Optional — leave blank if nobody is assigned yet" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input type="text" id="booking-staff" placeholder="Optional — leave blank if nobody is assigned yet" value={bookingStaff} onChange={e => setBookingStaff(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600" />
               </div>
               {actionError && (
                 <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
                   {actionError}
                 </div>
               )}
-              <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50">
+              <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all shadow-lg shadow-brand-600/20 disabled:opacity-50">
                 {busy === 'Create booking' ? 'Creating…' : 'Confirm & Create Booking'}
               </button>
             </form>
@@ -826,7 +826,7 @@ export default function SchedulingPage() {
                   required
                   value={resContactId}
                   onChange={e => setResContactId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600"
                 >
                   <option value="">Select a citizen…</option>
                   {contacts.map(c => (
@@ -837,23 +837,23 @@ export default function SchedulingPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="res-party" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Party Size</label>
-                  <input required type="number" id="res-party" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <input required type="number" id="res-party" value={resPartySize} onChange={e => setResPartySize(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label htmlFor="res-table" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Table / Room</label>
-                  <input type="text" id="res-table" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <input type="text" id="res-table" value={resTable} onChange={e => setResTable(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div>
                 <label htmlFor="res-time" className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Date &amp; Time</label>
-                <input required type="datetime-local" id="res-time" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500" />
+                <input required type="datetime-local" id="res-time" value={resTime} onChange={e => setResTime(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600" />
               </div>
               {actionError && (
                 <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
                   {actionError}
                 </div>
               )}
-              <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50">
+              <button type="submit" disabled={busy !== null} className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all shadow-lg shadow-brand-600/20 disabled:opacity-50">
                 {busy === 'Create reservation' ? 'Reserving…' : 'Confirm & Reserve Slot'}
               </button>
             </form>
@@ -964,7 +964,7 @@ export default function SchedulingPage() {
                       setRescheduleFor({ kind: 'booking', id: selectedBooking.id, name: selectedBooking.contact?.fullName ?? 'this booking' });
                       setNewTime(toLocalInput(selectedBooking.startTime)); setActionError(null);
                     }}
-                    className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/20"
+                    className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold transition-all shadow-lg shadow-brand-600/20"
                   >
                     Reschedule
                   </button>
@@ -1146,7 +1146,7 @@ export default function SchedulingPage() {
                 type="datetime-local"
                 value={newTime}
                 onChange={e => setNewTime(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600"
               />
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
                 The agency's own serving hours and the double-booking constraint both apply — if the
@@ -1161,7 +1161,7 @@ export default function SchedulingPage() {
             <button
               onClick={doReschedule}
               disabled={busy !== null}
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all disabled:opacity-50"
+              className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all disabled:opacity-50"
             >
               {busy === 'Reschedule' ? 'Moving…' : 'Move it'}
             </button>
@@ -1198,7 +1198,7 @@ export default function SchedulingPage() {
                 value={reason}
                 onChange={e => setReason(e.target.value)}
                 rows={3}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600"
                 placeholder={reasonFor.action === 'refund' ? 'What the citizen asked for, and why' : 'Recorded against the appointment'}
               />
             </div>

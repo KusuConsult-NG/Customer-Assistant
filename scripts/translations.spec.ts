@@ -118,8 +118,11 @@ describe('exporting for review', () => {
     const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
     expect(readme).toMatch(/Keep every placeholder/);
     // The things that must NOT be translated are the ones a well-meaning
-    // reviewer would otherwise "fix" — and the plan names go on a health card.
-    expect(readme).toMatch(/Formal Sector/);
+    // reviewer would otherwise "fix". This named one scheme's four plans,
+    // which are no longer in the sheets at all — each agency's services reach
+    // the citizen through {options}, so that is what must survive review.
+    expect(readme).toMatch(/Service and location names/);
+    expect(readme).toMatch(/\{options\}/);
   });
 });
 

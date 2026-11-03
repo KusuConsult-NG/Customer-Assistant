@@ -198,7 +198,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Branding
                 </button>
@@ -242,7 +242,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Use this key in the <code className="text-[#558A02] dark:text-[#74BA03]">Authorization: Bearer ace_live_pk_...</code> header to call the platform REST API.
+                  Use this key in the <code className="text-brand-700 dark:text-brand-300">Authorization: Bearer ace_live_pk_...</code> header to call the platform REST API.
                 </p>
               </div>
             </div>
@@ -280,7 +280,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Webhooks
                 </button>

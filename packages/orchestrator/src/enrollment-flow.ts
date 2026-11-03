@@ -14,12 +14,12 @@
  *
  * Six fields are mandatory (name, age, address, LGA, plan, facility) and NIN is
  * optional. The order matters: LGA is asked before the facility because the
- * accredited list is per-LGA, so asking for a hospital first would mean
+ * agency's list of locations is per-LGA, so asking for one first would mean
  * validating it against nothing.
  *
  * ── Where this refuses ──────────────────────────────────────────────────────
  *
- * The LGA and the facility are checked against the accredited lists rather than
+ * The LGA and the location are checked against the agency's own lists rather than
  * accepted as free text. Enrolling somebody at a hospital that is not on the
  * list produces a card refused at the desk — which the enrollee discovers while
  * ill, holding a card the state told them was valid. Better to say "that one is
@@ -127,7 +127,7 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       label: 'LGA',
       aliases: ['lga', 'local government', 'local government area', 'council'],
       // A Plateau LGA name is unambiguous: no other field in this form takes a
-      // value that resolves against the accredited list.
+      // value that resolves against the agency's own list.
       identifies: (text) => canonicalLga(text) !== null,
       prompt: (_c, lang) => t(lang, 'enrol_lga_ask'),
       accept: (text, _c, lang) => {
@@ -156,7 +156,14 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
       accept: (text, c, lang) => {
         const found = resolveServiceOption(readCatalogue(c), text);
         if (!found) {
-          return { error: t(lang, 'enrol_plan_unclear') };
+          // The list goes out again with the retry. It used to name one
+          // scheme's four plans in the message itself, so a citizen who
+          // answered wrongly was re-offered options the agency does not have.
+          return {
+            error: t(lang, 'enrol_plan_unclear', {
+              options: serviceOptionsAsText(readCatalogue(c)),
+            }),
+          };
         }
         // The agency's own name for the service, stored in English in every
         // language for the same reason the age is: it is the value written to
@@ -210,7 +217,12 @@ export const ENROLLMENT_FLOW: FlowDefinition = {
   ],
 
   summarise: (c, lang) => {
-    const free = /equity|bhcpf/i.test(c.planType ?? '');
+    // Whether a citizen owes money is the agency's `isNoCost` column, never a
+    // pattern over the service NAME. This read /equity|bhcpf/i against the
+    // label, so it waived payment for any service whose name happened to
+    // contain those words and charged for every no-cost service that did not.
+    const chosen = resolveServiceOption(readCatalogue(c), c.planType ?? '');
+    const free = chosen?.isNoCost ?? false;
     return t(lang, 'enrol_summary', {
       name: c.fullName ?? '',
       age: c.ageOrDob ?? '',

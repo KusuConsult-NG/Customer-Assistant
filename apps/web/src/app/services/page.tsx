@@ -109,7 +109,7 @@ export default function ServiceCataloguePage() {
           <button
             onClick={() => setAdding(true)}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white shadow-md"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Plus className="w-3.5 h-3.5" />
             {tab === 'services' ? 'Add service' : 'Add location'}
@@ -268,7 +268,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors ${
         active
-          ? 'border-[#74BA03] text-[#558A02] dark:text-[#74BA03]'
+          ? 'border-brand-600 dark:border-brand-400 text-brand-700 dark:text-brand-300'
           : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
       }`}
     >
@@ -344,7 +344,7 @@ function Dialog({ title, intro, children, onClose, onSubmit, saving, error }: {
             type="submit"
             disabled={saving}
             className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

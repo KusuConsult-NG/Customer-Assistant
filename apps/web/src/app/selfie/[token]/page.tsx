@@ -217,7 +217,7 @@ export default function SelfieUploadPage() {
       <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-6 pb-4 text-center border-b border-slate-100 dark:border-slate-800">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-[#74BA03]/15 text-[#558A02] dark:text-[#74BA03] font-black text-base mb-2 border border-[#74BA03]/30">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-brand-500/15 text-brand-700 dark:text-brand-300 font-black text-base mb-2 border border-brand-500/30">
             PLS
           </div>
           <h1 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -298,7 +298,7 @@ export default function SelfieUploadPage() {
                   {!cameraError && (
                     <button
                       onClick={capture}
-                      className="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
+                      className="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-md bg-brand-600 hover:bg-brand-700 transition-all"
                     >
                       Snap Photo
                     </button>
@@ -331,7 +331,7 @@ export default function SelfieUploadPage() {
                       <button
                         type="button"
                         onClick={() => setShowDependents(!showDependents)}
-                        className="text-[11px] font-semibold text-[#558A02] dark:text-[#74BA03]"
+                        className="text-[11px] font-semibold text-brand-700 dark:text-brand-300"
                       >
                         {showDependents ? 'Hide' : '+ Add Family Member'}
                       </button>
@@ -359,7 +359,7 @@ export default function SelfieUploadPage() {
                           <button
                             type="button"
                             onClick={addDependent}
-                            className="px-3 py-1.5 rounded-xl bg-[#558A02] text-white text-xs font-bold"
+                            className="px-3 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold"
                           >
                             Add
                           </button>
@@ -397,7 +397,7 @@ export default function SelfieUploadPage() {
                     <button
                       onClick={upload}
                       disabled={stage === 'uploading'}
-                      className="flex-1 py-3 rounded-2xl text-white font-bold text-sm shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all disabled:opacity-60"
+                      className="flex-1 py-3 rounded-2xl text-white font-bold text-sm shadow-md bg-brand-600 hover:bg-brand-700 transition-all disabled:opacity-60"
                     >
                       {stage === 'uploading' ? 'Sending…' : 'Submit Photo & Enrol'}
                     </button>

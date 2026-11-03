@@ -241,10 +241,10 @@ export default function BroadcastsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Send className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> WhatsApp Broadcasts
+            <Send className="w-6 h-6 text-brand-700 dark:text-brand-300" /> WhatsApp Broadcasts
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Send policy updates, renewal reminders, facility announcements, and maternal health alerts to Plateau State enrollees.
+            Send service updates, deadline reminders, and office announcements to the citizens on your agency's list.
           </p>
         </div>
         <div className="flex gap-2">
@@ -257,7 +257,7 @@ export default function BroadcastsPage() {
           <button
             onClick={() => setShowBroadcastModal(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Send className="w-4 h-4" /> New Broadcast
           </button>
@@ -317,7 +317,7 @@ export default function BroadcastsPage() {
               </p>
               <button
                 onClick={() => setShowBroadcastModal(true)}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
+                className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs shadow-lg shadow-brand-600/20"
               >
                 Send First Campaign
               </button>
@@ -550,7 +550,7 @@ export default function BroadcastsPage() {
                   value={campaignName}
                   onChange={(e) => setCampaignName(e.target.value)}
                   placeholder="e.g. August Customer Special Offer"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm text-slate-900 dark:text-white focus:border-brand-600 outline-none"
                 />
               </div>
 
@@ -620,7 +620,7 @@ export default function BroadcastsPage() {
                 <button
                   disabled={sendingBroadcast}
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-lg shadow-brand-600/20 disabled:opacity-50 flex items-center gap-2"
                 >
                   {sendingBroadcast ? 'Sending...' : <><Send className="w-4 h-4" /> Launch Broadcast</>}
                 </button>

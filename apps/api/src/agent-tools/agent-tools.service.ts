@@ -713,7 +713,7 @@ export class AgentToolsService {
       if (!input.ageOrDob?.trim()) {
         return {
           ok: false,
-          speak: 'Could you tell me your age or date of birth so we can include it on your health profile?',
+          speak: 'Could you tell me your age or date of birth so we can include it on your registration?',
           data: { reason: 'missing_age_or_dob' },
         };
       }
@@ -736,20 +736,29 @@ export class AgentToolsService {
         };
       }
 
-      // Guard: planType must be provided
-      if (!input.planType?.trim()) {
-        return {
-          ok: false,
-          speak: 'Which health plan would you like to enroll in? Formal Sector, Informal Sector, BHCPF, or the free Equity Programme?',
-          data: { reason: 'missing_plan_type' },
-        };
-      }
-
       // The agency's own services and locations, read once. Everything below
       // checks against these rather than against a directory compiled into
       // the platform.
       const catalogue = await loadServiceCatalogue(prisma, organizationId);
       const lgaFacilities = locationsInLga(catalogue, input.lga);
+
+      // Guard: planType must be provided.
+      //
+      // This read "Formal Sector, Informal Sector, BHCPF, or the free Equity
+      // Programme" — one health scheme's four plans, spoken to the caller of
+      // whichever agency the agent was answering for. The catalogue is loaded
+      // above now so this names what the agency actually offers, the same way
+      // the location guard below already did.
+      if (!input.planType?.trim()) {
+        const offered = catalogue.options.slice(0, 4).map((o) => o.name).join(', ');
+        return {
+          ok: false,
+          speak: offered
+            ? `Which of these would you like to register for? ${offered}.`
+            : 'Which service would you like to register for?',
+          data: { reason: 'missing_plan_type' },
+        };
+      }
 
       // Guard: a location must be provided, where the agency has any here.
       if (!input.preferredHospital?.trim() && lgaFacilities.length > 0) {

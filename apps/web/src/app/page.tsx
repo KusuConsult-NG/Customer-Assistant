@@ -232,9 +232,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-7xl pb-12">
       {/* Top Welcome Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-[#74BA03]/10 via-[#558A02]/10 to-[#74BA03]/5 border border-[#74BA03]/30 dark:border-[#74BA03]/20 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-brand-500/10 via-brand-600/10 to-brand-500/5 border border-brand-500/30 dark:border-brand-500/20 shadow-sm">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-[#558A02] dark:text-[#74BA03] mb-1 uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-bold text-brand-700 dark:text-brand-300 mb-1 uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" /> Service Dashboard
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -246,9 +246,9 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl">
-            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-[#558A02] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
-            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-[#558A02] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
-            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-[#558A02] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
+            <button onClick={() => setTimeRange('7d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '7d' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>7d</button>
+            <button onClick={() => setTimeRange('30d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '30d' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>30d</button>
+            <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
           </div>
           <button
             onClick={fetchAll}
@@ -260,7 +260,7 @@ export default function DashboardPage() {
           <Link
             href="/agent-console"
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Bot className="w-4 h-4 text-white" /> Open Live Console
           </Link>
@@ -273,14 +273,14 @@ export default function DashboardPage() {
           title="Total Citizens"
           value={stats.contacts}
           subtitle="Registered Beneficiaries"
-          icon={<Users className="w-5 h-5 text-[#558A02] dark:text-[#74BA03]" />}
+          icon={<Users className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
           badge={`${timeRange} active`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
         <KpiCard
           title="Enrolment Inquiries"
           value={stats.leads}
-          subtitle="Prospective enrollees"
+          subtitle="Prospective registrations"
           icon={<Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
           badge={`${stats.openTickets} open tickets`}
           badgeColor="bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20"
@@ -289,7 +289,7 @@ export default function DashboardPage() {
           title="Calls"
           value={stats.calls}
           subtitle="Handled by the voice assistant"
-          icon={<PhoneCall className="w-5 h-5 text-[#558A02] dark:text-[#74BA03]" />}
+          icon={<PhoneCall className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
           badge={`${timeRange} calls`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
@@ -399,7 +399,7 @@ export default function DashboardPage() {
               value={aiResolutionRate === null
                 ? 'No tickets recorded yet'
                 : `${aiResolutionRate}% of support tickets resolved`}
-              color="bg-[#74BA03]"
+              color="bg-brand-600 dark:bg-brand-500"
             />
             <ProgressMetric
               label="AI Reply Share"
@@ -407,13 +407,13 @@ export default function DashboardPage() {
               value={aiReplyRate === null
                 ? 'No messages recorded yet'
                 : `${aiReplyRate}% of all replies handled by the AI assistant`}
-              color="bg-[#558A02]"
+              color="bg-brand-600"
             />
             <ProgressMetric
               label="Knowledge Retrieval Accuracy"
               percentage={'N/A'}
               value="Not measured — retrieval scoring is not instrumented"
-              color="bg-[#74BA03]"
+              color="bg-brand-600 dark:bg-brand-500"
             />
             <ProgressMetric
               label="Human Desk Handover Rate"
@@ -425,9 +425,9 @@ export default function DashboardPage() {
             />
           </div>
 
-          <div className="p-4 rounded-xl bg-gradient-to-r from-[#74BA03]/10 to-[#558A02]/10 border border-[#74BA03]/30 dark:border-[#74BA03]/20 flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-gradient-to-r from-brand-500/10 to-brand-600/10 border border-brand-500/30 dark:border-brand-500/20 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${dashboardData ? 'bg-[#74BA03] animate-ping' : 'bg-amber-500'}`} />
+              <div className={`w-3 h-3 rounded-full ${dashboardData ? 'bg-brand-600 dark:bg-brand-500 animate-ping' : 'bg-amber-500'}`} />
               <div>
                 {/* Reflects whether analytics actually loaded. */}
                 <p className="text-xs font-bold text-slate-900 dark:text-white">
@@ -549,16 +549,16 @@ export default function DashboardPage() {
         {/* Quick Launch & System Shortcuts */}
         <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm p-6 space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-3">
-            <Layers className="w-4 h-4 text-[#74BA03]" /> Shortcuts
+            <Layers className="w-4 h-4 text-brand-700 dark:text-brand-300" /> Shortcuts
           </h3>
 
           <div className="space-y-2">
             {[
-              { label: 'Agent Console', href: '/agent-console', desc: 'Real-time conversation management', color: 'text-[#558A02] dark:text-[#74BA03]' },
-              { label: 'Citizen Register', href: '/crm', desc: 'Manage beneficiaries & contacts', color: 'text-[#558A02] dark:text-[#74BA03]' },
-              { label: 'Knowledge Base', href: '/knowledge', desc: 'Published answers & documents', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Agent Console', href: '/agent-console', desc: 'Real-time conversation management', color: 'text-brand-700 dark:text-brand-300' },
+              { label: 'Citizen Register', href: '/crm', desc: 'Manage beneficiaries & contacts', color: 'text-brand-700 dark:text-brand-300' },
+              { label: 'Knowledge Base', href: '/knowledge', desc: 'Published answers & documents', color: 'text-brand-700 dark:text-brand-300' },
               { label: 'Telephone Service', href: '/telephony', desc: 'Carrier setup & test call', color: 'text-amber-600 dark:text-amber-400' },
-              { label: 'Appointments', href: '/scheduling', desc: 'Enrolment clinic bookings', color: 'text-[#558A02] dark:text-[#74BA03]' },
+              { label: 'Appointments', href: '/scheduling', desc: 'Citizen appointments', color: 'text-brand-700 dark:text-brand-300' },
               { label: 'System Settings', href: '/settings', desc: 'Agency credentials & prompt', color: 'text-slate-600 dark:text-slate-400' },
             ].map(s => (
               <Link
@@ -570,7 +570,7 @@ export default function DashboardPage() {
                   <p className={`text-xs font-bold ${s.color}`}>{s.label}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.desc}</p>
                 </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#74BA03] dark:group-hover:text-white transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-700 dark:text-brand-300 dark:group-hover:text-white transition-colors" />
               </Link>
             ))}
           </div>
