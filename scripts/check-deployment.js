@@ -64,7 +64,15 @@ async function req(path, init = {}) {
       'Nothing below can run until the service answers. Check the Render logs and that the service is not asleep.');
     process.exit(1);
   }
-  say('OK', 'API service', `HTTP 200 in ${health.ms}ms`);
+  // A carrier gives a webhook ~10-15 seconds. A free-tier instance that has
+  // spun down takes far longer to wake, so the first real call of the day is
+  // dropped before the service answers — and the service looks healthy when
+  // you check it by hand a moment later.
+  const slow = health.ms > 10000;
+  say(slow ? 'DEGRADED' : 'OK', 'API service', `HTTP 200 in ${health.ms}ms`,
+    slow
+      ? `${Math.round(health.ms / 1000)}s is a COLD START. Twilio and ElevenLabs time out well before that, so an inbound call to a sleeping instance is dropped. Use a plan that does not spin down before taking real calls.`
+      : null);
 
   // `/ready` is the one that refuses to pass without the double-booking
   // constraint in production — a green /health and a red /ready is exactly
@@ -161,9 +169,15 @@ async function req(path, init = {}) {
   }
 
   const cbs = await req('/api/callbacks', { headers: auth });
+  // Print the server's own words on failure. "HTTP 500" alone sends you to
+  // the wrong place: a missing table, a stale build and a pooler pointed at
+  // another database all look identical from the status line.
+  const cbMsg = typeof cbs.body === 'object' && cbs.body
+    ? (cbs.body.message || JSON.stringify(cbs.body))
+    : String(cbs.body ?? '');
   say(cbs.ok ? 'OK' : 'DOWN', 'Callback queue',
-    cbs.ok ? `${cbs.body.length} promise(s) recorded` : `HTTP ${cbs.status}`,
-    cbs.ok ? null : 'Did `npm run db:push` run against this database? CallbackRequest is a new table.');
+    cbs.ok ? `${cbs.body.length} promise(s) recorded` : `HTTP ${cbs.status}: ${cbMsg.slice(0, 300)}`,
+    cbs.ok ? null : 'If it names CallbackRequest, `db:push` has not reached THIS database — check the deployed DATABASE_URL is the one you pushed to. Otherwise read the Render logs for the stack.');
 
   const down = results.filter((r) => r.state === 'DOWN');
   const degraded = results.filter((r) => r.state === 'DEGRADED');
