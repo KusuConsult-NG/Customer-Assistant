@@ -69,7 +69,42 @@ services:
         value: 15m
       - key: JWT_REFRESH_TTL
         value: 7d
+      # Credentials at rest. EVERY provider credential — a tenant's ElevenLabs
+      # workspace key, its Twilio auth token, its WhatsApp access token — is
+      # AES-256-GCM encrypted with this, and storing one is REFUSED outright
+      # when it is unset. Writing it in the clear is not an option this system
+      # offers, so a deployment without this key cannot save a tenant's
+      # credentials at all: POST /api/agent-provisioning/credentials throws.
+      #
+      # Not `generateValue: true`. The key must be exactly 32 bytes, and a
+      # short or wrong-length value is REJECTED rather than stretched — a
+      # hashed passphrase looks strong in every log and review and is not.
+      # Generate it yourself: openssl rand -base64 32
+      - key: ENCRYPTION_KEY
+        sync: false
+      # Only during a key rotation: tried on decrypt, never on write. Remove it
+      # once `npm run secrets:encrypt -- --apply` has re-encrypted everything,
+      # which is what lets a rotation happen without every credential going
+      # dark at once.
+      - key: ENCRYPTION_KEY_PREVIOUS
+        sync: false
       - key: OPENAI_API_KEY
+        sync: false
+      # Optional overrides for the model endpoint. Set LLM_BASE_URL to run
+      # against an OpenAI-compatible gateway or a self-hosted model; the rest
+      # pick the chat and embedding models. All four fall back to the defaults
+      # in code, so a deployment that wants stock behaviour leaves them unset.
+      #
+      # EMBEDDING_DIMENSIONS must match the vectors already in Qdrant — change
+      # it and existing points stop matching, which reads as the knowledge base
+      # having gone empty rather than as a configuration change.
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_CHAT_MODEL
+        sync: false
+      - key: EMBEDDING_MODEL
+        sync: false
+      - key: EMBEDDING_DIMENSIONS
         sync: false
       - key: WHATSAPP_ACCESS_TOKEN
         sync: false
@@ -132,9 +167,29 @@ services:
         sync: false
       - key: ELEVENLABS_VOICE_ID
         sync: false
+      # Post-call signing secret for the SHARED workspace. Unset,
+      # /api/webhooks/elevenlabs returns 500 and every transcript is retried
+      # rather than trusted. A tenant with its OWN workspace stores its own
+      # secret and receives on /api/webhooks/elevenlabs/:organizationId, which
+      # has no env fallback on purpose — falling back would check one tenant's
+      # transcripts against another workspace's secret.
+      - key: ELEVENLABS_WEBHOOK_SECRET
+        sync: false
+      # Set to a residency host (api.eu.residency.elevenlabs.io,
+      # api.in.residency.elevenlabs.io) to keep conversation data in
+      # jurisdiction. Unset uses the default US endpoint.
+      - key: ELEVENLABS_BASE_URL
+        sync: false
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
+        sync: false
+      # Ed25519 public key for Telnyx webhook verification. UNSET, the Telnyx
+      # inbound route logs a warning and accepts every request — and that route
+      # resolves a tenant from the dialled number and then drives the AI, which
+      # answers the caller and can write bookings and tickets. Set it on any
+      # deployment that points a Telnyx number here.
+      - key: TELNYX_PUBLIC_KEY
         sync: false
 
   # ─── 2. Web Dashboard (Next.js) ──────────────────────────────────────────────
