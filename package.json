@@ -17,6 +17,7 @@
     "db:generate": "npm run --prefix packages/database generate",
     "db:push": "npm run --prefix packages/database push",
     "db:seed:gatekipa": "npm run --prefix packages/database seed:gatekipa",
+    "check:deployment": "node scripts/check-deployment.js",
     "demo:readiness": "node scripts/demo-readiness.js",
     "verify": "./scripts/verify-all.sh",
     "db:studio": "npm run --prefix packages/database studio",
