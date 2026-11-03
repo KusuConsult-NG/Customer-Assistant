@@ -96,18 +96,18 @@ function VerifyEmailContent() {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-2xl shadow-2xl text-center space-y-6">
         {status === 'loading' && (
           <div className="space-y-4">
-            <Loader2 className="w-12 h-12 text-blue-600 dark:text-blue-400 animate-spin mx-auto" />
+            <Loader2 className="w-12 h-12 text-blue-700 dark:text-blue-400 animate-spin mx-auto" />
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Verifying...</h1>
             <p className="text-slate-600 dark:text-slate-400 text-sm">Please wait while we verify your email.</p>
           </div>
         )}
         {status === 'success' && (
           <div className="space-y-4">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400 mx-auto" />
+            <CheckCircle2 className="w-12 h-12 text-emerald-700 dark:text-emerald-400 mx-auto" />
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">{message}</h1>
             <button
               onClick={() => router.push('/login')}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-lg shadow-blue-500/20"
+              className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold transition-all shadow-lg shadow-brand-600/20"
             >
               Go to Login
             </button>
@@ -115,9 +115,9 @@ function VerifyEmailContent() {
         )}
         {status === 'error' && (
           <div className="space-y-4">
-            <XCircle className="w-12 h-12 text-red-600 dark:text-red-400 mx-auto" />
+            <XCircle className="w-12 h-12 text-red-700 dark:text-red-400 mx-auto" />
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Verification Failed</h1>
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 p-3 rounded-xl border border-red-200 dark:border-red-500/20">{message}</p>
+            <p className="text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 p-3 rounded-xl border border-red-200 dark:border-red-500/20">{message}</p>
 
             {/* A link expires after 24 hours. Without this the only way on was
                 to ask somebody with database access. */}
@@ -131,12 +131,12 @@ function VerifyEmailContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@agency.gov.ng"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:border-brand-600"
               />
               <button
                 onClick={resend}
                 disabled={resending}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {resending && <Loader2 className="w-4 h-4 animate-spin" />}
                 {resending ? 'Sending…' : 'Send a new verification link'}

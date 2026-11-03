@@ -47,10 +47,13 @@ a break — most of the numbered lists depend on them.
 Some things inside these strings are deliberately left in English, and should
 stay that way:
 
-- **Plan names** — Formal Sector, Informal Sector, Equity Programme, BHCPF.
-  These are printed on the customer's health card, so the words they choose from
-  must be the words the card will use.
-- **Place names** — Jos North, Barkin Ladi, and the hospitals.
+- **Service and location names** — these do not appear in these sheets at all.
+  They come from each agency's own catalogue at the moment the message is sent,
+  and they are substituted into `{options}`. They are stored and printed in
+  English because they are what the citizen's record says and what a desk
+  officer reads back, so leave `{options}` exactly where it is and do not try
+  to translate what it will contain.
+- **Place names** — Jos North, Barkin Ladi, and the LGA names.
 - **`*yes*`** — the asterisks make the word bold on WhatsApp, and the system
   understands the customer's own language when they reply, so a customer may
   answer "eh", "na'am", "ee" or "beeni" as they prefer.

@@ -91,6 +91,26 @@ for pkgtest in packages/*/test; do
   fi
 done
 
+# ── Maintenance-script suites ───────────────────────────────────────────────
+#
+# `scripts/*.spec.ts` ran NOWHERE EITHER, for a narrower version of the same
+# reason: the loop above walks `packages/*/test` and stops there.
+#
+# `jest.packages.config.js` has always included them, and says why — these
+# scripts edit real things (credentials, contact records, the translation
+# table), and a script nothing tests is exactly the sort of code that is
+# trusted because it once worked. But that config is only reached through
+# `npm run test:packages`, not through this gate. So the translation suite sat
+# red while this script printed "16 passed · 0 failed", which is the one thing
+# a gate must never do.
+if ls scripts/*.spec.ts >/dev/null 2>&1; then
+  if npx jest --config jest.packages.config.js --testPathPattern 'scripts/.*\.spec\.ts$' > /tmp/ace-verify-scripts.log 2>&1; then
+    pass "scripts specs — $(grep -oE 'Tests:.*' /tmp/ace-verify-scripts.log | head -1)"
+  else
+    fail "scripts specs — $(grep -oE 'Tests:.*' /tmp/ace-verify-scripts.log | head -1 || echo 'suite failed to run')"
+  fi
+fi
+
 echo
 echo "── 3. API integration suite (Jest) ───────────────────────────────"
 if [ -z "${DATABASE_URL:-}" ]; then

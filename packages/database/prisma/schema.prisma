@@ -231,6 +231,7 @@ model Organization {
   payoutUssdCode      String?
 
   @@map("organizations")
+  callbackRequests CallbackRequest[]
 }
 
 model User {
@@ -284,6 +285,7 @@ model User {
   @@index([organizationId])
   @@index([passwordResetToken])
   @@map("users")
+  assignedCallbacks CallbackRequest[] @relation("AssignedCallback")
 }
 
 model ApiKey {
@@ -377,6 +379,7 @@ model Contact {
   leads          Lead[]
   deals          Deal[]
   tickets        Ticket[]
+  callbacks      CallbackRequest[]
   conversations  Conversation[]
   callLogs       CallLog[]
   bookings       Booking[]
@@ -446,6 +449,66 @@ model Ticket {
   @@index([contactId])
   @@index([assignedUserId])
   @@map("tickets")
+}
+
+enum CallbackStatus {
+  PENDING     // promised, not yet due
+  DUE         // due now, not yet claimed
+  IN_PROGRESS // claimed by one pod, dialling
+  COMPLETED   // the citizen was reached
+  FAILED      // every attempt used up, or the carrier refused
+  CANCELLED   // the citizen or an officer called it off
+}
+
+/// A promise to ring a citizen back, and the record of whether we kept it.
+///
+/// `dueAt` is the promise. It is written from what the citizen was actually
+/// told ("within the hour", "tomorrow morning"), never inferred afterwards,
+/// because the only thing that makes a callback a commitment is that the time
+/// was stated to them.
+///
+/// Claimed before it is dialled, exactly like AppointmentReminder: an atomic
+/// updateMany flips DUE -> IN_PROGRESS and only the caller whose count is 1
+/// dials. Two pods polling the same minute would otherwise both ring the same
+/// citizen, which is worse than a missed callback.
+model CallbackRequest {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  /// Stored canonical (E.164). The citizen may give a different number from
+  /// the one they are calling from, so this is not read off the contact.
+  phoneNumber    String
+  reason         String         @db.Text
+  /// What the citizen was told, verbatim, so an officer picking this up says
+  /// the same thing back.
+  promisedText   String
+
+  dueAt          DateTime
+  status         CallbackStatus @default(PENDING)
+  attempts       Int            @default(0)
+  maxAttempts    Int            @default(3)
+
+  /// Set when a dial is actually placed. Absent means nothing was dialled.
+  callSid        String?
+  lastAttemptAt  DateTime?
+  completedAt    DateTime?
+  /// Why it failed, in the carrier's words, for the officer who has to explain.
+  failureReason  String?
+
+  assignedUserId String?
+  assignedUser   User?          @relation("AssignedCallback", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  conversationId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([organizationId, status, dueAt])
+  @@index([contactId])
+  @@index([assignedUserId])
+  @@map("callback_requests")
 }
 
 model Note {

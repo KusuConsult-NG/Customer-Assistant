@@ -581,16 +581,16 @@ export default function WorkflowsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <GitFork className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Automation Workflows
+            <GitFork className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Automation Workflows
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Automate enrollee alerts, grievance escalation triggers, payment confirmations, and webhook dispatches.
+            Automate citizen alerts, case escalation triggers, confirmations, and webhook dispatches.
           </p>
         </div>
         <button
           onClick={() => setShowNewModal(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
-          style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+          style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
         >
           <Plus className="w-4 h-4" /> New Workflow
         </button>
@@ -655,7 +655,7 @@ export default function WorkflowsPage() {
                 <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1">
                   <span>{wf.runCount ?? 0} run(s)</span>
                   {wf.problems && wf.problems.length > 0 ? (
-                    <span className="text-amber-600 dark:text-amber-400 font-semibold">Needs setup</span>
+                    <span className="text-amber-700 dark:text-amber-400 font-semibold">Needs setup</span>
                   ) : (
                     <span>{wf.nodes?.length || 0} nodes</span>
                   )}
@@ -716,7 +716,7 @@ export default function WorkflowsPage() {
                     </button>
                     <button
                       onClick={handleSaveWorkflow}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-500/20"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-lg shadow-brand-600/20"
                     >
                       <Save className="w-3.5 h-3.5" /> Save
                     </button>
@@ -772,34 +772,34 @@ export default function WorkflowsPage() {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="text-[10px] font-mono text-slate-400 mr-1">#{index + 1}</span>
+                              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mr-1">#{index + 1}</span>
                               {node.kind !== 'TRIGGER' && (
                                 <>
                                   <button
                                     onClick={() => moveNode(index, -1)}
                                     title="Move up"
-                                    className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                                    className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                                   >
                                     ↑
                                   </button>
                                   <button
                                     onClick={() => moveNode(index, 1)}
                                     title="Move down"
-                                    className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                                    className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                                   >
                                     ↓
                                   </button>
                                   <button
                                     onClick={() => openNodeEditor(node)}
                                     title="Edit step"
-                                    className="p-1 rounded text-slate-400 hover:text-blue-600"
+                                    className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-blue-600"
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
                                   </button>
                                   <button
                                     onClick={() => handleDeleteNode(node.id)}
                                     title="Remove step"
-                                    className="p-1 rounded text-slate-400 hover:text-red-600"
+                                    className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-red-600"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -820,7 +820,7 @@ export default function WorkflowsPage() {
                         {index < activeWorkflow.nodes.length - 1 && (
                           <div className="flex flex-col items-center">
                             <div className="w-0.5 h-4 bg-slate-300 dark:bg-slate-700" />
-                            <ArrowRight className="w-4 h-4 rotate-90 text-slate-400" />
+                            <ArrowRight className="w-4 h-4 rotate-90 text-slate-500 dark:text-slate-400" />
                           </div>
                         )}
                       </React.Fragment>
@@ -853,7 +853,7 @@ export default function WorkflowsPage() {
                             <span className="font-semibold text-slate-800 dark:text-slate-200">
                               {s.action ?? s.kind}
                             </span>
-                            {s.error && <span className="text-red-600 dark:text-red-400"> — {s.error}</span>}
+                            {s.error && <span className="text-red-700 dark:text-red-400"> — {s.error}</span>}
                             {s.output != null && (
                               <pre className="mt-1 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-[10px] text-slate-600 dark:text-slate-300 overflow-x-auto">
                                 {JSON.stringify(s.output, null, 2)}
@@ -871,11 +871,11 @@ export default function WorkflowsPage() {
               <div className="rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <History className="w-4 h-4 text-slate-500" /> Run History
+                    <History className="w-4 h-4 text-slate-500 dark:text-slate-400" /> Run History
                   </h3>
                   <button
                     onClick={() => refreshRuns(activeWorkflow.id)}
-                    className="text-xs text-blue-600 dark:text-blue-400 font-semibold"
+                    className="text-xs text-blue-700 dark:text-blue-400 font-semibold"
                   >
                     Refresh
                   </button>
@@ -899,7 +899,7 @@ export default function WorkflowsPage() {
                               {new Date(run.queuedAt).toLocaleString()}
                             </span>
                             {run.ranInline && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                                 inline
                               </span>
                             )}
@@ -907,19 +907,19 @@ export default function WorkflowsPage() {
                           {(run.status === 'FAILED' || run.status === 'DEAD_LETTER') && (
                             <button
                               onClick={() => handleReplay(run.id)}
-                              className="text-blue-600 dark:text-blue-400 font-semibold shrink-0"
+                              className="text-blue-700 dark:text-blue-400 font-semibold shrink-0"
                             >
                               Replay
                             </button>
                           )}
                         </div>
                         {run.error && (
-                          <p className="text-[11px] text-red-600 dark:text-red-400 mt-1 truncate">{run.error}</p>
+                          <p className="text-[11px] text-red-700 dark:text-red-400 mt-1 truncate">{run.error}</p>
                         )}
                         {expandedRun === run.id && (
                           <ol className="mt-2 space-y-1.5 pl-1">
                             {(run.steps ?? []).length === 0 ? (
-                              <li className="text-[11px] text-slate-500">No steps recorded.</li>
+                              <li className="text-[11px] text-slate-500 dark:text-slate-400">No steps recorded.</li>
                             ) : (
                               run.steps!.map((s) => (
                                 <li key={s.id} className="flex items-start gap-2 text-[11px]">
@@ -928,7 +928,7 @@ export default function WorkflowsPage() {
                                     <span className="font-semibold text-slate-700 dark:text-slate-300">
                                       {s.action ?? s.kind}
                                     </span>
-                                    {s.error && <span className="text-red-600 dark:text-red-400"> — {s.error}</span>}
+                                    {s.error && <span className="text-red-700 dark:text-red-400"> — {s.error}</span>}
                                     {s.output != null && (
                                       <pre className="mt-1 p-2 rounded bg-slate-50 dark:bg-slate-800/60 text-[10px] text-slate-600 dark:text-slate-300 overflow-x-auto">
                                         {JSON.stringify(s.output)}
@@ -948,7 +948,7 @@ export default function WorkflowsPage() {
             </>
           ) : (
             <div className="p-12 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm text-center flex flex-col items-center justify-center min-h-[400px]">
-              <GitFork className="w-12 h-12 text-blue-600 dark:text-blue-400 mb-3" />
+              <GitFork className="w-12 h-12 text-blue-700 dark:text-blue-400 mb-3" />
               <p className="text-slate-700 dark:text-slate-300 font-medium mb-1">Select or create a workflow</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
                 Automate what happens after a message arrives, a lead is created, a booking is confirmed, or a call
@@ -956,7 +956,7 @@ export default function WorkflowsPage() {
               </p>
               <button
                 onClick={() => setShowNewModal(true)}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/20"
+                className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs shadow-lg shadow-brand-600/20"
               >
                 Create Workflow
               </button>
@@ -971,9 +971,9 @@ export default function WorkflowsPage() {
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <GitFork className="w-5 h-5 text-blue-600 dark:text-blue-400" /> New Workflow
+                <GitFork className="w-5 h-5 text-blue-700 dark:text-blue-400" /> New Workflow
               </h2>
-              <button onClick={() => setShowNewModal(false)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">
+              <button onClick={() => setShowNewModal(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -987,7 +987,7 @@ export default function WorkflowsPage() {
                   value={wfName}
                   onChange={(e) => setWfName(e.target.value)}
                   placeholder="e.g. Escalate urgent messages"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-blue-500 outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-brand-600 outline-none"
                 />
               </div>
 
@@ -1026,7 +1026,7 @@ export default function WorkflowsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-lg shadow-brand-600/20"
                 >
                   Create
                 </button>
@@ -1042,10 +1042,10 @@ export default function WorkflowsPage() {
           <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-5">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <Plus className="w-5 h-5 text-blue-700 dark:text-blue-400" />
                 {editingNodeId ? 'Edit step' : 'Add step'}
               </h2>
-              <button onClick={() => setShowNodeModal(false)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">
+              <button onClick={() => setShowNodeModal(false)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1188,7 +1188,7 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={handleSaveNode}
-                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/20"
+                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-lg shadow-brand-600/20"
                 >
                   {editingNodeId ? 'Update step' : 'Add step'}
                 </button>
@@ -1204,12 +1204,12 @@ export default function WorkflowsPage() {
 function runStatusClass(status: string): string {
   switch (status) {
     case 'SUCCEEDED':
-      return 'text-emerald-600 dark:text-emerald-400';
+      return 'text-emerald-700 dark:text-emerald-400';
     case 'FAILED':
     case 'DEAD_LETTER':
-      return 'text-red-600 dark:text-red-400';
+      return 'text-red-700 dark:text-red-400';
     case 'RUNNING':
-      return 'text-blue-600 dark:text-blue-400';
+      return 'text-blue-700 dark:text-blue-400';
     default:
       return 'text-slate-500 dark:text-slate-400';
   }
@@ -1218,6 +1218,6 @@ function runStatusClass(status: string): string {
 function StepIcon({ status }: { status: string }) {
   if (status === 'SUCCEEDED') return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />;
   if (status === 'FAILED') return <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />;
-  if (status === 'SKIPPED') return <MinusCircle className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />;
-  return <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />;
+  if (status === 'SKIPPED') return <MinusCircle className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />;
+  return <Clock className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />;
 }

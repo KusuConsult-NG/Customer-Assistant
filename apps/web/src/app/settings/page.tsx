@@ -91,7 +91,7 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Agency Settings
+          <Settings className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Agency Settings
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure this agency’s identity, serving hours, telephony credentials and voice assistant.</p>
       </div>
@@ -103,7 +103,7 @@ export default function SettingsPage() {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === t.id ? 'bg-[#558A02] text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
+              tab === t.id ? 'bg-brand-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/60'
             }`}
           >
             {t.icon} {t.label}
@@ -112,7 +112,7 @@ export default function SettingsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" /></div>
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-700 dark:text-blue-400 animate-spin" /></div>
       ) : (
         <>
           {tab === 'profile' && <ProfileTab authHeaders={authHeaders} showToast={showToast} />}
@@ -205,7 +205,7 @@ function ProfileTab({ authHeaders, showToast }: any) {
             <input type="password" required minLength={8} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className={inputCls} placeholder="Confirm your new password" />
           </div>
           <div className="flex justify-end pt-2">
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
               {saving ? 'Updating...' : 'Update Password'}
             </button>
@@ -359,8 +359,8 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
                   aria-pressed={on}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
                     on
-                      ? 'bg-[#558A02] text-white border-[#558A02]'
-                      : 'bg-transparent text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-transparent text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
                   {label}
@@ -396,13 +396,13 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             <input type="text" value={payoutUssdCode} onChange={e => setPayoutUssdCode(e.target.value)} className={inputCls} placeholder="e.g. *966*1234#" />
           </div>
         </div>
-        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1.5">
           Double-check these. They are read out to customers as payment instructions.
         </p>
       </Section>
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
@@ -479,7 +479,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
           <input type="text" value={displayPhoneNumber} onChange={e => setDisplayPhoneNumber(e.target.value)} className={inputCls} placeholder="+1 555 671-9884" />
         </div>
         <div>
-          <label className={labelCls}>Permanent Access Token <span className="text-slate-400 font-normal normal-case">(EAA…)</span></label>
+          <label className={labelCls}>Permanent Access Token <span className="text-slate-500 dark:text-slate-400 font-normal normal-case">(EAA…)</span></label>
           <div className="relative">
             <input
               type={showToken ? 'text' : 'password'}
@@ -494,7 +494,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
           </div>
         </div>
         <div>
-          <label className={labelCls}>Webhook Verify Token <span className="text-slate-400 font-normal normal-case">(you choose — must match Meta Dashboard)</span></label>
+          <label className={labelCls}>Webhook Verify Token <span className="text-slate-500 dark:text-slate-400 font-normal normal-case">(you choose — must match Meta Dashboard)</span></label>
           <div className="relative">
             <input
               type={showVerifyToken ? 'text' : 'password'}
@@ -510,7 +510,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
         </div>
       </Section>
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save WhatsApp Config'}
         </button>
@@ -618,7 +618,7 @@ function Field({
 
 /** What is stored, shown as text — never as the contents of an input. */
 function Configured({ value }: { value?: string | null }) {
-  if (!value) return <span className="text-slate-400 dark:text-slate-500">not set</span>;
+  if (!value) return <span className="text-slate-500 dark:text-slate-400">not set</span>;
   return <span className="font-mono text-slate-600 dark:text-slate-300">{value}</span>;
 }
 
@@ -838,7 +838,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
       )}
 
       <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Voice Config'}
         </button>
@@ -923,7 +923,7 @@ function ApiKeyTab({ authHeaders, showToast }: any) {
                     const ok = await copyToClipboard(issued);
                     if (ok) showToast('API key copied.');
                   }}
-                  className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0"
+                  className="px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0"
                 >
                   <Copy className="w-3.5 h-3.5" /> Copy
                 </button>
@@ -936,7 +936,7 @@ function ApiKeyTab({ authHeaders, showToast }: any) {
             <button
               type="button"
               onClick={() => setIssued(null)}
-              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
             >
               I have copied it
             </button>
@@ -976,7 +976,7 @@ function ApiKeyTab({ authHeaders, showToast }: any) {
             <button
               type="button"
               onClick={() => { setConfirming(true); setError(null); }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm"
             >
               <KeyRound className="w-4 h-4" /> Issue a new API key
             </button>
@@ -1087,7 +1087,7 @@ function HostedAgentTab({ showToast }: any) {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" /></div>;
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-700 dark:text-blue-400 animate-spin" /></div>;
   }
 
   const dedicated = status?.mode === 'dedicated';
@@ -1101,8 +1101,8 @@ function HostedAgentTab({ showToast }: any) {
         <div className="flex flex-wrap items-center gap-3">
           <span className={`text-[11px] px-2.5 py-1 rounded-lg font-bold border ${
             dedicated
-              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
-              : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
+              ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+              : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
           }`}>
             {dedicated ? 'OWN WORKSPACE' : 'NO KEY OF ITS OWN'}
           </span>
@@ -1114,8 +1114,8 @@ function HostedAgentTab({ showToast }: any) {
           {dedicated && (
             <span className="text-xs text-slate-500 dark:text-slate-400">
               Webhook secret {status?.webhookSecretConfigured
-                ? <span className="text-emerald-600 dark:text-emerald-400 font-semibold">set</span>
-                : <span className="text-amber-600 dark:text-amber-400 font-semibold">not set</span>}
+                ? <span className="text-emerald-700 dark:text-emerald-400 font-semibold">set</span>
+                : <span className="text-amber-700 dark:text-amber-400 font-semibold">not set</span>}
             </span>
           )}
         </div>
@@ -1123,7 +1123,7 @@ function HostedAgentTab({ showToast }: any) {
         {/* Verbatim. The server names the exact gap and the exact URL. */}
         {(status?.warnings ?? []).map((w: string, i: number) => (
           <div key={i} className="flex gap-2.5 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
-            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{w}</p>
           </div>
         ))}
@@ -1133,7 +1133,7 @@ function HostedAgentTab({ showToast }: any) {
             <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
               📌 Post-call webhook URL — paste this into your ElevenLabs workspace webhook settings
             </p>
-            <p className="text-[11px] text-blue-600 dark:text-blue-400/80 mb-2">
+            <p className="text-[11px] text-blue-700 dark:text-blue-400/80 mb-2">
               This organization is in the path because the signature has to be checked before the body is read, so the delivery itself cannot say whose secret to use.
             </p>
             <div className="flex items-center gap-2">
@@ -1204,7 +1204,7 @@ function HostedAgentTab({ showToast }: any) {
             </div>
 
             <div className="flex justify-end pt-1">
-              <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+              <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
                 {saving ? 'Saving...' : 'Save Credentials'}
               </button>
@@ -1219,11 +1219,11 @@ function HostedAgentTab({ showToast }: any) {
       >
         {agentLoading ? (
           <div className="py-6 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" /> Checking the agent...
+            <Loader2 className="w-4 h-4 animate-spin text-blue-700 dark:text-blue-400" /> Checking the agent...
           </div>
         ) : agentError ? (
           <div className="flex gap-2.5 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
-            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{agentError}</p>
           </div>
         ) : (
@@ -1237,20 +1237,20 @@ function HostedAgentTab({ showToast }: any) {
               )}
             </div>
             {(agent?.drift ?? []).length === 0 ? (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" /> The remote agent matches this platform.
               </p>
             ) : (
               agent.drift.map((d: string, i: number) => (
                 <div key={i} className="flex gap-2.5 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{d}</p>
                 </div>
               ))
             )}
             <p className="text-xs text-slate-500 dark:text-slate-400 pt-1">
               Provisioning the agent, importing a phone number and attaching a WhatsApp line live on{' '}
-              <Link href="/agent-provisioning" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+              <Link href="/agent-provisioning" className="text-blue-700 dark:text-blue-400 font-semibold hover:underline">
                 Agent Provisioning
               </Link>
               , not here — importing a number changes who answers your citizens, so it needs its own
@@ -1342,7 +1342,7 @@ function ActivityLogTab({ showToast }: any) {
               onClick={() => setOrigin(id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                 origin === id
-                  ? 'bg-[#558A02] text-white border-[#558A02]'
+                  ? 'bg-brand-600 text-white border-brand-600'
                   : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
@@ -1361,7 +1361,7 @@ function ActivityLogTab({ showToast }: any) {
 
         {platformCount > 0 && (
           <div className="flex gap-2.5 p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
-            <Landmark className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <Landmark className="w-4 h-4 text-blue-700 dark:text-blue-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
               {platformCount === 1 ? 'One entry was' : `${platformCount} entries were`} recorded by the
               operating ministry rather than by this agency. Their officials are staff of another
@@ -1373,7 +1373,7 @@ function ActivityLogTab({ showToast }: any) {
 
         {loading && entries.length === 0 ? (
           <div className="py-10 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" /> Reading the log...
+            <Loader2 className="w-4 h-4 animate-spin text-blue-700 dark:text-blue-400" /> Reading the log...
           </div>
         ) : shown.length === 0 ? (
           <p className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -1389,7 +1389,7 @@ function ActivityLogTab({ showToast }: any) {
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={`text-[10px] px-2 py-0.5 rounded-lg font-bold border flex-shrink-0 ${
                       e.origin === 'platform'
-                        ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
+                        ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                     }`}>
                       {e.origin === 'platform' ? 'MINISTRY' : 'THIS AGENCY'}
@@ -1398,7 +1398,7 @@ function ActivityLogTab({ showToast }: any) {
                       {e.action}
                     </code>
                   </div>
-                  <span className="text-[10px] text-slate-400 flex-shrink-0">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 flex-shrink-0">
                     {new Date(e.createdAt).toLocaleString('en-NG')}
                   </span>
                 </div>
@@ -1445,9 +1445,9 @@ function ChangeSummary({ previous, next }: { previous: any; next: any }) {
         const changed = prev && now && show(before) !== show(after);
         return (
           <div key={k} className="text-[11px]">
-            <dt className="inline text-slate-400">{k}: </dt>
+            <dt className="inline text-slate-500 dark:text-slate-400">{k}: </dt>
             <dd className="inline text-slate-700 dark:text-slate-300 font-mono">
-              {changed ? <>{show(before)} <span className="text-slate-400">&rarr;</span> {show(after)}</> : show(after ?? before)}
+              {changed ? <>{show(before)} <span className="text-slate-500 dark:text-slate-400">&rarr;</span> {show(after)}</> : show(after ?? before)}
             </dd>
           </div>
         );
@@ -1532,9 +1532,9 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
   };
 
   const roleColors: Record<string, string> = {
-    OWNER: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
-    ADMIN: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
-    AGENT: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    OWNER: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
+    ADMIN: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+    AGENT: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
     VIEWER: 'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20',
   };
 
@@ -1543,7 +1543,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
       <Section title="Team Members & Role Access Control (RBAC)" description="Manage member access levels, roles, and granular platform permissions">
         {loadingMembers ? (
           <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" /> Loading team members...
+            <Loader2 className="w-4 h-4 animate-spin text-blue-700 dark:text-blue-400" /> Loading team members...
           </div>
         ) : members.length === 0 ? (
           <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">No team members yet. Invite your first agent below.</div>
@@ -1558,7 +1558,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{m.fullName || 'Team Member'}</p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400'}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'}`}>
                         {m.isActive !== false ? 'ACTIVE' : 'SUSPENDED'}
                       </span>
                     </div>
@@ -1585,7 +1585,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                     className={`text-xs px-2.5 py-1.5 rounded-lg border font-semibold transition-all ${
                       m.isActive !== false
                         ? 'border-yellow-500/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:bg-yellow-500/10'
-                        : 'border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:bg-emerald-500/10'
+                        : 'border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:bg-emerald-500/10'
                     }`}
                   >
                     {m.isActive !== false ? 'Suspend' : 'Reactivate'}
@@ -1594,7 +1594,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   {/* Delete Button */}
                   <button
                     onClick={() => handleRemoveMember(m.id, m.fullName || m.email)}
-                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:bg-red-500/10 font-semibold transition-all"
+                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400 hover:bg-red-50 dark:bg-red-500/10 font-semibold transition-all"
                   >
                     Remove
                   </button>
@@ -1624,7 +1624,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
               </select>
             </div>
             <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+              <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {saving ? 'Inviting...' : 'Send Invite'}
               </button>
@@ -1650,9 +1650,9 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="px-4 py-3">Platform Module</th>
-                <th className="px-4 py-3 text-purple-600 dark:text-purple-400">OWNER</th>
-                <th className="px-4 py-3 text-blue-600 dark:text-blue-400">ADMIN</th>
-                <th className="px-4 py-3 text-emerald-600 dark:text-emerald-400">AGENT</th>
+                <th className="px-4 py-3 text-purple-700 dark:text-purple-400">OWNER</th>
+                <th className="px-4 py-3 text-blue-700 dark:text-blue-400">ADMIN</th>
+                <th className="px-4 py-3 text-emerald-700 dark:text-emerald-400">AGENT</th>
                 <th className="px-4 py-3 text-slate-600 dark:text-slate-400">VIEWER</th>
               </tr>
             </thead>

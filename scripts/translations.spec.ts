@@ -101,8 +101,14 @@ describe('exporting for review', () => {
 
     const byKey = Object.fromEntries(rows.slice(1).map((r) => [r[0], r]));
     // An enrollment question is labelled as one, so a reviewer knows the
-    // customer is part-way through a form rather than asking a question.
-    expect(byKey.enrol_lga_ask[1]).toContain('PLASCHEMA enrollment form');
+    // citizen is part-way through a form rather than asking a question.
+    //
+    // This pinned the literal words "PLASCHEMA enrollment form". The label is
+    // now agency-neutral, because these strings belong to every agency on the
+    // platform and not to one health scheme — so what has to hold is that the
+    // column SAYS it is a registration form, not which scheme's name it uses.
+    expect(byKey.enrol_lga_ask[1]).toMatch(/registering|registration/i);
+    expect(byKey.enrol_lga_ask[1]).not.toMatch(/PLASCHEMA/i);
     expect(byKey.enrol_lga_unknown[2]).toBe('{list}');
     expect(byKey.enrol_lga_unknown[5]).toBe(''); // the reviewer's column starts empty
   });
@@ -118,8 +124,11 @@ describe('exporting for review', () => {
     const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
     expect(readme).toMatch(/Keep every placeholder/);
     // The things that must NOT be translated are the ones a well-meaning
-    // reviewer would otherwise "fix" — and the plan names go on a health card.
-    expect(readme).toMatch(/Formal Sector/);
+    // reviewer would otherwise "fix". This named one scheme's four plans,
+    // which are no longer in the sheets at all — each agency's services reach
+    // the citizen through {options}, so that is what must survive review.
+    expect(readme).toMatch(/Service and location names/);
+    expect(readme).toMatch(/\{options\}/);
   });
 });
 

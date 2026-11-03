@@ -267,6 +267,11 @@ type TemplateKey =
   | 'enrol_facility_ask' | 'enrol_facility_unaccredited'
   | 'enrol_nin_ask' | 'enrol_nin_length' | 'enrol_nin_none'
   | 'enrol_summary' | 'enrol_summary_free'
+  /** Asking to be rung back, and the promise that is made in return. */
+  | 'callback_reason_ask' | 'callback_reason_short'
+  | 'callback_when_ask' | 'callback_when_unclear'
+  | 'callback_window_hour' | 'callback_window_today' | 'callback_window_tomorrow'
+  | 'callback_summary' | 'callback_confirmed' | 'callback_already_open'
   /**
    * What to call somebody whose name we do not have.
    *
@@ -350,13 +355,13 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_lga_unknown:
       'I could not match that to a Plateau State LGA. Could you tell me which one you live in? The full list is: {list}.',
     enrol_plan_ask:
-      'Which describes you best?\n\n1 — Formal Sector (you work for a company or government)\n2 — Informal Sector (self-employed, trader, farmer, artisan)\n3 — Equity Programme (free: pregnant, child under 5, over 65, living with a disability)\n4 — BHCPF (free, for the most vulnerable)\n\nReply with the number or the name.',
+      'Which of these do you need?\n\n{options}\n\nReply with the number or the name.',
     enrol_plan_unclear:
-      'I did not catch which plan that is. Reply 1 for Formal Sector, 2 for Informal Sector, 3 for the free Equity Programme, or 4 for BHCPF.',
+      'I did not catch which one that is. Please reply with the number or the name:\n\n{options}',
     enrol_facility_ask:
-      'Which hospital or health centre in {lga} would you like as your primary facility?\n\nAccredited options: {options}.',
+      'Which of our locations in {lga} would you like to be registered to?\n\nOptions: {options}.',
     enrol_facility_unaccredited:
-      'That one is not on the accredited list for {lga}, and a card issued against it would be refused at the desk. Please choose one of: {options}.',
+      'That one is not on the list for {lga}. Please choose one of: {options}.',
     enrol_nin_ask:
       "Last one, and it is optional: do you have your National Identification Number (NIN)? It speeds things up, but we can register you without it — just say \"no\".",
     enrol_nin_length:
@@ -366,9 +371,29 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_friend:
       'there',
     enrol_summary:
-      'Here is what I have — please check it carefully before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Plan: {plan}{free}\n• Primary facility: {facility}\n• NIN: {nin}\n\nIs all of that correct? Reply *yes* to register, or tell me what to change.',
+      'Here is what I have — please check it carefully before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Service: {plan}{free}\n• Location: {facility}\n• NIN: {nin}\n\nIs all of that correct? Reply *yes* to register, or tell me what to change.',
     enrol_summary_free:
       ' (free — no payment)',
+    callback_reason_ask:
+      'Of course — I can arrange for someone to call you back. What should they call you about?',
+    callback_reason_short:
+      'Could you tell me a little more about what it is about? One or two words is not enough for the officer who will ring you.',
+    callback_when_ask:
+      'When would suit you?\n\n{options}\n\nReply with the number.',
+    callback_when_unclear:
+      'I did not catch which one. Please reply with the number:\n\n{options}',
+    callback_window_hour:
+      'Within the hour',
+    callback_window_today:
+      'Later today',
+    callback_window_tomorrow:
+      'Tomorrow',
+    callback_summary:
+      'Let me read that back:\n\n• About: {reason}\n• When: {when}\n\nShall I book the callback? Reply *yes*, or tell me what to change.',
+    callback_confirmed:
+      'Done — reference {ref}. Someone will call you on {number} {when}. If you need us sooner, you can reply here any time.',
+    callback_already_open:
+      'You already have a callback booked — reference {ref}, {when}. I have not booked a second one. Reply here if you need it sooner.',
     which_one_ask:
       'You have more than one coming up. Which would you like to {verb}?\n\n{list}\n\nReply with the number.',
     which_one_unclear:
@@ -462,13 +487,13 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_lga_unknown:
       'I no fit match that one to any Plateau State LGA. Which one you dey stay? Full list na: {list}.',
     enrol_plan_ask:
-      'Which one be you?\n\n1 — Formal Sector (you dey work for company abi government)\n2 — Informal Sector (self-employed, trader, farmer, artisan)\n3 — Equity Programme (free: pregnant, pikin wey never reach 5, over 65, person wey get disability)\n4 — BHCPF (free, for people wey need am pass)\n\nReply with the number abi the name.',
+      'Which one you need?\n\n{options}\n\nReply with the number abi the name.',
     enrol_plan_unclear:
-      'I no catch which plan be that. Reply 1 for Formal Sector, 2 for Informal Sector, 3 for the free Equity Programme, abi 4 for BHCPF.',
+      'I no catch which one be that. Abeg reply with the number abi the name:\n\n{options}',
     enrol_facility_ask:
-      'Which hospital abi health centre for {lga} you want as your primary facility?\n\nAccredited options: {options}.',
+      'Which of our places for {lga} you want make we register you to?\n\nOptions: {options}.',
     enrol_facility_unaccredited:
-      'That one no dey the accredited list for {lga}, and card wey dem issue with am go be refuse for desk. Abeg pick one of: {options}.',
+      'That one no dey the list for {lga}. Abeg pick one of: {options}.',
     enrol_nin_ask:
       "Last one, and e be optional: you get your National Identification Number (NIN)? E dey fast the thing, but we fit register you without am — just talk \"no\".",
     enrol_nin_length:
@@ -478,9 +503,29 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_friend:
       'my friend',
     enrol_summary:
-      'Na wetin I get be this — abeg check am well before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Plan: {plan}{free}\n• Primary facility: {facility}\n• NIN: {nin}\n\nEverything correct? Reply *yes* make I register you, abi tell me wetin I go change.',
+      'Na wetin I get be this — abeg check am well before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Service: {plan}{free}\n• Location: {facility}\n• NIN: {nin}\n\nEverything correct? Reply *yes* make I register you, abi tell me wetin I go change.',
     enrol_summary_free:
       ' (free — you no go pay anything)',
+    callback_reason_ask:
+      'No wahala — I fit arrange make person call you back. Wetin make dem call you about?',
+    callback_reason_short:
+      'Abeg tell me small more about wetin e be. One or two words no go help the officer wey go call you.',
+    callback_when_ask:
+      'Which time go better for you?\n\n{options}\n\nReply with the number.',
+    callback_when_unclear:
+      'I no catch which one. Abeg reply with the number:\n\n{options}',
+    callback_window_hour:
+      'Before one hour pass',
+    callback_window_today:
+      'Later today',
+    callback_window_tomorrow:
+      'Tomorrow',
+    callback_summary:
+      'Make I read am back:\n\n• About: {reason}\n• When: {when}\n\nMake I book the callback? Reply *yes*, abi tell me wetin I go change.',
+    callback_confirmed:
+      'E don set — reference {ref}. Person go call you for {number} {when}. If you need us before then, you fit reply here any time.',
+    callback_already_open:
+      'You don already get callback wey dem book — reference {ref}, {when}. I no book another one. Reply here if you need am quick.',
     which_one_ask:
       'You get pass one wey dey come. Which one you wan {verb}?\n\n{list}\n\nReply with the number.',
     which_one_unclear:
@@ -572,13 +617,13 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_lga_unknown:
       'Ban gane wannan a matsayin Karamar Hukuma ta Jihar Filato ba. A wace kake zama? Cikakken jerin: {list}.',
     enrol_plan_ask:
-      'Wanne ya fi dacewa da kai?\n\n1 — Formal Sector (kana aiki da kamfani ko gwamnati)\n2 — Informal Sector (kai da kanka, dan kasuwa, manomi, masani)\n3 — Equity Programme (kyauta: mai ciki, yaro kasa da shekara 5, sama da 65, mai nakasa)\n4 — BHCPF (kyauta, ga wadanda suka fi bukata)\n\nKa amsa da lamba ko suna.',
+      'Wanne kake bukata?\n\n{options}\n\nKa amsa da lamba ko suna.',
     enrol_plan_unclear:
-      'Ban gane wanne shiri ba ne. Ka amsa 1 don Formal Sector, 2 don Informal Sector, 3 don Equity Programme na kyauta, ko 4 don BHCPF.',
+      'Ban gane wanne ba ne. Ka amsa da lamba ko suna:\n\n{options}',
     enrol_facility_ask:
-      'Wanne asibiti ko cibiyar lafiya a {lga} kake son ya zama babbar cibiyarka?\n\nWadanda aka amince da su: {options}.',
+      'Wanne wuri a {lga} kake son a yi maka rijista?\n\nZabuka: {options}.',
     enrol_facility_unaccredited:
-      'Wannan ba ya cikin jerin da aka amince da su a {lga}, kuma za a ki karbar katin a teburin. Ka zabi daya daga cikin: {options}.',
+      'Wannan ba ya cikin jerin na {lga}. Ka zabi daya daga cikin: {options}.',
     enrol_nin_ask:
       "Na karshe, kuma ba dole ba ne: kana da lambar NIN? Tana saurin aiki, amma za mu iya yi maka rijista ba tare da ita ba — ka ce \"a'a\".",
     enrol_nin_length:
@@ -588,9 +633,29 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_friend:
       'abokina',
     enrol_summary:
-      'Ga abin da na samu — ka duba shi da kyau kafin in yi maka rijista:\n\n• Suna: {name}\n• Shekaru / Ranar haihuwa: {age}\n• Adireshi: {address}\n• Karamar Hukuma: {lga}\n• Shiri: {plan}{free}\n• Babbar cibiya: {facility}\n• NIN: {nin}\n\nDuk daidai ne? Ka amsa *yes* in yi rijista, ko ka gaya mini abin da zan canza.',
+      'Ga abin da na samu — ka duba shi da kyau kafin in yi maka rijista:\n\n• Suna: {name}\n• Shekaru / Ranar haihuwa: {age}\n• Adireshi: {address}\n• Karamar Hukuma: {lga}\n• Sabis: {plan}{free}\n• Wuri: {facility}\n• NIN: {nin}\n\nDuk daidai ne? Ka amsa *yes* in yi rijista, ko ka gaya mini abin da zan canza.',
     enrol_summary_free:
       ' (kyauta — babu biyan kudi)',
+    callback_reason_ask:
+      'Babu matsala — zan iya shirya wani ya sake kiran ka. A kan me za su kira ka?',
+    callback_reason_short:
+      'Ka gaya mini kadan kari a kan abin da yake. Kalma daya ko biyu bai isa ga jami\'in da zai kira ka ba.',
+    callback_when_ask:
+      'Wane lokaci ya fi dacewa da kai?\n\n{options}\n\nKa amsa da lamba.',
+    callback_when_unclear:
+      'Ban gane wanne ba. Ka amsa da lamba:\n\n{options}',
+    callback_window_hour:
+      'Cikin awa daya',
+    callback_window_today:
+      'Daga baya yau',
+    callback_window_tomorrow:
+      'Gobe',
+    callback_summary:
+      'Bari in sake karanta maka:\n\n• A kan: {reason}\n• Lokaci: {when}\n\nIn yi rijistar kiran? Ka amsa *yes*, ko ka gaya mini abin da zan canza.',
+    callback_confirmed:
+      'An gama — lambar tabbatarwa {ref}. Wani zai kira ka a {number} {when}. Idan kana bukatar mu kafin nan, ka iya amsa a nan kowane lokaci.',
+    callback_already_open:
+      'Ka riga ka na da kiran da aka shirya — lambar tabbatarwa {ref}, {when}. Ban yi na biyu ba. Ka amsa a nan idan kana bukatar sa da wuri.',
     which_one_ask:
       'Kana da fiye da daya mai zuwa. Wanne kake son {verb}?\n\n{list}\n\nKa amsa da lamba.',
     which_one_unclear:
@@ -682,13 +747,13 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_lga_unknown:
       'Enweghị m ike ịchọta nke ahụ na LGA nke Plateau State. Kedu nke ị bi? Ndepụta zuru ezu bụ: {list}.',
     enrol_plan_ask:
-      'Kedu nke kacha kọwaa gị?\n\n1 — Formal Sector (ị na-arụ ọrụ maka ụlọ ọrụ ma ọ bụ gọọmentị)\n2 — Informal Sector (onwe gị, onye ahịa, onye ọrụ ubi, onye ǹka)\n3 — Equity Programme (n\'efu: dị ime, nwa n\'okpuru afọ 5, karịa 65, onye nwere nkwarụ)\n4 — BHCPF (n\'efu, maka ndị kachasị mkpa)\n\nZaa site na nọmba ma ọ bụ aha.',
+      'Kedu nke ị chọrọ?\n\n{options}\n\nZaa site na nọmba ma ọ bụ aha.',
     enrol_plan_unclear:
-      'Aghọtaghị m nke bụ atụmatụ ahụ. Zaa 1 maka Formal Sector, 2 maka Informal Sector, 3 maka Equity Programme n\'efu, ma ọ bụ 4 maka BHCPF.',
+      'Aghọtaghị m nke ọ bụ. Zaa site na nọmba ma ọ bụ aha:\n\n{options}',
     enrol_facility_ask:
-      'Kedu ụlọ ọgwụ ma ọ bụ ebe ahụike na {lga} ị chọrọ ka isi ebe gị?\n\nNdị anabatara: {options}.',
+      'Kedu ebe na {lga} ị chọrọ ka e debanye gị?\n\nNhọrọ: {options}.',
     enrol_facility_unaccredited:
-      'Nke ahụ adịghị na ndepụta anabatara maka {lga}, kaadị e nyere na ya ga-abụ nke a jụrụ na tebụl. Biko họrọ otu n\'ime: {options}.',
+      'Nke ahụ adịghị na ndepụta maka {lga}. Biko họrọ otu n\'ime: {options}.',
     enrol_nin_ask:
       "Nke ikpeazụ, ọ bụghịkwa mmanye: ị nwere nọmba NIN gị? Ọ na-eme ka ihe dị ngwa, mana anyị nwere ike idebanye aha gị na-enweghị ya — kwuo \"mba\".",
     enrol_nin_length:
@@ -698,9 +763,29 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_friend:
       'nwanne m',
     enrol_summary:
-      'Nke a bụ ihe m nwetara — biko lelee ya nke ọma tupu m debanye aha gị:\n\n• Aha: {name}\n• Afọ / Ụbọchị ọmụmụ: {age}\n• Adreesị: {address}\n• LGA: {lga}\n• Atụmatụ: {plan}{free}\n• Isi ebe ahụike: {facility}\n• NIN: {nin}\n\nIhe niile ziri ezi? Zaa *yes* ka m debanye, ma ọ bụ gwa m ihe m ga-agbanwe.',
+      'Nke a bụ ihe m nwetara — biko lelee ya nke ọma tupu m debanye aha gị:\n\n• Aha: {name}\n• Afọ / Ụbọchị ọmụmụ: {age}\n• Adreesị: {address}\n• LGA: {lga}\n• Ọrụ: {plan}{free}\n• Ebe: {facility}\n• NIN: {nin}\n\nIhe niile ziri ezi? Zaa *yes* ka m debanye, ma ọ bụ gwa m ihe m ga-agbanwe.',
     enrol_summary_free:
       ' (n\'efu — ọ dịghị ụgwọ)',
+    callback_reason_ask:
+      'Ọ dị mma — enwere m ike ịhazi ka mmadụ kpọghachi gị. Gịnị ka ha ga-akpọ gị maka ya?',
+    callback_reason_short:
+      'Biko gwa m ntakịrị karịa maka ihe ọ bụ. Otu ma ọ bụ okwu abụọ ezughị maka onye ọrụ ga-akpọ gị.',
+    callback_when_ask:
+      'Kedu oge ga-adaba gị?\n\n{options}\n\nZaa site na nọmba.',
+    callback_when_unclear:
+      'Aghọtaghị m nke ọ bụ. Biko zaa site na nọmba:\n\n{options}',
+    callback_window_hour:
+      'N\'ime otu awa',
+    callback_window_today:
+      'Taa, ma emesịa',
+    callback_window_tomorrow:
+      'Echi',
+    callback_summary:
+      'Ka m gụghachi ya:\n\n• Maka: {reason}\n• Mgbe: {when}\n\nKa m debanye oku ahụ? Zaa *yes*, ma ọ bụ gwa m ihe m ga-agbanwe.',
+    callback_confirmed:
+      'Emechaala — nnyocha {ref}. Mmadụ ga-akpọ gị na {number} {when}. Ọ bụrụ na ịchọrọ anyị ngwa ngwa, ị nwere ike ịzaghachi ebe a oge ọ bụla.',
+    callback_already_open:
+      'Ị nwerela oku edebanyere — nnyocha {ref}, {when}. Edebanyeghị m nke abụọ. Zaghachi ebe a ma ọ bụrụ na ịchọrọ ya ngwa ngwa.',
     which_one_ask:
       'Ị nwere ihe karịrị otu na-abịa. Kedu nke ị chọrọ {verb}?\n\n{list}\n\nZaa site na nọmba.',
     which_one_unclear:
@@ -792,13 +877,13 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_lga_unknown:
       'Mi ò rí ìyẹn gẹ́gẹ́ bí Ìjọba Ìbílẹ̀ ní Ìpínlẹ̀ Plateau. Èwo ni o ń gbé? Àkọsílẹ̀ kíkún ni: {list}.',
     enrol_plan_ask:
-      'Èwo ni ó bá ọ mu jùlọ?\n\n1 — Formal Sector (o ń ṣiṣẹ́ fún ilé-iṣẹ́ tàbí ìjọba)\n2 — Informal Sector (ara rẹ, oníṣòwò, àgbẹ̀, oníṣẹ́-ọwọ́)\n3 — Equity Programme (ọ̀fẹ́: aboyún, ọmọ tí kò tí ì pé ọdún 5, ju 65 lọ, ẹni tí ó ní àbùkù ara)\n4 — BHCPF (ọ̀fẹ́, fún àwọn tí ó nílò rẹ̀ jùlọ)\n\nDáhùn pẹ̀lú nọ́ḿbà tàbí orúkọ.',
+      'Èwo ni o nílò?\n\n{options}\n\nDáhùn pẹ̀lú nọ́ḿbà tàbí orúkọ.',
     enrol_plan_unclear:
-      'Mi ò gbọ́ èwo ni ètò náà. Dáhùn 1 fún Formal Sector, 2 fún Informal Sector, 3 fún Equity Programme ọ̀fẹ́, tàbí 4 fún BHCPF.',
+      'Mi ò gbọ́ èwo ni. Dáhùn pẹ̀lú nọ́ḿbà tàbí orúkọ:\n\n{options}',
     enrol_facility_ask:
-      'Ilé-ìwòsàn tàbí ilé-ìtọ́jú wo ní {lga} ni o fẹ́ gẹ́gẹ́ bí ibùdó àkọ́kọ́ rẹ?\n\nÀwọn tí a fọwọ́sí: {options}.',
+      'Ibùdó wo ní {lga} ni o fẹ́ kí a forúkọ rẹ sí?\n\nÀwọn àṣàyàn: {options}.',
     enrol_facility_unaccredited:
-      'Ìyẹn kò sí nínú àkọsílẹ̀ tí a fọwọ́sí fún {lga}, káàdì tí a bá fi fún ọ yóò sì jẹ́ èyí tí wọn yóò kọ̀ ní tábìlì. Jọ̀wọ́ yan ọ̀kan nínú: {options}.',
+      'Ìyẹn kò sí nínú àkọsílẹ̀ fún {lga}. Jọ̀wọ́ yan ọ̀kan nínú: {options}.',
     enrol_nin_ask:
       "Ìkẹyìn, kò sì ṣe dandan: ṣé o ní nọ́ḿbà NIN rẹ? Ó máa yára nǹkan, ṣùgbọ́n a lè forúkọ rẹ sílẹ̀ láìsí rẹ̀ — kàn sọ \"rárá\".",
     enrol_nin_length:
@@ -808,9 +893,29 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     enrol_friend:
       'ọ̀rẹ́ mi',
     enrol_summary:
-      'Èyí ni ohun tí mo ní — jọ̀wọ́ ṣàyẹ̀wò rẹ̀ dáadáa kí n tó forúkọ rẹ sílẹ̀:\n\n• Orúkọ: {name}\n• Ọdún / Ọjọ́ ìbí: {age}\n• Àdírẹ́sì: {address}\n• Ìjọba Ìbílẹ̀: {lga}\n• Ètò: {plan}{free}\n• Ibùdó àkọ́kọ́: {facility}\n• NIN: {nin}\n\nGbogbo rẹ̀ tọ̀nà? Dáhùn *yes* kí n forúkọ sílẹ̀, tàbí sọ ohun tí n óò yí padà.',
+      'Èyí ni ohun tí mo ní — jọ̀wọ́ ṣàyẹ̀wò rẹ̀ dáadáa kí n tó forúkọ rẹ sílẹ̀:\n\n• Orúkọ: {name}\n• Ọdún / Ọjọ́ ìbí: {age}\n• Àdírẹ́sì: {address}\n• Ìjọba Ìbílẹ̀: {lga}\n• Iṣẹ́: {plan}{free}\n• Ibùdó: {facility}\n• NIN: {nin}\n\nGbogbo rẹ̀ tọ̀nà? Dáhùn *yes* kí n forúkọ sílẹ̀, tàbí sọ ohun tí n óò yí padà.',
     enrol_summary_free:
       ' (ọ̀fẹ́ — kò sí owó kankan)',
+    callback_reason_ask:
+      'Kò burú — mo lè ṣètò kí ẹnìkan pè ọ́ padà. Kí ni wọn yóò pè ọ́ nípa rẹ̀?',
+    callback_reason_short:
+      'Jọ̀wọ́ sọ díẹ̀ sí i nípa ohun tí ó jẹ́. Ọ̀rọ̀ kan tàbí méjì kò tó fún òṣìṣẹ́ tí yóò pè ọ́.',
+    callback_when_ask:
+      'Ìgbà wo ni yóò rọrùn fún ọ?\n\n{options}\n\nDáhùn pẹ̀lú nọ́ḿbà.',
+    callback_when_unclear:
+      'Mi ò gbọ́ èwo ni. Jọ̀wọ́ dáhùn pẹ̀lú nọ́ḿbà:\n\n{options}',
+    callback_window_hour:
+      'Láàárín wákàtí kan',
+    callback_window_today:
+      'Nígbà tó bá yá lónìí',
+    callback_window_tomorrow:
+      'Ọ̀la',
+    callback_summary:
+      'Jẹ́ kí n kà á padà:\n\n• Nípa: {reason}\n• Ìgbà: {when}\n\nKí n ṣètò ìpè náà? Dáhùn *yes*, tàbí sọ ohun tí n óò yí padà.',
+    callback_confirmed:
+      'Ó ti ṣe tán — ìtọ́kasí {ref}. Ẹnìkan yóò pè ọ́ ní {number} {when}. Tí o bá nílò wa kíákíá, o lè dáhùn níbí nígbàkigbà.',
+    callback_already_open:
+      'O ti ní ìpè tí a ti ṣètò — ìtọ́kasí {ref}, {when}. N kò ṣètò ìkejì. Dáhùn níbí tí o bá nílò rẹ̀ kíákíá.',
     which_one_ask:
       'O ní ju ọ̀kan lọ tí ń bọ̀. Èwo ni o fẹ́ {verb}?\n\n{list}\n\nDáhùn pẹ̀lú nọ́ḿbà.',
     which_one_unclear:

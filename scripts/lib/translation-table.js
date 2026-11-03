@@ -42,11 +42,11 @@ const LANGUAGE_NAMES = {
 
 /**
  * Which conversation each key belongs to, so a reviewer knows what they are
- * reading. "enrol_lga_ask" means nothing on its own; "the PLASCHEMA enrollment
- * form, asking which Local Government Area you live in" can be judged.
+ * reading. "enrol_lga_ask" means nothing on its own; "the registration form,
+ * asking which Local Government Area you live in" can be judged.
  */
 const AREA_BY_FILE = {
-  'enrollment-flow.ts': 'PLASCHEMA enrollment form',
+  'enrollment-flow.ts': 'Registering with an agency',
   'booking-flow.ts': 'Booking an appointment',
   'reschedule-flow.ts': 'Moving an appointment',
   'cancel-flow.ts': 'Cancelling an appointment',

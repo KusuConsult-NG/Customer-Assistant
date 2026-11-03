@@ -55,14 +55,16 @@ interface Insights {
 const TOKENS = {
   light: {
     surface: '#ffffff', page: '#f8fafc',
-    ink: '#0b0b0b', inkSecondary: '#52514e', muted: '#898781',
+    ink: '#0b0b0b', inkSecondary: '#52514e', muted: '#64748b',
     grid: '#e1e0d9', axis: '#c3c2b7',
     s1: '#2a78d6', s2: '#eb6834', s3: '#1baf7a', s4: '#eda100', s5: '#e87ba4', s6: '#008300',
     status: { critical: '#d03b3b', serious: '#ec835a', warning: '#fab219', good: '#0ca30c' },
   },
   dark: {
     surface: '#0f172a', page: '#0b0f19',
-    ink: '#ffffff', inkSecondary: '#c3c2b7', muted: '#898781',
+    // `muted` was #64748b in BOTH themes — 4.76:1 on white but 3.75:1 on
+    // this page's dark canvas, so every axis and stat label failed there.
+    ink: '#ffffff', inkSecondary: '#c3c2b7', muted: '#94a3b8',
     grid: '#2c2c2a', axis: '#383835',
     s1: '#3987e5', s2: '#d95926', s3: '#199e70', s4: '#c98500', s5: '#d55181', s6: '#008300',
     status: { critical: '#d03b3b', serious: '#ec835a', warning: '#fab219', good: '#0ca30c' },
@@ -117,7 +119,7 @@ export default function AnalyticsPage() {
 
   const card = `rounded-2xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`;
   const heading = theme === 'dark' ? 'text-white' : 'text-slate-900';
-  const sub = theme === 'dark' ? 'text-slate-400' : 'text-slate-500';
+  const sub = theme === 'dark' ? 'text-slate-500 dark:text-slate-400' : 'text-slate-500 dark:text-slate-400';
 
   const axisProps = {
     stroke: T.axis, tick: { fill: T.muted, fontSize: 11 }, tickLine: false, axisLine: { stroke: T.axis },
@@ -161,7 +163,7 @@ export default function AnalyticsPage() {
           {(['7d', '30d', '90d'] as Period[]).map((p) => (
             <button key={p} onClick={() => setPeriod(p)}
               className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                period === p ? 'bg-blue-600 text-white' : `${sub} hover:opacity-80`}`}>
+                period === p ? 'bg-brand-600 text-white' : `${sub} hover:opacity-80`}`}>
               {p === '7d' ? 'Last 7 days' : p === '30d' ? 'Last 30 days' : 'Last 90 days'}
             </button>
           ))}
@@ -213,7 +215,15 @@ export default function AnalyticsPage() {
             <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" />
             <YAxis {...axisProps} allowDecimals={false} />
             <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.inkSecondary }} />
-            <Legend wrapperStyle={{ fontSize: 12, color: T.inkSecondary }} />
+            <Legend
+              wrapperStyle={{ fontSize: 12, color: T.inkSecondary }}
+              // recharts paints each label in its SERIES colour, inline, which
+              // beats wrapperStyle — so "AI replies" rendered at 3.2:1 and
+              // "Calls" at 2.82:1 on white. The swatch keeps the series colour,
+              // because that is what identifies the series; only the words need
+              // to be readable.
+              formatter={(value) => <span style={{ color: T.inkSecondary }}>{value}</span>}
+            />
             <Line type="monotone" dataKey="customerMessages" name="Customer messages" stroke={T.s1} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             <Line type="monotone" dataKey="aiMessages" name="AI replies" stroke={T.s2} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             <Line type="monotone" dataKey="calls" name="Calls" stroke={T.s3} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
@@ -260,7 +270,15 @@ export default function AnalyticsPage() {
             <XAxis dataKey="hour" {...axisProps} tickFormatter={(h: number) => `${h}h`} interval={2} />
             <YAxis {...axisProps} allowDecimals={false} />
             <Tooltip contentStyle={tooltipStyle} labelFormatter={(h) => `${String(h).padStart(2, '0')}:00 WAT`} labelStyle={{ color: T.inkSecondary }} />
-            <Legend wrapperStyle={{ fontSize: 12, color: T.inkSecondary }} />
+            <Legend
+              wrapperStyle={{ fontSize: 12, color: T.inkSecondary }}
+              // recharts paints each label in its SERIES colour, inline, which
+              // beats wrapperStyle — so "AI replies" rendered at 3.2:1 and
+              // "Calls" at 2.82:1 on white. The swatch keeps the series colour,
+              // because that is what identifies the series; only the words need
+              // to be readable.
+              formatter={(value) => <span style={{ color: T.inkSecondary }}>{value}</span>}
+            />
             <Bar dataKey="messages" name="Messages" fill={T.s1} radius={[4, 4, 0, 0]} maxBarSize={14} />
             <Bar dataKey="calls" name="Calls" fill={T.s2} radius={[4, 4, 0, 0]} maxBarSize={14} />
           </BarChart>
@@ -367,7 +385,7 @@ function ChartCard({ theme, title, desc, children, table, empty }: {
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const T = TOKENS[theme];
   const heading = theme === 'dark' ? 'text-white' : 'text-slate-900';
-  const sub = theme === 'dark' ? 'text-slate-400' : 'text-slate-500';
+  const sub = theme === 'dark' ? 'text-slate-500 dark:text-slate-400' : 'text-slate-500 dark:text-slate-400';
   return (
     <div className={`rounded-2xl border shadow-sm p-5 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
       <div className="flex items-start justify-between gap-3 mb-4">
@@ -378,7 +396,7 @@ function ChartCard({ theme, title, desc, children, table, empty }: {
         {!empty && (
           <button onClick={() => setView(view === 'chart' ? 'table' : 'chart')}
             aria-label={view === 'chart' ? 'Show as table' : 'Show as chart'}
-            className={`p-1.5 rounded-lg border transition-all ${theme === 'dark' ? 'border-slate-700 text-slate-400 hover:text-white' : 'border-slate-200 text-slate-500 hover:text-slate-900'}`}>
+            className={`p-1.5 rounded-lg border transition-all ${theme === 'dark' ? 'border-slate-700 text-slate-500 dark:text-slate-400 hover:text-white' : 'border-slate-200 text-slate-500 dark:text-slate-400 hover:text-slate-900'}`}>
             {view === 'chart' ? <Table2 className="w-4 h-4" /> : <LineChartIcon className="w-4 h-4" />}
           </button>
         )}

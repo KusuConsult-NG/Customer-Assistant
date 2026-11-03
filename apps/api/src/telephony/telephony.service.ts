@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { prisma, withTelephonyCredentials } from '@ace/database';
+import { prisma, withTelephonyCredentials, ensureContactForPhone } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
@@ -305,6 +305,35 @@ export class TelephonyService {
           return `<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>`;
         }
       }
+    }
+
+    // ── 2b. The citizen's own record ──────────────────────────────────────────
+    //
+    // Created when the call is ANSWERED, not when some tool first needs one.
+    //
+    // Contacts used to be made lazily, deep inside a tool call, so a citizen
+    // who rang, heard the greeting and hung up left a CallLog and nothing on
+    // Citizens & Contacts — invisible to an officer, and with no record to
+    // ring back. That is precisely the caller a care line most needs to reach.
+    //
+    // Best-effort on purpose: a contact write must never stop the call being
+    // answered. A failure here is logged and the caller is still served.
+    const callerContact = await ensureContactForPhone(prisma, organizationId, fromNumber).catch(
+      (err) => {
+        log.warn('telephony_contact_create_failed', {
+          correlationId,
+          callSid,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    );
+    if (callerContact) {
+      log.info('telephony_caller_contact_ready', {
+        correlationId,
+        callSid,
+        contactId: callerContact.id,
+      });
     }
 
     // ── 3. Record call log ─────────────────────────────────────────────────────

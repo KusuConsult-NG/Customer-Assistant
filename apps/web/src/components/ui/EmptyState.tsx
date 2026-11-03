@@ -41,7 +41,7 @@ export default function EmptyState({ icon: Icon, title, description, actions = [
   return (
     <div className={`flex flex-col items-center justify-center text-center ${compact ? 'py-10' : 'py-16'} px-6`}>
       <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
-        <Icon className="w-7 h-7 text-slate-400 dark:text-slate-500" />
+        <Icon className="w-7 h-7 text-slate-500 dark:text-slate-400" />
       </div>
 
       <h3 className="text-slate-800 dark:text-slate-200 font-bold text-sm mb-1">{title}</h3>
@@ -53,7 +53,7 @@ export default function EmptyState({ icon: Icon, title, description, actions = [
         <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
           {actions.map((a) => {
             const cls = a.primary
-              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-500/20'
+              ? 'bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-600/20'
               : 'bg-white dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800';
             const inner = (
               <>
@@ -74,7 +74,7 @@ export default function EmptyState({ icon: Icon, title, description, actions = [
         </div>
       )}
 
-      {hint && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-4 max-w-xs leading-relaxed">{hint}</p>}
+      {hint && <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-4 max-w-xs leading-relaxed">{hint}</p>}
     </div>
   );
 }

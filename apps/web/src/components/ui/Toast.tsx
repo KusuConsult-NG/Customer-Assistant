@@ -49,22 +49,22 @@ const STYLE: Record<ToastKind, { icon: typeof CheckCircle2; wrap: string; iconCl
   success: {
     icon: CheckCircle2,
     wrap: 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-500/30',
-    iconCls: 'text-emerald-600 dark:text-emerald-400',
+    iconCls: 'text-emerald-700 dark:text-emerald-400',
   },
   error: {
     icon: XCircle,
     wrap: 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-500/30',
-    iconCls: 'text-red-600 dark:text-red-400',
+    iconCls: 'text-red-700 dark:text-red-400',
   },
   warning: {
     icon: AlertTriangle,
     wrap: 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-500/30',
-    iconCls: 'text-amber-600 dark:text-amber-400',
+    iconCls: 'text-amber-700 dark:text-amber-400',
   },
   info: {
     icon: Info,
     wrap: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700',
-    iconCls: 'text-blue-600 dark:text-blue-400',
+    iconCls: 'text-blue-700 dark:text-blue-400',
   },
 };
 
@@ -117,7 +117,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                     {t.action && (
                       <button
                         onClick={() => { t.action!.onClick(); dismiss(t.id); }}
-                        className="mt-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                        className="mt-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-400 hover:underline"
                       >
                         {t.action.label}
                       </button>
@@ -126,7 +126,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   <button
                     onClick={() => dismiss(t.id)}
                     aria-label="Dismiss"
-                    className="p-0.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 shrink-0"
+                    className="p-0.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>

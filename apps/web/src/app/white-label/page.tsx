@@ -21,6 +21,43 @@ const WEBHOOK_EVENTS = [
   { key: 'handover.requested', label: 'Human Handover', desc: 'AI passes conversation to human agent' },
 ];
 
+/**
+ * Whether a brand colour can carry text, and a note saying so when it cannot.
+ *
+ * The preview below renders the tenant's chosen colour faithfully, including
+ * when that colour is unreadable — a preview that quietly corrected it would
+ * be showing them something they are not about to get. But rendering it and
+ * saying nothing leaves them to discover it from a citizen. So the preview
+ * stays honest and this says what the measurement is.
+ */
+function contrastWithWhite(hex: string): number | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return null;
+  const channel = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  const l = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  return (1.05) / (l + 0.05);
+}
+
+function ContrastNote({ color, label }: { color: string; label: string }) {
+  const ratio = contrastWithWhite(color);
+  if (ratio === null) return null;
+  // 4.5:1 is what AA asks of body text; 3:1 is the floor for large text,
+  // icons and borders.
+  if (ratio >= 4.5) return null;
+  const onlyLarge = ratio >= 3;
+  return (
+    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+      {onlyLarge
+        ? `White text on this ${label.toLowerCase()} measures ${ratio.toFixed(2)}:1 — readable at large sizes, but under the 4.5:1 that body text needs.`
+        : `White text on this ${label.toLowerCase()} measures ${ratio.toFixed(2)}:1, under the 4.5:1 WCAG AA asks for. Citizens on a bright screen may not be able to read it.`}
+    </p>
+  );
+}
+
 export default function WhiteLabelPage() {
   const [org, setOrg] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -135,13 +172,13 @@ export default function WhiteLabelPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Palette className="w-6 h-6 text-purple-600 dark:text-purple-400" /> White-Label & API
+          <Palette className="w-6 h-6 text-purple-700 dark:text-purple-400" /> White-Label & API
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Customize your brand identity and configure developer integrations.</p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" /></div>
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-700 dark:text-blue-400 animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
           {/* Left column: Config */}
@@ -149,7 +186,7 @@ export default function WhiteLabelPage() {
             {/* Branding */}
             <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Palette className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <Palette className="w-4 h-4 text-purple-700 dark:text-purple-400" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">Brand Identity</h3>
               </div>
               <form onSubmit={saveBranding} className="p-6 space-y-4">
@@ -176,7 +213,7 @@ export default function WhiteLabelPage() {
                     <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
                     <input type="text" value={customDomain} onChange={e => setCustomDomain(e.target.value)} className={`${inputCls} pl-10`} placeholder="app.yourcompany.com" />
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Point your domain's CNAME to <code className="text-blue-600 dark:text-blue-400">platform.ace-ai.io</code> then enter it here.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Point your domain's CNAME to <code className="text-blue-700 dark:text-blue-400">platform.ace-ai.io</code> then enter it here.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -187,6 +224,7 @@ export default function WhiteLabelPage() {
                         className="w-12 h-10 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer bg-transparent" />
                       <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className={inputCls} placeholder="#3b82f6" />
                     </div>
+                    <ContrastNote color={primaryColor} label="Primary Color" />
                   </div>
                   <div>
                     <label className={labelCls}>Secondary Color</label>
@@ -195,10 +233,11 @@ export default function WhiteLabelPage() {
                         className="w-12 h-10 rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer bg-transparent" />
                       <input type="text" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className={inputCls} placeholder="#8b5cf6" />
                     </div>
+                    <ContrastNote color={secondaryColor} label="Secondary Color" />
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Branding
                 </button>
@@ -208,7 +247,7 @@ export default function WhiteLabelPage() {
             {/* API Key */}
             <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Key className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <Key className="w-4 h-4 text-amber-700 dark:text-amber-400" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">API Access</h3>
               </div>
               <div className="p-6 space-y-4">
@@ -242,7 +281,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Use this key in the <code className="text-[#558A02] dark:text-[#74BA03]">Authorization: Bearer ace_live_pk_...</code> header to call the platform REST API.
+                  Use this key in the <code className="text-brand-700 dark:text-brand-300">Authorization: Bearer ace_live_pk_...</code> header to call the platform REST API.
                 </p>
               </div>
             </div>
@@ -250,14 +289,14 @@ export default function WhiteLabelPage() {
             {/* Webhooks */}
             <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Webhook className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <Webhook className="w-4 h-4 text-blue-700 dark:text-blue-400" />
                 <h3 className="font-semibold text-slate-900 dark:text-white">Webhook Subscriptions</h3>
               </div>
               <form onSubmit={saveWebhooks} className="p-6 space-y-5">
                 <div>
                   <label className={labelCls}>Webhook Endpoint URL</label>
                   <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} className={inputCls} placeholder="https://yourserver.com/webhook/ace" />
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">We'll POST JSON events to this URL with <code className="text-blue-600 dark:text-blue-400">X-ACE-Signature</code> header for HMAC verification.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">We'll POST JSON events to this URL with <code className="text-blue-700 dark:text-blue-400">X-ACE-Signature</code> header for HMAC verification.</p>
                 </div>
 
                 <div>
@@ -271,7 +310,7 @@ export default function WhiteLabelPage() {
                         </div>
                         <button type="button" onClick={() => toggleEvent(ev.key)} className="flex-shrink-0">
                           {enabledEvents.includes(ev.key)
-                            ? <ToggleRight className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                            ? <ToggleRight className="w-8 h-8 text-blue-700 dark:text-blue-400" />
                             : <ToggleLeft className="w-8 h-8 text-slate-500 dark:text-slate-400" />
                           }
                         </button>
@@ -280,7 +319,7 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-blue-500/20">
+                <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Webhooks
                 </button>
@@ -298,8 +337,16 @@ export default function WhiteLabelPage() {
                   </h3>
                 </div>
                 <div className="p-5">
-                  {/* Mini platform preview */}
-                  <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/90">
+                  {/* Mini platform preview.
+                      Marked so the contrast suite can tell it apart: everything
+                      inside renders the TENANT'S chosen colours, which they are
+                      free to set to something unreadable. Correcting them here
+                      would show them a page they are not about to publish, so
+                      the warning under the picker says it instead. */}
+                  <div
+                    data-brand-preview
+                    className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/90"
+                  >
                     {/* Fake topbar */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800"
                       style={{ background: `linear-gradient(135deg, ${primaryColor}20, ${secondaryColor}10)` }}>
@@ -316,10 +363,23 @@ export default function WhiteLabelPage() {
                     <div className="flex" style={{ height: '200px' }}>
                       <div className="w-1/3 border-r border-slate-200 dark:border-slate-800 p-3 space-y-2">
                         {['Dashboard', 'CRM', 'Agent Console', 'Knowledge'].map((item, i) => (
-                          <div key={item} className="px-2 py-1.5 rounded-lg text-[10px] font-medium" style={{
-                            background: i === 0 ? `${primaryColor}30` : 'transparent',
-                            color: i === 0 ? primaryColor : '#6b7280'
-                          }}>{item}</div>
+                          // The ACTIVE item deliberately renders the tenant's own
+                          // colour on a tint of itself: this is a preview, and a
+                          // preview that silently corrected their colour would be
+                          // lying about what they are about to publish. The
+                          // inactive items are OUR chrome, so they follow the
+                          // dashboard's own muted step instead of a hardcoded grey
+                          // that measured 3.7:1 on the dark card.
+                          <div
+                            key={item}
+                            className={`px-2 py-1.5 rounded-lg text-[10px] font-medium ${
+                              i === 0 ? '' : 'text-slate-500 dark:text-slate-400'
+                            }`}
+                            style={{
+                              background: i === 0 ? `${primaryColor}30` : 'transparent',
+                              ...(i === 0 ? { color: primaryColor } : {}),
+                            }}
+                          >{item}</div>
                         ))}
                       </div>
                       <div className="flex-1 p-3 space-y-2">
@@ -351,7 +411,7 @@ export default function WhiteLabelPage() {
                     {customDomain && (
                       <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
                         <span>Custom Domain</span>
-                        <code className="text-blue-600 dark:text-blue-400">{customDomain}</code>
+                        <code className="text-blue-700 dark:text-blue-400">{customDomain}</code>
                       </div>
                     )}
                   </div>
@@ -361,7 +421,7 @@ export default function WhiteLabelPage() {
               {/* API docs link */}
               <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <Zap className="w-4 h-4 text-amber-700 dark:text-amber-400" />
                   <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Developer Docs</h4>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Full REST API reference with request/response examples.</p>

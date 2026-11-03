@@ -25,9 +25,12 @@ export interface EnrolleeCardData {
   phoneNumber: string;
   residentialAddress?: string;
   ageOrDob?: string;
-  planType: string;
-  lga: string;
-  preferredHospital: string;
+  /** Omitted rather than guessed: an unknown value must not be printed. */
+  planType?: string;
+  lga?: string;
+  preferredHospital?: string;
+  /** The agency's own published number. No default — see the footer. */
+  helpline?: string;
   nin?: string;
   photoUrl?: string;
   dependents?: Array<{ fullName: string; relationship: string }>;
@@ -35,6 +38,21 @@ export interface EnrolleeCardData {
   expiresAt: string;
   organizationName?: string;
 }
+
+/**
+ * The card is citizen-facing output, so its colours are the same ramp the
+ * dashboard uses — apps/web/tailwind.config.js. They are repeated here rather
+ * than imported because this package must not depend on the web app, and
+ * apps/api/test/palette-contrast.spec.ts fails if the two ever disagree.
+ *
+ * The card is dark in both themes, so the text role is the mark colour itself
+ * (7.18:1 on the card) rather than the 700 step the light dashboard needs.
+ */
+const BRAND = {
+  mark: '#74ba03',   // brand-500
+  fill: '#4d7d02',   // brand-600
+  deep: '#3b6102',   // brand-700
+} as const;
 
 export class PdfGeneratorService {
   /**
@@ -134,26 +152,26 @@ export class PdfGeneratorService {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .card-container { width: 100%; max-width: 480px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 24px; border: 2px solid #74BA03; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
-        .card-glow { position: absolute; top: -50px; right: -50px; width: 180px; height: 180px; background: #74BA03; filter: blur(80px); opacity: 0.25; border-radius: 50%; pointer-events: none; }
+        .card-container { width: 100%; max-width: 480px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 24px; border: 2px solid ${BRAND.mark}; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
+        .card-glow { position: absolute; top: -50px; right: -50px; width: 180px; height: 180px; background: ${BRAND.mark}; filter: blur(80px); opacity: 0.25; border-radius: 50%; pointer-events: none; }
         .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px solid rgba(116, 186, 3, 0.3); padding-bottom: 16px; }
-        .agency-title { font-size: 16px; font-weight: 800; color: #74BA03; letter-spacing: 0.5px; }
+        .agency-title { font-size: 16px; font-weight: 800; color: ${BRAND.mark}; letter-spacing: 0.5px; }
         .agency-sub { font-size: 10px; color: #94a3b8; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
-        .badge { background: #74BA03; color: #0f172a; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
+        .badge { background: ${BRAND.mark}; color: #0f172a; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
         .card-body { display: flex; gap: 18px; margin-bottom: 20px; }
-        .photo-frame { width: 90px; height: 115px; border-radius: 14px; background: #334155; border: 2px solid #74BA03; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .photo-frame { width: 90px; height: 115px; border-radius: 14px; background: #334155; border: 2px solid ${BRAND.mark}; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .photo-frame img { width: 100%; height: 100%; object-fit: cover; }
         .photo-placeholder { font-size: 32px; color: #64748b; }
         .enrollee-meta { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
         .name { font-size: 16px; font-weight: 700; color: #ffffff; line-height: 1.2; margin-bottom: 6px; }
-        .policy-id { font-size: 12px; font-family: monospace; font-weight: bold; color: #74BA03; margin-bottom: 8px; }
+        .policy-id { font-size: 12px; font-family: monospace; font-weight: bold; color: ${BRAND.mark}; margin-bottom: 8px; }
         .info-row { font-size: 11px; color: #cbd5e1; margin-bottom: 4px; }
         .info-label { color: #64748b; font-size: 9px; text-transform: uppercase; display: block; font-weight: 600; }
         .facility-box { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 11px; }
-        .facility-title { font-size: 9px; text-transform: uppercase; color: #74BA03; font-weight: 700; margin-bottom: 2px; }
+        .facility-title { font-size: 9px; text-transform: uppercase; color: ${BRAND.mark}; font-weight: 700; margin-bottom: 2px; }
         .facility-name { color: #f1f5f9; font-weight: 600; }
         .card-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 14px; font-size: 10px; color: #64748b; }
-        .helpline { color: #74BA03; font-weight: 700; }
+        .helpline { color: ${BRAND.mark}; font-weight: 700; }
       </style>
     </head>
     <body>
@@ -162,9 +180,8 @@ export class PdfGeneratorService {
         <div class="card-header">
           <div>
             <div class="agency-title">${orgName}</div>
-            <div class="agency-sub">Plateau State Contributory Healthcare</div>
           </div>
-          <div class="badge">ACTIVE BENEFICIARY</div>
+          <div class="badge">ACTIVE</div>
         </div>
 
         <div class="card-body">
@@ -177,14 +194,22 @@ export class PdfGeneratorService {
               <div class="policy-id">ID: ${data.policyId}</div>
             </div>
             <div>
-              <div class="info-row">
-                <span class="info-label">Service</span>
-                ${data.planType} ${data.ageOrDob ? `• Age: ${data.ageOrDob}` : ''}
-              </div>
-              <div class="info-row">
+              ${
+                data.planType || data.ageOrDob
+                  ? `<div class="info-row">
+                <span class="info-label">${data.planType ? 'Service' : 'Age'}</span>
+                ${data.planType ?? ''} ${data.ageOrDob ? `${data.planType ? '• Age: ' : ''}${data.ageOrDob}` : ''}
+              </div>`
+                  : ''
+              }
+              ${
+                data.residentialAddress || data.lga || data.nin
+                  ? `<div class="info-row">
                 <span class="info-label">Address & LGA</span>
-                ${data.residentialAddress ? `${data.residentialAddress}, ` : ''}${data.lga} ${data.nin ? `• NIN: ${data.nin.slice(0, 4)}***` : ''}
-              </div>
+                ${data.residentialAddress ? `${data.residentialAddress}, ` : ''}${data.lga ?? ''} ${data.nin ? `• NIN: ${data.nin.slice(0, 4)}***` : ''}
+              </div>`
+                  : ''
+              }
             </div>
           </div>
         </div>
@@ -193,7 +218,7 @@ export class PdfGeneratorService {
           data.dependents && data.dependents.length > 0
             ? `
         <div style="background: rgba(116, 186, 3, 0.08); border: 1px dashed rgba(116, 186, 3, 0.3); border-radius: 14px; padding: 10px 14px; margin-bottom: 16px; font-size: 11px;">
-          <div style="font-size: 9px; text-transform: uppercase; color: #74BA03; font-weight: 700; margin-bottom: 4px;">Covered Family Dependents (${data.dependents.length})</div>
+          <div style="font-size: 9px; text-transform: uppercase; color: ${BRAND.mark}; font-weight: 700; margin-bottom: 4px;">Registered Dependants (${data.dependents.length})</div>
           <div style="color: #e2e8f0; font-size: 10px; line-height: 1.4;">
             ${data.dependents.map((d) => `• <strong>${d.fullName}</strong> (${d.relationship})`).join('<br/>')}
           </div>
@@ -202,21 +227,45 @@ export class PdfGeneratorService {
             : ''
         }
 
-        <div class="facility-box">
+        ${
+          data.preferredHospital
+            ? `<div class="facility-box">
           <div class="facility-title">Assigned Location</div>
           <div class="facility-name">${data.preferredHospital}</div>
-        </div>
+        </div>`
+            : ''
+        }
 
         <div class="card-footer">
           <div>Issued: ${data.issuedAt}</div>
-          <div>24/7 Helpline: <span class="helpline">0700-700-1111</span></div>
+          ${
+            // No default number. This read "24/7 Helpline: 0700-700-1111" on
+            // every card, for every agency — a number nothing in the platform
+            // owns, printed on the artefact a citizen reaches for when they
+            // need help. An agency that has published one shows it.
+            data.helpline ? `<div>Helpline: <span class="helpline">${data.helpline}</span></div>` : ''
+          }
         </div>
       </div>
     </body>
     </html>
     `;
 
-    const summaryText = `🏥 *${orgName} Digital Healthcare ID*\nEnrollee: ${data.fullName}\nPolicy ID: ${data.policyId}\nPlan: ${data.planType}\nPrimary Facility: ${data.preferredHospital}\nLGA: ${data.lga}\nStatus: ACTIVE`;
+    // Agency-neutral, and every line is omitted when its value is unknown.
+    // This used to read "Digital Healthcare ID / Enrollee / Plan / Primary
+    // Facility" whatever the agency was, and printed the word `undefined`
+    // for whichever of those an agency does not collect.
+    const summaryText = [
+      `*${orgName} Digital ID*`.trim(),
+      `Name: ${data.fullName}`,
+      `ID: ${data.policyId}`,
+      data.planType ? `Service: ${data.planType}` : null,
+      data.preferredHospital ? `Assigned Location: ${data.preferredHospital}` : null,
+      data.lga ? `LGA: ${data.lga}` : null,
+      'Status: ACTIVE',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     return { html, summaryText };
   }

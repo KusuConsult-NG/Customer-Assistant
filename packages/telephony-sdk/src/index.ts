@@ -88,14 +88,30 @@ export class TwilioProvider implements TelephonyProvider {
     }
 
     const authHeader = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
-      method: 'POST',
-      headers: {
-        Authorization: authHeader,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params.toString(),
-    });
+    const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`;
+
+    // A network failure surfaces from fetch as the bare string "fetch failed",
+    // with the real cause one level down in `.cause`. That message ends up
+    // stored against a callback and read by an officer explaining to a citizen
+    // why nobody rang — so it has to say what could not be reached and why.
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+    } catch (err: any) {
+      const cause = err?.cause?.code || err?.cause?.message || err?.message || String(err);
+      throw new TelephonyNotAvailableError(
+        this.type,
+        `Could not reach api.twilio.com (${cause}). The call was NOT placed. ` +
+        `Check this environment's outbound network access to api.twilio.com:443.`
+      );
+    }
 
     if (!res.ok) {
       const detail = await res.text().catch(() => res.statusText);

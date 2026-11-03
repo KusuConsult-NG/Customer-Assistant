@@ -34,17 +34,17 @@ function statusColor(status: string) {
     NEW: 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
     CONTACTED: 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
     QUALIFIED: 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
-    CONVERTED: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    CONVERTED: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
     LOST: 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
     OPEN: 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
     IN_PROGRESS: 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
-    RESOLVED: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    RESOLVED: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
     CLOSED: 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700',
     LEAD: 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
     PROSPECT: 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20',
     PROPOSAL: 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
     NEGOTIATION: 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
-    CLOSED_WON: 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    CLOSED_WON: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
     CLOSED_LOST: 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
   };
   return map[status] || 'bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-700';
@@ -96,7 +96,7 @@ export default function CrmPage() {
         toast.success(`Registration approved. Reference: ${data.policyId}`);
         fetchAll();
       } else {
-        toast.error('Could not approve enrollee.');
+        toast.error('Could not approve this registration.');
       }
     } catch {
       toast.error('Failed to communicate with the verification server.');
@@ -231,7 +231,7 @@ export default function CrmPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#558A02] dark:text-[#74BA03]" /> Citizens &amp; Contacts
+            <Users className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Citizens &amp; Contacts
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage Plateau State citizen enrollments, premium subscriptions, and provider grievance reports.</p>
         </div>
@@ -247,7 +247,7 @@ export default function CrmPage() {
           <button
             onClick={() => setModalType(tab === 'contacts' ? 'contact' : tab === 'leads' ? 'lead' : tab === 'deals' ? 'deal' : 'ticket')}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-semibold transition-all text-sm shadow-md"
-            style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+            style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Plus className="w-4 h-4" />
             Add {tab === 'contacts' ? 'Citizen' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Plan' : 'Grievance Ticket'}
@@ -264,7 +264,7 @@ export default function CrmPage() {
               onClick={() => { setTab(t.id); setSearch(''); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
                 tab === t.id
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                  ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
             >
@@ -282,7 +282,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                viewMode === 'table' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <List className="w-3.5 h-3.5" /> Table
@@ -290,7 +290,7 @@ export default function CrmPage() {
             <button
               onClick={() => setViewMode('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                viewMode === 'kanban' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" /> Kanban Board
@@ -301,7 +301,7 @@ export default function CrmPage() {
 
       {/* Search Bar */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
         <input
           type="text"
           placeholder={`Search ${tab}...`}
@@ -391,7 +391,7 @@ export default function CrmPage() {
                     printWin.print();
                   }
                 }}
-                className="px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md bg-[#558A02] hover:bg-[#74BA03] transition-all"
+                className="px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md bg-brand-600 hover:bg-brand-700 transition-all"
               >
                 Print / Download Card
               </button>
@@ -416,7 +416,7 @@ export default function CrmPage() {
                 <p className="text-slate-600 dark:text-slate-400">{quoteData.organizationPhone}</p>
               </div>
               <div className="text-right">
-                <p className="font-mono text-purple-600 dark:text-purple-400 font-bold">{quoteData.quotationNumber}</p>
+                <p className="font-mono text-purple-700 dark:text-purple-400 font-bold">{quoteData.quotationNumber}</p>
                 <p className="text-slate-500 dark:text-slate-400">Valid Until: {quoteData.validUntil}</p>
               </div>
             </div>
@@ -442,7 +442,7 @@ export default function CrmPage() {
                     <td className="py-2 font-medium text-slate-900 dark:text-white">{item.description}</td>
                     <td className="py-2 text-right">{item.quantity}</td>
                     <td className="py-2 text-right">₦{(item.unitPrice || 0).toLocaleString()}</td>
-                    <td className="py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">₦{(item.totalPrice || 0).toLocaleString()}</td>
+                    <td className="py-2 text-right font-bold text-emerald-700 dark:text-emerald-400">₦{(item.totalPrice || 0).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -450,7 +450,7 @@ export default function CrmPage() {
 
             <div className="border-t border-slate-200 dark:border-slate-800 pt-3 flex justify-between items-center text-sm font-bold">
               <span>Grand Total</span>
-              <span className="text-emerald-600 dark:text-emerald-400 text-lg">₦{(quoteData.grandTotal || 0).toLocaleString()}</span>
+              <span className="text-emerald-700 dark:text-emerald-400 text-lg">₦{(quoteData.grandTotal || 0).toLocaleString()}</span>
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -597,7 +597,7 @@ function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { sear
                     >
                       View Profile
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-100 dark:bg-red-500/20 transition-all">
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-100 dark:bg-red-500/20 transition-all">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -705,7 +705,7 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
           <tr key={l.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
             <td className="px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
                   {(l.contact?.fullName || 'U')[0].toUpperCase()}
                 </div>
                 <div>
@@ -729,7 +729,7 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{l.createdAt ? new Date(l.createdAt).toLocaleDateString() : '—'}</td>
             <td className="px-5 py-4 text-right">
-              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all">
+              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all">
                 <Trash2 className="w-4 h-4" />
               </button>
             </td>
@@ -765,7 +765,7 @@ function DealsTable({ data, loading, onAdd, onDelete, onQuote }: { data: any[]; 
           <p className="text-xs text-slate-500 dark:text-slate-400">Pipeline Total Value</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">₦{wonValue.toLocaleString()}</p>
+          <p className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400">₦{wonValue.toLocaleString()}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Closed Won Revenue</p>
         </div>
         <div className="text-center">
@@ -789,12 +789,12 @@ function DealsTable({ data, loading, onAdd, onDelete, onQuote }: { data: any[]; 
             <tr key={d.id} className="hover:bg-white dark:bg-slate-900/80 transition-colors">
               <td className="px-5 py-4 font-semibold text-slate-800 dark:text-slate-200">{d.title || 'Untitled Deal'}</td>
               <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-xs">{d.contact?.fullName || '—'}</td>
-              <td className="px-5 py-4 font-bold text-emerald-600 dark:text-emerald-400">₦{(d.amount || 0).toLocaleString()}</td>
+              <td className="px-5 py-4 font-bold text-emerald-700 dark:text-emerald-400">₦{(d.amount || 0).toLocaleString()}</td>
               <td className="px-5 py-4"><Badge text={d.stage || 'LEAD'} color={statusColor(d.stage)} /></td>
               <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '—'}</td>
               <td className="px-5 py-4 text-right space-x-2">
-                <button onClick={() => onQuote(d.id)} className="px-2 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
-                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => onQuote(d.id)} className="px-2 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
+                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
               </td>
             </tr>
           ))}
@@ -826,7 +826,7 @@ function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { d
                 <span className="font-bold text-xs text-slate-800 dark:text-slate-200 uppercase tracking-wider">{stage.replace('_', ' ')}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-600 dark:text-slate-400 font-bold">{stageDeals.length}</span>
               </div>
-              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">₦{stageTotal.toLocaleString()}</p>
+              <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">₦{stageTotal.toLocaleString()}</p>
               <div className="space-y-2.5 flex-1 min-h-[300px]">
                 {stageDeals.map((deal) => (
                   <div key={deal.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 hover:border-blue-200 dark:border-blue-500/30 transition-all">
@@ -835,8 +835,8 @@ function DealsKanban({ data, loading, onAdd, onRefresh, onDelete, onQuote }: { d
                       <button onClick={() => onDelete(deal.id)} className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-400">{deal.contact?.fullName || 'No contact'}</p>
-                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
-                    <button onClick={() => onQuote(deal.id)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold border border-purple-200 dark:border-purple-500/20 hover:bg-purple-100 dark:bg-purple-500/20">Generate Quotation</button>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">₦{(deal.amount || 0).toLocaleString()}</p>
+                    <button onClick={() => onQuote(deal.id)} className="w-full mt-1 py-1 text-[10px] rounded bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold border border-purple-200 dark:border-purple-500/20 hover:bg-purple-100 dark:bg-purple-500/20">Generate Quotation</button>
                     <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 dark:text-slate-400">{new Date(deal.createdAt).toLocaleDateString()}</span>
                       <select
@@ -870,9 +870,9 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
 
   const priorityColor: Record<string, string> = {
     LOW: 'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20',
-    MEDIUM: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+    MEDIUM: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
     HIGH: 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20',
-    URGENT: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
+    URGENT: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
   };
 
   if (loading) return <div className="p-4"><TableSkeleton rows={5} columns={5} /></div>;
@@ -921,7 +921,7 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>
             <td className="px-5 py-4 text-right">
-              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
             </td>
           </tr>
         ))}
@@ -937,7 +937,7 @@ function ModalWrapper({ title, onClose, children }: { title: string; onClose: ()
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+          <button onClick={onClose} className="text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -1002,7 +1002,7 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 
   return (
     <ModalWrapper title="Add New Contact" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Emeka Okafor" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
@@ -1017,7 +1017,7 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             </select>
           </Field>
         </div>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Contact'}
         </button>
       </form>
@@ -1061,12 +1061,12 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
   return (
     <ModalWrapper title="Add New Lead" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Amaka Osei" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
         <Field label="Notes / Context"><textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} className={inputCls} placeholder="How did they find you? What service are they inquiring about?" /></Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Save Lead'}
         </button>
       </form>
@@ -1112,7 +1112,7 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
   return (
     <ModalWrapper title="Add New Deal" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Deal Title"><input required type="text" value={title} onChange={e => setTitle(e.target.value)} className={inputCls} placeholder="e.g. Premium Service Contract" /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -1125,7 +1125,7 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
             {DEAL_STAGES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
         </Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Create Deal'}
         </button>
       </form>
@@ -1171,7 +1171,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
   return (
     <ModalWrapper title="New Support Ticket" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Customer Name"><input required type="text" value={contactFullName} onChange={e => setContactFullName(e.target.value)} className={inputCls} placeholder="Full name" /></Field>
@@ -1186,7 +1186,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
             {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </Field>
-        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 transition-all">
+        <button disabled={loading} type="submit" className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold disabled:opacity-50 transition-all">
           {loading ? 'Saving...' : 'Create Ticket'}
         </button>
       </form>
@@ -1324,12 +1324,12 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
         {/* Top Header Bar */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/50">
           <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <Users className="w-4 h-4 text-indigo-700 dark:text-indigo-400" />
             <h2 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">Customer Profile 360°</h2>
           </div>
           <button 
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -1344,7 +1344,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
               </div>
               <div>
                 <h3 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{contact.fullName}</h3>
-                <p className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 mt-0.5">
+                <p className="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5 mt-0.5">
                   <Phone className="w-3.5 h-3.5" /> {contact.phoneNumber || 'No phone number'}
                 </p>
                 <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
@@ -1363,7 +1363,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
           <div className="grid grid-cols-3 gap-2 pt-2">
             <a
               href={`tel:${contact.phoneNumber}`}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all"
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm transition-all"
             >
               <Phone className="w-3.5 h-3.5" /> Call
             </a>
@@ -1371,7 +1371,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
               href={`https://wa.me/${(contact.phoneNumber || '').replace(/[^0-9]/g, '')}`}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all"
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-sm transition-all"
             >
               <Mail className="w-3.5 h-3.5" /> WhatsApp
             </a>
@@ -1392,7 +1392,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             onClick={() => setActiveTab('overview')}
             className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'overview'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -1402,7 +1402,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             onClick={() => setActiveTab('history')}
             className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'history'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -1412,7 +1412,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             onClick={() => setActiveTab('activity')}
             className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'activity'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -1422,7 +1422,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             onClick={() => setActiveTab('onboarding')}
             className={`py-3 px-4 text-xs font-bold border-b-2 transition-all ${
               activeTab === 'onboarding'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -1446,7 +1446,7 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500 dark:text-slate-400 font-medium">Primary Channel</span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold text-[10px] border border-emerald-200 dark:border-emerald-500/20">WhatsApp / Voice</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold text-[10px] border border-emerald-200 dark:border-emerald-500/20">WhatsApp / Voice</span>
                 </div>
               </div>
             </div>
@@ -1577,7 +1577,7 @@ function EnrolleesDeskTable({
       setData(enrolleesList.length > 0 ? enrolleesList : raw);
       setError(null);
     } catch (e: any) {
-      setError(e?.message || 'Could not load enrollees');
+      setError(e?.message || 'Could not load registrations');
     } finally {
       setLoading(false);
     }
@@ -1607,14 +1607,14 @@ function EnrolleesDeskTable({
       ) : error ? (
         <SharedEmptyState
           icon={ShieldCheck}
-          title="Could not load enrollees"
+          title="Could not load registrations"
           description={error}
           actions={[{ label: 'Try again', primary: true, onClick: loadEnrollees }]}
         />
       ) : filteredEnrollees.length === 0 ? (
         <SharedEmptyState
           icon={ShieldCheck}
-          title="No enrollees registered yet"
+          title="No registrations yet"
           description="When citizens call or message to register, their profile, photo status and service details appear here for staff verification."
         />
       ) : (
@@ -1645,11 +1645,11 @@ function EnrolleesDeskTable({
                   >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-[#74BA03]/15 text-[#558A02] dark:text-[#74BA03] font-black text-sm flex items-center justify-center flex-shrink-0 border border-[#74BA03]/30">
+                        <div className="w-10 h-10 rounded-xl bg-brand-500/15 text-brand-700 dark:text-brand-300 font-black text-sm flex items-center justify-center flex-shrink-0 border border-brand-500/30">
                           {(c.fullName || 'U')[0].toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-[#74BA03] transition-colors">
+                          <div className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-brand-700 dark:text-brand-300 transition-colors">
                             {c.fullName}
                           </div>
                           <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
@@ -1660,25 +1660,25 @@ function EnrolleesDeskTable({
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-semibold text-slate-800 dark:text-slate-200">
-                        {meta.planType || 'Standard Plan'}
+                        {meta.planType || '—'}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {meta.lga || c.city || 'Plateau State'}
+                        {meta.lga || c.city || '—'}
                       </div>
                     </td>
                     <td className="px-5 py-4 text-xs font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate">
-                      {meta.preferredHospital || 'General Hospital (Default)'}
+                      {meta.preferredHospital || '—'}
                     </td>
                     <td className="px-5 py-4 text-xs font-mono">
                       {meta.nin ? (
                         <span className="text-slate-800 dark:text-slate-200 font-semibold">{meta.nin}</span>
                       ) : (
-                        <span className="text-slate-400">Ref: {c.id.slice(0, 8).toUpperCase()}</span>
+                        <span className="text-slate-500 dark:text-slate-400">Ref: {c.id.slice(0, 8).toUpperCase()}</span>
                       )}
                     </td>
                     <td className="px-5 py-4">
                       {isApproved ? (
-                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold text-xs border border-emerald-300 dark:border-emerald-500/30 flex items-center gap-1 w-fit">
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold text-xs border border-emerald-300 dark:border-emerald-500/30 flex items-center gap-1 w-fit">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Enrolled Active
                         </span>
                       ) : (
@@ -1694,7 +1694,7 @@ function EnrolleesDeskTable({
                             e.stopPropagation();
                             onApprove(c.id);
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-[#558A02] hover:bg-[#74BA03] text-white text-xs font-bold shadow-sm transition-all"
+                          className="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm transition-all"
                         >
                           Approve &amp; Issue ID
                         </button>
@@ -1706,7 +1706,7 @@ function EnrolleesDeskTable({
                           }}
                           className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all inline-flex items-center gap-1"
                         >
-                          <ShieldCheck className="w-3.5 h-3.5 text-[#74BA03]" /> View Digital ID
+                          <ShieldCheck className="w-3.5 h-3.5 text-brand-700 dark:text-brand-300" /> View Digital ID
                         </button>
                       )}
                       <button

@@ -70,6 +70,10 @@ describe('Agent tool catalogue', () => {
         'lookup-customer',
         'payment-details',
         'register-enrollee',
+        // Parity with the orchestrator's callback flow: both engines must be
+        // able to promise a citizen a call back, or the same words produce a
+        // dated commitment on WhatsApp and nothing on a voice call.
+        'request-callback',
         'reschedule-booking',
         'search-knowledge',
       ].sort()
@@ -286,13 +290,20 @@ describe('the agent asks for what the flow collects', () => {
     const numbered = section.split('\n').filter((l) => /^\d+\. /.test(l));
     expect(numbered).toHaveLength(ENROLLMENT_FIELDS.length);
 
-    // Order matters to the caller: the LGA is asked before the facility
-    // because the accredited list is per-LGA, so the other order validates a
-    // hospital against nothing.
+    // Order matters to the caller: the LGA is asked before the location
+    // because the agency's list of places is per-LGA, so the other order
+    // validates a location against nothing.
+    //
+    // This matched the word "facility" alone. That word was health-scheme
+    // vocabulary, and renaming it to "location" failed the test while the
+    // ordering it exists to protect was untouched — so it matches either, and
+    // asserts the line was found rather than letting findIndex's -1 sail
+    // through as "earlier than everything".
     const lga = numbered.findIndex((l) => /LGA/.test(l));
-    const facility = numbered.findIndex((l) => /facility/i.test(l));
+    const location = numbered.findIndex((l) => /facility|location/i.test(l));
     expect(lga).toBeGreaterThanOrEqual(0);
-    expect(lga).toBeLessThan(facility);
+    expect(location).toBeGreaterThanOrEqual(0);
+    expect(lga).toBeLessThan(location);
   });
 
   it('does not state a field count that a new field would falsify', () => {

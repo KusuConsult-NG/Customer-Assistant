@@ -7,11 +7,14 @@ import { TwilioMediaStreamHandler } from './twilio-media-stream.handler';
 import { CallBroadcastService } from './call-broadcast.service';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { AuthModule } from '../auth/auth.module';
+import { WorkflowsModule } from '../workflows/workflows.module';
+import { CallbackDispatcherService } from './callback-dispatcher.service';
+import { CallbacksController } from './callbacks.controller';
 
 @Module({
   // AuthModule exports JwtService, used by VoiceStreamGateway to authenticate
   // the Socket.IO handshake before an agent may monitor a live call.
-  imports: [WebhooksModule, AuthModule],
+  imports: [WebhooksModule, AuthModule, WorkflowsModule],
   providers: [
     // Core telephony logic
     TelephonyService,
@@ -27,8 +30,11 @@ import { AuthModule } from '../auth/auth.module';
 
     // Socket.IO gateway: agent console monitoring + injects server into CallBroadcastService
     VoiceStreamGateway,
+
+    // Keeps the promise to ring a citizen back: claims a due row, then dials.
+    CallbackDispatcherService,
   ],
-  controllers: [TelephonyController],
+  controllers: [TelephonyController, CallbacksController],
   exports: [
     TelephonyService,
     TwilioMediaStreamHandler,  // Exported so main.ts can retrieve it via app.get()
@@ -38,6 +44,9 @@ import { AuthModule } from '../auth/auth.module';
     // live call the same way — a second implementation of "move the call" is a
     // second thing that can silently stop moving it.
     VoiceAiService,
+
+    // The console's "call now" button goes through the dispatcher's own claim.
+    CallbackDispatcherService,
   ],
 })
 export class TelephonyModule {}

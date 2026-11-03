@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { api } from '@/lib/api';
-import { Sparkles, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, ShieldCheck, Landmark } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -44,20 +44,21 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
       {/* Left Column: Branding */}
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-[#0c1a05] via-[#1a3308] to-[#0c1a05]">
-        <div className="absolute inset-0 bg-gradient-to-tr from-[#74BA03]/20 via-transparent to-[#558A02]/20 opacity-40"></div>
+      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden bg-gradient-to-br from-surface-card via-surface-border to-surface-card">
+        <div className="absolute inset-0 bg-gradient-to-tr from-brand-500/20 via-transparent to-brand-600/20 opacity-40"></div>
         
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}>
-            <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
-            </svg>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}>
+            {/* A neutral mark. This was a medical cross, which is a claim
+                about what the agency does — wrong for a lands registry or a
+                revenue board, and the same reason the sidebar dropped it. */}
+            <Landmark className="w-7 h-7 text-white" />
           </div>
           <div>
             <h1 className="font-bold text-2xl text-white">
               Customer Care Platform
             </h1>
-            <p className="text-xs font-semibold" style={{ color: '#74BA03' }}>
+            <p className="text-xs font-semibold text-brand-400">
               Plateau State Government
             </p>
           </div>
@@ -65,18 +66,18 @@ export default function LoginPage() {
         
         <div className="relative z-10">
           <h2 className="text-4xl font-bold text-white mb-6 leading-tight">
-            State Customer Care <br/><span style={{ color: '#74BA03' }}>&amp; Citizen Services Portal</span>
+            State Customer Care <br/><span className="text-brand-400">&amp; Citizen Services Portal</span>
           </h2>
           <p className="text-slate-300 text-base max-w-md">
-            Delivering accessible, affordable, and quality healthcare coverage for every citizen across all 17 LGAs of Plateau State.
+            One place for citizens to reach any ministry, department or agency of the State — on WhatsApp, by phone, in the language they speak.
           </p>
 
-          <div className="mt-8 p-4 rounded-2xl bg-[#74BA03]/10 border border-[#74BA03]/20 max-w-md">
-            <div className="flex items-center gap-2 text-[#74BA03] text-sm font-semibold mb-1">
+          <div className="mt-8 p-4 rounded-2xl bg-brand-500/10 border border-brand-500/20 max-w-md">
+            <div className="flex items-center gap-2 text-brand-400 text-sm font-semibold mb-1">
               <ShieldCheck className="w-4 h-4" /> Official Government Service
             </div>
             <p className="text-xs text-slate-300">
-              Authorized desk officer and admin access for helpline operations, beneficiary support, provider oversight, and inquiries.
+              Authorized desk officer and admin access for helpline operations, citizen records, case handling, and inquiries.
             </p>
           </div>
         </div>
@@ -144,7 +145,7 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               className="w-full py-3.5 px-4 rounded-xl text-white font-semibold shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{ background: 'linear-gradient(135deg, #558A02, #74BA03)' }}
+              style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
             >
               {loading ? (
                 <>
