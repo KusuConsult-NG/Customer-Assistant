@@ -120,9 +120,16 @@ export default function WhiteLabelPage() {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({ name: companyName, primaryColor, secondaryColor, customDomain }),
       });
-      if (!res.ok) throw new Error();
+      // Read the reason. `throw new Error()` discarded the body, so a refusal
+      // the API explained in full — an agency name that is a placeholder, for
+      // instance — reached the operator as "Failed to save" and left them to
+      // guess which of four fields was wrong.
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || `Failed to save (${res.status})`);
+      }
       showToast('Branding saved!');
-    } catch { showToast('Failed to save', 'error'); }
+    } catch (err: any) { showToast(err?.message || 'Failed to save', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -134,9 +141,12 @@ export default function WhiteLabelPage() {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({ webhookUrl, enabledWebhookEvents: enabledEvents }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || `Failed to save (${res.status})`);
+      }
       showToast('Webhook settings saved!');
-    } catch { showToast('Failed to save', 'error'); }
+    } catch (err: any) { showToast(err?.message || 'Failed to save', 'error'); }
     finally { setSaving(false); }
   };
 

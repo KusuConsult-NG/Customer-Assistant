@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, recordAudit, resolveAuditActors } from '@ace/database';
+import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
@@ -180,6 +180,21 @@ export class OrganizationsService {
         `defaultLanguage must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`
       );
     }
+
+    // Refused rather than stored, for the same reason the boot check refuses
+    // an env value containing "placeholder". An agency was once renamed to the
+    // literal string "NEW AGENCY NAME" from an unfilled command, and this
+    // endpoint accepted it — so the assistant greeted citizens with it and it
+    // printed on their identity cards. The trimmed name is what gets written:
+    // a trailing space is invisible in a form and audible in a greeting.
+    let cleanName: string | undefined;
+    if (data.name !== undefined) {
+      try {
+        cleanName = assertUsableAgencyName(data.name);
+      } catch (e: any) {
+        throw new BadRequestException(e?.message ?? 'That agency name cannot be used.');
+      }
+    }
     // Validated here rather than trusted, because availability search throws
     // on hours that cannot produce a slot — and a 500 from the booking flow is
     // a citizen told nothing is free, days after somebody saved the form.
@@ -210,7 +225,7 @@ export class OrganizationsService {
     return prisma.organization.update({
       where: { id: organizationId },
       data: {
-        ...(data.name !== undefined && { name: data.name }),
+        ...(cleanName !== undefined && { name: cleanName }),
         ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
         ...(data.phone !== undefined && { phone: data.phone }),

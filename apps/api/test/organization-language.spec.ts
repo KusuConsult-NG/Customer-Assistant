@@ -89,6 +89,76 @@ describe('PATCH /api/organizations/settings — defaultLanguage', () => {
     expect(row?.defaultLanguage).toBe('ha'); // the previous write, untouched
   });
 
+  // ── The agency name ───────────────────────────────────────────────────────
+  //
+  // An agency was renamed to the literal string "NEW AGENCY NAME", copied from
+  // a command whose placeholder had not been filled in. This endpoint accepted
+  // it and it went live — so the assistant greeted every caller with it, and
+  // it printed on the identity card citizens present as proof.
+  //
+  // The validator is unit-tested in packages/database/test/agency-name.spec.ts.
+  // What is proved HERE is that the endpoint applies it, refuses with 400, and
+  // writes nothing — because the failure was never in the rule, it was that no
+  // rule was consulted.
+  describe('the agency name', () => {
+    it('refuses the placeholder that actually shipped, and stores nothing', async () => {
+      const before = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+
+      const res = await request(app.getHttpServer())
+        .patch('/api/organizations/settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'NEW AGENCY NAME' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/placeholder/i);
+
+      const after = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+      expect(after?.name).toBe(before?.name);
+    });
+
+    it('refuses an unfilled angle-bracket placeholder', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/organizations/settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: '<agency name>' });
+      expect(res.status).toBe(400);
+    });
+
+    it('refuses an empty name', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/organizations/settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: '   ' });
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts a real agency name and trims it', async () => {
+      // A trailing space is invisible in a form and audible in a greeting.
+      await request(app.getHttpServer())
+        .patch('/api/organizations/settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: '  Plateau State Water Board  ' })
+        .expect(200);
+
+      const row = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+      expect(row?.name).toBe('Plateau State Water Board');
+    });
+
+    it('does not touch the name when the field is not sent', async () => {
+      // An empty body, so this says only what it means. Sending another field
+      // here changed the language and broke the test below it, which is its
+      // own small lesson about shared fixtures.
+      await request(app.getHttpServer())
+        .patch('/api/organizations/settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(200);
+
+      const row = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+      expect(row?.name).toBe('Plateau State Water Board');
+    });
+  });
+
   it('leaves the language alone when the field is not sent', async () => {
     await request(app.getHttpServer())
       .patch('/api/organizations/settings')

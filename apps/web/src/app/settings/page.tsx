@@ -263,7 +263,14 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       }
       showToast('Settings saved!');
       onSaved();
-    } catch { showToast('Failed to save settings', 'error'); }
+    } catch (err: any) {
+      // The message thrown just above carries the API's own reason — which
+      // hours cannot produce a slot, or why a name was refused. The catch
+      // discarded it and showed "Failed to save settings", so the comment
+      // above described a behaviour that did not exist and the operator was
+      // left to guess which of eight fields was wrong.
+      showToast(err?.message || 'Failed to save settings', 'error');
+    }
     finally { setSaving(false); }
   };
 
