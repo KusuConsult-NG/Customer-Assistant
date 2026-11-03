@@ -479,7 +479,7 @@ export default function KnowledgePage() {
     PENDING: { label: 'Pending', className: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20', icon: <Clock className="w-3 h-3" /> },
     PROCESSING: { label: 'Processing', className: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
     INDEXED: { label: 'Indexed', className: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20', icon: <CheckCircle2 className="w-3 h-3" /> },
-    FAILED: { label: 'Failed', className: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20', icon: <AlertCircle className="w-3 h-3" /> },
+    FAILED: { label: 'Failed', className: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20', icon: <AlertCircle className="w-3 h-3" /> },
   };
 
   const safeDocs = Array.isArray(docs) ? docs : [];
@@ -605,7 +605,7 @@ export default function KnowledgePage() {
           </button>
         </form>
         {crawlStatus && (
-          <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${crawlStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400'}`}>
+          <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${crawlStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400'}`}>
             {crawlStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
             {crawlStatus.text}
           </div>
@@ -829,7 +829,7 @@ export default function KnowledgePage() {
                             </div>
                             <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] text-slate-600 dark:text-slate-400">{faq.category}</span>
                             <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-700 dark:text-blue-400 hover:underline">Edit</button>
-                            <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
+                            <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-700 dark:text-red-400 hover:underline">Delete</button>
                           </div>
                         </div>
                         <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">A: {faq.answer}</p>

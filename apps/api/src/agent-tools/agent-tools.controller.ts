@@ -94,6 +94,15 @@ export class AgentToolsController {
     return this.tools.createTicket(this.org(req), body);
   }
 
+  @Post('request-callback')
+  requestCallback(
+    @Req() req: AgentRequest,
+    @Body()
+    body: { phoneNumber: string; reason: string; whenMinutes?: number; fullName?: string }
+  ): Promise<ToolResult> {
+    return this.tools.requestCallback(this.org(req), body);
+  }
+
   @Post('payment-details')
   paymentDetails(@Req() req: AgentRequest): Promise<ToolResult> {
     return this.tools.paymentDetails(this.org(req));

@@ -70,6 +70,10 @@ describe('Agent tool catalogue', () => {
         'lookup-customer',
         'payment-details',
         'register-enrollee',
+        // Parity with the orchestrator's callback flow: both engines must be
+        // able to promise a citizen a call back, or the same words produce a
+        // dated commitment on WhatsApp and nothing on a voice call.
+        'request-callback',
         'reschedule-booking',
         'search-knowledge',
       ].sort()

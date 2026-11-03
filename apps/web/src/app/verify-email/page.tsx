@@ -115,9 +115,9 @@ function VerifyEmailContent() {
         )}
         {status === 'error' && (
           <div className="space-y-4">
-            <XCircle className="w-12 h-12 text-red-600 dark:text-red-400 mx-auto" />
+            <XCircle className="w-12 h-12 text-red-700 dark:text-red-400 mx-auto" />
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Verification Failed</h1>
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 p-3 rounded-xl border border-red-200 dark:border-red-500/20">{message}</p>
+            <p className="text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 p-3 rounded-xl border border-red-200 dark:border-red-500/20">{message}</p>
 
             {/* A link expires after 24 hours. Without this the only way on was
                 to ask somebody with database access. */}

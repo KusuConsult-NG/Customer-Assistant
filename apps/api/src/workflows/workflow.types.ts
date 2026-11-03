@@ -24,7 +24,9 @@ export type TriggerEvent =
   | 'BOOKING_CONFIRMED'
   | 'DEAL_STAGE_CHANGED'
   | 'CALL_ENDED'
-  | 'CONTACT_CREATED';
+  | 'CONTACT_CREATED'
+  | 'CALLBACK_PLACED'
+  | 'CALLBACK_FAILED';
 
 /** Legacy trigger names kept working. */
 export const TRIGGER_ALIASES: Record<string, TriggerEvent> = {
@@ -37,6 +39,8 @@ export const TRIGGER_ALIASES: Record<string, TriggerEvent> = {
   DEAL_STAGE_CHANGED: 'DEAL_STAGE_CHANGED',
   CALL_ENDED: 'CALL_ENDED',
   CONTACT_CREATED: 'CONTACT_CREATED',
+  CALLBACK_PLACED: 'CALLBACK_PLACED',
+  CALLBACK_FAILED: 'CALLBACK_FAILED',
 };
 
 export function normalizeTrigger(raw: string | undefined): TriggerEvent | null {

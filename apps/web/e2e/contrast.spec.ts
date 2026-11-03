@@ -49,7 +49,7 @@ const API_URL = process.env.PLAYWRIGHT_API_URL || 'http://localhost:4000';
 
 const ROUTES = [
   '/', '/analytics', '/crm', '/conversations', '/agent-console', '/knowledge',
-  '/workflows', '/broadcasts', '/telephony', '/scheduling', '/agent-provisioning',
+  '/workflows', '/broadcasts', '/telephony', '/scheduling', '/callbacks', '/agent-provisioning',
   '/services', '/white-label', '/settings', '/platform',
 ];
 

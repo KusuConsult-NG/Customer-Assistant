@@ -140,6 +140,7 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/agent-tools/cancel-booking', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/reschedule-booking', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/create-ticket', calledBy: 'ElevenLabs agent (webhook tool)' },
+  { method: 'POST', path: '/api/agent-tools/request-callback', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/payment-details', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/check-availability', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/search-knowledge', calledBy: 'ElevenLabs agent (webhook tool)' },

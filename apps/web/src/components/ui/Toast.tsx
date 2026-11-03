@@ -54,7 +54,7 @@ const STYLE: Record<ToastKind, { icon: typeof CheckCircle2; wrap: string; iconCl
   error: {
     icon: XCircle,
     wrap: 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-500/30',
-    iconCls: 'text-red-600 dark:text-red-400',
+    iconCls: 'text-red-700 dark:text-red-400',
   },
   warning: {
     icon: AlertTriangle,

@@ -117,7 +117,7 @@ function Badge({ tone, children }: { tone: 'ok' | 'warn' | 'bad' | 'mute'; child
   const cls = {
     ok: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
     warn: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
-    bad: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
+    bad: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
     mute: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700',
   }[tone];
   return <span className={`text-[10px] px-2 py-0.5 rounded-lg font-bold border tracking-wider ${cls}`}>{children}</span>;

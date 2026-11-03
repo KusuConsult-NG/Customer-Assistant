@@ -249,6 +249,7 @@ export const TOOL_NAMES = [
   'reschedule-booking',
   'cancel-booking',
   'create-ticket',
+  'request-callback',
   'payment-details',
   'search-knowledge',
   'register-enrollee',
@@ -393,6 +394,25 @@ export function agentToolCatalog(
         ),
       },
       ['phoneNumber', 'subject', 'description']
+    ),
+
+    // Parity with the orchestrator's callback flow. Both engines must be able
+    // to make the same promise, or a citizen who asks the voice agent to ring
+    // them back gets a ticket nobody put a time against while the same words
+    // on WhatsApp produce a dated commitment.
+    'request-callback': build(
+      'request-callback',
+      'Promise to ring the caller back later. Use when they ask to be called back, or when they cannot wait for a colleague now. ' +
+      'State the window you are given back to them — it is the promise.',
+      {
+        phoneNumber: callerPhone,
+        reason: askedOf('string', 'What the callback is about, in enough detail for a colleague to act on it.'),
+        whenMinutes: askedOf(
+          'number',
+          'How soon, in minutes: 60 for within the hour, 240 for later today, 1440 for tomorrow. Ask which suits them; do not assume.'
+        ),
+      },
+      ['phoneNumber', 'reason', 'whenMinutes']
     ),
 
     'payment-details': build(

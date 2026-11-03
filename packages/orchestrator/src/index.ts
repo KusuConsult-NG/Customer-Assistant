@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, nextServiceTime, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -31,7 +31,9 @@ import {
 } from './reschedule-flow';
 export * from './reschedule-flow';
 import { CANCEL_FLOW, CANCEL_FLOW_NAME } from './cancel-flow';
+import { CALLBACK_FLOW, CALLBACK_FLOW_NAME, chosenWindow } from './callback-flow';
 export { CANCEL_FLOW, CANCEL_FLOW_NAME } from './cancel-flow';
+export { CALLBACK_FLOW, CALLBACK_FLOW_NAME, CALLBACK_WINDOWS } from './callback-flow';
 import {
   BOOKING_FLOW, BOOKING_FLOW_NAME, SLOTS_KEY, SERVICE_KEY,
   chosenSlot, serviceOf, type BookableSlot,
@@ -142,16 +144,49 @@ const MAX_HISTORY_TURNS = 12;
  * of the markets this platform targets (California B.O.T. Act §17941, EU AI Act
  * Art. 50), and this code used to actively deny it.
  */
+/**
+ * "Are you a bot?", however it is phrased.
+ *
+ * ── Why this is not a phrase list any more ──────────────────────────────────
+ *
+ * It was, and the list had `am i talking to a machine`, `am i talking to a
+ * robot` and `am i talking to a bot` — but not `am i talking to a real
+ * person`, which is how people actually ask it on a PHONE CALL. That phrasing
+ * missed, fell through to the model, and when the model was unreachable the
+ * caller was handed to a queue having never been told they were speaking to an
+ * AI. Admitting to being an AI when asked is a regulatory requirement, so a
+ * matcher that depends on guessing the exact wording is the wrong shape.
+ *
+ * So it is a frame plus a noun: an interrogative about the thing they are
+ * talking to ("are you…", "is this…", "am i speaking to…") combined with
+ * anything that names a person or a machine.
+ *
+ * ── Why the frame is required ───────────────────────────────────────────────
+ *
+ * "I want to speak to a human" and "put me through to a real person" contain
+ * the same nouns and are the OPPOSITE request — they are escalations, and
+ * answering them with a disclosure would strand somebody who asked for help.
+ * The difference is grammatical: `am i speaking to a human` is a question
+ * about the assistant, `can i speak to a human` is a request for a person. The
+ * `am i` frame matches only the first.
+ */
 function isAiDisclosureQuestion(lowerInput: string): boolean {
-  const PHRASES = [
-    'are you an ai', 'are you ai', 'are you a robot', 'are you a bot',
-    'is this a bot', 'is this an ai', 'is this a robot',
-    'are you human', 'are you a human', 'are you a person', 'are you a real person',
-    'is this a real person', 'is this a human',
-    'am i talking to a machine', 'am i talking to a robot', 'am i talking to a bot',
-    'am i speaking to a robot', 'am i chatting with a bot',
+  const NOUN = String.raw`(?:an?\s+)?(?:a\.?i\.?|ai|bot|robot|machine|computer|software|program(?:me)?|human(?:\s+being)?|real\s+(?:person|human)|live\s+(?:person|human|agent)|person)`;
+
+  const FRAMES = [
+    // "are you a bot", "are you human", "r u a robot"
+    String.raw`\b(?:are|r)\s+(?:you|u)\s+(?:really\s+)?${NOUN}\b`,
+    // "is this a bot", "is that a real person", "is this an automated system"
+    String.raw`\bis\s+(?:this|that|it)\s+(?:really\s+)?${NOUN}\b`,
+    // "am i talking to a real person", "am i speaking with a human"
+    String.raw`\bam\s+i\s+(?:talking|speaking|chatting|dealing)\s+(?:to|with)\s+${NOUN}\b`,
+    // "who am i speaking to" / "who am i talking to"
+    String.raw`\bwho\s+am\s+i\s+(?:talking|speaking)\s+(?:to|with)\b`,
+    // "is this automated", "are you automated", "is this a recording"
+    String.raw`\b(?:is\s+(?:this|that|it)|are\s+you)\s+(?:an?\s+)?(?:automated|auto|recorded|recording|pre-?recorded)\b`,
   ];
-  return PHRASES.some((p) => lowerInput.includes(p));
+
+  return FRAMES.some((f) => new RegExp(f).test(lowerInput));
 }
 
 /** "table for 6", "party of four", "6 people" → 6 */
@@ -203,6 +238,23 @@ export const CANCEL_BOOKING_PHRASES = [
   'cancel my reservation', 'cancel reservation', 'i want to cancel',
   'please cancel', 'cancel booking',
 ];
+
+/**
+ * Asking to be rung back.
+ *
+ * Checked BEFORE the booking phrases, because "call me back about my
+ * appointment" contains "my appointment" and would otherwise be answered with
+ * a booking lookup — the same class of collision the note below describes for
+ * cancel-vs-status.
+ */
+export const CALLBACK_PHRASES = [
+  'call me back', 'call back', 'callback', 'ring me back', 'ring me',
+  'call me later', 'can someone call me', 'someone call me', 'please call me',
+  'have someone call', 'return my call', 'phone me back',
+];
+
+export const wantsCallback = (lowerInput: string): boolean =>
+  CALLBACK_PHRASES.some((p) => lowerInput.includes(p));
 
 export const RESCHEDULE_PHRASES = [
   'reschedule', 'change my appointment', 'move my booking', 'postpone',
@@ -685,6 +737,7 @@ const FLOWS: Record<string, FlowDefinition> = {
   [ENROLLMENT_FLOW_NAME]: ENROLLMENT_FLOW,
   [RESCHEDULE_FLOW_NAME]: RESCHEDULE_FLOW,
   [CANCEL_FLOW_NAME]: CANCEL_FLOW,
+  [CALLBACK_FLOW_NAME]: CALLBACK_FLOW,
   [BOOKING_FLOW_NAME]: BOOKING_FLOW,
   [RESERVATION_FLOW_NAME]: RESERVATION_FLOW,
 };
@@ -1068,6 +1121,19 @@ export class ConversationOrchestrator {
         };
       } catch (err) {
         return this.toolFailureReply('CHECK_BOOKING_STATUS', err, lang);
+      }
+    }
+
+    // ── 5b. Tool: Request a callback ──────────────────────────────────────────
+    //
+    // Ahead of the booking branches on purpose: "call me back about my
+    // appointment" matches CHECK_BOOKING_PHRASES too, and answering it with an
+    // appointment time is not what was asked for.
+    if (wantsCallback(lowerInput)) {
+      try {
+        return await this.startCallbackFlow(context, lang);
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_CALLBACK', err, lang);
       }
     }
 
@@ -2389,6 +2455,134 @@ export class ConversationOrchestrator {
     }
   }
 
+  /**
+   * Start the callback form.
+   *
+   * Refuses without a number rather than collecting a reason and a time it can
+   * never act on: the whole value of this record is that somebody can be rung.
+   *
+   * An open callback is not duplicated. A citizen who asks twice is told the
+   * reference and the window they already have — booking a second one would
+   * have two officers ring the same person about the same thing, and the
+   * second caller would have no idea the first had already happened.
+   */
+  private async startCallbackFlow(
+    context: ConversationContext,
+    lang: Language = 'en'
+  ): Promise<OrchestrationResult> {
+    const phone = context.customerPhoneNumber;
+    if (!phone) {
+      return {
+        replyText:
+          'I need a phone number before I can arrange a call back. ' +
+          'Let me bring in a colleague who can take it from you.',
+        intentDetected: 'REQUEST_CALLBACK',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    const existing = await prisma.callbackRequest.findFirst({
+      where: {
+        organizationId: context.organizationId,
+        phoneNumber: { in: phoneNumberVariants(phone) },
+        status: { in: ['PENDING', 'DUE', 'IN_PROGRESS'] },
+      },
+      orderBy: { dueAt: 'asc' },
+    });
+    if (existing) {
+      return {
+        replyText: t(lang, 'callback_already_open', {
+          ref: callbackReference(existing.id),
+          when: existing.promisedText,
+        }),
+        intentDetected: 'REQUEST_CALLBACK',
+        confidenceScore: 0.95,
+        shouldHandoff: false,
+      };
+    }
+
+    const conversationId = await this.ensureConversation(context);
+    if (!conversationId) {
+      // A flow with no thread to hang state on cannot be resumed, so it hands
+      // over rather than asking a question it will forget the answer to.
+      return {
+        replyText:
+          'I can arrange for someone to call you back, but I cannot take the ' +
+          'details here. Let me bring in a colleague who can.',
+        intentDetected: 'REQUEST_CALLBACK',
+        confidenceScore: 0.9,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.TOOL_FAILURE,
+      };
+    }
+
+    const state = beginFlow(CALLBACK_FLOW);
+    return this.runFlow(context, conversationId, CALLBACK_FLOW, state, '', lang);
+  }
+
+  /**
+   * Write the callback the citizen just confirmed.
+   *
+   * `dueAt` is pulled forward into the agency's serving hours rather than set
+   * to "now + N" blindly: a citizen who asks at 17:50 for a call "within the
+   * hour" would otherwise be promised 18:50, when the office is shut, and the
+   * promise would be broken before it was made. `promisedText` keeps what they
+   * were actually told, so the officer who rings says the same thing.
+   */
+  private async completeCallback(
+    context: ConversationContext,
+    collected: Record<string, string>,
+    lang: Language
+  ): Promise<OrchestrationResult> {
+    const phone = context.customerPhoneNumber;
+    if (!phone) {
+      return this.toolFailureReply(
+        'REQUEST_CALLBACK',
+        new Error('no phone number on the conversation to call back'),
+        lang
+      );
+    }
+
+    const window = chosenWindow(collected);
+    if (!window) {
+      return this.toolFailureReply(
+        'REQUEST_CALLBACK',
+        new Error('no callback window was stored'),
+        lang
+      );
+    }
+
+    const contact = await this.getOrCreateContact(context);
+    const hours = await serviceHoursFrom(prisma, context.organizationId);
+    const dueAt = nextServiceTime(new Date(Date.now() + window.minutes * 60_000), hours);
+    const promisedText = t(lang, window.key as any);
+
+    const record = await prisma.callbackRequest.create({
+      data: {
+        organizationId: context.organizationId,
+        contactId: contact.id,
+        phoneNumber: normalizePhoneNumber(phone),
+        reason: (collected.reason ?? '').slice(0, 1000),
+        promisedText,
+        dueAt,
+        conversationId: context.conversationId ?? null,
+      },
+    });
+
+    return {
+      replyText: t(lang, 'callback_confirmed', {
+        ref: callbackReference(record.id),
+        number: normalizePhoneNumber(phone),
+        when: promisedText.toLowerCase(),
+      }),
+      intentDetected: 'REQUEST_CALLBACK',
+      confidenceScore: 0.95,
+      shouldHandoff: false,
+    };
+  }
+
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
 
@@ -3012,6 +3206,14 @@ export class ConversationOrchestrator {
       }
     }
 
+    if (flow.name === CALLBACK_FLOW_NAME) {
+      try {
+        return await this.completeCallback(context, step.state.collected, lang);
+      } catch (err) {
+        return this.toolFailureReply('REQUEST_CALLBACK', err, lang);
+      }
+    }
+
     if (flow.name === BOOKING_FLOW_NAME) {
       try {
         return await this.completeBooking(context, step.state.collected, lang);
@@ -3329,43 +3531,16 @@ export class ConversationOrchestrator {
       );
     }
 
-    // Race-safe upsert: catch unique constraint violation and re-query
-    try {
-      // Every shape on the way in, the canonical one on the way out: the same
-      // customer reaching this platform by phone and by WhatsApp must land on
-      // one contact, not two.
-      const existing = await prisma.contact.findFirst({
-        where: {
-          organizationId: context.organizationId,
-          phoneNumber: { in: phoneNumberVariants(phone) },
-        },
-      });
-      if (existing) return existing;
-
-      return await prisma.contact.create({
-        data: {
-          organizationId: context.organizationId,
-          phoneNumber: normalizePhoneNumber(phone),
-          fullName: `Valued Customer (···${phone.slice(-4)})`,
-        },
-      });
-    } catch (err: any) {
-      if (err.code === 'P2002') {
-        // Another concurrent request created this contact first
-        const contact = await prisma.contact.findFirst({
-          where: {
-            organizationId: context.organizationId,
-            phoneNumber: { in: phoneNumberVariants(phone) },
-          },
-        });
-        if (contact) return contact;
-      }
-      // Database is genuinely down or misconfigured — rethrow so the caller
-      // sees a real error rather than a fake mock_contact_ ID
+    // ONE implementation, shared with the inbound call handler, which creates
+    // the record the moment a call is answered. Two definitions of "a new
+    // citizen" would drift, and the drift would be in who exists in the CRM.
+    const contact = await ensureContactForPhone(prisma, context.organizationId, phone);
+    if (!contact) {
       throw new Error(
-        `Failed to upsert contact for phone ${phone.slice(-4)}: ${err.message}. ` +
-        `Check database connectivity (DATABASE_URL, PostgreSQL container status).`
+        `Cannot create Contact: "${phone}" is not a number that can be stored ` +
+        `(withheld or anonymous caller ID).`
       );
     }
+    return contact as any;
   }
 }

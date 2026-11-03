@@ -853,7 +853,7 @@ export default function WorkflowsPage() {
                             <span className="font-semibold text-slate-800 dark:text-slate-200">
                               {s.action ?? s.kind}
                             </span>
-                            {s.error && <span className="text-red-600 dark:text-red-400"> — {s.error}</span>}
+                            {s.error && <span className="text-red-700 dark:text-red-400"> — {s.error}</span>}
                             {s.output != null && (
                               <pre className="mt-1 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-[10px] text-slate-600 dark:text-slate-300 overflow-x-auto">
                                 {JSON.stringify(s.output, null, 2)}
@@ -914,7 +914,7 @@ export default function WorkflowsPage() {
                           )}
                         </div>
                         {run.error && (
-                          <p className="text-[11px] text-red-600 dark:text-red-400 mt-1 truncate">{run.error}</p>
+                          <p className="text-[11px] text-red-700 dark:text-red-400 mt-1 truncate">{run.error}</p>
                         )}
                         {expandedRun === run.id && (
                           <ol className="mt-2 space-y-1.5 pl-1">
@@ -928,7 +928,7 @@ export default function WorkflowsPage() {
                                     <span className="font-semibold text-slate-700 dark:text-slate-300">
                                       {s.action ?? s.kind}
                                     </span>
-                                    {s.error && <span className="text-red-600 dark:text-red-400"> — {s.error}</span>}
+                                    {s.error && <span className="text-red-700 dark:text-red-400"> — {s.error}</span>}
                                     {s.output != null && (
                                       <pre className="mt-1 p-2 rounded bg-slate-50 dark:bg-slate-800/60 text-[10px] text-slate-600 dark:text-slate-300 overflow-x-auto">
                                         {JSON.stringify(s.output)}
@@ -1207,7 +1207,7 @@ function runStatusClass(status: string): string {
       return 'text-emerald-700 dark:text-emerald-400';
     case 'FAILED':
     case 'DEAD_LETTER':
-      return 'text-red-600 dark:text-red-400';
+      return 'text-red-700 dark:text-red-400';
     case 'RUNNING':
       return 'text-blue-700 dark:text-blue-400';
     default:

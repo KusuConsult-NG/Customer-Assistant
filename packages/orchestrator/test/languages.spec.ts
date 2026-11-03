@@ -29,6 +29,7 @@ const mockPrisma = {
 
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
+  ...jest.requireActual('../../database/src/callback'),
   ...jest.requireActual('../../database/src/availability'),
   ...jest.requireActual('../../database/src/service-hours'),
   ...jest.requireActual('../../database/src/service-catalogue'),
@@ -198,6 +199,8 @@ describe('t — templates interpolate, never translate values', () => {
       lga: 'Jos North', plan: 'Informal Sector', free: '', facility: 'PSH',
       nin: '—', list: '1 — a', options: 'PSH', verb: 'move', heading: '',
       label: 'L', from: 'F', to: 'T', guests: '4', max: '50',
+      // Callback: what the citizen asked to be rung about.
+      reason: 'water supply off',
     };
     for (const lang of SUPPORTED_LANGUAGES) {
       for (const key of TEMPLATE_KEYS) {

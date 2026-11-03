@@ -99,4 +99,5 @@ export * from './booking-conflicts';
 export * from './service-hours';
 export * from './service-catalogue';
 export * from './availability';
+export * from './callback';
 export * from './audit';

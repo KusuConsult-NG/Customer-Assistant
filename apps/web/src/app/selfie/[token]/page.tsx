@@ -239,7 +239,7 @@ export default function SelfieUploadPage() {
 
           {stage === 'invalid' && (
             <div className="text-center space-y-3 py-6">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto text-2xl font-bold">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 flex items-center justify-center mx-auto text-2xl font-bold">
                 !
               </div>
               <p className="text-sm text-slate-700 dark:text-slate-300 font-semibold">{error}</p>

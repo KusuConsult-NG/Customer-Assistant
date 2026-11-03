@@ -597,7 +597,7 @@ function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { sear
                     >
                       View Profile
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-100 dark:bg-red-500/20 transition-all">
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(c.id); }} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-100 dark:bg-red-500/20 transition-all">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -729,7 +729,7 @@ function LeadsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any[]
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{l.createdAt ? new Date(l.createdAt).toLocaleDateString() : '—'}</td>
             <td className="px-5 py-4 text-right">
-              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all">
+              <button onClick={() => onDelete(l.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all">
                 <Trash2 className="w-4 h-4" />
               </button>
             </td>
@@ -794,7 +794,7 @@ function DealsTable({ data, loading, onAdd, onDelete, onQuote }: { data: any[]; 
               <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '—'}</td>
               <td className="px-5 py-4 text-right space-x-2">
                 <button onClick={() => onQuote(d.id)} className="px-2 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:bg-purple-500/20 text-xs font-semibold transition-all">Generate Quotation</button>
-                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => onDelete(d.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
               </td>
             </tr>
           ))}
@@ -872,7 +872,7 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
     LOW: 'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20',
     MEDIUM: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
     HIGH: 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20',
-    URGENT: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
+    URGENT: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/20',
   };
 
   if (loading) return <div className="p-4"><TableSkeleton rows={5} columns={5} /></div>;
@@ -921,7 +921,7 @@ function TicketsTable({ data, loading, onAdd, onRefresh, onDelete }: { data: any
             </td>
             <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>
             <td className="px-5 py-4 text-right">
-              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => onDelete(t.id)} className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 dark:bg-red-500/20 transition-all"><Trash2 className="w-4 h-4" /></button>
             </td>
           </tr>
         ))}
@@ -1002,7 +1002,7 @@ function AddContactModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 
   return (
     <ModalWrapper title="Add New Contact" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Emeka Okafor" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
@@ -1061,7 +1061,7 @@ function AddLeadModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
   return (
     <ModalWrapper title="Add New Lead" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Full Name"><input required type="text" value={fullName} onChange={e => setFullName(e.target.value)} className={inputCls} placeholder="e.g. Amaka Osei" /></Field>
         <Field label="Phone Number"><input required type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} className={inputCls} placeholder="+2348031234567" /></Field>
@@ -1112,7 +1112,7 @@ function AddDealModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
 
   return (
     <ModalWrapper title="Add New Deal" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Deal Title"><input required type="text" value={title} onChange={e => setTitle(e.target.value)} className={inputCls} placeholder="e.g. Premium Service Contract" /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -1171,7 +1171,7 @@ function AddTicketModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
   return (
     <ModalWrapper title="New Support Ticket" onClose={onClose}>
-      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">{error}</div>}
+      {error && <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-sm">{error}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Customer Name"><input required type="text" value={contactFullName} onChange={e => setContactFullName(e.target.value)} className={inputCls} placeholder="Full name" /></Field>

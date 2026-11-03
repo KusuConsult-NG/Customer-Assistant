@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, nextServiceTime, OPEN_CALLBACK_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -360,6 +360,87 @@ export class AgentToolsService {
   }
 
   // ── Support ────────────────────────────────────────────────────────────────
+  /**
+   * Promise to ring the caller back, and record the promise.
+   *
+   * Shares the CallbackRequest shape and the service-hours clamp with the
+   * orchestrator's callback flow rather than writing its own row: a citizen
+   * who asks the voice agent and one who asks on WhatsApp must end up in the
+   * same queue, or an officer working one list misses half the promises.
+   *
+   * `whenMinutes` comes from the caller's own choice. It is clamped to the
+   * agency's serving hours, so a request at 17:50 for "within the hour" falls
+   * due when somebody is actually there — a promise due at 18:50 is broken at
+   * the moment it is made.
+   */
+  async requestCallback(
+    organizationId: string,
+    input: { phoneNumber: string; reason: string; whenMinutes?: number; fullName?: string }
+  ): Promise<ToolResult> {
+    try {
+      if (!input?.phoneNumber?.trim()) {
+        return this.failed('request-callback', new Error('no phone number to call back'));
+      }
+      if (!input?.reason?.trim()) {
+        return {
+          ok: false,
+          speak: 'Before I arrange that, could you tell me what the call should be about?',
+          data: { reason: 'missing_reason' },
+        };
+      }
+
+      const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
+
+      // An open promise is not duplicated: two officers ringing the same
+      // citizen about the same thing is worse than one.
+      const existing = await prisma.callbackRequest.findFirst({
+        where: {
+          organizationId,
+          phoneNumber: { in: phoneNumberVariants(input.phoneNumber) },
+          status: { in: [...OPEN_CALLBACK_STATUSES] },
+        },
+        orderBy: { dueAt: 'asc' },
+      });
+      if (existing) {
+        return {
+          ok: true,
+          speak:
+            `You already have a callback booked, reference ${callbackReference(existing.id)}, ` +
+            `${existing.promisedText.toLowerCase()}. I have not booked a second one.`,
+          data: { callbackId: existing.id, reference: callbackReference(existing.id), duplicate: true },
+        };
+      }
+
+      const minutes = Number.isFinite(input.whenMinutes) ? Number(input.whenMinutes) : 60;
+      const promisedText =
+        minutes <= 60 ? 'Within the hour' : minutes <= 240 ? 'Later today' : 'Tomorrow';
+
+      const hours = await serviceHoursFrom(prisma, organizationId);
+      const dueAt = nextServiceTime(new Date(Date.now() + minutes * 60_000), hours);
+
+      const row = await prisma.callbackRequest.create({
+        data: {
+          organizationId,
+          contactId: contact.id,
+          phoneNumber: normalizePhoneNumber(input.phoneNumber),
+          reason: input.reason.trim().slice(0, 1000),
+          promisedText,
+          dueAt,
+        },
+      });
+
+      return {
+        ok: true,
+        speak:
+          `That is arranged — your reference is ${callbackReference(row.id)}. ` +
+          `Someone will call you back ${promisedText.toLowerCase()}.`,
+        data: { callbackId: row.id, reference: callbackReference(row.id), dueAt: dueAt.toISOString() },
+      };
+    } catch (err) {
+      return this.failed('request-callback', err);
+    }
+  }
+
   async createTicket(
     organizationId: string,
     input: { phoneNumber: string; fullName?: string; subject: string; description: string }

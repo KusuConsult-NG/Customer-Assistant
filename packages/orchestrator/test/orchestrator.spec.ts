@@ -35,6 +35,7 @@ const mockPrisma = {
  */
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
+  ...jest.requireActual('../../database/src/callback'),
   ...jest.requireActual('../../database/src/availability'),
   ...jest.requireActual('../../database/src/service-hours'),
   ...jest.requireActual('../../database/src/service-catalogue'),
@@ -112,6 +113,21 @@ describe('ConversationOrchestrator', () => {
       'am i talking to a machine',
       'are you human?',
       'is this a real person',
+
+      // Every one of these MISSED, because the matcher was a list of exact
+      // phrases that happened to contain "am i talking to a machine" and not
+      // "am i talking to a real person" — which is how people ask it on a
+      // phone call. The question fell through to the model, and when the model
+      // was unreachable the caller was handed to a queue having never been
+      // told they were speaking to an AI. Disclosure is a regulatory
+      // requirement, so it cannot depend on guessing the wording.
+      'am i talking to a real person?',
+      'am i speaking to a human',
+      'am i chatting with a bot',
+      'who am i speaking to',
+      'is this automated',
+      'is this a recording',
+      'r u a robot',
     ];
 
     it.each(questions)('answers "%s" honestly', async (question) => {
@@ -124,6 +140,25 @@ describe('ConversationOrchestrator', () => {
       // representative here at ${orgName}" under a "Stealth Human Persona" heading.
       expect(result.replyText).not.toMatch(/haha,?\s*no/i);
       expect(result.replyText).not.toMatch(/I'?m a customer support representative/i);
+    });
+  });
+
+  describe('A request for a person is not a question about the assistant', () => {
+    // Same nouns, opposite meaning. "am i speaking to a human" asks what it is
+    // talking to; "can i speak to a human" asks for one. Answering the second
+    // with a disclosure strands somebody who asked for help, which is why the
+    // matcher keys on the interrogative frame rather than the noun.
+    const escalations = [
+      'i want to speak to a human',
+      'can i speak to a real person',
+      'put me through to an agent',
+      'transfer me to a person',
+      'please connect me to an agent',
+    ];
+
+    it.each(escalations)('does not answer "%s" with a disclosure', async (text) => {
+      const result = await orchestrator.processIncomingMessage(baseContext(), text);
+      expect(result.intentDetected).not.toBe('AI_DISCLOSURE');
     });
   });
 

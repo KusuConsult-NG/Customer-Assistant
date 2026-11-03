@@ -1558,7 +1558,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{m.fullName || 'Team Member'}</p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400'}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${m.isActive !== false ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'}`}>
                         {m.isActive !== false ? 'ACTIVE' : 'SUSPENDED'}
                       </span>
                     </div>
@@ -1594,7 +1594,7 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                   {/* Delete Button */}
                   <button
                     onClick={() => handleRemoveMember(m.id, m.fullName || m.email)}
-                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:bg-red-500/10 font-semibold transition-all"
+                    className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400 hover:bg-red-50 dark:bg-red-500/10 font-semibold transition-all"
                   >
                     Remove
                   </button>
