@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { prisma, withTelephonyCredentials, ensureContactForPhone } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
+import { SipTrunkOriginationService } from './sip-trunk-origination.service';
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
@@ -113,7 +114,8 @@ function verifyAfricasTalkingSignature(
 export class TelephonyService {
   constructor(
     private webhookDispatcher: WebhookDispatcherService,
-    private workflows: WorkflowTriggerService
+    private workflows: WorkflowTriggerService,
+    private sipOrigination: SipTrunkOriginationService
   ) {}
 
   async handleInboundCall(
@@ -488,6 +490,55 @@ export class TelephonyService {
       toNumber: toNumber.slice(-4).padStart(toNumber.length, '*'),
       providerType: resolvedProvider,
     });
+
+    // ── A SIP trunk originates through the agent that answers it ────────────
+    //
+    // This platform holds no SIP stack, so `SipTrunkProvider.initiateCall`
+    // refuses — correctly. But ElevenLabs already holds the trunk (the import
+    // sends `outboundTrunkConfig` with the inbound side), so the agent that
+    // ANSWERS the agency's number can also place calls on it.
+    //
+    // That is what makes one number work in both directions, which matters
+    // most for a State toll-free already in service: it cannot be handed to
+    // Twilio, and without this a promised callback could never be placed on
+    // the only number the agency publishes.
+    if (resolvedProvider === TelephonyProviderType.SIP_TRUNK) {
+      const placed = await this.sipOrigination.placeCall(organizationId, toNumber, {
+        fromNumber,
+      });
+      const record = this.sipOrigination.asCallRecord(organizationId, placed, {
+        fromNumber,
+        toNumber,
+      });
+
+      const callLog = await prisma.callLog.create({
+        data: {
+          organizationId,
+          callSid:   record.callId,
+          fromNumber,
+          toNumber,
+          direction: CallDirection.OUTBOUND,
+          status:    CallStatus.QUEUED,
+          provider:  resolvedProvider as any,
+        },
+      });
+
+      log.info('telephony_outbound_call_placed_via_sip_trunk', {
+        correlationId,
+        organizationId,
+        callLogId: callLog.id,
+        callSid: record.callId,
+      }, timer);
+
+      this.webhookDispatcher.dispatch(organizationId, 'call.started', {
+        callSid: record.callId,
+        fromNumber,
+        toNumber,
+        direction: 'OUTBOUND',
+      });
+
+      return { ...record, id: callLog.id, callSid: record.callId };
+    }
 
     const provider = TelephonyFactory.createProvider(resolvedProvider, {
       accountSid: config.accountSid,

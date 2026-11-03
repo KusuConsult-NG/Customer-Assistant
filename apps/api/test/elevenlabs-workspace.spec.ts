@@ -36,6 +36,7 @@ import { prisma, encryptSecret } from '@ace/database';
 import { AppModule } from '../src/app.module';
 import { ElevenLabsAgentService } from '../src/agent-tools/elevenlabs-agent.service';
 import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
+import { ElevenLabsError } from '@elevenlabs/elevenlabs-js/errors';
 import {
   sharedWorkspaceAllowed,
   tenantWebhookPath,
@@ -266,6 +267,51 @@ describe('the ElevenLabs workspace boundary', () => {
   });
 
   // ── Inbound: whose secret verified this delivery, and whose call is it? ──────
+
+  describe('telling a rejected key apart from an unreachable host', () => {
+    /**
+     * "Rejected" asserts that ElevenLabs answered and refused.
+     *
+     * The SDK wraps a NETWORK failure in the same `ElevenLabsError`, with no
+     * status code and an empty body, so the status endpoint reported:
+     *
+     *     ElevenLabs rejected the agent status (HTTP ?): {}
+     *
+     * when nothing had been reached at all. An operator who has just entered a
+     * new key reads that as "my key was refused" and spends the afternoon on
+     * the one thing that is not wrong. These two cases are the whole reason
+     * the wording is chosen from the status rather than the error class.
+     */
+    // No Nest context needed: `fail` is pure translation of a provider error.
+    const api = () => new ElevenLabsApi();
+
+    it('calls a real HTTP status a rejection, and keeps the body', () => {
+      const err = new ElevenLabsError({ statusCode: 401, body: { detail: 'invalid api key' } });
+      expect(() => api().fail('the agent status', err)).toThrow(/rejected the agent status \(HTTP 401\)/);
+      expect(() => api().fail('the agent status', err)).toThrow(/invalid api key/);
+    });
+
+    it('does NOT call a response-less failure a rejection', () => {
+      const err = new ElevenLabsError({ message: 'fetch failed' });
+      let message = '';
+      try { api().fail('the agent status', err); } catch (e: any) { message = e.message; }
+
+      expect(message).not.toMatch(/ElevenLabs rejected/i);
+      expect(message).toMatch(/could not reach/i);
+      // Names the host, so a data-residency deployment is not left guessing
+      // which endpoint was tried, and says plainly it is not the key.
+      expect(message).toMatch(/api\.elevenlabs\.io/);
+      expect(message).toMatch(/not a rejected key/i);
+    });
+
+    it('treats a plain network error the same way', () => {
+      let message = '';
+      try { api().fail('the agent status', new Error('getaddrinfo ENOTFOUND api.elevenlabs.io')); }
+      catch (e: any) { message = e.message; }
+      expect(message).toMatch(/could not reach/i);
+      expect(message).not.toMatch(/ElevenLabs rejected/i);
+    });
+  });
 
   describe('the per-tenant webhook', () => {
     let app: INestApplication;

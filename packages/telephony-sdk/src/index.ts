@@ -625,9 +625,10 @@ export class SipTrunkProvider implements TelephonyProvider {
   async initiateCall(_options: CallInitiateOptions): Promise<CallRecord> {
     throw new TelephonyNotAvailableError(
       this.type,
-      'this number is served by a SIP trunk that the hosted agent answers directly. The platform holds no SIP stack, '
-      + 'so it cannot originate a call on the trunk. Outbound calling needs a provider with a REST API — configure '
-      + 'Twilio under Settings → Voice & Telephony alongside the trunk if the agency needs to dial out.'
+      'this number is served by a SIP trunk, and the platform holds no SIP stack of its own, so it cannot originate '
+      + 'on the trunk directly. Outbound on a trunk goes through the hosted agent that already answers it '
+      + '(SipTrunkOriginationService) — reaching this error means the agency has no provisioned agent, or its trunk '
+      + 'number has not been imported under Agent Provisioning → Numbers.'
     );
   }
 

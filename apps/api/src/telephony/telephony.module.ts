@@ -10,6 +10,8 @@ import { AuthModule } from '../auth/auth.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
 import { CallbackDispatcherService } from './callback-dispatcher.service';
 import { CallbacksController } from './callbacks.controller';
+import { SipTrunkOriginationService } from './sip-trunk-origination.service';
+import { ElevenLabsApi } from '../agent-tools/elevenlabs-client';
 
 @Module({
   // AuthModule exports JwtService, used by VoiceStreamGateway to authenticate
@@ -33,6 +35,15 @@ import { CallbacksController } from './callbacks.controller';
 
     // Keeps the promise to ring a citizen back: claims a due row, then dials.
     CallbackDispatcherService,
+
+    // Dialling out on the agency's own SIP trunk, through the agent that
+    // already answers it. `ElevenLabsApi` is listed here rather than imported
+    // from AgentToolsModule because that module imports THIS one — a
+    // forwardRef would work, but the class is stateless with no constructor
+    // dependencies, so a second instance costs nothing and the cycle is
+    // avoided rather than worked around.
+    ElevenLabsApi,
+    SipTrunkOriginationService,
   ],
   controllers: [TelephonyController, CallbacksController],
   exports: [
@@ -47,6 +58,7 @@ import { CallbacksController } from './callbacks.controller';
 
     // The console's "call now" button goes through the dispatcher's own claim.
     CallbackDispatcherService,
+    SipTrunkOriginationService,
   ],
 })
 export class TelephonyModule {}

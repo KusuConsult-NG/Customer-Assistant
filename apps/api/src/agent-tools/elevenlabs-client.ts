@@ -88,20 +88,49 @@ export class ElevenLabsApi {
     return new ElevenLabsClient({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
   }
 
-  /** Rethrow a provider failure with the provider named and its reason kept. */
+  /**
+   * Rethrow a provider failure with the provider named and its reason kept.
+   *
+   * ── Why the status code decides the wording ─────────────────────────────
+   *
+   * "Rejected" asserts that ElevenLabs answered and refused. The SDK wraps a
+   * NETWORK failure in the same `ElevenLabsError`, with no status code and an
+   * empty body, so this said:
+   *
+   *     ElevenLabs rejected the agent status (HTTP ?): {}
+   *
+   * when the host had not been reached at all. An operator who has just
+   * entered a new key reads that as "my key was refused" and goes looking at
+   * the key — which is the one place the fault is not. So a response that
+   * carries no status is reported as unreachable, naming the host and the
+   * underlying cause, and only a real HTTP status is called a rejection.
+   */
   fail(what: string, err: unknown): never {
-    if (err instanceof ElevenLabsError) {
+    const status = err instanceof ElevenLabsError ? err.statusCode : undefined;
+
+    if (err instanceof ElevenLabsError && typeof status === 'number') {
       const body = typeof err.body === 'string' ? err.body : JSON.stringify(err.body ?? {});
-      this.log.error(
-        `elevenlabs_error ${what} status=${err.statusCode} body=${body.slice(0, 400)}`
-      );
+      this.log.error(`elevenlabs_error ${what} status=${status} body=${body.slice(0, 400)}`);
       throw new ServiceUnavailableException(
-        `ElevenLabs rejected ${what} (HTTP ${err.statusCode ?? '?'}): ${body.slice(0, 300)}`
+        `ElevenLabs rejected ${what} (HTTP ${status}): ${body.slice(0, 300)}`
       );
     }
-    const message = err instanceof Error ? err.message : String(err);
-    this.log.error(`elevenlabs_unreachable ${what} error=${message}`);
-    throw new ServiceUnavailableException(`Could not reach ElevenLabs for ${what}: ${message}`);
+
+    // No status: nothing answered. Name the host, because a data-residency
+    // deployment is pointed somewhere other than the default.
+    const host = (process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io')
+      .replace(/^https?:\/\//, '')
+      .replace(/\/+$/, '');
+    const cause =
+      (err as any)?.cause?.code ||
+      (err as any)?.cause?.message ||
+      (err instanceof Error ? err.message : String(err)) ||
+      'no response';
+    this.log.error(`elevenlabs_unreachable ${what} host=${host} error=${cause}`);
+    throw new ServiceUnavailableException(
+      `Could not reach ${host} for ${what} (${cause}). The request was NOT delivered, ` +
+      `so this is not a rejected key — check outbound network access to ${host}:443.`
+    );
   }
 
   isNotFound(err: unknown): boolean {
