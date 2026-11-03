@@ -86,7 +86,7 @@ function Section({ icon, title, description, children }: {
   return (
     <div className={card}>
       <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-start gap-3">
-        <div className="mt-0.5 text-blue-600 dark:text-blue-400">{icon}</div>
+        <div className="mt-0.5 text-blue-700 dark:text-blue-400">{icon}</div>
         <div>
           <h2 className="font-semibold text-slate-900 dark:text-white">{title}</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{description}</p>
@@ -115,8 +115,8 @@ function Note({ kind, children }: { kind: 'info' | 'warn' | 'ok' | 'bad'; childr
 
 function Badge({ tone, children }: { tone: 'ok' | 'warn' | 'bad' | 'mute'; children: React.ReactNode }) {
   const cls = {
-    ok: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
-    warn: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
+    ok: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+    warn: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
     bad: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
     mute: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700',
   }[tone];
@@ -229,7 +229,7 @@ export default function AgentProvisioningPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
-        <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" />
+        <Loader2 className="w-8 h-8 text-blue-700 dark:text-blue-400 animate-spin" />
       </div>
     );
   }
@@ -266,7 +266,7 @@ export default function AgentProvisioningPage() {
       {mintedKey && (
         <div className="rounded-2xl border-2 border-amber-400 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-500/[0.07] p-6 space-y-3">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            <ShieldAlert className="w-5 h-5 text-amber-700 dark:text-amber-400" />
             <h2 className="font-bold text-amber-900 dark:text-amber-200">Agent key — shown once</h2>
           </div>
           <p className="text-xs text-amber-800 dark:text-amber-300/90 leading-relaxed">

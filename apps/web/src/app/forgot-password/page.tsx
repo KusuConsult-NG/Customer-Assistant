@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
         </div>
 
         {status === 'success' && (
-          <div className="p-4 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-600 dark:text-green-400 text-sm text-center">
+          <div className="p-4 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-700 dark:text-green-400 text-sm text-center">
             {message}
           </div>
         )}

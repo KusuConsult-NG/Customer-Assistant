@@ -197,7 +197,7 @@ export default function PlatformConsolePage() {
   if (forbidden) {
     return (
       <div className="max-w-2xl mx-auto mt-16 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-center">
-        <ShieldAlert className="w-10 h-10 mx-auto text-slate-400" />
+        <ShieldAlert className="w-10 h-10 mx-auto text-slate-500 dark:text-slate-400" />
         <h1 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
           Platform console unavailable
         </h1>
@@ -264,7 +264,7 @@ export default function PlatformConsolePage() {
       {overview && (overview.agencies.withWhatsAppConnected < overview.agencies.total ||
         overview.agencies.withTelephonyConnected < overview.agencies.total) && (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30">
-          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+          <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-amber-800 dark:text-amber-200">
             <strong>{overview.agencies.withWhatsAppConnected}</strong> of {overview.agencies.total} agencies
             have WhatsApp connected and <strong>{overview.agencies.withTelephonyConnected}</strong> have a
@@ -283,13 +283,13 @@ export default function PlatformConsolePage() {
         </TabButton>
       </div>
 
-      {loading && <p className="text-xs text-slate-500 py-8 text-center">Loading…</p>}
+      {loading && <p className="text-xs text-slate-500 dark:text-slate-400 py-8 text-center">Loading…</p>}
 
       {!loading && tab === 'agencies' && (
         <section className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-slate-900/60">
-              <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+              <tr className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <th className="px-4 py-3 font-bold">Agency</th>
                 <th className="px-3 py-3 font-bold">Status</th>
                 <th className="px-3 py-3 font-bold text-right">Staff</th>
@@ -304,7 +304,7 @@ export default function PlatformConsolePage() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {agencies.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-xs text-slate-500">
+                  <td colSpan={9} className="px-4 py-10 text-center text-xs text-slate-500 dark:text-slate-400">
                     No agencies yet. Onboard the first one to begin.
                   </td>
                 </tr>
@@ -319,12 +319,12 @@ export default function PlatformConsolePage() {
                       <p className="font-bold text-slate-900 dark:text-white group-hover:text-brand-700 dark:group-hover:text-brand-700 dark:text-brand-300 group-hover:underline">
                         {a.name}
                       </p>
-                      <p className="text-[10px] text-slate-400">{a.category}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{a.category}</p>
                     </button>
                   </td>
                   <td className="px-3 py-3">
                     {a.inService ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
                         <CheckCircle2 className="w-3 h-3" /> In service
                       </span>
                     ) : (
@@ -340,7 +340,7 @@ export default function PlatformConsolePage() {
                   <td className="px-3 py-3 text-right tabular-nums">{num(a.metrics.citizens)}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{num(a.metrics.conversations)}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{num(a.metrics.calls)}</td>
-                  <td className={`px-3 py-3 text-right tabular-nums ${a.metrics.openCases > 0 ? 'text-amber-600 dark:text-amber-400 font-bold' : ''}`}>
+                  <td className={`px-3 py-3 text-right tabular-nums ${a.metrics.openCases > 0 ? 'text-amber-700 dark:text-amber-400 font-bold' : ''}`}>
                     {num(a.metrics.openCases)}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums">{pct(a.metrics.handoverRatePercent)}</td>
@@ -373,18 +373,18 @@ export default function PlatformConsolePage() {
       {!loading && tab === 'audit' && (
         <section className="rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
           <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900/60">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">
               Append-only. This console cannot edit the record of its own actions.
             </p>
           </div>
           {audit.length === 0 && (
-            <p className="px-4 py-10 text-center text-xs text-slate-500">Nothing recorded yet.</p>
+            <p className="px-4 py-10 text-center text-xs text-slate-500 dark:text-slate-400">Nothing recorded yet.</p>
           )}
           {audit.map((e) => (
             <div key={e.id} className="px-4 py-3 text-xs">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="font-bold text-slate-900 dark:text-white">{e.action}</span>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
                   {new Date(e.createdAt).toLocaleString('en-NG')}
                 </span>
               </div>
@@ -523,7 +523,7 @@ function AgencyDetailPanel({
           <button
             onClick={onClose}
             aria-label="Close agency detail"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0"
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -538,14 +538,14 @@ function AgencyDetailPanel({
           )}
 
           {loading && !detail && (
-            <p className="text-xs text-slate-500 py-10 text-center">Loading agency…</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 py-10 text-center">Loading agency…</p>
           )}
 
           {detail && (
             <>
               {/* ── Service status ───────────────────────────────────────── */}
               {detail.inService ? (
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" /> In service
                 </div>
               ) : (
@@ -587,7 +587,7 @@ function AgencyDetailPanel({
                 </div>
                 {!reachable && (
                   <div className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                     <p className="text-[11px] text-amber-800 dark:text-amber-200">
                       No channel is connected, so no citizen can reach this agency — whatever else
                       is configured. Its totals below will stay at zero until one is.
@@ -615,7 +615,7 @@ function AgencyDetailPanel({
                 hint="Agency employees, not citizens. Active accounts only."
               >
                 {detail.staff.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     No active staff. Nobody can sign in to this agency.
                   </p>
                 ) : (
@@ -637,11 +637,11 @@ function AgencyDetailPanel({
                           {/* An agency whose only owner never signed in reads
                               as a quiet agency in the table. It is not. */}
                           {u.emailVerifiedAt ? (
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
                               <ShieldCheck className="w-3 h-3" /> verified
                             </span>
                           ) : (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                            <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
                               invitation not accepted
                             </span>
                           )}
@@ -673,7 +673,7 @@ function AgencyDetailPanel({
                 hint="Append-only. This console cannot edit the record of its own actions."
               >
                 {trail.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Nothing has been recorded against this agency.
                   </p>
                 ) : (
@@ -682,7 +682,7 @@ function AgencyDetailPanel({
                       <li key={e.id} className="px-3 py-2.5">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <span className="text-xs font-bold text-slate-900 dark:text-white">{e.action}</span>
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400">
                             {new Date(e.createdAt).toLocaleString('en-NG')}
                           </span>
                         </div>
@@ -728,8 +728,8 @@ function Group({ title, hint, children }: { title: string; hint?: string; childr
   return (
     <section className="space-y-2.5">
       <div>
-        <h3 className="text-[10px] uppercase tracking-wider font-bold text-slate-500">{title}</h3>
-        {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{hint}</p>}
+        <h3 className="text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">{title}</h3>
+        {hint && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{hint}</p>}
       </div>
       {children}
     </section>
@@ -754,7 +754,7 @@ function ChannelPill({ label, connected, icon }: { label: string; connected: boo
 function Mini({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
   return (
     <div className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
-      <div className="flex items-center gap-1.5 text-slate-400">
+      <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
         {icon}
         <span className="text-[10px] uppercase tracking-wider font-bold">{label}</span>
       </div>
@@ -766,7 +766,7 @@ function Mini({ label, value, icon }: { label: string; value: number; icon: Reac
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wider font-bold text-slate-400 flex items-center gap-1">
+      <dt className="text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
         {icon} {label}
       </dt>
       <dd className="text-xs text-slate-800 dark:text-slate-200 mt-0.5 break-words">{value}</dd>
@@ -777,11 +777,11 @@ function Row({ icon, label, value }: { icon: React.ReactNode; label: string; val
 function Stat({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone?: 'warn' }) {
   return (
     <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-      <div className="flex items-center gap-2 text-slate-400">
+      <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
         {icon}
         <span className="text-[10px] uppercase tracking-wider font-bold">{label}</span>
       </div>
-      <p className={`mt-2 text-xl font-black tabular-nums ${tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+      <p className={`mt-2 text-xl font-black tabular-nums ${tone === 'warn' ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
         {value}
       </p>
     </div>
@@ -795,7 +795,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors ${
         active
           ? 'border-brand-600 dark:border-brand-400 text-brand-700 dark:text-brand-300'
-          : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+          : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
       }`}
     >
       {children}
@@ -858,7 +858,7 @@ function CreateAgencyDialog({ onClose, onCreated }: { onClose: () => void; onCre
 
         <Field label="Agency name" value={name} onChange={setName} placeholder="Ministry of Works and Transport" required />
         <div>
-          <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">Category</label>
+          <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400 mb-1.5">Category</label>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -897,7 +897,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">{label}</label>
+      <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400 mb-1.5">{label}</label>
       <input
         type={type}
         value={value}

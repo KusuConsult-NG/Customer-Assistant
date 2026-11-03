@@ -251,10 +251,10 @@ export default function ConversationsPage() {
       */}
       <h1 className="sr-only">Live Conversations</h1>
       {/* Left Panel - Conversation List */}
-      <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-white dark:bg-slate-900 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-80 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500 dark:text-slate-400" />
             <input
               type="text"
               placeholder="Search conversations..."
@@ -297,14 +297,14 @@ export default function ConversationsPage() {
       </div>
 
       {/* Right Panel - Chat Area */}
-      <div className={`flex-1 flex flex-col min-w-0 bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm relative ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm relative ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
         {selectedId ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm z-10 shadow-sm flex-shrink-0">
+            <div className="h-16 px-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm z-10 shadow-sm flex-shrink-0">
               <div className="flex items-center gap-3">
                 <button 
-                  className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:hover:text-white"
+                  className="md:hidden text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-900 dark:hover:text-white"
                   onClick={() => setSelectedId(null)}
                 >
                   ←

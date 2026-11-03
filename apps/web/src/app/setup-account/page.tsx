@@ -70,7 +70,7 @@ function SetupAccountContent() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-2xl shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 flex items-center justify-center mx-auto mb-4">
             <Lock className="w-6 h-6" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Setup Your Account</h1>
@@ -79,8 +79,8 @@ function SetupAccountContent() {
 
         {success ? (
           <div className="text-center space-y-4 py-4">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400 mx-auto" />
-            <h2 className="text-xl font-bold text-emerald-600 dark:text-emerald-400">Account created successfully!</h2>
+            <CheckCircle2 className="w-12 h-12 text-emerald-700 dark:text-emerald-400 mx-auto" />
+            <h2 className="text-xl font-bold text-emerald-700 dark:text-emerald-400">Account created successfully!</h2>
             <p className="text-sm text-slate-600 dark:text-slate-400">Taking you to your workspace...</p>
           </div>
         ) : (

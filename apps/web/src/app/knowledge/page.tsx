@@ -476,9 +476,9 @@ export default function KnowledgePage() {
   };
 
   const statusConfig: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-    PENDING: { label: 'Pending', className: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20', icon: <Clock className="w-3 h-3" /> },
-    PROCESSING: { label: 'Processing', className: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    INDEXED: { label: 'Indexed', className: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20', icon: <CheckCircle2 className="w-3 h-3" /> },
+    PENDING: { label: 'Pending', className: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20', icon: <Clock className="w-3 h-3" /> },
+    PROCESSING: { label: 'Processing', className: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
+    INDEXED: { label: 'Indexed', className: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20', icon: <CheckCircle2 className="w-3 h-3" /> },
     FAILED: { label: 'Failed', className: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20', icon: <AlertCircle className="w-3 h-3" /> },
   };
 
@@ -533,7 +533,7 @@ export default function KnowledgePage() {
         <div className="rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2 text-sm">
             <span className="text-slate-700 dark:text-slate-300 font-medium">Extracting & Vectorizing Document Chunks...</span>
-            <span className="text-blue-600 dark:text-blue-400 font-mono font-bold">{uploadProgress}%</span>
+            <span className="text-blue-700 dark:text-blue-400 font-mono font-bold">{uploadProgress}%</span>
           </div>
           <div className="w-full h-2 bg-slate-50 dark:bg-slate-800/60 rounded-full overflow-hidden">
             <div
@@ -547,7 +547,7 @@ export default function KnowledgePage() {
       {/* KPI Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
             <FileText className="w-5 h-5" />
           </div>
           <div>
@@ -556,7 +556,7 @@ export default function KnowledgePage() {
           </div>
         </div>
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
@@ -565,7 +565,7 @@ export default function KnowledgePage() {
           </div>
         </div>
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
             <Database className="w-5 h-5" />
           </div>
           <div>
@@ -578,7 +578,7 @@ export default function KnowledgePage() {
       {/* Website Crawler Box */}
       <div className="rounded-2xl border border-blue-200 dark:border-blue-500/20 bg-blue-500/[0.04] p-5 space-y-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+          <div className="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-700 dark:text-blue-400">
             <Globe className="w-5 h-5" />
           </div>
           <div>
@@ -605,7 +605,7 @@ export default function KnowledgePage() {
           </button>
         </form>
         {crawlStatus && (
-          <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${crawlStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400'}`}>
+          <div className={`p-3 rounded-xl flex items-center gap-2 text-sm ${crawlStatus.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400'}`}>
             {crawlStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
             {crawlStatus.text}
           </div>
@@ -704,7 +704,7 @@ export default function KnowledgePage() {
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${
-                          doc.mimeType === 'text/html' || doc.sourceUrl ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                          doc.mimeType === 'text/html' || doc.sourceUrl ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400'
                         }`}>
                           {doc.mimeType === 'text/html' || doc.sourceUrl ? <Globe className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                         </div>
@@ -776,7 +776,7 @@ export default function KnowledgePage() {
                   answer the citizen gets. */}
               {faqs.length > 1 && (
                 <div className="flex gap-2.5 p-3 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
-                  <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <Info className="w-4 h-4 text-blue-700 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
                     Order decides ties. When two of these match a citizen&rsquo;s question equally
                     well, the assistant answers with whichever is higher in this list — so put the
@@ -806,7 +806,7 @@ export default function KnowledgePage() {
                             <span className="text-[10px] font-bold w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center flex-shrink-0 mt-0.5 tabular-nums">
                               {i + 1}
                             </span>
-                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
+                            <span className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Q: {faq.question}</span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <div className="flex items-center">
@@ -814,7 +814,7 @@ export default function KnowledgePage() {
                                 onClick={() => moveFaq(faq.id, -1)}
                                 disabled={i === 0 || reordering}
                                 aria-label={`Move "${faq.question}" up`}
-                                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                                className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
                               >
                                 <ArrowUp className="w-3.5 h-3.5" />
                               </button>
@@ -822,13 +822,13 @@ export default function KnowledgePage() {
                                 onClick={() => moveFaq(faq.id, 1)}
                                 disabled={i === faqs.length - 1 || reordering}
                                 aria-label={`Move "${faq.question}" down`}
-                                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                                className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
                               >
                                 <ArrowDown className="w-3.5 h-3.5" />
                               </button>
                             </div>
                             <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] text-slate-600 dark:text-slate-400">{faq.category}</span>
-                            <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Edit</button>
+                            <button onClick={() => { setEditingFaq(faq.id); setEditQuestion(faq.question); setEditAnswer(faq.answer); }} className="text-xs text-blue-700 dark:text-blue-400 hover:underline">Edit</button>
                             <button onClick={() => handleDeleteFaq(faq.id)} className="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
                           </div>
                         </div>
@@ -855,7 +855,7 @@ export default function KnowledgePage() {
         {/* Right Column: Search Playground */}
         <div className="lg:col-span-2 space-y-3">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" /> RAG Search Playground
+            <Zap className="w-4 h-4 text-amber-700 dark:text-amber-400" /> RAG Search Playground
           </h2>
           <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <form onSubmit={handleSearch} className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -880,7 +880,7 @@ export default function KnowledgePage() {
             <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
               {searching ? (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin" />
+                  <Loader2 className="w-6 h-6 text-blue-700 dark:text-blue-400 animate-spin" />
                 </div>
               ) : searchResults.length > 0 ? (
                 searchResults.map((r, i) => (
@@ -891,9 +891,9 @@ export default function KnowledgePage() {
                         {r.documentTitle && `Source: ${r.documentTitle}`}
                       </span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        r.similarity > 0.8 ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                        r.similarity > 0.6 ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                        'bg-slate-100 dark:bg-slate-500/10 text-slate-500 dark:text-slate-400'
+                        r.similarity > 0.8 ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' :
+                        r.similarity > 0.6 ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400' :
+                        'bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400'
                       }`}>
                         {(r.similarity * 100).toFixed(0)}% match
                       </span>

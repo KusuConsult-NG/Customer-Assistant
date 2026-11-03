@@ -145,6 +145,51 @@ describe('t — templates interpolate, never translate values', () => {
     }
   });
 
+  /**
+   * A prompt that offers a choice offers the AGENCY'S choices.
+   *
+   * The placeholder-parity test above only checks the languages agree with
+   * English. It passed while `enrol_plan_ask` hardcoded one health scheme's
+   * four plans AND ignored the `{options}` the flow passes it — English had
+   * no `{options}`, so every language agreed on having none, and an agency's
+   * configured services never reached a single citizen. A lands registry's
+   * caller was asked to choose between Formal Sector, Informal Sector, the
+   * Equity Programme and BHCPF.
+   *
+   * So this asserts the other half: the keys that offer something must carry
+   * the placeholder that makes the offer real, and no template may name a
+   * specific scheme's services again.
+   */
+  it('offers the agency\'s own options rather than a list baked into the copy', () => {
+    const OFFERS_A_CHOICE = [
+      'enrol_plan_ask',
+      'enrol_plan_unclear',
+      'enrol_facility_ask',
+      'enrol_facility_unaccredited',
+    ] as const;
+
+    for (const key of OFFERS_A_CHOICE) {
+      for (const lang of SUPPORTED_LANGUAGES) {
+        expect({ key, lang, carriesOptions: t(lang, key).includes('{options}') })
+          .toEqual({ key, lang, carriesOptions: true });
+      }
+    }
+  });
+
+  it('names no particular scheme\'s services in any language', () => {
+    // These belong to ONE agency, as rows in its catalogue — not to the
+    // platform, and not to the copy every tenant shares.
+    const SCHEME_SPECIFIC = /Formal Sector|Informal Sector|Equity Programme|BHCPF/i;
+
+    const offenders: string[] = [];
+    for (const lang of SUPPORTED_LANGUAGES) {
+      for (const key of TEMPLATE_KEYS) {
+        if (SCHEME_SPECIFIC.test(t(lang, key))) offenders.push(`${lang}.${key}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('leaves no placeholder unfilled once its parameters are supplied', () => {
     const every = {
       org: 'X', account: 'A', bank: 'B', number: 'N', ussd: '*1#',

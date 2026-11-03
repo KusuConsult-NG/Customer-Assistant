@@ -73,7 +73,7 @@ export default function FlowInProgressPanel({ flow }: { flow: FlowSnapshot | nul
               <dd
                 className={`text-[11px] font-semibold break-words ${
                   a.declined
-                    ? 'text-slate-400 dark:text-slate-500 italic'
+                    ? 'text-slate-500 dark:text-slate-400 italic'
                     : 'text-slate-800 dark:text-slate-100'
                 }`}
               >

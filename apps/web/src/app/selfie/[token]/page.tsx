@@ -251,7 +251,7 @@ export default function SelfieUploadPage() {
 
           {stage === 'done' && (
             <div className="text-center space-y-4 py-4">
-              <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl font-bold border border-emerald-300 dark:border-emerald-500/30">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl font-bold border border-emerald-300 dark:border-emerald-500/30">
                 ✓
               </div>
               <div>
@@ -371,7 +371,7 @@ export default function SelfieUploadPage() {
                             className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-xs border border-slate-200 dark:border-slate-800"
                           >
                             <span className="font-medium text-slate-800 dark:text-slate-200">
-                              {dep.fullName} <span className="text-slate-400">({dep.relationship})</span>
+                              {dep.fullName} <span className="text-slate-500 dark:text-slate-400">({dep.relationship})</span>
                             </span>
                             <button
                               type="button"

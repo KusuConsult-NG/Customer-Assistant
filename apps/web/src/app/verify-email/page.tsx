@@ -96,14 +96,14 @@ function VerifyEmailContent() {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-2xl shadow-2xl text-center space-y-6">
         {status === 'loading' && (
           <div className="space-y-4">
-            <Loader2 className="w-12 h-12 text-blue-600 dark:text-blue-400 animate-spin mx-auto" />
+            <Loader2 className="w-12 h-12 text-blue-700 dark:text-blue-400 animate-spin mx-auto" />
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Verifying...</h1>
             <p className="text-slate-600 dark:text-slate-400 text-sm">Please wait while we verify your email.</p>
           </div>
         )}
         {status === 'success' && (
           <div className="space-y-4">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400 mx-auto" />
+            <CheckCircle2 className="w-12 h-12 text-emerald-700 dark:text-emerald-400 mx-auto" />
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">{message}</h1>
             <button
               onClick={() => router.push('/login')}

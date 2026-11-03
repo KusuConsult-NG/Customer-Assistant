@@ -429,13 +429,13 @@ export default function SchedulingPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">CONFIRMED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">CONFIRMED</span>;
       case 'RESCHEDULED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">RESCHEDULED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">RESCHEDULED</span>;
       case 'CANCELLED':
         return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20">CANCELLED</span>;
       case 'COMPLETED':
-        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">COMPLETED</span>;
+        return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">COMPLETED</span>;
       default:
         return <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-200 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-500/20">{status}</span>;
     }
@@ -448,7 +448,7 @@ export default function SchedulingPage() {
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 animate-fade-in-up">
           <div className="bg-gray-800 border border-gray-700 text-slate-900 dark:text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <AlertCircle className="w-5 h-5 text-blue-700 dark:text-blue-400" />
             <p className="text-sm font-medium">{toastMessage}</p>
           </div>
         </div>
@@ -547,7 +547,7 @@ export default function SchedulingPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
-                <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Interactive Weekly Schedule Matrix
+                <Clock className="w-4 h-4 text-blue-700 dark:text-blue-400" /> Interactive Weekly Schedule Matrix
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">Showing operating slots (08:00 - 18:00 WAT). Click any booked slot to audit or open slot to book.</p>
             </div>
@@ -578,7 +578,7 @@ export default function SchedulingPage() {
 
                   return (
                     <tr key={dayName}>
-                      <td className="px-4 py-4 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 text-sm font-bold text-blue-600 dark:text-blue-400 align-top">{dayName}</td>
+                      <td className="px-4 py-4 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 text-sm font-bold text-blue-700 dark:text-blue-400 align-top">{dayName}</td>
                       {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
                         const cellBookings = safeBookings.filter(b => {
                           if (!b.startTime) return false;
@@ -646,7 +646,7 @@ export default function SchedulingPage() {
               <tbody className="divide-y divide-white/5">
                 {refundRequests.map((t) => (
                   <tr key={t.id}>
-                    <td className="px-6 py-4 font-mono text-xs text-blue-600 dark:text-blue-400">{t.ticketNumber}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-blue-700 dark:text-blue-400">{t.ticketNumber}</td>
                     <td className="px-6 py-4 text-slate-700 dark:text-slate-300">{t.subject}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{t.contactName || '—'}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleString() : '—'}</td>
@@ -689,9 +689,9 @@ export default function SchedulingPage() {
                     </td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.serviceName}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(b.startTime).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.staffName || <span className="text-slate-400 dark:text-slate-500">unassigned</span>}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.staffName || <span className="text-slate-500 dark:text-slate-400">unassigned</span>}</td>
                     <td className="px-6 py-4">{getStatusBadge(b.status)}</td>
-                    <td className="px-6 py-4 text-right text-xs text-blue-600 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
+                    <td className="px-6 py-4 text-right text-xs text-blue-700 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
                   </tr>
                 ))}
               </tbody>
@@ -731,9 +731,9 @@ export default function SchedulingPage() {
                     </td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-bold">{r.partySize} Guests</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(r.reservationTime).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{r.tableOrRoomNumber || <span className="text-slate-400 dark:text-slate-500">—</span>}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{r.tableOrRoomNumber || <span className="text-slate-500 dark:text-slate-400">—</span>}</td>
                     <td className="px-6 py-4">{getStatusBadge(r.status)}</td>
-                    <td className="px-6 py-4 text-right text-xs text-blue-600 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
+                    <td className="px-6 py-4 text-right text-xs text-blue-700 dark:text-blue-400 group-hover:underline">Inspect Details →</td>
                   </tr>
                 ))}
               </tbody>
@@ -866,7 +866,7 @@ export default function SchedulingPage() {
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 uppercase tracking-widest font-bold">Booking Inspector</span>
+                <span className="text-[10px] font-mono text-blue-700 dark:text-blue-400 uppercase tracking-widest font-bold">Booking Inspector</span>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedBooking.contact?.fullName ?? 'Unknown contact'}</h3>
               </div>
               <button
@@ -908,15 +908,15 @@ export default function SchedulingPage() {
               <div className="p-4 rounded-xl bg-blue-500/[0.05] border border-blue-200 dark:border-blue-500/20 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Channel Source:</span>
-                  <span className="font-semibold text-blue-600 dark:text-blue-400">WhatsApp AI Engine</span>
+                  <span className="font-semibold text-blue-700 dark:text-blue-400">WhatsApp AI Engine</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Intent Classifier:</span>
-                  <span className="font-mono text-emerald-600 dark:text-emerald-400">BOOK_APPOINTMENT (98.4%)</span>
+                  <span className="font-mono text-emerald-700 dark:text-emerald-400">BOOK_APPOINTMENT (98.4%)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Double-Booking Check:</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">PASSED (No overlap)</span>
+                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">PASSED (No overlap)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>CalDAV Sync Status:</span>
@@ -930,14 +930,14 @@ export default function SchedulingPage() {
               <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Audit Log Stream</h4>
               <div className="space-y-2 text-xs">
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
-                  <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <Clock className="w-4 h-4 text-blue-700 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-800 dark:text-slate-200">Booking Confirmed by AI Orchestrator</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{new Date(selectedBooking.startTime).toLocaleString()}</p>
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-slate-800 dark:text-slate-200">Customer Confirmation Notification Sent</p>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Via WhatsApp Template API</p>
@@ -1022,7 +1022,7 @@ export default function SchedulingPage() {
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-6 flex flex-col h-full overflow-y-auto shadow-2xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
+                <span className="text-[10px] font-mono text-purple-700 dark:text-purple-400 uppercase tracking-widest font-bold">Reservation Inspector</span>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{selectedReservation.contact?.fullName ?? 'Unknown contact'}</h3>
               </div>
               <button
@@ -1064,11 +1064,11 @@ export default function SchedulingPage() {
               <div className="p-4 rounded-xl bg-purple-500/[0.05] border border-purple-200 dark:border-purple-500/20 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Channel Origin:</span>
-                  <span className="font-semibold text-purple-600 dark:text-purple-400">Voice AI Telephony Call</span>
+                  <span className="font-semibold text-purple-700 dark:text-purple-400">Voice AI Telephony Call</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Capacity Engine:</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Table Allocated (Capacity OK)</span>
+                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Table Allocated (Capacity OK)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Deposit Status:</span>
@@ -1135,7 +1135,7 @@ export default function SchedulingPage() {
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-slate-900 dark:text-white text-base">Move {rescheduleFor.name}</h3>
-              <button onClick={() => { setRescheduleFor(null); setActionError(null); }} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+              <button onClick={() => { setRescheduleFor(null); setActionError(null); }} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1177,7 +1177,7 @@ export default function SchedulingPage() {
               <h3 className="font-bold text-slate-900 dark:text-white text-base">
                 {reasonFor.action === 'cancel' ? `Cancel for ${reasonFor.name}` : `Refund request for ${reasonFor.name}`}
               </h3>
-              <button onClick={() => { setReasonFor(null); setActionError(null); }} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+              <button onClick={() => { setReasonFor(null); setActionError(null); }} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
                 <X className="w-5 h-5" />
               </button>
             </div>

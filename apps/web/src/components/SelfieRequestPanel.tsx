@@ -170,7 +170,7 @@ export default function SelfieRequestPanel({ contactId, contactName, conversatio
     <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-          <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Onboarding Selfie
+          <Camera className="w-3.5 h-3.5 text-blue-700 dark:text-blue-400" /> Onboarding Selfie
         </h3>
         {requests.length > 0 && (
           <span className="text-[10px] text-slate-500 dark:text-slate-400">{requests.length} request(s)</span>
@@ -250,16 +250,16 @@ export default function SelfieRequestPanel({ contactId, contactName, conversatio
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
                   {r.status === 'RECEIVED' && (
-                    <button onClick={() => view(r.id)} title="View photo" className="p-1 text-slate-400 hover:text-blue-600">
+                    <button onClick={() => view(r.id)} title="View photo" className="p-1 text-slate-500 dark:text-slate-400 hover:text-blue-600">
                       <Eye className="w-3.5 h-3.5" />
                     </button>
                   )}
                   {r.status === 'PENDING' && (
-                    <button onClick={() => cancel(r.id)} title="Cancel" className="p-1 text-slate-400 hover:text-amber-600">
+                    <button onClick={() => cancel(r.id)} title="Cancel" className="p-1 text-slate-500 dark:text-slate-400 hover:text-amber-600">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button onClick={() => remove(r.id)} title="Delete and erase photo" className="p-1 text-slate-400 hover:text-red-600">
+                  <button onClick={() => remove(r.id)} title="Delete and erase photo" className="p-1 text-slate-500 dark:text-slate-400 hover:text-red-600">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -291,7 +291,7 @@ export default function SelfieRequestPanel({ contactId, contactName, conversatio
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={viewing.url} alt="Customer selfie" className="w-full rounded-2xl shadow-2xl" />
             <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-3 flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
               <p className="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
                 This photo is captured, not verified. Nothing has checked that it is a live person or that it matches
                 any identity document — treat it as evidence for a human to assess.

@@ -255,7 +255,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 : 'bg-white/90 border-r border-slate-200/80 shadow-sm'
             } backdrop-blur-xl ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
               <button 
-                className="md:hidden absolute top-4 right-4 text-slate-400 hover:text-slate-200 z-50 p-1"
+                className="md:hidden absolute top-4 right-4 text-slate-500 dark:text-slate-400 hover:text-slate-200 z-50 p-1"
                 onClick={() => setSidebarOpen(false)}
               >
                 <X className="w-5 h-5" />
@@ -295,12 +295,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       {user?.organizationName || 'Your agency'}
                     </span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2 border border-emerald-500/20">LIVE</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold tracking-wider flex-shrink-0 ml-2 border border-emerald-500/20">LIVE</span>
                 </div>
 
                 {/* Nav */}
                 <nav className="flex-1 px-3.5 py-3 space-y-1 overflow-y-auto">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-1">Service</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-1">Service</p>
                   <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/analytics" icon={<BarChart3 className="w-4 h-4" />} label="Analytics" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="Citizens & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
@@ -309,7 +309,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge & FAQs" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Automation Workflows" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Channels</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">Channels</p>
                   <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Telephone Service" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
@@ -322,12 +322,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       plain "unavailable" panel, not a broken dashboard. */}
                   {user?.isPlatformAdmin && (
                     <>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">State Platform</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">State Platform</p>
                       <SidebarLink href="/platform" icon={<Landmark className="w-4 h-4" />} label="Platform Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                     </>
                   )}
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 py-1.5 mt-4">Administration</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">Administration</p>
                   <SidebarLink href="/services" icon={<Briefcase className="w-4 h-4" />} label="Services &amp; Locations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
                   <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
@@ -341,12 +341,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-xs font-bold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>{user?.fullName || 'Administrator'}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{user?.email || ''}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{user?.email || ''}</p>
                     </div>
                     <button
                       onClick={handleLogout}
                       title="Sign out"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors flex-shrink-0"
+                      className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors flex-shrink-0"
                     >
                       <LogOut className="w-4 h-4" />
                     </button>
@@ -363,9 +363,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   ? 'bg-[#0b0f19]/80 border-slate-800/80' 
                   : 'bg-white/80 border-slate-200/80'
               } backdrop-blur-xl z-20`}>
-                <div className="flex items-center gap-2 text-sm text-slate-400">
+                <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                   <button 
-                    className="md:hidden mr-2 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50" 
+                    className="md:hidden mr-2 p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-200 hover:bg-slate-800/50" 
                     onClick={() => setSidebarOpen(true)}
                   >
                     <Menu className="w-5 h-5" />
@@ -427,14 +427,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         </div>
                         <div className="max-h-72 overflow-y-auto">
                           {notifications.length === 0 ? (
-                            <div className="p-6 text-sm text-slate-400 text-center">No new notifications</div>
+                            <div className="p-6 text-sm text-slate-500 dark:text-slate-400 text-center">No new notifications</div>
                           ) : (
                             notifications.map((n, i) => (
                               <div key={i} className="p-3.5 border-b border-slate-700/30 flex items-start gap-3 hover:bg-brand-500/5">
                                 <div className="w-2 h-2 mt-1.5 rounded-full bg-brand-600 dark:bg-brand-500 flex-shrink-0" style={{ opacity: n.read ? 0.3 : 1 }} />
                                 <div>
                                   <div className="text-xs font-medium">{n.text}</div>
-                                  <div className="text-[10px] text-slate-400 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">{new Date(n.timestamp).toLocaleTimeString()}</div>
                                 </div>
                               </div>
                             ))
@@ -474,14 +474,14 @@ function SidebarLink({ href, icon, label, pathname, theme, onClick }: { href: st
             ? 'bg-brand-500/20 text-brand-700 dark:text-brand-300 border border-brand-500/30 shadow-md shadow-brand-500/10'
             : 'bg-emerald-50 text-brand-700 border border-brand-500/30 shadow-sm'
           : theme === 'dark'
-            ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border border-transparent'
+            ? 'text-slate-500 dark:text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border border-transparent'
             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
       }`}
     >
       <span className={`transition-transform duration-200 group-hover:scale-110 ${
         isActive 
           ? 'text-brand-700 dark:text-brand-300 dark:text-brand-300' 
-          : 'text-slate-400 group-hover:text-brand-700 dark:text-brand-300'
+          : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-700 dark:text-brand-300'
       }`}>
         {icon}
       </span>

@@ -281,7 +281,7 @@ export default function DashboardPage() {
           title="Enrolment Inquiries"
           value={stats.leads}
           subtitle="Prospective registrations"
-          icon={<Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
+          icon={<Activity className="w-5 h-5 text-purple-700 dark:text-purple-400" />}
           badge={`${stats.openTickets} open tickets`}
           badgeColor="bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20"
         />
@@ -297,7 +297,7 @@ export default function DashboardPage() {
           title="Premiums Collected"
           value={`₦${stats.revenue.toLocaleString()}`}
           subtitle="Informal sector & contributions"
-          icon={<DollarSign className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
+          icon={<DollarSign className="w-5 h-5 text-amber-700 dark:text-amber-400" />}
           badge={`${stats.conversionRate}% conv. rate`}
           badgeColor="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
         />
@@ -310,7 +310,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <BarChart3 className="w-5 h-5 text-indigo-700 dark:text-indigo-400" />
                 Omnichannel Conversation Volume
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Interaction volume broken down by channel across 7 days</p>
@@ -368,15 +368,15 @@ export default function DashboardPage() {
           <div className="grid grid-cols-3 gap-4 pt-2">
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Conversations</p>
-              <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400 mt-1">{stats.conversations} msgs</p>
+              <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400 mt-1">{stats.conversations} msgs</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Voice Calls</p>
-              <p className="text-lg font-bold text-purple-600 dark:text-purple-400 mt-1">{stats.calls} calls</p>
+              <p className="text-lg font-bold text-purple-700 dark:text-purple-400 mt-1">{stats.calls} calls</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Open Tickets</p>
-              <p className="text-lg font-bold text-amber-600 dark:text-amber-400 mt-1">{stats.openTickets}</p>
+              <p className="text-lg font-bold text-amber-700 dark:text-amber-400 mt-1">{stats.openTickets}</p>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Awaiting resolution</p>
             </div>
           </div>
@@ -450,9 +450,9 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/40">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-400" /> Recent Live Activity
+              <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" /> Recent Live Activity
             </h3>
-            <Link href="/agent-console" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold">
+            <Link href="/agent-console" className="text-xs text-indigo-700 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold">
               View All Conversations <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -476,7 +476,7 @@ export default function DashboardPage() {
               <div className="px-6 py-10">
                 <div className="flex flex-col items-center text-center mb-5">
                   <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-3">
-                    <Bot className="w-6 h-6 text-slate-400" />
+                    <Bot className="w-6 h-6 text-slate-500 dark:text-slate-400" />
                   </div>
                   <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No activity yet</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
@@ -513,7 +513,7 @@ export default function DashboardPage() {
                         <span className={`text-xs flex-1 ${step.done ? 'text-slate-500 dark:text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300 font-medium'}`}>
                           {step.label}
                         </span>
-                        {!step.done && <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                        {!step.done && <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />}
                       </a>
                     </li>
                   ))}
@@ -524,10 +524,10 @@ export default function DashboardPage() {
                 <div key={a.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${
-                      a.type === 'call' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400' :
-                      a.type === 'message' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400' :
-                      a.type === 'contact' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
-                      'bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      a.type === 'call' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400' :
+                      a.type === 'message' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' :
+                      a.type === 'contact' ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' :
+                      'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400'
                     }`}>
                       {a.type === 'call' ? <Phone className="w-4 h-4" /> :
                        a.type === 'message' ? <MessageSquareText className="w-4 h-4" /> :
@@ -539,7 +539,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-slate-500 dark:text-slate-400">{a.subtitle}</p>
                     </div>
                   </div>
-                  <span className="text-xs text-slate-400 font-mono font-medium">{a.time}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{a.time}</span>
                 </div>
               ))
             )}
@@ -557,7 +557,7 @@ export default function DashboardPage() {
               { label: 'Agent Console', href: '/agent-console', desc: 'Real-time conversation management', color: 'text-brand-700 dark:text-brand-300' },
               { label: 'Citizen Register', href: '/crm', desc: 'Manage beneficiaries & contacts', color: 'text-brand-700 dark:text-brand-300' },
               { label: 'Knowledge Base', href: '/knowledge', desc: 'Published answers & documents', color: 'text-brand-700 dark:text-brand-300' },
-              { label: 'Telephone Service', href: '/telephony', desc: 'Carrier setup & test call', color: 'text-amber-600 dark:text-amber-400' },
+              { label: 'Telephone Service', href: '/telephony', desc: 'Carrier setup & test call', color: 'text-amber-700 dark:text-amber-400' },
               { label: 'Appointments', href: '/scheduling', desc: 'Citizen appointments', color: 'text-brand-700 dark:text-brand-300' },
               { label: 'System Settings', href: '/settings', desc: 'Agency credentials & prompt', color: 'text-slate-600 dark:text-slate-400' },
             ].map(s => (
@@ -570,7 +570,7 @@ export default function DashboardPage() {
                   <p className={`text-xs font-bold ${s.color}`}>{s.label}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.desc}</p>
                 </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-700 dark:text-brand-300 dark:group-hover:text-white transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 group-hover:text-brand-700 dark:text-brand-300 dark:group-hover:text-white transition-colors" />
               </Link>
             ))}
           </div>

@@ -346,9 +346,9 @@ export default function AgentConsolePage() {
 
   const channelBadge = (channel: string) => {
     const map: Record<string, string> = {
-      WHATSAPP: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
-      VOICE: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
-      WEBCHAT: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+      WHATSAPP: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+      VOICE: 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
+      WEBCHAT: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
     };
     return map[channel] || 'bg-gray-500/15 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-500/20';
   };
@@ -398,15 +398,15 @@ export default function AgentConsolePage() {
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-              <MessageSquareText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <MessageSquareText className="w-4 h-4 text-blue-700 dark:text-blue-400" />
               Live Inbox
-              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-bold">
                 {conversations.length}
               </span>
             </h2>
             <div className="flex items-center gap-2">
               {wsConnected
-                ? <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold"><Wifi className="w-3 h-3" /> Live</span>
+                ? <span className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-bold"><Wifi className="w-3 h-3" /> Live</span>
                 : <span className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400"><WifiOff className="w-3 h-3" /> Offline</span>
               }
               <button onClick={fetchConversations} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 transition-colors">
@@ -464,7 +464,7 @@ export default function AgentConsolePage() {
                 deliver — and makes a stalled poller visible instead of leaving
                 a frozen transcript looking like a quiet call.
               */}
-              <span className="text-[10px] text-slate-400 dark:text-slate-500" title="This view is polled, not streamed">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400" title="This view is polled, not streamed">
                 {freshness(livePolledAt)}
               </span>
             </div>
@@ -666,7 +666,7 @@ export default function AgentConsolePage() {
                     <button
                       onClick={handleTakeover}
                       disabled={takingOver}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 flex items-center gap-2 transition-colors"
+                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white disabled:opacity-50 flex items-center gap-2 transition-colors"
                     >
                       <Phone className="w-3.5 h-3.5" />
                       {takingOver ? 'Transferring…' : 'Transfer to a person'}
@@ -704,7 +704,7 @@ export default function AgentConsolePage() {
             {/* Header */}
             <div className="h-16 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 flex items-center justify-center text-sm font-bold">
                   {(activeConv.contact?.fullName || activeConv.contactName || '?')[0].toUpperCase()}
                 </div>
                 <div>
@@ -722,7 +722,7 @@ export default function AgentConsolePage() {
                 onClick={handleToggleHandoff}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   isHumanActive
-                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
+                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
                     : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-200 dark:border-slate-700'
                 }`}
               >
@@ -801,7 +801,7 @@ export default function AgentConsolePage() {
             {isHumanActive && (
               <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 overflow-x-auto">
                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1 flex-shrink-0">
-                  <Zap className="w-3 h-3 text-amber-600 dark:text-amber-400" /> Quick Snippets:
+                  <Zap className="w-3 h-3 text-amber-700 dark:text-amber-400" /> Quick Snippets:
                 </span>
                 {QUICK_REPLIES.map((reply, idx) => (
                   <button
@@ -857,11 +857,11 @@ export default function AgentConsolePage() {
       {activeConv && (
         <div className="w-72 flex-shrink-0 border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900/80 p-4 space-y-4 overflow-y-auto hidden xl:block">
           <div className="text-center pb-4 border-b border-slate-200 dark:border-slate-800">
-            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-lg flex items-center justify-center mx-auto mb-2">
+            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-bold text-lg flex items-center justify-center mx-auto mb-2">
               {(activeConv.contact?.fullName || activeConv.contactName || '?')[0].toUpperCase()}
             </div>
             <h4 className="font-bold text-slate-900 dark:text-white text-sm">{activeConv.contact?.fullName || activeConv.contactName || 'Unknown Customer'}</h4>
-            <p className="text-xs font-mono text-blue-600 dark:text-blue-400 mt-0.5">{activeConv.contact?.phoneNumber || 'No phone'}</p>
+            <p className="text-xs font-mono text-blue-700 dark:text-blue-400 mt-0.5">{activeConv.contact?.phoneNumber || 'No phone'}</p>
           </div>
 
           <div className="space-y-3">
@@ -880,10 +880,10 @@ export default function AgentConsolePage() {
             <div>
               <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Tags</p>
               <div className="flex gap-1 flex-wrap">
-                <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">{activeConv.channel}</span>
+                <span className="px-2 py-0.5 rounded text-[10px] bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">{activeConv.channel}</span>
                 {isHumanActive
-                  ? <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Human Takeover</span>
-                  : <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">AI Handling</span>
+                  ? <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Human Takeover</span>
+                  : <span className="px-2 py-0.5 rounded text-[10px] bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">AI Handling</span>
                 }
               </div>
             </div>
@@ -906,18 +906,18 @@ export default function AgentConsolePage() {
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 {messages.length > 0
                   ? <>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-1">
+                      <span className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
                         {messages[messages.length - 1]?.sender === 'CUSTOMER' ? '👤 Customer' :
                          messages[messages.length - 1]?.sender === 'HUMAN_AGENT' ? '🧑‍💼 Agent' : '🤖 AI'}
                       </span>
                       {(messages[messages.length - 1]?.content || '').slice(0, 100)}
                       {(messages[messages.length - 1]?.content || '').length > 100 ? '…' : ''}
                     </>
-                  : <span className="text-slate-400 dark:text-slate-500 italic">No messages yet</span>
+                  : <span className="text-slate-500 dark:text-slate-400 italic">No messages yet</span>
                 }
               </div>
               {messages.length > 0 && (
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">{messages.length} message{messages.length !== 1 ? 's' : ''} in thread</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">{messages.length} message{messages.length !== 1 ? 's' : ''} in thread</p>
               )}
             </div>
           </div>
