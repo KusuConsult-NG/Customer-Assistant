@@ -151,7 +151,9 @@ export default function DashboardPage() {
           id: c.id,
           type: 'call',
           title: `Voice call ${c.status === 'COMPLETED' ? 'completed' : 'ended'}`,
-          subtitle: `From ${c.fromNumber || 'Customer'} · ${Math.round((c.durationSeconds || 0) / 60)}m ${(c.durationSeconds || 0) % 60}s`,
+          // A call log with no number is a WITHHELD caller, which is a fact
+          // worth showing. "From Customer" said nothing and read like a name.
+          subtitle: `From ${c.fromNumber || 'a withheld number'} · ${Math.round((c.durationSeconds || 0) / 60)}m ${(c.durationSeconds || 0) % 60}s`,
           // CallLog has startedAt, not createdAt — reading createdAt made every row
           // display the literal string "Recently".
           time: c.startedAt ? new Date(c.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',

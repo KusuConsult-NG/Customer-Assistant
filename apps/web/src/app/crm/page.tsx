@@ -586,9 +586,17 @@ function ContactsTable({ searchQuery, onAdd, onSelectContact, onDelete }: { sear
                   <td className="px-5 py-4 text-slate-600 dark:text-slate-400 text-xs font-medium">{c.email || '—'}</td>
                   <td className="px-5 py-4">
                     <div className="flex gap-1 flex-wrap">
-                      {(c.tags || ['customer']).map((t: string) => (
-                        <Badge key={t} text={t} color="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20" />
-                      ))}
+                      {/* No invented default. The detail panel was fixed for
+                          exactly this and the TABLE was missed, so a citizen
+                          with no tags was still shown one here — "customer",
+                          rendered identically to a tag an officer assigned. */}
+                      {(c.tags ?? []).length > 0 ? (
+                        (c.tags as string[]).map((t: string) => (
+                          <Badge key={t} text={t} color="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20" />
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">—</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-5 py-4 text-slate-500 dark:text-slate-400 text-xs">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>

@@ -89,7 +89,11 @@ export default function ConversationsPage() {
         const rawList = toArray(data);
         const mapped = rawList.map((c: any) => ({
           ...c,
-          contactName: c.contactName || c.contact?.fullName || 'Customer',
+          // "Customer" read as the person's name, in the same place a real
+          // name goes. Contacts always carry one now — `Caller (···1234)` when
+          // nobody has given theirs — so a blank here means the thread has no
+          // contact at all, and a dash says that honestly.
+          contactName: c.contactName || c.contact?.fullName || '—',
           contactPhone: c.contactPhone || c.contact?.phoneNumber || '',
           // Derived from the thread the list already carries. There is no
           // `lastMessagePreview` field on the payload, so every row in the

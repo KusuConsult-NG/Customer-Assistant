@@ -165,6 +165,7 @@ export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [activeWorkflow, setActiveWorkflow] = useState<Workflow | null>(null);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -198,9 +199,18 @@ export default function WorkflowsPage() {
   const fetchCapabilities = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_URL}/api/workflows/capabilities`, { headers: getHeaders() });
-      if (res.ok) setCapabilities(await res.json());
-    } catch {
-      /* the editor still works with free-form config if this fails */
+      if (res.ok) {
+        setCapabilities(await res.json());
+        setCapabilitiesError(null);
+      } else {
+        setCapabilitiesError(`The action catalogue could not be loaded (HTTP ${res.status}).`);
+      }
+    } catch (err: any) {
+      // Said out loud, not swallowed. The editor keeps working on a reduced
+      // set of operators, and somebody building a condition needs to know that
+      // the choices in front of them are a fallback rather than everything
+      // this agency's automation can test.
+      setCapabilitiesError(err?.message || 'The action catalogue could not be loaded.');
     }
   }, []);
 
@@ -1144,6 +1154,11 @@ export default function WorkflowsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-slate-600 dark:text-slate-400 font-medium mb-1">Operator</label>
+                      {capabilitiesError && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-400 mb-1">
+                          Showing a reduced set: {capabilitiesError}
+                        </p>
+                      )}
                       <select
                         value={condOperator}
                         onChange={(e) => setCondOperator(e.target.value)}
