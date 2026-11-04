@@ -646,4 +646,138 @@ describe('Agent tools', () => {
       expect(row).toBeNull();
     }, 30_000);
   });
+  /**
+   * ── Which appointment? ────────────────────────────────────────────────────
+   *
+   * `cancel-booking` and `reschedule-booking` took a phone number and acted on
+   * whichever booking came next. A citizen with a clinic appointment on
+   * Thursday and a registration the following week said "cancel my
+   * appointment" and Thursday went, whatever they meant — the agent had no way
+   * to name one, and nothing told the caller which one had gone beyond the
+   * service name in the confirmation, after the fact.
+   *
+   * The orchestrator does not behave this way on WhatsApp: its cancel flow
+   * reads the booking back and waits. Same platform, same citizen, two
+   * different amounts of care with the same record.
+   */
+  describe('a citizen with more than one appointment', () => {
+    // Every booking in this suite shares one agency, and the exclusion
+    // constraint covers unstaffed rows too — so two tests asking for the same
+    // minute collide and the second is refused as a taken slot. Each pair gets
+    // its own day.
+    let dayCursor = 40;
+    const futureIso = (days: number, hour = 9) => {
+      const d = new Date(Date.now() + days * 24 * 3600_000);
+      d.setUTCHours(hour, 0, 0, 0);
+      return d.toISOString();
+    };
+
+    const twoBookings = async (phone: string) => {
+      const base = (dayCursor += 3);
+      const first = await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        fullName: 'Two Appointments',
+        serviceName: 'Clinic Review',
+        startTime: futureIso(base, 9),
+      }).expect(201);
+      const second = await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        serviceName: 'Land Registration',
+        startTime: futureIso(base + 1, 14),
+      }).expect(201);
+      expect(first.body.ok).toBe(true);
+      expect(second.body.ok).toBe(true);
+      return { first: first.body.data, second: second.body.data };
+    };
+
+    it('refuses to guess which one to cancel, and offers both with references', async () => {
+      const phone = `+2347${(Date.now() + 11).toString().slice(-9)}`;
+      const { first, second } = await twoBookings(phone);
+
+      const res = await post('cancel-booking', keyA, { phoneNumber: phone }).expect(201);
+
+      expect(res.body.data.needsChoice).toBe(true);
+      expect(res.body.speak).toContain('Clinic Review');
+      expect(res.body.speak).toContain('Land Registration');
+      expect(res.body.speak).toContain(first.reference);
+
+      // And nothing was cancelled while the caller decides.
+      for (const id of [first.bookingId, second.bookingId]) {
+        const row = await prisma.booking.findUnique({ where: { id } });
+        expect(row?.status).toBe('CONFIRMED');
+      }
+    }, 40_000);
+
+    it('cancels the one the caller named', async () => {
+      const phone = `+2347${(Date.now() + 12).toString().slice(-9)}`;
+      const { first, second } = await twoBookings(phone);
+
+      const res = await post('cancel-booking', keyA, {
+        phoneNumber: phone,
+        reference: second.reference,
+        reason: 'no longer needed',
+      }).expect(201);
+
+      expect(res.body.ok).toBe(true);
+      expect(res.body.speak).toContain('Land Registration');
+      expect((await prisma.booking.findUnique({ where: { id: second.bookingId } }))?.status).toBe('CANCELLED');
+      // The other one is untouched — this is the whole point.
+      expect((await prisma.booking.findUnique({ where: { id: first.bookingId } }))?.status).toBe('CONFIRMED');
+    }, 40_000);
+
+    it('accepts the reference the way a caller would say it', async () => {
+      // Read aloud and repeated back, the prefix and the case go astray.
+      const phone = `+2347${(Date.now() + 13).toString().slice(-9)}`;
+      const { first } = await twoBookings(phone);
+      const spoken = first.reference.replace(/^AP-/, '').toLowerCase();
+
+      const res = await post('cancel-booking', keyA, { phoneNumber: phone, reference: spoken }).expect(201);
+      expect(res.body.ok).toBe(true);
+      expect((await prisma.booking.findUnique({ where: { id: first.bookingId } }))?.status).toBe('CANCELLED');
+    }, 40_000);
+
+    it('says so plainly when the reference matches nothing', async () => {
+      const phone = `+2347${(Date.now() + 14).toString().slice(-9)}`;
+      await twoBookings(phone);
+
+      const res = await post('cancel-booking', keyA, {
+        phoneNumber: phone,
+        reference: 'AP-DEADBEEF',
+      }).expect(201);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.speak).toMatch(/could not find|do not have/i);
+      expect(res.body.data.needsChoice).toBe(true);
+    }, 40_000);
+
+    it('still acts without a reference when there is only one', async () => {
+      // The ordinary case must not get harder to serve.
+      const phone = `+2347${(Date.now() + 15).toString().slice(-9)}`;
+      const booked = await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        fullName: 'Only One',
+        serviceName: 'Single Appointment',
+        startTime: futureIso((dayCursor += 3), 11),
+      }).expect(201);
+
+      const res = await post('cancel-booking', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.ok).toBe(true);
+      expect((await prisma.booking.findUnique({ where: { id: booked.body.data.bookingId } }))?.status).toBe('CANCELLED');
+    }, 40_000);
+
+    it('will not move an appointment it had to guess at either', async () => {
+      const phone = `+2347${(Date.now() + 16).toString().slice(-9)}`;
+      const { first, second } = await twoBookings(phone);
+
+      const res = await post('reschedule-booking', keyA, {
+        phoneNumber: phone,
+        newStartTime: futureIso(dayCursor + 2, 10),
+      }).expect(201);
+
+      expect(res.body.data.needsChoice).toBe(true);
+      for (const id of [first.bookingId, second.bookingId]) {
+        expect((await prisma.booking.findUnique({ where: { id } }))?.status).toBe('CONFIRMED');
+      }
+    }, 40_000);
+  });
 });

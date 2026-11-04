@@ -367,6 +367,108 @@ export class AgentToolsService {
     }
   }
 
+  /**
+   * The appointment the caller means — or a refusal to guess.
+   *
+   * ── What was wrong ──────────────────────────────────────────────────────────
+   *
+   * `cancel-booking` and `reschedule-booking` took a phone number and acted on
+   * whichever booking came next. A citizen with a clinic review on Thursday and
+   * a land registration the following week says "cancel my appointment", and
+   * Thursday went, whatever they meant. The agent had no way to name one, and
+   * the caller learned which had gone from the service name in the
+   * confirmation, after it was already done.
+   *
+   * The orchestrator never behaved this way: its cancel flow reads the booking
+   * back and waits for a yes. That is the rule this repo already holds —
+   * anything that CHANGES or DESTROYS an existing record keeps the read-back —
+   * and the voice path was the exception.
+   *
+   * So: one upcoming booking, act. Several and no reference, offer them with
+   * the references the citizen was quoted when they booked, and change
+   * nothing. A reference that matches nothing is said plainly rather than
+   * falling back to the next one, because falling back is the bug.
+   */
+  private async resolveBooking(
+    organizationId: string,
+    phoneNumber: string,
+    reference?: string
+  ): Promise<
+    | { kind: 'none' }
+    | { kind: 'one'; booking: { id: string; serviceName: string; startTime: Date } }
+    | { kind: 'ambiguous'; speak: string; options: Array<{ bookingId: string; reference: string; serviceName: string; startTime: string; label: string }>; unmatched?: boolean }
+  > {
+    const contact = await prisma.contact.findFirst({
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
+      select: { id: true },
+    });
+    if (!contact) return { kind: 'none' };
+
+    const upcoming = await prisma.booking.findMany({
+      where: {
+        organizationId,
+        contactId: contact.id,
+        status: { in: BUSY_BOOKING_STATUSES as unknown as string[] } as any,
+        startTime: { gte: new Date() },
+      },
+      orderBy: { startTime: 'asc' },
+      take: 10,
+      select: { id: true, serviceName: true, startTime: true },
+    });
+
+    if (upcoming.length === 0) return { kind: 'none' };
+
+    const options = upcoming.map((b) => ({
+      bookingId: b.id,
+      reference: bookingReference(b.id),
+      serviceName: b.serviceName,
+      startTime: b.startTime.toISOString(),
+      label: formatLagos(b.startTime),
+    }));
+
+    if (reference?.trim()) {
+      // As a caller says it back: the prefix drops, the case goes, and the
+      // dashes do not survive being read down a phone line.
+      const asked = reference.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^AP/, '');
+      const match = options.find(
+        (o) => o.reference.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^AP/, '') === asked
+      );
+      if (match) {
+        const booking = upcoming.find((b) => b.id === match.bookingId)!;
+        return { kind: 'one', booking };
+      }
+      return {
+        kind: 'ambiguous',
+        unmatched: true,
+        options,
+        speak:
+          `I could not find an appointment with that reference. ` +
+          `What I have for you is ${this.listBookings(options)}. Which of those did you mean?`,
+      };
+    }
+
+    if (upcoming.length === 1) return { kind: 'one', booking: upcoming[0] };
+
+    return {
+      kind: 'ambiguous',
+      options,
+      speak:
+        `You have more than one appointment with us: ${this.listBookings(options)}. ` +
+        `Which one did you mean?`,
+    };
+  }
+
+  /** The appointments spoken as a sentence, never as a list read aloud. */
+  private listBookings(
+    options: Array<{ reference: string; serviceName: string; label: string }>
+  ): string {
+    const parts = options.map(
+      (o) => `${o.serviceName} on ${o.label}, reference ${o.reference}`
+    );
+    if (parts.length === 1) return parts[0];
+    return `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
+  }
+
   async checkBooking(organizationId: string, phoneNumber: string): Promise<ToolResult> {
     try {
       const booking = await this.scheduling.getActiveBookingByPhone(organizationId, phoneNumber);
@@ -398,22 +500,35 @@ export class AgentToolsService {
   async cancelBooking(
     organizationId: string,
     phoneNumber: string,
-    reason?: string
+    reason?: string,
+    reference?: string
   ): Promise<ToolResult> {
     try {
-      const booking = await this.scheduling.getActiveBookingByPhone(organizationId, phoneNumber);
-      if (!booking) {
+      const found = await this.resolveBooking(organizationId, phoneNumber, reference);
+      if (found.kind === 'none') {
         return {
           ok: false,
           speak: "I can't find an upcoming appointment under this number. Are you sure you have a booking with us?",
           data: { found: false },
         };
       }
+      if (found.kind === 'ambiguous') {
+        // Nothing is cancelled while the caller decides. `ok` reflects whether
+        // we could act, so an unmatched reference is a failure and a genuine
+        // choice is not.
+        return {
+          ok: !found.unmatched,
+          speak: found.speak,
+          data: { needsChoice: true, bookings: found.options },
+        };
+      }
+
+      const booking = found.booking;
       await this.scheduling.cancelBooking(organizationId, booking.id, reason, 'system:hosted-agent');
       return {
         ok: true,
-        speak: `Your ${booking.serviceName} appointment has been cancelled.`,
-        data: { bookingId: booking.id },
+        speak: `Your ${booking.serviceName} appointment on ${formatLagos(booking.startTime)} has been cancelled.`,
+        data: { bookingId: booking.id, reference: bookingReference(booking.id) },
       };
     } catch (e) {
       return this.failed('cancel_booking', e);
@@ -423,17 +538,26 @@ export class AgentToolsService {
   async rescheduleBooking(
     organizationId: string,
     phoneNumber: string,
-    newStartTime: string
+    newStartTime: string,
+    reference?: string
   ): Promise<ToolResult> {
     try {
-      const booking = await this.scheduling.getActiveBookingByPhone(organizationId, phoneNumber);
-      if (!booking) {
+      const found = await this.resolveBooking(organizationId, phoneNumber, reference);
+      if (found.kind === 'none') {
         return {
           ok: false,
           speak: "I can't find an upcoming appointment under this number. Are you sure you have a booking with us?",
           data: { found: false },
         };
       }
+      if (found.kind === 'ambiguous') {
+        return {
+          ok: !found.unmatched,
+          speak: found.speak,
+          data: { needsChoice: true, bookings: found.options },
+        };
+      }
+      const booking = found.booking;
       const updated = await this.scheduling.rescheduleBooking(
         organizationId,
         booking.id,

@@ -68,20 +68,26 @@ export class AgentToolsController {
   @Post('cancel-booking')
   cancelBooking(
     @Req() req: AgentRequest,
-    @Body() body: { phoneNumber: string; reason?: string }
+    @Body() body: { phoneNumber: string; reason?: string; reference?: string }
   ): Promise<ToolResult> {
-    return this.tools.cancelBooking(this.org(req), body?.phoneNumber ?? '', body?.reason);
+    return this.tools.cancelBooking(
+      this.org(req),
+      body?.phoneNumber ?? '',
+      body?.reason,
+      body?.reference
+    );
   }
 
   @Post('reschedule-booking')
   rescheduleBooking(
     @Req() req: AgentRequest,
-    @Body() body: { phoneNumber: string; newStartTime: string }
+    @Body() body: { phoneNumber: string; newStartTime: string; reference?: string }
   ): Promise<ToolResult> {
     return this.tools.rescheduleBooking(
       this.org(req),
       body?.phoneNumber ?? '',
-      body?.newStartTime ?? ''
+      body?.newStartTime ?? '',
+      body?.reference
     );
   }
 

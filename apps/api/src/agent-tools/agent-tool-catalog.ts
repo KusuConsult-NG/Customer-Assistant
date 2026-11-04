@@ -365,20 +365,32 @@ export function agentToolCatalog(
 
     'reschedule-booking': build(
       'reschedule-booking',
-      "Move the caller's existing appointment to a new time.",
+      "Move the caller's existing appointment to a new time. If the caller has more than one " +
+        'appointment this returns them all and moves nothing until you call it again with the ' +
+        'reference of the one they chose.',
       {
         phoneNumber: callerPhone,
         newStartTime: askedOf('string', 'The new start time as an ISO 8601 timestamp.'),
+        reference: askedOf(
+          'string',
+          'The reference of the appointment to move (AP-XXXXXXXX), when the caller has more than one.'
+        ),
       },
       ['phoneNumber', 'newStartTime']
     ),
 
     'cancel-booking': build(
       'cancel-booking',
-      "Cancel the caller's upcoming appointment. Confirm with them before calling this.",
+      "Cancel the caller's upcoming appointment. Confirm with them before calling this. " +
+        'If the caller has more than one appointment this returns them all and cancels nothing ' +
+        'until you call it again with the reference of the one they chose.',
       {
         phoneNumber: callerPhone,
         reason: askedOf('string', 'The reason they gave, if any.'),
+        reference: askedOf(
+          'string',
+          'The reference of the appointment to cancel (AP-XXXXXXXX), when the caller has more than one.'
+        ),
       },
       ['phoneNumber']
     ),
