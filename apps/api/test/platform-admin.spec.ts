@@ -339,9 +339,33 @@ describe('Platform administration tier', () => {
       expect(await prisma.organization.findFirst({ where: { name } })).toBeNull();
     });
 
-    it('refuses an agency with no named owner', async () => {
+    it('onboards an agency with NO staff, and says so', async () => {
+      // This used to be a 400. Bulk-onboarding the State's MDAs is twenty-odd
+      // ministries at once, and the owner of each is a named person the
+      // Ministry has to decide on — so requiring one here forced either a wait
+      // for all of them or an INVENTED address, which is an officer who can
+      // never sign in and a mailbox that may belong to a stranger.
+      const res = await asOperator('post', '/api/platform/agencies')
+        .send({ name: `Ministry of Nobody ${Date.now()}` })
+        .expect(201);
+
+      expect(res.body.owner).toBeNull();
+      // Stated, not left for somebody to discover when they cannot sign in.
+      expect(String(res.body.note)).toMatch(/no staff/i);
+      expect(res.body.agency.id).toBeTruthy();
+
+      await prisma.organization.delete({ where: { id: res.body.agency.id } }).catch(() => undefined);
+    });
+
+    it('refuses HALF an owner', async () => {
+      // An address with no name is a user nobody can identify; a name with no
+      // address is one nobody can reach. Either both or neither.
       await asOperator('post', '/api/platform/agencies')
-        .send({ name: 'Ministry of Nobody' })
+        .send({ name: 'Ministry of Half A', ownerEmail: 'someone@agency.test' })
+        .expect(400);
+
+      await asOperator('post', '/api/platform/agencies')
+        .send({ name: 'Ministry of Half B', ownerFullName: 'Someone' })
         .expect(400);
     });
   });

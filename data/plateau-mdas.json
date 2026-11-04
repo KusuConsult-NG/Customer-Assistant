@@ -1,0 +1,226 @@
+{
+  "_about": "Plateau State ministries, departments and agencies, for `npm run agencies:seed -- data/plateau-mdas.json`. Each entry carries the sources it was corroborated from. Only `agencies` is read by the seeder; `needsConfirmation` is deliberately NOT seeded.",
+  "_method": "Assembled from publicly reachable sources on 2026-11-04. plateaustate.gov.ng and en.wikipedia.org do not resolve from the session this was built in, so the official MDA index and the approved-budget PDF (the authoritative enumeration) could not be read directly. Everything in `agencies` is corroborated by TWO OR MORE independent sources. Anything resting on a single source — in particular an unofficial mirror whose names are internally inconsistent — is in `needsConfirmation` instead, because each row becomes a tenant whose name the AI says to citizens.",
+  "_verifyAgainst": [
+    "https://www.plateaustate.gov.ng/ — official MDA index (was unreachable; confirm every name here against it)",
+    "https://www.plateaustate.gov.ng/uploads/PLATEAU_STATE_2024_APPROVED_BUDGET.pdf — budgets enumerate every MDA by name and code"
+  ],
+  "_nameVariants": "Several bodies appear under more than one wording in the press (e.g. 'Budget and Economic Planning' vs 'Budget and Planning'; 'Lands and Survey' vs 'Lands, Survey and Town Planning'; 'Youth and Sports Development' vs 'Youth Development'). The longer, more specific form is used, and the alternatives are recorded per entry. Renaming an agency later is a decision about an existing tenant's records, so the seeder will never do it.",
+
+  "agencies": [
+    {
+      "name": "Ministry of Agriculture and Natural Resources",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Agriculture"],
+      "sources": ["OGP action plan 2025-2027", "cabinet portfolio lists (Agriculture)"]
+    },
+    {
+      "name": "Ministry of Budget and Economic Planning",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Budget and Planning"],
+      "sources": ["Jan 2025 cabinet changes", "Aug 2026 reshuffle (Budget and Planning)"]
+    },
+    {
+      "name": "Ministry of Commerce and Industry",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Commerce and Industries"],
+      "sources": ["cabinet portfolio lists (Commerce)", "Jan 2025 cabinet changes", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Education",
+      "category": "GOVERNMENT",
+      "sources": ["Aug 2026 reshuffle (Education)", "cabinet portfolio lists"]
+    },
+    {
+      "name": "Ministry of Environment",
+      "category": "GOVERNMENT",
+      "sources": ["cabinet portfolio lists (Environment)", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Finance",
+      "category": "GOVERNMENT",
+      "sources": ["OGP action plan 2025-2027", "approved budget documents"]
+    },
+    {
+      "name": "Ministry of Health",
+      "category": "GOVERNMENT",
+      "sources": [
+        "Feb 2025 cabinet (Commissioner for Health)",
+        "Plateau State Peace Building Agency partner directory",
+        "state site mirror"
+      ]
+    },
+    {
+      "name": "Ministry of Housing and Urban Development",
+      "category": "GOVERNMENT",
+      "sources": ["Feb 2025 cabinet (Housing and Urban Development)", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Humanitarian Affairs",
+      "category": "GOVERNMENT",
+      "note": "Newly created in the Aug 2026 reshuffle.",
+      "sources": ["Aug 2026 reshuffle (newly created Ministry of Humanitarian Affairs)", "cabinet portfolio reporting"]
+    },
+    {
+      "name": "Ministry of Information and Communication",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Information"],
+      "sources": ["OGP action plan 2025-2027", "cabinet portfolio lists (Information)", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Justice",
+      "category": "GOVERNMENT",
+      "note": "Headed by the Attorney General and Commissioner for Justice.",
+      "sources": ["OGP action plan 2025-2027", "Peace Building Agency partner directory", "Aug 2026 reshuffle"]
+    },
+    {
+      "name": "Ministry of Lands and Survey",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Lands, Survey and Town Planning"],
+      "sources": ["OGP action plan 2025-2027", "cabinet portfolio lists (Lands)"]
+    },
+    {
+      "name": "Ministry of Livestock Development, Veterinary Services and Fisheries",
+      "category": "GOVERNMENT",
+      "note": "Created in the Feb 2025 cabinet rejig.",
+      "sources": ["Feb 2025 cabinet rejig (ministry created)", "multiple national press reports of the same rejig"]
+    },
+    {
+      "name": "Ministry of Local Government and Chieftaincy Affairs",
+      "category": "GOVERNMENT",
+      "sources": ["Jun 2026 swearing-in (Local Government and Chieftaincy Affairs)", "LGA directory sourced to this ministry"]
+    },
+    {
+      "name": "Ministry of Mineral Development",
+      "category": "GOVERNMENT",
+      "sources": ["state site mirror", "approved budget documents"]
+    },
+    {
+      "name": "Ministry of Science and Technology",
+      "category": "GOVERNMENT",
+      "sources": [
+        "Jan 2025 cabinet changes (Science and Technology)",
+        "PICTDA described as the ICT policy arm of this ministry",
+        "state site mirror"
+      ]
+    },
+    {
+      "name": "Ministry of Tourism, Culture and Hospitality",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Tourism and Hospitality"],
+      "sources": ["Jan 2025 cabinet changes (Tourism and Hospitality)", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Water Resources and Energy Development",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Water Resources and Energy"],
+      "sources": ["Jun 2026 swearing-in (Water Resources and Energy Development)", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Women Affairs",
+      "category": "GOVERNMENT",
+      "sources": ["OGP action plan 2025-2027", "cabinet portfolio reporting"]
+    },
+    {
+      "name": "Ministry of Works",
+      "category": "GOVERNMENT",
+      "sources": ["cabinet portfolio lists (Works)", "state site mirror"]
+    },
+    {
+      "name": "Ministry of Youth and Sports Development",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["Ministry of Youth Development", "Ministry of Youth and Sports"],
+      "sources": ["Aug 2026 reshuffle (youths and sports development)", "Jan 2025 cabinet changes", "state site mirror"]
+    },
+
+    {
+      "name": "Office of the Secretary to the State Government",
+      "category": "GOVERNMENT",
+      "sources": ["OGP action plan 2025-2027", "Peace Building Agency partner directory"]
+    },
+    {
+      "name": "Plateau State Internal Revenue Service",
+      "category": "GOVERNMENT",
+      "sources": [
+        "plateaustate.gov.ng/boards/plateau-state-internal-revenue-service",
+        "approved budget documents 2018-2024",
+        "plsg.nokt.com.ng agency listing"
+      ]
+    },
+    {
+      "name": "Plateau State Information and Communication Technology Development Agency",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["PICTDA"],
+      "sources": ["dedicated encyclopaedia entry", "itedgenews.africa reporting", "Guardian reporting on its establishment"]
+    },
+    {
+      "name": "Plateau State Contributory Health Insurance Management Agency",
+      "category": "HOSPITAL",
+      "alsoWritten": ["PLASCHEMA", "Plateau State Contributory Healthcare Management Agency"],
+      "note": "Category HOSPITAL rather than GOVERNMENT: it is the health scheme this platform was originally built around, and the flows that register citizens for health cover belong to it.",
+      "sources": ["OGP action plan 2025-2027", "the existing tenant and seed data in this repository"]
+    },
+    {
+      "name": "Plateau State Peace Building Agency",
+      "category": "GOVERNMENT",
+      "sources": ["OGP action plan 2025-2027", "plateaupeacebuilding.org (its own site)"]
+    },
+    {
+      "name": "Plateau State Independent Electoral Commission",
+      "category": "GOVERNMENT",
+      "alsoWritten": ["PLASIEC"],
+      "sources": ["Peace Building Agency partner directory", "state electoral reporting"]
+    }
+  ],
+
+  "needsConfirmation": [
+    {
+      "name": "Plateau State Emergency Management Agency",
+      "why": "Named as 'State Emergency Management Agency' in one directory, while budget documents carry 'Emergency Relief and Management Agency'. Two different bodies or one renamed — seeding the wrong one gives citizens a name nobody at the agency recognises."
+    },
+    {
+      "name": "Operation Rainbow",
+      "why": "Named in the OGP action plan as a state body, but it is a security coordination outfit rather than a citizen-facing service. Whether it should answer a public helpline at all is a decision for the Ministry."
+    },
+    {
+      "name": "Plateau State Drugs and Commodities Management Agency",
+      "why": "Single source (OGP action plan). Its exact registered name needs checking against the official index."
+    },
+    {
+      "name": "Plateau State Commodities Marketing Agency",
+      "why": "Single source (OGP action plan)."
+    },
+    {
+      "name": "Plateau State Investment Promotion Agency",
+      "why": "Single source (plsg.nokt.com.ng, an unofficial-looking mirror)."
+    },
+    {
+      "name": "Plateau Radio and Television Corporation",
+      "why": "Single source (state site mirror whose names are internally inconsistent elsewhere)."
+    },
+    {
+      "name": "Plateau State Bureau of Statistics",
+      "why": "Single source (state site mirror)."
+    },
+    {
+      "name": "Plateau State Microfinance Development Agency",
+      "why": "Appears in budget documents only; current status unconfirmed."
+    },
+    {
+      "name": "Plateau Printing Press",
+      "why": "Listed as a department, not an agency. Whether it is a tenant that answers citizens is a decision for the Ministry."
+    },
+    {
+      "name": "State Audit Department",
+      "why": "A department rather than a citizen-facing agency; included here so the omission is deliberate rather than an oversight."
+    },
+    {
+      "name": "Office for Development Partnerships, Strategic Linkages and Diaspora Engagements",
+      "why": "Single source (OGP action plan). Sits within the Office of the Governor and coordinates between MDAs, so it may not need a tenant of its own."
+    },
+    {
+      "name": "Plateau State House of Assembly",
+      "why": "The legislature, not an MDA. A tenant for it would be a decision about whether the Assembly answers citizens through this platform."
+    }
+  ]
+}

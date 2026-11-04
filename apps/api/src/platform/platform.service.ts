@@ -290,8 +290,21 @@ export class PlatformService {
     dto: {
       name: string;
       category?: IndustryType;
-      ownerEmail: string;
-      ownerFullName: string;
+      /**
+       * Optional. An agency can be onboarded with NO staff.
+       *
+       * Onboarding the State's MDAs is a bulk act — twenty-odd ministries at
+       * once — and the owner of each is a named person the Ministry has to
+       * decide on. Requiring one here meant either waiting for all of them or
+       * inventing addresses, and an invented address is an officer who can
+       * never sign in and a mailbox that may belong to a stranger.
+       *
+       * An agency with no staff is visible as exactly that: the console
+       * reports "no active staff", and an invitation can follow. That is
+       * honest, where a fabricated owner is not.
+       */
+      ownerEmail?: string;
+      ownerFullName?: string;
       phone?: string;
       defaultLanguage?: string;
       timezone?: string;
@@ -300,14 +313,23 @@ export class PlatformService {
     const name = dto.name?.trim();
     const ownerEmail = dto.ownerEmail?.trim().toLowerCase();
     if (!name) throw new BadRequestException('The agency needs a name.');
-    if (!ownerEmail || !dto.ownerFullName?.trim()) {
-      throw new BadRequestException('An agency needs a named owner with an email address.');
+
+    // Half an owner is not an owner: an address with no name, or a name with
+    // no address, would produce a user nobody can identify or nobody can
+    // reach. Either both, or neither.
+    const wantsOwner = !!(ownerEmail || dto.ownerFullName?.trim());
+    if (wantsOwner && !(ownerEmail && dto.ownerFullName?.trim())) {
+      throw new BadRequestException(
+        'An owner needs both a full name and an email address. Omit both to onboard the agency with no staff.'
+      );
     }
 
     // Checked before the organization is written, so a clashing email does not
     // leave an agency with no owner behind it.
-    const clash = await prisma.user.findUnique({ where: { email: ownerEmail } });
-    if (clash) throw new ConflictException('A user with that email address already exists.');
+    if (ownerEmail) {
+      const clash = await prisma.user.findUnique({ where: { email: ownerEmail } });
+      if (clash) throw new ConflictException('A user with that email address already exists.');
+    }
 
     const slug = await generateUniqueSlug(name);
     const organization = await prisma.organization.create({
@@ -331,11 +353,13 @@ export class PlatformService {
     // that created it, attributed to the ministry — which is exactly what it
     // should say, and is why the actor is threaded through rather than
     // defaulted to whoever happens to be convenient.
-    const owner = await this.organizations.addTeamMember(
-      organization.id,
-      { email: ownerEmail, fullName: dto.ownerFullName.trim(), role: 'OWNER' },
-      { userId: actor.userId, ipAddress: actor.ipAddress ?? null }
-    );
+    const owner = ownerEmail
+      ? await this.organizations.addTeamMember(
+          organization.id,
+          { email: ownerEmail, fullName: dto.ownerFullName!.trim(), role: 'OWNER' },
+          { userId: actor.userId, ipAddress: actor.ipAddress ?? null }
+        )
+      : null;
 
     await this.audit({
       actorUserId: actor.userId,
@@ -343,12 +367,29 @@ export class PlatformService {
       targetType: 'Organization',
       targetId: organization.id,
       organizationId: organization.id,
-      newValue: { name: organization.name, slug: organization.slug, ownerEmail },
+      // Recorded as it happened: an agency onboarded with no staff is a fact
+      // somebody will need later, when nobody can sign in to it.
+      newValue: { name: organization.name, slug: organization.slug, ownerEmail: ownerEmail ?? null },
       ipAddress: actor.ipAddress,
     });
 
     log.info('platform_agency_created', { organizationId: organization.id, actor: actor.userId });
-    return { agency: organization, owner: { id: (owner as any)?.id ?? null, email: ownerEmail } };
+    return {
+      agency: organization,
+      owner: ownerEmail ? { id: (owner as any)?.id ?? null, email: ownerEmail } : null,
+      /** Said plainly rather than left for somebody to notice. */
+      note: ownerEmail
+        ? undefined
+        : 'Onboarded with no staff. Nobody can sign in to this agency until an owner is invited.',
+      // When delivery failed, addTeamMember hands back the setup link — the
+      // only copy, since the token is stored as a hash.
+      ...((owner as any)?.emailDelivered === false
+        ? {
+            ownerInviteUndelivered: (owner as any).deliveryProblem,
+            ownerInviteUrl: (owner as any).inviteUrl,
+          }
+        : {}),
+    };
   }
 
   /**

@@ -47,8 +47,12 @@ export class PlatformController {
     body: {
       name: string;
       category?: IndustryType;
-      ownerEmail: string;
-      ownerFullName: string;
+      // Optional: an agency may be onboarded with no staff. See the service —
+      // bulk-onboarding the State's MDAs otherwise forces either a wait for
+      // every named owner or an invented address, and an invented address is
+      // an officer who can never sign in.
+      ownerEmail?: string;
+      ownerFullName?: string;
       phone?: string;
       defaultLanguage?: string;
       timezone?: string;

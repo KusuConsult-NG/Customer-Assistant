@@ -54,14 +54,29 @@ require(path.join(__dirname, '..', 'apps', 'api', 'dist', 'config', 'load-env.js
 
 const { PrismaClient } = require('@prisma/client');
 
-/** Mirrors `generateUniqueSlug`, which the API uses for the same purpose. */
+/**
+ * Mirrors `generateUniqueSlug`, which the API uses for the same purpose.
+ *
+ * The length cap cuts at a WORD boundary. A plain `.slice(0, 60)` produced
+ * `ministry-of-livestock-development-veterinary-services-and-fi` — a slug that
+ * appears in URLs and in the platform console, ending mid-word. Worse, two
+ * long names sharing their first sixty characters would truncate to the same
+ * slug and the second would be refused as a duplicate of a body it has
+ * nothing to do with.
+ */
 function slugify(name) {
-  return String(name)
+  const full = String(name)
     .toLowerCase()
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
+    .replace(/^-+|-+$/g, '');
+
+  if (full.length <= 60) return full;
+
+  const cut = full.slice(0, 60);
+  const lastBreak = cut.lastIndexOf('-');
+  // Keep whole words, unless the first word alone is over the limit.
+  return (lastBreak > 20 ? cut.slice(0, lastBreak) : cut).replace(/-+$/, '');
 }
 
 const VALID_CATEGORIES = new Set([
