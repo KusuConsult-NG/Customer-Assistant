@@ -34,6 +34,7 @@
     "parity": "node scripts/agent-parity.js",
     "platform:grant": "node scripts/grant-platform-admin.js",
     "models:drop-dead": "node scripts/drop-dead-models.js",
+    "user:password": "node scripts/set-user-password.js",
     "catalogue:seed": "node scripts/seed-service-catalogue.js"
   },
   "dependencies": {

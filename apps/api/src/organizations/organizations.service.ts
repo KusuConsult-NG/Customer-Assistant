@@ -394,21 +394,61 @@ export class OrganizationsService {
       },
     });
 
+    /**
+     * The invite link is the ONLY way this account ever signs in — it was
+     * created with a bcrypt hash of random bytes, so no password reaches it —
+     * and the token is stored only as a SHA-256 hash, so after this function
+     * returns the raw link exists nowhere.
+     *
+     * Delivery depends on `RESEND_API_KEY`, which `env.validation.ts` declares
+     * OPTIONAL: the API boots fine without it. When it was unset, or when
+     * Resend refused, this logged and returned SUCCESS anyway — so an
+     * administrator was told the officer had been invited, the officer never
+     * received anything, and the link needed to repair it was gone. Every
+     * other route back in (forgot-password, resend-verification) is also an
+     * email, so there was no way out inside the product.
+     *
+     * So delivery is REPORTED, and when it fails the setup link is handed to
+     * the administrator who just created the account. That is not a widening
+     * of access: they are OWNER or ADMIN, they created this user a moment ago
+     * in their own agency, and they can delete and re-invite at will. An
+     * officer who can never sign in is the worse outcome by a long way.
+     */
+    const inviteUrl =
+      `${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account` +
+      `?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+
+    let emailDelivered = false;
+    let deliveryProblem: string | null = null;
+
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {
       try {
         const resend = new Resend(resendKey);
-        await resend.emails.send({
+        // `{ data, error }`, not a rejection — see the note in
+        // AuthService.sendEmail. Without reading `error`, an invalid key or an
+        // unverified sending domain is reported as a delivered invitation.
+        const result: any = await resend.emails.send({
           from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
           to: user.email,
           subject: `You've been invited to join ${org?.name || 'Customer Care Agent'}`,
-          html: `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p><p><a href="${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account?token=${rawToken}&email=${encodeURIComponent(user.email)}">Click here to set up your account</a></p>`,
+          html: `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p><p><a href="${inviteUrl}">Click here to set up your account</a></p>`,
         });
-      } catch (err) {
-        console.error('Failed to send invite email:', err);
+        if (result?.error) {
+          deliveryProblem = `The invitation email was refused: ${result.error?.message ?? JSON.stringify(result.error)}`;
+          console.error('[Organizations] invite email refused:', deliveryProblem);
+        } else {
+          emailDelivered = true;
+        }
+      } catch (err: any) {
+        deliveryProblem = `The invitation email was refused: ${err?.message ?? err}`;
+        console.error('[Organizations] invite email failed:', err?.message ?? err);
       }
     } else {
-      console.warn(`RESEND_API_KEY not set. Invite link: ${process.env.WEB_BASE_URL || 'http://localhost:3000'}/setup-account?token=${rawToken}&email=${encodeURIComponent(user.email)}`);
+      deliveryProblem =
+        'No email provider is configured on this deployment (RESEND_API_KEY is unset), ' +
+        'so no invitation was sent.';
+      console.warn(`[Organizations] RESEND_API_KEY not set. Invite link: ${inviteUrl}`);
     }
 
     // The role is the point of the record: an invitation is how somebody
@@ -421,7 +461,20 @@ export class OrganizationsService {
       newValue: { email: user.email, fullName: user.fullName, role: user.role },
     });
 
-    return user;
+    return {
+      ...user,
+      /** Whether the invitation actually went out. */
+      emailDelivered,
+      /** Why it did not, when it did not. Safe to show an administrator. */
+      deliveryProblem,
+      /**
+       * Only present when delivery FAILED. The officer cannot sign in without
+       * it and nothing can regenerate it, so withholding it on a failed send
+       * strands the account. Never returned on success: there is no reason for
+       * a working credential to sit in a response body as well as a mailbox.
+       */
+      inviteUrl: emailDelivered ? undefined : inviteUrl,
+    };
   }
 
   async removeTeamMember(organizationId: string, userId: string, actor: Actor) {

@@ -38,12 +38,26 @@ export class AuthService {
       return false;
     }
     try {
-      await new Resend(resendKey).emails.send({
+      // Resend RESOLVES with `{ data, error }` and does not throw on an API
+      // error. So a `try/catch` around this call catches a network fault and
+      // nothing else: an invalid key, an unverified sending domain, a
+      // suppressed address and a rate limit all came back as success, and this
+      // returned true for mail that was refused. Every caller then reported
+      // "check your inbox" for an email that does not exist — which is the
+      // whole reason this helper returns a boolean in the first place.
+      const result: any = await new Resend(resendKey).emails.send({
         from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
         to,
         subject,
         html,
       });
+      if (result?.error) {
+        console.error(
+          `[AuthService] Resend REFUSED "${subject}" to ${to}:`,
+          result.error?.message ?? JSON.stringify(result.error)
+        );
+        return false;
+      }
       return true;
     } catch (err: any) {
       console.error(`[AuthService] Failed to send "${subject}" email:`, err?.message ?? err);
@@ -373,7 +387,30 @@ export class AuthService {
    *  5. Email is sent via Resend (RESEND_API_KEY in .env). Falls back gracefully if not configured.
    */
   async forgotPassword(email: string) {
-    const SAFE_RESPONSE = { message: 'If an account exists for this email, password reset instructions have been sent.' };
+    /**
+     * The wording does not assert a DELIVERY, because delivery is not certain.
+     *
+     * It used to say instructions "have been sent". Delivery needs
+     * `RESEND_API_KEY`, which is optional — the API boots without it — and
+     * when it was unset this endpoint wrote the token, returned that sentence,
+     * and sent nothing. In production it did not even log the link: the
+     * `[DEV]` fallback below is gated on NODE_ENV. So the officer waited for
+     * an email that was never coming, and every other way back in
+     * (resend-verification, an invite) is also an email.
+     *
+     * What must stay vague is whether the ACCOUNT exists — the same response
+     * for a known and an unknown address is what stops this being an
+     * account-enumeration oracle. Whether the MAIL SYSTEM works is not a fact
+     * about the account, so saying what to do when nothing arrives leaks
+     * nothing and is the difference between a recoverable account and a
+     * permanent lockout.
+     */
+    const SAFE_RESPONSE = {
+      message:
+        'If an account exists for this email, password reset instructions are on their way. ' +
+        'If nothing arrives within a few minutes, contact your agency administrator — ' +
+        'email delivery may not be configured on this deployment.',
+    };
 
     const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
     if (!user) return SAFE_RESPONSE;
@@ -410,8 +447,19 @@ export class AuthService {
       `
     );
 
-    if (!sent && process.env.NODE_ENV !== 'production') {
-      console.warn(`[DEV] Password reset link (email delivery unavailable):\n${resetUrl}`);
+    if (!sent) {
+      // ERROR level, in every environment. This is the account-recovery path
+      // failing, and the only person who can fix it reads the server log.
+      // `npm run user:password` is the way back in when it cannot be fixed in
+      // time — it needs database credentials and no email at all.
+      console.error(
+        '[AuthService] PASSWORD RESET EMAIL WAS NOT SENT. The reset token was written and ' +
+          'expires in 30 minutes, but nothing was delivered. Check RESEND_API_KEY and ' +
+          'EMAIL_FROM. To restore access without email: npm run user:password -- <email> --apply'
+      );
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[DEV] Password reset link (email delivery unavailable):\n${resetUrl}`);
+      }
     }
 
     return SAFE_RESPONSE;

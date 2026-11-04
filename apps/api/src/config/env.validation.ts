@@ -20,7 +20,12 @@ interface EnvSpec {
   rejectPlaceholder?: boolean;
 }
 
-const ENV_SPECS: EnvSpec[] = [
+/**
+ * Exported so a test can assert that an OPTIONAL variable still states what
+ * is lost without it. `RESEND_API_KEY` is the case that matters: optional is
+ * correct, and "optional" must not read as "costs nothing".
+ */
+export const ENV_SPECS: EnvSpec[] = [
   // ─── Database ────────────────────────────────────────────────────────────────
   { key: 'DATABASE_URL', required: true, description: 'PostgreSQL connection string', rejectPlaceholder: true },
 
@@ -62,7 +67,19 @@ const ENV_SPECS: EnvSpec[] = [
   { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
   { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
   { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
-  { key: 'RESEND_API_KEY', required: false, description: 'Resend API key (required for verification/reset/booking emails)' },
+  {
+    key: 'RESEND_API_KEY',
+    required: false,
+    // Optional because the platform serves citizens on WhatsApp and by phone,
+    // and those work with no email provider at all. But say what is lost:
+    // without it NOBODY can be invited, verify an address or reset a password,
+    // and every one of those endpoints still answers 200. The way back in is
+    // `npm run user:password`, which needs database credentials and no email.
+    description:
+      'Resend API key. WITHOUT IT no staff invitation, email verification or password ' +
+      'reset can be delivered — those endpoints still answer 200, so the failure is silent. ' +
+      'Recover an account with: npm run user:password -- <email> --apply',
+  },
   { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in TwiML stream URLs and agent tool callbacks)' },
   { key: 'WEB_BASE_URL', required: false, description: 'Public dashboard URL (used in emailed links; defaults to localhost)' },
   {
