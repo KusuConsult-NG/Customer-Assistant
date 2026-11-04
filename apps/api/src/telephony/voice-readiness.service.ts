@@ -294,6 +294,23 @@ export class VoiceReadinessService {
       remedy: 'Settings → General: set the welcome message.',
     });
 
+    // ── 8. What the CARRIER will actually do ─────────────────────────────────
+    //
+    // Everything above describes what WE hold. None of it can see the one
+    // thing that decides whether a citizen's call arrives: whether the carrier
+    // has the number, and where it sends it.
+    //
+    // This report said "A call will connect and be answered" against a live
+    // deployment whose Twilio account held NO NUMBERS AT ALL. Every local
+    // check was genuinely green — line saved, credentials stored, speech
+    // configured — and no call could ever have arrived. A readiness report
+    // that is confidently wrong is worse than none, because it is the thing
+    // somebody believes instead of picking up the phone.
+    //
+    // So it ASKS Twilio. A failure to reach them is reported as unknown, never
+    // as ready: not knowing is not the same as working.
+    await this.appendCarrierCheck(checks, lines, base);
+
     const blocked = checks.filter((c) => c.state === 'blocked');
     const degraded = checks.filter((c) => c.state === 'degraded');
 
@@ -333,6 +350,113 @@ export class VoiceReadinessService {
         'then the media-stream start event — whichever of those is missing is where the call stopped.',
       checks,
     };
+  }
+
+  /**
+   * Ask Twilio whether it holds each line, and where it sends the calls.
+   *
+   * Three outcomes, and the distinction between them is the point:
+   *
+   *  - BLOCKED when the account does not hold the number, or when its Voice
+   *    webhook points somewhere else. In both cases a citizen's call does not
+   *    arrive here, however complete the local configuration looks;
+   *  - DEGRADED when Twilio could not be asked — no credentials stored, or the
+   *    request failed. Unknown is reported as unknown. Treating "we could not
+   *    check" as "it works" is exactly how the report came to claim a call
+   *    would be answered on an account with no numbers;
+   *  - READY only when Twilio itself says the number is there and pointed
+   *    here.
+   */
+  private async appendCarrierCheck(
+    checks: ReadinessCheck[],
+    lines: Array<{ phoneNumber: string; provider: string; accountSid?: string | null; authToken?: string | null }>,
+    base: string
+  ): Promise<void> {
+    const twilio = lines.filter((l) => l.provider === 'TWILIO');
+    if (twilio.length === 0) return;
+
+    const voiceUrl = `${base}/api/telephony/inbound/twilio`;
+
+    for (const line of twilio) {
+      const id = `carrier:${line.phoneNumber}`;
+      const label = `Twilio actually routes ${line.phoneNumber}`;
+
+      if (!line.accountSid || !line.authToken) {
+        checks.push({
+          id,
+          label,
+          state: 'degraded',
+          detail: 'Not checked — no stored credentials to ask Twilio with.',
+          consequence:
+            'Whether a call reaches this platform is unknown. Everything above describes ' +
+            'what this platform holds, not what the carrier will do with a call.',
+          remedy: 'Settings → Voice & Telephony: save the Account SID and Auth Token.',
+        });
+        continue;
+      }
+
+      const auth = 'Basic ' + Buffer.from(`${line.accountSid}:${line.authToken}`).toString('base64');
+      let payload: { incoming_phone_numbers?: Array<{ voice_url?: string }> } | null = null;
+      let failure: string | null = null;
+
+      try {
+        const res = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${line.accountSid}/IncomingPhoneNumbers.json` +
+            `?PhoneNumber=${encodeURIComponent(normalizePhoneNumber(line.phoneNumber))}`,
+          { headers: { Authorization: auth }, signal: AbortSignal.timeout(8_000) }
+        );
+        if (!res.ok) failure = `Twilio answered HTTP ${res.status}`;
+        else payload = (await res.json()) as any;
+      } catch (err: any) {
+        failure = err?.message ?? String(err);
+      }
+
+      if (failure) {
+        checks.push({
+          id,
+          label,
+          state: 'degraded',
+          detail: `Could not ask Twilio: ${failure}`,
+          consequence:
+            'Unknown, not confirmed. This report cannot tell you a call will arrive when it ' +
+            'could not reach the carrier to find out.',
+          remedy: 'Check the stored Account SID and Auth Token, and that Twilio is reachable.',
+        });
+        continue;
+      }
+
+      const remote = payload?.incoming_phone_numbers?.[0];
+      if (!remote) {
+        checks.push({
+          id,
+          label,
+          state: 'blocked',
+          detail: `Twilio account ${line.accountSid} does not hold ${line.phoneNumber}.`,
+          consequence:
+            'No call can arrive on this number, because the account that would deliver it ' +
+            'does not have it. Everything else being configured changes nothing.',
+          remedy:
+            'Buy or transfer the number into that account, or save the credentials of the ' +
+            'account that does hold it.',
+        });
+        continue;
+      }
+
+      const pointedHere = remote.voice_url === voiceUrl;
+      checks.push({
+        id,
+        label,
+        state: pointedHere ? 'ready' : 'blocked',
+        detail: pointedHere
+          ? `Twilio sends it to ${remote.voice_url}`
+          : `Twilio sends it to ${remote.voice_url || '(nothing)'}, not to ${voiceUrl}`,
+        consequence: pointedHere
+          ? ''
+          : "The number exists and rings somewhere else — on a new Twilio number that is a demo " +
+            'greeting. The caller hears whatever that answers with, and nothing reaches this platform.',
+        remedy: pointedHere ? '' : 'Use "Point the number at this platform", or set the Voice webhook in the Twilio console.',
+      });
+    }
   }
 
   /**

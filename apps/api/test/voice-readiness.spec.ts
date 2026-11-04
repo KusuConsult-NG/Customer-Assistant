@@ -28,6 +28,7 @@ import request from 'supertest';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { prisma, encryptSecret } from '@ace/database';
+
 import { AppModule } from '../src/app.module';
 
 describe('voice readiness', () => {
@@ -43,6 +44,31 @@ describe('voice readiness', () => {
     if (!(key in envBefore)) envBefore[key] = process.env[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
+  };
+
+  // Captured at module load, before any stub replaces it.
+  const realFetch: typeof globalThis.fetch = globalThis.fetch;
+  /**
+   * Twilio is stubbed for the whole suite.
+   *
+   * The report asks the carrier now, so without this every test with a line
+   * would make a real outbound request — slow, flaky, and dependent on an
+   * account nobody owns. `carrier()` sets what Twilio claims; the default is
+   * the happy case so the existing assertions keep meaning what they meant.
+   */
+  const carrier = (opts: { holds?: boolean; voiceUrl?: string; fail?: boolean } = {}) => {
+    globalThis.fetch = (async () => {
+      if (opts.fail) throw new Error('ENOTFOUND api.twilio.com');
+      const holds = opts.holds !== false;
+      return new Response(
+        JSON.stringify({
+          incoming_phone_numbers: holds
+            ? [{ sid: 'PN1', voice_url: opts.voiceUrl ?? 'https://api.readiness.example/api/telephony/inbound/twilio' }]
+            : [],
+        }),
+        { status: 200 }
+      );
+    }) as any;
   };
 
   beforeAll(async () => {
@@ -82,6 +108,7 @@ describe('voice readiness', () => {
   });
 
   afterAll(async () => {
+    globalThis.fetch = realFetch;
     for (const [k, v] of Object.entries(envBefore)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
@@ -94,8 +121,13 @@ describe('voice readiness', () => {
   });
 
   beforeEach(async () => {
+    carrier();
     await prisma.telephonyConfig.deleteMany({ where: { organizationId: orgId } });
     await prisma.hostedAgentConfig.deleteMany({ where: { organizationId: orgId } });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
   });
 
   const get = (token = ownerToken) =>
@@ -241,5 +273,62 @@ describe('voice readiness', () => {
     // A ciphertext must not leak either: masking the stored value instead of
     // the decrypted one shows four characters of base64 that match nothing.
     expect(raw).not.toContain('v1.');
+  });
+
+  describe('what the carrier will actually do', () => {
+    it('is BLOCKED when the account does not hold the number', async () => {
+      await workingLine();
+      fullyConfiguredEnv();
+      // The exact state of the live deployment: valid credentials, and an
+      // account with no numbers.
+      carrier({ holds: false });
+
+      const { body } = await get();
+      const c = check(body, 'carrier:+2348030005555');
+      expect(c.state).toBe('blocked');
+      expect(c.consequence).toMatch(/No call can arrive/);
+      // And it must drag the VERDICT down. The report claimed "A call will
+      // connect and be answered" on exactly this configuration.
+      expect(body.state).toBe('blocked');
+    });
+
+    it('is BLOCKED when the number rings somewhere else', async () => {
+      await workingLine();
+      fullyConfiguredEnv();
+      carrier({ voiceUrl: 'https://demo.twilio.com/welcome/voice/' });
+
+      const { body } = await get();
+      const c = check(body, 'carrier:+2348030005555');
+      expect(c.state).toBe('blocked');
+      expect(c.detail).toMatch(/demo\.twilio\.com/);
+      expect(body.state).toBe('blocked');
+    });
+
+    it('is UNKNOWN, not ready, when Twilio cannot be asked', async () => {
+      await workingLine();
+      fullyConfiguredEnv();
+      carrier({ fail: true });
+
+      const { body } = await get();
+      const c = check(body, 'carrier:+2348030005555');
+      // Not knowing is not the same as working. Treating a failed check as
+      // success is how this report came to claim a call would be answered on
+      // an account with no numbers.
+      expect(c.state).toBe('degraded');
+      expect(c.detail).toMatch(/Could not ask Twilio/);
+    });
+
+    it('is READY only when Twilio says the number is here', async () => {
+      await workingLine();
+      fullyConfiguredEnv();
+      carrier({ voiceUrl: 'https://api.readiness.example/api/telephony/inbound/twilio' });
+
+      const { body } = await get();
+      expect(check(body, 'carrier:+2348030005555').state).toBe('ready');
+      // The fixture line carries a forwarding number too, so nothing is left
+      // reduced: this is the only configuration in which the report may say a
+      // call will connect and be answered.
+      expect(body.state).toBe('ready');
+    });
   });
 });
