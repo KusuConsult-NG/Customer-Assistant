@@ -626,6 +626,76 @@ export class TelephonyService {
     return contact?.id ?? null;
   }
 
+  /**
+   * Is this status callback really from the carrier that holds the call?
+   *
+   * ── What was wrong ────────────────────────────────────────────────────────
+   *
+   * Nothing checked. The INBOUND routes verify a signature before they do
+   * anything; the status callbacks — ringing, answered, busy, no-answer —
+   * verified nothing at all, so anyone who could reach the URL could POST a
+   * CallSid and a status and rewrite the agency's call history.
+   *
+   * It stopped being merely corruption the day these callbacks began settling
+   * promised callbacks: COMPLETED here is what records that a citizen was
+   * actually REACHED. An unauthenticated stranger could mark an agency's
+   * promises kept with no call placed, which is the fabrication the platform's
+   * first invariant exists to forbid.
+   *
+   * The tenant is taken from the call log the SID names — a SID this platform
+   * has no record of is refused outright, since there is nothing to verify it
+   * against and nothing to update. Verification then uses THAT agency's own
+   * carrier credentials, so one tenant's callback cannot speak for another's.
+   */
+  async verifyStatusCallback(input: {
+    callSid: string;
+    provider: 'TWILIO' | 'TELNYX';
+    headers: Record<string, string>;
+    params: Record<string, string>;
+    rawBody?: Buffer;
+    path: string;
+  }): Promise<'ok' | 'unknown_call' | 'rejected'> {
+    const callLog = await prisma.callLog.findFirst({
+      where: { callSid: input.callSid },
+      select: { organizationId: true },
+    });
+    if (!callLog) return 'unknown_call';
+
+    if (input.provider === 'TELNYX') {
+      // Telnyx signs with a workspace key held in the environment, not per
+      // tenant. With no key configured there is nothing to verify, and a
+      // skipped check is how an unverified route stays unverified.
+      const publicKey = process.env.TELNYX_PUBLIC_KEY;
+      if (!publicKey) return 'rejected';
+      const ok = verifyTelnyxSignature(
+        publicKey,
+        input.headers['telnyx-signature-ed25519'],
+        input.headers['telnyx-timestamp'],
+        input.rawBody ?? Buffer.from('')
+      );
+      return ok ? 'ok' : 'rejected';
+    }
+
+    const config = withTelephonyCredentials(
+      await prisma.telephonyConfig.findFirst({
+        where: { organizationId: callLog.organizationId, provider: 'TWILIO' as any },
+        orderBy: { createdAt: 'asc' },
+      })
+    );
+    const authToken = config?.authToken;
+    // No token stored means this agency's callbacks cannot be verified. Refuse
+    // rather than trust: an unverifiable status is not a status.
+    if (!authToken) return 'rejected';
+
+    const ok = verifyTwilioSignature(
+      authToken,
+      input.headers['x-twilio-signature'],
+      `${apiBaseUrl()}${input.path}`,
+      input.params
+    );
+    return ok ? 'ok' : 'rejected';
+  }
+
   async updateCallStatus(callSid: string, status: CallStatus, duration?: number) {
     const correlationId = generateCorrelationId();
     const callLog = await prisma.callLog.findFirst({ where: { callSid } });

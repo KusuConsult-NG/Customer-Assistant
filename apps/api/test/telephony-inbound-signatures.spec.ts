@@ -406,6 +406,140 @@ describe('inbound telephony webhook signatures', () => {
 
   // ── A number this platform does not serve ────────────────────────────────
 
+  /**
+   * ── The CALL-STATUS callbacks, which nobody was verifying ─────────────────
+   *
+   * The inbound routes above check a signature before they do anything. The
+   * status callbacks — where the carrier reports ringing, answered, busy,
+   * no-answer — checked nothing at all. Anyone who could reach the URL could
+   * POST a CallSid and a status.
+   *
+   * That was already corruption of the call history. It became worse the day
+   * those callbacks started settling PROMISED CALLBACKS: "COMPLETED" on this
+   * route is what records that a citizen was actually reached, so an
+   * unauthenticated stranger could mark the agency's promises kept without a
+   * single call being placed — the exact fabrication the platform's first
+   * invariant exists to forbid.
+   */
+  describe('call status callbacks', () => {
+    const statusForm = (callSid: string) => ({
+      CallSid: callSid,
+      CallStatus: 'completed',
+      CallDuration: '42',
+    });
+
+    const signStatus = (params: Record<string, string>) => {
+      const paramString = Object.keys(params)
+        .sort()
+        .map((k) => `${k}${params[k]}`)
+        .join('');
+      return createHmac('sha1', TWILIO_TOKEN)
+        .update(`${API_BASE}/api/telephony/status/twilio${paramString}`)
+        .digest('base64');
+    };
+
+    const seedCall = async () => {
+      const callSid = `CA${randomBytes(8).toString('hex')}`;
+      await prisma.callLog.create({
+        data: {
+          organizationId: orgId,
+          callSid,
+          fromNumber: '+2348031234567',
+          toNumber: TWILIO_NUMBER,
+          direction: 'INBOUND',
+          status: 'IN_PROGRESS',
+          provider: 'TWILIO',
+        },
+      });
+      return callSid;
+    };
+
+    it('REFUSES an unsigned status callback, and changes nothing', async () => {
+      const callSid = await seedCall();
+
+      await request(app.getHttpServer())
+        .post('/api/telephony/status/twilio')
+        .type('form')
+        .send(statusForm(callSid))
+        .expect(403);
+
+      const after = await prisma.callLog.findFirst({ where: { callSid } });
+      expect(after!.status).toBe('IN_PROGRESS');
+      expect(after!.endedAt).toBeNull();
+    });
+
+    it('REFUSES a forged signature', async () => {
+      const callSid = await seedCall();
+
+      await request(app.getHttpServer())
+        .post('/api/telephony/status/twilio')
+        .type('form')
+        .set('x-twilio-signature', 'ZmFrZSBzaWduYXR1cmU=')
+        .send(statusForm(callSid))
+        .expect(403);
+
+      expect((await prisma.callLog.findFirst({ where: { callSid } }))!.status).toBe('IN_PROGRESS');
+    });
+
+    it('accepts the carrier’s own signature and records the outcome', async () => {
+      const callSid = await seedCall();
+      const params = statusForm(callSid);
+
+      await request(app.getHttpServer())
+        .post('/api/telephony/status/twilio')
+        .type('form')
+        .set('x-twilio-signature', signStatus(params))
+        .send(params)
+        .expect(204);
+
+      const after = await prisma.callLog.findFirst({ where: { callSid } });
+      expect(after!.status).toBe('COMPLETED');
+      expect(after!.durationSeconds).toBe(42);
+    });
+
+    it('cannot settle a promised callback without the carrier’s signature', async () => {
+      // The reason this matters most: COMPLETED here means "the citizen was
+      // reached", and that is what closes a promise on the console.
+      const callSid = await seedCall();
+      const contact = await prisma.contact.create({
+        data: { organizationId: orgId, phoneNumber: `+23480${String(Date.now()).slice(-8)}`, fullName: 'Promised' },
+      });
+      const promise = await prisma.callbackRequest.create({
+        data: {
+          organizationId: orgId,
+          contactId: contact.id,
+          phoneNumber: contact.phoneNumber,
+          reason: 'water supply',
+          promisedText: 'Within the hour',
+          dueAt: new Date(),
+          status: 'IN_PROGRESS',
+          callSid,
+          attempts: 1,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/telephony/status/twilio')
+        .type('form')
+        .send(statusForm(callSid))
+        .expect(403);
+
+      const after = await prisma.callbackRequest.findUnique({ where: { id: promise.id } });
+      expect(after!.status).toBe('IN_PROGRESS');
+      expect(after!.completedAt).toBeNull();
+    });
+
+    it('refuses a status for a call this platform has no record of', async () => {
+      // Nothing to verify it against, and nothing to update either.
+      await request(app.getHttpServer())
+        .post('/api/telephony/status/twilio')
+        .type('form')
+        .set('x-twilio-signature', 'anything')
+        .send(statusForm(`CA${randomBytes(8).toString('hex')}`))
+        .expect(404);
+    });
+  });
+
   it('never guesses which agency an unrecognised number belongs to', async () => {
     const params = {
       CallSid: `CA${randomBytes(8).toString('hex')}`,

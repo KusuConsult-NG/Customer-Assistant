@@ -93,7 +93,12 @@ export class TelephonyController {
 
   @Post('status/telnyx')
   @HttpCode(204)
-  async telnyxStatus(@Body() body: any) {
+  async telnyxStatus(
+    @Body() body: any,
+    @Req() req: Request & { rawBody?: Buffer },
+    @Headers() headers: Record<string, string>,
+    @Res() res: Response
+  ) {
     const data = body.data?.payload || body;
     const callSid = data.call_control_id || data.call_leg_id || data.call_session_id;
     const eventType = body.data?.event_type || body.event_type;
@@ -119,11 +124,29 @@ export class TelephonyController {
               : CallStatus.COMPLETED;
     }
 
-    if (callSid) {
-      const seconds = duration ? parseInt(duration, 10) : undefined;
-      await this.telephonyService.updateCallStatus(callSid, status, seconds);
-      await this.callbacks.reconcileFromCall(callSid, status, seconds);
+    if (!callSid) {
+      res.status(204).send();
+      return;
     }
+
+    // Verified BEFORE anything is written — see `verifyStatusCallback`.
+    const verdict = await this.telephonyService.verifyStatusCallback({
+      callSid,
+      provider: 'TELNYX',
+      headers,
+      params: {},
+      rawBody: req.rawBody,
+      path: '/api/telephony/status/telnyx',
+    });
+    if (verdict !== 'ok') {
+      res.status(verdict === 'unknown_call' ? 404 : 403).send();
+      return;
+    }
+
+    const seconds = duration ? parseInt(duration, 10) : undefined;
+    await this.telephonyService.updateCallStatus(callSid, status, seconds);
+    await this.callbacks.reconcileFromCall(callSid, status, seconds);
+    res.status(204).send();
   }
 
   /**
@@ -134,7 +157,11 @@ export class TelephonyController {
    */
   @Post('status/twilio')
   @HttpCode(204)
-  async twilioStatusCallback(@Body() body: any) {
+  async twilioStatusCallback(
+    @Body() body: any,
+    @Headers() headers: Record<string, string>,
+    @Res() res: Response
+  ) {
     const callSid = body.CallSid;
     const callStatus = body.CallStatus;
     const duration = body.CallDuration ? parseInt(body.CallDuration, 10) : undefined;
@@ -153,11 +180,30 @@ export class TelephonyController {
     };
 
     const mappedStatus = statusMap[callStatus];
-    if (callSid && mappedStatus) {
-      await this.telephonyService.updateCallStatus(callSid, mappedStatus, duration);
-      // Whether a promised callback was kept is decided here and nowhere else.
-      await this.callbacks.reconcileFromCall(callSid, mappedStatus, duration);
+    if (!callSid || !mappedStatus) {
+      res.status(204).send();
+      return;
     }
+
+    // Verified BEFORE anything is written — see `verifyStatusCallback`. An
+    // unsigned POST used to be able to rewrite the call history and, once
+    // these callbacks began settling promises, to record a citizen as reached.
+    const verdict = await this.telephonyService.verifyStatusCallback({
+      callSid,
+      provider: 'TWILIO',
+      headers,
+      params: body as Record<string, string>,
+      path: '/api/telephony/status/twilio',
+    });
+    if (verdict !== 'ok') {
+      res.status(verdict === 'unknown_call' ? 404 : 403).send();
+      return;
+    }
+
+    await this.telephonyService.updateCallStatus(callSid, mappedStatus, duration);
+    // Whether a promised callback was kept is decided here and nowhere else.
+    await this.callbacks.reconcileFromCall(callSid, mappedStatus, duration);
+    res.status(204).send();
   }
 
   // ─── Outbound & Admin (JWT protected) ────────────────────────────────────────
