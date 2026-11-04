@@ -1,5 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { prisma, withTelephonyCredentials } from '@ace/database';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  prisma,
+  withTelephonyCredentials,
+  sealTelephonyCredentials,
+  normalizePhoneNumber,
+} from '@ace/database';
 
 /**
  * Can this agency actually complete a phone call right now?
@@ -113,6 +118,54 @@ export class VoiceReadinessService {
             'logs a warning and answers anyway — and outbound calls, live ' +
             'transfers and status callbacks all fail outright.',
         remedy: 'Settings → Voice & Telephony: paste the Account SID and Auth Token.',
+      });
+    }
+
+    // ── 2b. The deployment's own carrier credentials ─────────────────────────
+    //
+    // `handleInboundCall` falls back to `process.env.TWILIO_AUTH_TOKEN` when a
+    // line has no stored token, and `env.validation.ts` describes
+    // TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN as "required for Voice AI
+    // telephony" — which reads as though setting them connects a line.
+    //
+    // It does not, and that is worth saying out loud. Tenant resolution runs
+    // FIRST: the dialled number is looked up in `TelephonyConfig`, and with no
+    // row the caller already hears "This number is not currently configured"
+    // and the call ends, long before any auth token matters. So on an agency
+    // with no line those variables are dead configuration that looks live.
+    //
+    // Reported as PRESENT or ABSENT only. The values never appear here.
+    const envCarrier = {
+      accountSid: !!process.env.TWILIO_ACCOUNT_SID,
+      authToken: !!process.env.TWILIO_AUTH_TOKEN,
+      phoneNumber: !!process.env.TWILIO_PHONE_NUMBER,
+    };
+    const envCarrierComplete = envCarrier.accountSid && envCarrier.authToken && envCarrier.phoneNumber;
+    const anyEnvCarrier = envCarrier.accountSid || envCarrier.authToken || envCarrier.phoneNumber;
+
+    if (anyEnvCarrier) {
+      const held = Object.entries(envCarrier)
+        .filter(([, present]) => present)
+        .map(([name]) => name);
+      checks.push({
+        id: 'deployment_carrier',
+        label: "The deployment's own Twilio credentials",
+        // Not a fault either way. It is only a BLOCKER when there is no line,
+        // and that is already reported as its own blocker above.
+        state: lines.length === 0 && !envCarrierComplete ? 'degraded' : 'ready',
+        detail: `This deployment holds ${held.join(', ')} in its environment.`,
+        consequence:
+          lines.length === 0
+            ? 'They do NOT connect a line on their own. A call is matched to an agency by ' +
+              'the dialled number in its telephony configuration, and with no row the caller ' +
+              'is told the number is not configured before any credential is read. ' +
+              (envCarrierComplete
+                ? 'All three are present, so this agency can adopt them as its line in one step.'
+                : 'Not all three are present, so a line still has to be saved by hand.')
+            : '',
+        remedy: envCarrierComplete
+          ? 'POST /api/telephony/adopt-deployment-line, or the button on this panel.'
+          : 'Settings → Voice & Telephony: save the number and its credentials.',
       });
     }
 
@@ -246,6 +299,12 @@ export class VoiceReadinessService {
 
     return {
       organization: org?.name ?? null,
+      /**
+       * Whether this agency could adopt the deployment's Twilio credentials as
+       * its line. Drives the button on the telephony panel; the endpoint
+       * re-checks every condition itself rather than trusting this.
+       */
+      canAdoptDeploymentLine: lines.length === 0 && envCarrierComplete,
       /** Honest overall verdict, derived from the checks and nothing else. */
       state: blocked.length > 0 ? 'blocked' : degraded.length > 0 ? 'degraded' : 'ready',
       summary:
@@ -273,6 +332,105 @@ export class VoiceReadinessService {
         'Watch the API log for telephony_call_log_created, then telephony_mediastream_routing, ' +
         'then the media-stream start event — whichever of those is missing is where the call stopped.',
       checks,
+    };
+  }
+
+  /**
+   * Adopt the deployment's own Twilio credentials as this agency's line.
+   *
+   * A deployment can hold `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and
+   * `TWILIO_PHONE_NUMBER` and still answer every caller with "This number is
+   * not currently configured", because tenant resolution reads
+   * `TelephonyConfig` and nothing ever writes a row from those variables. The
+   * operator is then told to retype into a settings form credentials the
+   * server already holds — and the auth-token fallback in `handleInboundCall`
+   * quietly implies those variables are doing something. They are not: the
+   * dialled number is matched first, and with no row the call is already over.
+   *
+   * This writes the row. Four guards, because the credentials belong to the
+   * DEPLOYMENT while the row belongs to ONE agency:
+   *
+   *  - all three variables must be present; two of three is not a line;
+   *  - the agency must have no line, so this can never overwrite a configured
+   *    number or quietly add a second one;
+   *  - the deployment must serve exactly one agency. One agency claiming the
+   *    deployment's number is only correct when there is nobody else it could
+   *    belong to. The check is a COUNT — no names, no identities;
+   *  - `confirmAdoptsDeploymentNumber` must be true, the same shape as
+   *    `confirmVoiceCutover`. This decides which agency answers the State's
+   *    phone number, and that is not a default.
+   */
+  async adoptDeploymentLine(
+    organizationId: string,
+    body: { confirmAdoptsDeploymentNumber?: boolean }
+  ) {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+
+    const missing = [
+      !accountSid && 'TWILIO_ACCOUNT_SID',
+      !authToken && 'TWILIO_AUTH_TOKEN',
+      !phoneNumber && 'TWILIO_PHONE_NUMBER',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `This deployment does not hold a complete Twilio line: ${missing.join(', ')} ` +
+          'is not set. Save the number and its credentials at Settings → Voice & Telephony instead.'
+      );
+    }
+
+    const existing = await prisma.telephonyConfig.findMany({
+      where: { organizationId },
+      select: { id: true, phoneNumber: true },
+    });
+    if (existing.length > 0) {
+      throw new ConflictException(
+        `This agency already has ${existing.length} line(s) (${existing
+          .map((l) => l.phoneNumber)
+          .join(', ')}). Edit them at Settings → Voice & Telephony; this cannot know which to replace.`
+      );
+    }
+
+    const agencyCount = await prisma.organization.count();
+    if (agencyCount > 1) {
+      throw new ConflictException(
+        `This deployment serves ${agencyCount} agencies, so its own Twilio number does not ` +
+          "belong to any one of them. Save this agency's own number at Settings → Voice & Telephony."
+      );
+    }
+
+    if (!body?.confirmAdoptsDeploymentNumber) {
+      throw new BadRequestException(
+        `This will make ${phoneNumber} answer as this agency, using the deployment's own Twilio ` +
+          'credentials. Re-send with confirmAdoptsDeploymentNumber: true to go ahead.'
+      );
+    }
+
+    // Canonical and encrypted, exactly as the settings form writes them. A row
+    // written any other way is a row the credential helpers cannot read, which
+    // surfaces as a carrier rejecting the token — pointing at Twilio for a
+    // fault that is ours.
+    const created = await prisma.telephonyConfig.create({
+      data: sealTelephonyCredentials({
+        organizationId,
+        provider: 'TWILIO' as any,
+        phoneNumber: normalizePhoneNumber(phoneNumber!),
+        accountSid: accountSid!,
+        authToken: authToken!,
+        isDefault: true,
+      }),
+      select: { id: true, phoneNumber: true, provider: true },
+    });
+
+    return {
+      line: created,
+      // Nothing is claimed about a call working. Twilio still has to be told
+      // where to send it, and the readiness report is what says whether the
+      // rest holds.
+      nextStep:
+        `Point this number's Voice webhook at ${apiBaseUrl()}/api/telephony/inbound/twilio ` +
+        '(HTTP POST) in the Twilio console, then re-check readiness.',
     };
   }
 }

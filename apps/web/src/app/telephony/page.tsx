@@ -23,6 +23,12 @@ interface VoiceReadiness {
   state: 'ready' | 'degraded' | 'blocked';
   summary: string;
   note: string;
+  /**
+   * True when this deployment holds a complete Twilio line in its environment
+   * and this agency has none. The endpoint re-checks every condition itself,
+   * so this only decides whether to OFFER the button.
+   */
+  canAdoptDeploymentLine?: boolean;
   twilio: {
     voiceWebhook: { method: string; url: string };
     statusCallback: { method: string; url: string };
@@ -76,6 +82,8 @@ export default function TelephonyPage() {
   const [lines, setLines] = useState<CarrierLine[] | null>(null);
   const [readiness, setReadiness] = useState<VoiceReadiness | null>(null);
   const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [adopting, setAdopting] = useState(false);
+  const [adoptResult, setAdoptResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [demoMobileNumber, setDemoMobileNumber] = useState('');
   const [callLoading, setCallLoading] = useState(false);
   const [callStatus, setCallStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -132,6 +140,43 @@ export default function TelephonyPage() {
       setLogsLoading(false);
     }
   }, []);
+
+  /**
+   * The server's own sentence is shown, success or failure.
+   *
+   * Its refusals are the useful part — "this agency already has 2 lines",
+   * "this deployment serves 3 agencies" — and replacing them with "Could not
+   * adopt line" is how an operator ends up with no idea which guard stopped
+   * them. The panel is re-read afterwards rather than assuming the outcome.
+   */
+  const adoptDeploymentLine = async () => {
+    setAdopting(true);
+    setAdoptResult(null);
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await apiFetch(`${API_URL}/api/telephony/adopt-deployment-line`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmAdoptsDeploymentNumber: true }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          (Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message) ||
+            'The line could not be adopted.'
+        );
+      }
+      setAdoptResult({
+        ok: true,
+        message: `${payload?.line?.phoneNumber} now answers as this agency. ${payload?.nextStep ?? ''}`,
+      });
+      await fetchCallLogs();
+    } catch (err: any) {
+      setAdoptResult({ ok: false, message: err?.message || 'The line could not be adopted.' });
+    } finally {
+      setAdopting(false);
+    }
+  };
 
   useEffect(() => {
     fetchCallLogs();
@@ -511,6 +556,38 @@ export default function TelephonyPage() {
                 <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{readiness.note}</p>
               </div>
             </div>
+
+            {/* Offered only when the deployment holds a complete line and this
+                agency has none. It states what it will do BEFORE doing it —
+                which number will answer as this agency, and that the
+                credentials are the deployment's own — because this decides who
+                answers the State's phone number. */}
+            {readiness.canAdoptDeploymentLine && (
+              <div className="rounded-xl border border-brand-500/40 bg-brand-50 dark:bg-brand-500/10 p-3 space-y-2">
+                <p className="text-xs font-bold text-slate-900 dark:text-white">
+                  This deployment already holds a Twilio line
+                </p>
+                <p className="text-[11px] text-slate-700 dark:text-slate-300">
+                  Its account SID, auth token and phone number are set in the server environment,
+                  but no agency claims them — so every caller is told the number is not configured.
+                  Adopting them makes that number answer as this agency. You will still need to point
+                  the number&apos;s Voice webhook at the URL below in the Twilio console.
+                </p>
+                {adoptResult && (
+                  <p className={`text-[11px] font-semibold ${adoptResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                    {adoptResult.message}
+                  </p>
+                )}
+                <button
+                  onClick={adoptDeploymentLine}
+                  disabled={adopting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-xs font-bold"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  {adopting ? 'Adopting…' : 'Adopt this line for this agency'}
+                </button>
+              </div>
+            )}
 
             <div className="space-y-2">
               {readiness.checks.map((c) => (

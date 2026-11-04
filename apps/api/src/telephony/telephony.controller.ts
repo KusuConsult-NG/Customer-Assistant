@@ -39,6 +39,26 @@ export class TelephonyController {
     return this.voiceReadiness.forOrganization(req.user.organizationId);
   }
 
+  /**
+   * Make the deployment's own Twilio number answer as this agency.
+   *
+   * For a single-agency deployment that already holds TWILIO_ACCOUNT_SID,
+   * TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER, this is the step that was
+   * missing: nothing wrote those into a `TelephonyConfig`, so every caller was
+   * told the number was not configured while the server held the credentials
+   * all along. Every guard is in the service, and the confirmation flag is
+   * required — see the note there.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
+  @Post('adopt-deployment-line')
+  async adoptDeploymentLine(
+    @Req() req: { user: AuthUser },
+    @Body() body: { confirmAdoptsDeploymentNumber?: boolean }
+  ) {
+    return this.voiceReadiness.adoptDeploymentLine(req.user.organizationId, body);
+  }
+
   // ─── Inbound Webhooks (public — verified via HMAC inside service) ─────────────
 
   @Post('inbound/twilio')
