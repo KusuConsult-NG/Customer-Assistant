@@ -673,6 +673,14 @@ export class TelephonyService {
         input.headers['telnyx-timestamp'],
         input.rawBody ?? Buffer.from('')
       );
+      if (!ok) {
+        log.warn('telephony_status_signature_rejected', {
+          callSid: input.callSid,
+          organizationId: callLog.organizationId,
+          provider: 'TELNYX',
+          signatureProvided: Boolean(input.headers['telnyx-signature-ed25519']),
+        });
+      }
       return ok ? 'ok' : 'rejected';
     }
 
@@ -687,12 +695,26 @@ export class TelephonyService {
     // rather than trust: an unverifiable status is not a status.
     if (!authToken) return 'rejected';
 
+    const callbackUrl = `${apiBaseUrl()}${input.path}`;
     const ok = verifyTwilioSignature(
       authToken,
       input.headers['x-twilio-signature'],
-      `${apiBaseUrl()}${input.path}`,
+      callbackUrl,
       input.params
     );
+    if (!ok) {
+      // Named, because the likeliest cause is not an attack. Twilio signs over
+      // the EXACT callback URL it was configured with, so a number whose
+      // status callback was set by hand in the Twilio console to a different
+      // spelling — a trailing slash, a query string, http where this is https
+      // — fails here forever and silently stops the call history updating.
+      log.warn('telephony_status_signature_rejected', {
+        callSid: input.callSid,
+        organizationId: callLog.organizationId,
+        signatureProvided: Boolean(input.headers['x-twilio-signature']),
+        expectedCallbackUrl: callbackUrl,
+      });
+    }
     return ok ? 'ok' : 'rejected';
   }
 
