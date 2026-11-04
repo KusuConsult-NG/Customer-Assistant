@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { prisma, withTelephonyCredentials, ensureContactForPhone } from '@ace/database';
+import { prisma, withTelephonyCredentials, ensureContactForPhone, phoneNumberVariants } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { SipTrunkOriginationService } from './sip-trunk-origination.service';
@@ -346,13 +346,25 @@ export class TelephonyService {
     // idempotent.
     const callLog = await prisma.callLog.upsert({
       where:  { callSid },
-      update: { status: CallStatus.IN_PROGRESS },
+      // The contact goes ON THE ROW, not only in the log line above.
+      //
+      // `getCallLogs` includes `contact: true`, so every inbound call came
+      // back with contact: null — the Telephone Service screen could not name
+      // who rang, and `CALL_ENDED` carried no contactId for a workflow to act
+      // on. The record was created two statements earlier and nothing pointed
+      // at it. Set on update too, so a carrier retry after a failed first
+      // contact write still links the call.
+      update: {
+        status: CallStatus.IN_PROGRESS,
+        ...(callerContact ? { contactId: callerContact.id } : {}),
+      },
       create: {
         organizationId,
         telephonyConfigId: config.id,
         callSid,
         fromNumber,
         toNumber,
+        contactId: callerContact?.id ?? null,
         direction: CallDirection.INBOUND,
         status:    CallStatus.IN_PROGRESS,
         provider:  providerType as any,
@@ -456,7 +468,14 @@ export class TelephonyService {
   async initiateOutboundCall(
     organizationId: string,
     toNumber: string,
-    providerType?: TelephonyProviderType
+    providerType?: TelephonyProviderType,
+    /**
+     * The citizen this call is for, when the caller knows — a promised
+     * callback does. Without it the CallLog has no contact, so the call
+     * history cannot name who was rung and `CALL_ENDED` carries nobody for a
+     * workflow to act on. Resolved from the number when it is not supplied.
+     */
+    contactId?: string
   ) {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
@@ -517,6 +536,7 @@ export class TelephonyService {
           callSid:   record.callId,
           fromNumber,
           toNumber,
+          contactId: contactId ?? (await this.contactIdForNumber(organizationId, toNumber)),
           direction: CallDirection.OUTBOUND,
           status:    CallStatus.QUEUED,
           provider:  resolvedProvider as any,
@@ -570,6 +590,7 @@ export class TelephonyService {
         callSid:     record.callId,
         fromNumber,
         toNumber,
+        contactId:   contactId ?? (await this.contactIdForNumber(organizationId, toNumber)),
         direction:   CallDirection.OUTBOUND,
         status:      CallStatus.QUEUED,
         provider:    resolvedProvider as any,
@@ -588,6 +609,21 @@ export class TelephonyService {
     }, timer);
 
     return record;
+  }
+
+  /**
+   * The citizen a number belongs to, if this agency already has one.
+   *
+   * Matches every stored shape, like every other lookup here — an outbound
+   * call to a number saved by WhatsApp without the plus would otherwise find
+   * nobody and the call history would show a number with no name beside it.
+   */
+  private async contactIdForNumber(organizationId: string, phoneNumber: string): Promise<string | null> {
+    const contact = await prisma.contact.findFirst({
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
+      select: { id: true },
+    });
+    return contact?.id ?? null;
   }
 
   async updateCallStatus(callSid: string, status: CallStatus, duration?: number) {

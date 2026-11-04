@@ -346,6 +346,9 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
       const call = await this.telephony.initiateOutboundCall(
         row.organizationId,
         row.phoneNumber,
+        undefined,
+        // The promise already names the citizen, so the call history does too.
+        row.contactId,
       );
 
       // DIALLED, not kept.

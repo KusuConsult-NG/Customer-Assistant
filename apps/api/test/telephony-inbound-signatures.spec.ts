@@ -165,6 +165,31 @@ describe('inbound telephony webhook signatures', () => {
       expect(res.text).toContain('<Response>');
     });
 
+    it('files the call against the citizen it just created', async () => {
+      // The handler creates the contact the moment the call is answered —
+      // that is what stops a caller who hangs up leaving no record at all —
+      // and then put the id in a LOG LINE instead of on the CallLog row. So
+      // `getCallLogs` includes `contact: true` and every inbound call came
+      // back with contact: null, the Telephone Service screen could not name
+      // who rang, and `CALL_ENDED` carried no contactId for a workflow to act
+      // on. The record existed and nothing pointed at it.
+      const params = form();
+      await request(app.getHttpServer())
+        .post('/api/telephony/inbound/twilio')
+        .type('form')
+        .set('x-twilio-signature', signTwilio(params))
+        .send(params)
+        .expect(201);
+
+      const logged = await prisma.callLog.findFirst({
+        where: { callSid: params.CallSid },
+        include: { contact: true },
+      });
+      expect(logged).not.toBeNull();
+      expect(logged!.contactId).toBeTruthy();
+      expect(logged!.contact!.phoneNumber).toBe(params.From);
+    });
+
     it('REJECTS a call with no signature header at all', async () => {
       const params = form();
 
