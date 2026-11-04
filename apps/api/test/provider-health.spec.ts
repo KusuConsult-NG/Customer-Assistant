@@ -123,6 +123,7 @@ describe('provider health', () => {
     // Exactly one provider, so which one answers is not left to resolution
     // order inside a test about something else.
     setEnv('EMAIL_PROVIDER', 'resend');
+    setEnv('EMAIL_FROM', undefined);
     setEnv('BREVO_API_KEY', undefined);
     setEnv('SENDGRID_API_KEY', undefined);
     setEnv('POSTMARK_SERVER_TOKEN', undefined);
@@ -131,6 +132,9 @@ describe('provider health', () => {
     setEnv('SUPABASE_SERVICE_ROLE_KEY', SUPABASE);
     setEnv('QDRANT_URL', 'https://qdrant.example');
     setEnv('QDRANT_API_KEY', undefined);
+    setEnv('WHATSAPP_ACCESS_TOKEN', undefined);
+    setEnv('WHATSAPP_PHONE_NUMBER_ID', undefined);
+    setEnv('WHATSAPP_BUSINESS_ID', undefined);
     setEnv('LLM_BASE_URL', undefined);
     setEnv('ELEVENLABS_BASE_URL', undefined);
     providersRespond();
@@ -304,5 +308,137 @@ describe('provider health', () => {
     }
     // Nor a ciphertext, which would be just as wrong and less obvious.
     expect(raw).not.toContain('v1.');
+  });
+  /**
+   * A deployment-level Meta token makes NO agency reachable.
+   *
+   * `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` and
+   * `WHATSAPP_BUSINESS_ID` are declared in render.yaml and read nowhere:
+   * sending uses the agency's own stored row, and inbound is resolved by
+   * Meta's `phoneNumberId` against that same table. So all three can be set,
+   * visibly, while every message a citizen sends logs "no config found" — and
+   * the operator has no reason to look past a dashboard that shows them set.
+   */
+  it('says a deployment-level Meta token does not connect any agency', async () => {
+    setEnv('WHATSAPP_ACCESS_TOKEN', META);
+    setEnv('WHATSAPP_PHONE_NUMBER_ID', '1319842031202307');
+    setEnv('WHATSAPP_BUSINESS_ID', '1568175338085648');
+
+    const check = find((await get()).body, 'whatsapp');
+    expect(check.state).toBe('not_configured');
+    // Where a line IS stored, so the reader is not left to find out.
+    expect(check.detail).toContain('/api/organizations/whatsapp-config');
+    expect(check.detail).toMatch(/nothing reads them/i);
+    expect(check.detail).toContain('WHATSAPP_ACCESS_TOKEN');
+    // Never the token itself, which is the whole point of reporting by name.
+    expect(JSON.stringify((await get()).body)).not.toContain(META);
+  });
+
+  it('does not invent that warning when the deployment sets nothing', async () => {
+    setEnv('WHATSAPP_ACCESS_TOKEN', undefined);
+    setEnv('WHATSAPP_PHONE_NUMBER_ID', undefined);
+    setEnv('WHATSAPP_BUSINESS_ID', undefined);
+
+    const check = find((await get()).body, 'whatsapp');
+    expect(check.state).toBe('not_configured');
+    expect(check.detail).toContain('/api/organizations/whatsapp-config');
+    expect(check.detail).not.toMatch(/nothing reads/i);
+  });
+
+  /**
+   * Brevo takes a key AND a sender, and the two fail separately.
+   *
+   * `/v3/account` accepts any valid key, so a probe that stopped there
+   * reported "Brevo accepted the credential" on an account that refuses every
+   * send because EMAIL_FROM is not one of its verified senders. The cost is
+   * identical to a bad key — no invitation, no verification, no password reset
+   * — so it is reported as a BLOCKER, not as a note beside a green row.
+   */
+  describe('Brevo, where the key and the sender fail separately', () => {
+    const BREVO = 'xkeysib_live_000000000000';
+
+    /** Default: key accepted, and `senders` holds whatever is passed. */
+    const brevoRespond = (senders: any) => {
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        seen.push(url);
+        if (url === 'https://api.brevo.com/v3/senders') {
+          if (senders === 'refused') return new Response('{"code":"unauthorized"}', { status: 403 });
+          if (senders === 'threw') throw new Error('ECONNRESET');
+          if (senders === 'odd-shape') return new Response('{"unexpected":true}', { status: 200 });
+          return new Response(JSON.stringify({ senders }), { status: 200 });
+        }
+        if (url.includes('/storage/v1/bucket')) {
+          return new Response(
+            JSON.stringify([
+              { name: 'knowledge-documents', public: false },
+              { name: 'onboarding-selfies', public: false },
+            ]),
+            { status: 200 }
+          );
+        }
+        return new Response('{"ok":true}', { status: 200 });
+      }) as any;
+    };
+
+    beforeEach(() => {
+      setEnv('RESEND_API_KEY', undefined);
+      setEnv('BREVO_API_KEY', BREVO);
+      setEnv('EMAIL_PROVIDER', 'brevo');
+      setEnv('EMAIL_FROM', 'Care <noreply@plateaustate.gov.ng>');
+    });
+
+    it('asks Brevo whether it will accept the address we send FROM', async () => {
+      brevoRespond([{ email: 'noreply@plateaustate.gov.ng', active: true }]);
+      const res = await get();
+      expect(seen).toContain('https://api.brevo.com/v3/account');
+      expect(seen).toContain('https://api.brevo.com/v3/senders');
+      expect(find(res.body, 'email').state).toBe('ok');
+    });
+
+    it('is a FAILURE when EMAIL_FROM is not a sender on the account', async () => {
+      brevoRespond([{ email: 'someone.else@example.org', active: true }]);
+      const check = find((await get()).body, 'email');
+      // Not `ok`: the key works and no invitation can be delivered.
+      expect(check.state).toBe('failed');
+      expect(check.detail).toContain('noreply@plateaustate.gov.ng');
+      expect(check.detail).toMatch(/not a sender on this account/i);
+      // The account has just answered, so what it DOES hold is the answer
+      // rather than a dead end.
+      expect(check.detail).toContain('someone.else@example.org');
+    });
+
+    it('is a FAILURE when the sender exists but is not verified yet', async () => {
+      brevoRespond([{ email: 'noreply@plateaustate.gov.ng', active: false }]);
+      const check = find((await get()).body, 'email');
+      expect(check.state).toBe('failed');
+      expect(check.detail).toMatch(/not verified yet/i);
+    });
+
+    it('says the account holds NO senders rather than naming none', async () => {
+      brevoRespond([]);
+      expect(find((await get()).body, 'email').detail).toMatch(/holds none/i);
+    });
+
+    for (const [label, senders] of [
+      ['the senders list is refused', 'refused'],
+      ['the request fails outright', 'threw'],
+      ['the body is not the documented shape', 'odd-shape'],
+    ] as const) {
+      it(`gives NO verdict when ${label}`, async () => {
+        brevoRespond(senders);
+        const check = find((await get()).body, 'email');
+        // "Could not check" must not become "broken": a restricted key can be
+        // refused at /v3/senders and send perfectly well, and inventing a
+        // blocker is how the real ones stop being read.
+        expect(check.state).toBe('ok');
+        expect(check.detail).toMatch(/accepted the credential/i);
+      });
+    }
+
+    it('never returns the Brevo key', async () => {
+      brevoRespond([{ email: 'someone.else@example.org', active: true }]);
+      expect(JSON.stringify((await get()).body)).not.toContain(BREVO);
+    });
   });
 });

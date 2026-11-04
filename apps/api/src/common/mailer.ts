@@ -38,6 +38,18 @@ export interface SendResult {
   ok: boolean;
   /** The provider's own words when it refused. Safe to log; never a credential. */
   error?: string;
+  /**
+   * The credential was ACCEPTED and a send will still be refused.
+   *
+   * A key is only half of what a provider needs: it also has to recognise the
+   * address being sent FROM. Brevo accepts any valid key at `/v3/account`
+   * while refusing every send from an address that is not one of its verified
+   * senders — so a probe that stopped at the credential would report the
+   * provider as working on exactly the deployment where no invitation can be
+   * delivered. That is the green-screen failure this whole module exists to
+   * end, one layer further in.
+   */
+  warning?: string;
   provider?: EmailProviderId;
 }
 
@@ -254,7 +266,64 @@ async function dispatch(
 }
 
 /**
- * A cheap read-only check that the configured provider accepts the credential.
+ * Is the address we send FROM one this Brevo account will accept?
+ *
+ * `undefined` means NO VERDICT, and that is deliberate in three cases: the
+ * senders list could not be read (a restricted key can be refused here while
+ * sending perfectly well), the body was not the documented shape, or the
+ * request failed outright. Treating "could not check" as "broken" is the same
+ * mistake in the opposite direction, and it buries the real blockers among
+ * invented ones.
+ */
+async function brevoSenderWarning(key: string, from: string): Promise<string | undefined> {
+  const { email } = splitFrom(from);
+  const wanted = email.trim().toLowerCase();
+  try {
+    const res = await fetch('https://api.brevo.com/v3/senders', {
+      headers: { 'api-key': key, accept: 'application/json' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return undefined;
+    const body: any = await res.json().catch(() => null);
+    const senders: any[] | null = Array.isArray(body?.senders) ? body.senders : null;
+    if (!senders) return undefined;
+
+    const match = senders.find(
+      (s) => typeof s?.email === 'string' && s.email.trim().toLowerCase() === wanted
+    );
+    if (!match) {
+      // Naming what the account DOES hold turns a dead end into the answer:
+      // the credentials have just answered, so the list is free to report.
+      const held = senders
+        .map((s) => (typeof s?.email === 'string' ? s.email : null))
+        .filter(Boolean)
+        .slice(0, 5)
+        .join(', ');
+      return (
+        `Brevo accepted the key, but ${email} is not a sender on this account, so every ` +
+        `send is refused. Add and verify it at Brevo → Senders, Domains & Dedicated IPs, ` +
+        `or set EMAIL_FROM to one the account already holds` +
+        (held ? ` (${held}).` : ' — it currently holds none.')
+      );
+    }
+    // `active` is the verification flag. It is not in every documented
+    // response, so only an explicit `false` is treated as unverified; absent
+    // is no verdict rather than a guess.
+    if (match.active === false) {
+      return (
+        `Brevo accepted the key, but the sender ${email} is not verified yet, so sends from ` +
+        `it are refused. Confirm the verification email Brevo sent to that address.`
+      );
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A cheap read-only check that the configured provider accepts the credential,
+ * and — for Brevo — that it will accept the address we send FROM.
  * Sends nothing — see `ProviderHealthService`.
  */
 export async function verifyEmailProvider(): Promise<SendResult> {
@@ -281,7 +350,12 @@ export async function verifyEmailProvider(): Promise<SendResult> {
   const probe = probes[provider.id];
   try {
     const res = await fetch(probe.url, { headers: probe.headers, signal: AbortSignal.timeout(8_000) });
-    if (res.ok) return { ok: true, provider: provider.id };
+    if (res.ok) {
+      const from = process.env.EMAIL_FROM || FROM_FALLBACK;
+      const warning =
+        provider.id === 'brevo' ? await brevoSenderWarning(provider.key, from) : undefined;
+      return { ok: true, provider: provider.id, ...(warning ? { warning } : {}) };
+    }
     const body = await res.text().catch(() => '');
     return {
       ok: false,

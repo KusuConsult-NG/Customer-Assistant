@@ -88,7 +88,11 @@ export const ENV_SPECS: EnvSpec[] = [
   {
     key: 'BREVO_API_KEY',
     required: false,
-    description: 'Brevo (ex-Sendinblue) HTTPS API key. An alternative to RESEND_API_KEY.',
+    description:
+      'Brevo (ex-Sendinblue) HTTPS API key. An alternative to RESEND_API_KEY. Brevo also ' +
+      'requires EMAIL_FROM to be one of the account\'s VERIFIED senders — a valid key with ' +
+      'an unverified sender accepts every probe and refuses every send, so check ' +
+      'GET /api/diagnostics/providers after setting it.',
   },
   {
     key: 'SENDGRID_API_KEY',

@@ -112,6 +112,17 @@ services:
         sync: false
       - key: EMBEDDING_DIMENSIONS
         sync: false
+      # NOT READ BY ANYTHING, and kept only because they are already set on
+      # deployments that predate this note.
+      #
+      # Sending always uses the AGENCY's own stored row, and an inbound message
+      # is resolved by the `phoneNumberId` Meta sends against that same table —
+      # so a deployment can hold a perfectly good token here, show it set in
+      # the Render dashboard, and still log "no config found" for every message
+      # a citizen sends. A line is connected at Settings → WhatsApp
+      # (POST /api/organizations/whatsapp-config) and nowhere else; writing the
+      # row straight into the database bypasses the encryption-at-rest path.
+      # GET /api/diagnostics/providers says so when an agency has no line.
       - key: WHATSAPP_ACCESS_TOKEN
         sync: false
       - key: WHATSAPP_BUSINESS_ID
@@ -127,6 +138,7 @@ services:
       # sees real client IPs instead of the proxy's (see main.ts).
       - key: TRUST_PROXY
         value: "1"
+      # Also not read — see WHATSAPP_ACCESS_TOKEN above.
       - key: WHATSAPP_PHONE_NUMBER_ID
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
@@ -152,6 +164,10 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      # Brevo needs EMAIL_FROM to be one of its VERIFIED senders as well as a
+      # valid key: an unverified sender accepts every probe and refuses every
+      # send. GET /api/diagnostics/providers checks both and names which half
+      # is missing.
       - key: BREVO_API_KEY
         sync: false
       - key: SENDGRID_API_KEY
