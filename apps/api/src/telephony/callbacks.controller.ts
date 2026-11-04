@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException,
 } from '@nestjs/common';
-import { prisma, callbackReference, normalizePhoneNumber, phoneNumberVariants, serviceHoursFrom, nextServiceTime } from '@ace/database';
+import { prisma, callbackReference, normalizePhoneNumber, phoneNumberVariants, outboundContactHoursFrom, nextServiceTime } from '@ace/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -73,7 +73,7 @@ export class CallbacksController {
     if (!contact) throw new BadRequestException('Contact not found in this agency');
 
     const minutes = Number.isFinite(body.dueInMinutes) ? Number(body.dueInMinutes) : 60;
-    const hours = await serviceHoursFrom(prisma, req.user.organizationId);
+    const hours = await outboundContactHoursFrom(prisma, req.user.organizationId);
     const dueAt = nextServiceTime(new Date(Date.now() + minutes * 60_000), hours);
 
     const row = await prisma.callbackRequest.create({

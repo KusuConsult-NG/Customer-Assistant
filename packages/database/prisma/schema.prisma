@@ -170,6 +170,24 @@ model Organization {
   openingHour          Int          @default(8)
   closingHour          Int          @default(18)
   serviceDays          Int[]        @default([1, 2, 3, 4, 5])
+
+  /// When the platform may CONTACT a citizen it has undertaken to reach — a
+  /// callback it is about to dial, a reminder it is about to send.
+  ///
+  /// Separate from serving hours because the two answer different questions.
+  /// Serving hours say when an appointment can be offered; these say when a
+  /// phone may ring. An agency whose AI answers around the clock sets
+  /// 0–24 above and still does not want a citizen woken at 03:00 — and the
+  /// reverse happens too, where a desk is open 08:00–18:00 but reminders may
+  /// go out from 07:00.
+  ///
+  /// UNSET means "use the serving hours", which is what every agency got
+  /// before this existed, so nothing changes until it is configured.
+  /// `outboundClosingHour` is the flag: null there means unset, whatever the
+  /// other two hold.
+  outboundOpeningHour  Int?
+  outboundClosingHour  Int?
+  outboundDays         Int[]        @default([])
   /// Set by the operating ministry to take an agency out of service. Members of
   /// a suspended agency are refused at authentication, so the agency stops
   /// answering citizens immediately rather than at token expiry. Platform

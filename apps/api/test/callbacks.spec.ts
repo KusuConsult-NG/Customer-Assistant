@@ -277,6 +277,91 @@ describe('Callback queue', () => {
       expect(after?.failureReason).toBeTruthy();
     });
 
+    it('holds a due promise outside the agency\'s contact hours', async () => {
+      // The case this exists for. The agency answers 24/7, so serving hours
+      // no longer hold anything back — but it may only RING between 08:00 and
+      // 20:00, and a promise that fell due at 03:00 waits.
+      await prisma.organization.update({
+        where: { id: agency.orgId },
+        data: {
+          openingHour: 0, closingHour: 24, serviceDays: [0, 1, 2, 3, 4, 5, 6],
+          outboundOpeningHour: 8, outboundClosingHour: 20, outboundDays: [0, 1, 2, 3, 4, 5, 6],
+        },
+      });
+      const row = await seedCallback(agency.orgId, contactId, {
+        status: 'DUE',
+        dueAt: new Date(Date.UTC(2026, 10, 3, 2, 0)),
+      });
+
+      let dialled = false;
+      const d = dispatcherWith({
+        initiateOutboundCall: async () => { dialled = true; return { callId: 'x' }; },
+      });
+
+      // 03:00 WAT on the Tuesday.
+      const result = await d.sweep(new Date(Date.UTC(2026, 10, 3, 2, 0)));
+
+      expect(dialled).toBe(false);
+      expect(result.held).toBeGreaterThan(0);
+
+      // Held, not rescheduled: the citizen keeps the deadline they were given,
+      // so the queue shows a promise that is late rather than one whose
+      // deadline quietly moved to suit us.
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('DUE');
+      expect(after?.attempts).toBe(0);
+      expect(after!.dueAt.getTime()).toBe(row.dueAt.getTime());
+    });
+
+    it('dials the same promise once the window opens', async () => {
+      await prisma.organization.update({
+        where: { id: agency.orgId },
+        data: {
+          openingHour: 0, closingHour: 24, serviceDays: [0, 1, 2, 3, 4, 5, 6],
+          outboundOpeningHour: 8, outboundClosingHour: 20, outboundDays: [0, 1, 2, 3, 4, 5, 6],
+        },
+      });
+      const row = await seedCallback(agency.orgId, contactId, {
+        status: 'DUE',
+        dueAt: new Date(Date.UTC(2026, 10, 3, 2, 0)),
+      });
+
+      const d = dispatcherWith({
+        initiateOutboundCall: async () => ({ callId: 'CA_after_window_opened' }),
+      });
+      // 09:00 WAT.
+      await d.sweep(new Date(Date.UTC(2026, 10, 3, 8, 0)));
+
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('COMPLETED');
+      expect(after?.callSid).toBe('CA_after_window_opened');
+    });
+
+    it('uses serving hours when no contact window is configured', async () => {
+      // Unchanged for an agency that configures nothing, which is every
+      // agency that existed before this.
+      await prisma.organization.update({
+        where: { id: agency.orgId },
+        data: {
+          openingHour: 0, closingHour: 24, serviceDays: [0, 1, 2, 3, 4, 5, 6],
+          outboundOpeningHour: null, outboundClosingHour: null, outboundDays: [],
+        },
+      });
+      await seedCallback(agency.orgId, contactId, {
+        status: 'DUE',
+        dueAt: new Date(Date.UTC(2026, 10, 3, 2, 0)),
+      });
+
+      let dialled = false;
+      const d = dispatcherWith({
+        initiateOutboundCall: async () => { dialled = true; return { callId: 'y' }; },
+      });
+      await d.sweep(new Date(Date.UTC(2026, 10, 3, 2, 0)));
+
+      // 24/7 serving hours, no window: it dials, as before.
+      expect(dialled).toBe(true);
+    });
+
     it('does not dial a promise that is not due yet', async () => {
       const row = await seedCallback(agency.orgId, contactId, {
         dueAt: new Date(Date.now() + 6 * 60 * 60 * 1000),

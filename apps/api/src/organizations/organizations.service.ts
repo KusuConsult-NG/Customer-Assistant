@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, recordAudit, resolveAuditActors } from '@ace/database';
+import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
@@ -173,6 +173,12 @@ export class OrganizationsService {
       openingHour?: number;
       closingHour?: number;
       serviceDays?: number[];
+      // When the platform may RING or TEXT a citizen, as opposed to when an
+      // appointment may be offered. Null clears it back to "same as serving
+      // hours".
+      outboundOpeningHour?: number | null;
+      outboundClosingHour?: number | null;
+      outboundDays?: number[] | null;
     }
   ) {
     if (data.defaultLanguage !== undefined && !SUPPORTED_LANGUAGES.includes(data.defaultLanguage as Language)) {
@@ -222,6 +228,27 @@ export class OrganizationsService {
       }
     }
 
+    // Validated for the same reason the serving hours are: a window that
+    // cannot be satisfied stops every callback and every reminder, silently
+    // and forever.
+    if (
+      data.outboundOpeningHour !== undefined ||
+      data.outboundClosingHour !== undefined ||
+      data.outboundDays !== undefined
+    ) {
+      try {
+        assertUsableOutboundHours({
+          outboundOpeningHour: data.outboundOpeningHour,
+          outboundClosingHour: data.outboundClosingHour,
+          outboundDays: data.outboundDays,
+        });
+      } catch (e: any) {
+        throw new BadRequestException(
+          e?.message ?? 'Those contact hours cannot be used.'
+        );
+      }
+    }
+
     return prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -240,6 +267,9 @@ export class OrganizationsService {
         ...(data.openingHour !== undefined && { openingHour: data.openingHour }),
         ...(data.closingHour !== undefined && { closingHour: data.closingHour }),
         ...(data.serviceDays !== undefined && { serviceDays: data.serviceDays }),
+        ...(data.outboundOpeningHour !== undefined && { outboundOpeningHour: data.outboundOpeningHour }),
+        ...(data.outboundClosingHour !== undefined && { outboundClosingHour: data.outboundClosingHour }),
+        ...(data.outboundDays !== undefined && { outboundDays: data.outboundDays ?? [] }),
         // The widgetPrimaryColor / widgetSecondaryColor / widgetPosition
         // columns still exist but are no longer writable: the embedded chat
         // channel was retired, so there is nothing left for them to style.

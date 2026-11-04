@@ -64,6 +64,7 @@ export class OrganizationsController {
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;
       openingHour?: number; closingHour?: number; serviceDays?: number[];
+      outboundOpeningHour?: number | null; outboundClosingHour?: number | null; outboundDays?: number[] | null;
     }
   ) {
     return this.orgsService.updateSettings(req.user.organizationId, body);

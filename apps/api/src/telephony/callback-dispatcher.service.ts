@@ -2,7 +2,9 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   prisma,
   nextAttemptAt,
-  serviceHoursFrom,
+  nextServiceTime,
+  outboundContactHoursFrom,
+  mayContactNow,
   callbackReference,
 } from '@ace/database';
 import { AceLogger } from '../config/logger';
@@ -74,7 +76,9 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
    * DUE differently — "promised for later" and "we owe this person a call
    * right now" are different things to an officer triaging a queue.
    */
-  async sweep(now: Date = new Date()): Promise<{ promoted: number; placed: number; failed: number }> {
+  async sweep(
+    now: Date = new Date()
+  ): Promise<{ promoted: number; placed: number; failed: number; held: number }> {
     const promoted = await prisma.callbackRequest.updateMany({
       where: { status: 'PENDING', dueAt: { lte: now } },
       data: { status: 'DUE' },
@@ -89,16 +93,41 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
 
     let placed = 0;
     let failed = 0;
+    let held = 0;
+
+    // Outbound hours are per agency, and a sweep spans several — so they are
+    // resolved once each rather than per row.
+    const hoursByOrg = new Map<string, Awaited<ReturnType<typeof outboundContactHoursFrom>>>();
+
     for (const row of due) {
+      let hours = hoursByOrg.get(row.organizationId);
+      if (!hours) {
+        hours = await outboundContactHoursFrom(prisma, row.organizationId);
+        hoursByOrg.set(row.organizationId, hours);
+      }
+
+      // A promise that fell due at 03:00 waits until the agency may ring.
+      // Held rather than rescheduled: the citizen was told a window and the
+      // record keeps it, so an officer sees a promise that is late and why,
+      // instead of one whose deadline quietly moved to suit us.
+      if (!mayContactNow(hours, now)) {
+        held++;
+        continue;
+      }
+
       const outcome = await this.placeOne(row.id);
       if (outcome === 'placed') placed++;
       else if (outcome === 'failed') failed++;
     }
 
-    if (promoted.count || placed || failed) {
-      log.info('callback_sweep', { promoted: promoted.count, placed, failed });
+    if (held) {
+      log.info('callback_held_outside_contact_hours', { held });
     }
-    return { promoted: promoted.count, placed, failed };
+
+    if (promoted.count || placed || failed || held) {
+      log.info('callback_sweep', { promoted: promoted.count, placed, failed, held });
+    }
+    return { promoted: promoted.count, placed, failed, held };
   }
 
   /**
@@ -175,7 +204,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
         return 'failed';
       }
 
-      const hours = await serviceHoursFrom(prisma, row.organizationId);
+      const hours = await outboundContactHoursFrom(prisma, row.organizationId);
       await prisma.callbackRequest.update({
         where: { id },
         data: {

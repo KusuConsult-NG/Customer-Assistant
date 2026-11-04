@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { prisma } from '@ace/database';
+import { prisma, outboundContactHoursFrom, mayContactNow } from '@ace/database';
 import { Resend } from 'resend';
 import { AceLogger } from '../config/logger';
 
@@ -131,8 +131,6 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     });
 
     for (const booking of bookings24h) {
-      if (!(await this.claimMarker(booking, '[REMINDED_24H]'))) continue;
-
       const hasEmail = Boolean(booking.contact?.email?.trim());
       // BUG FIX: the old check was `notes.includes('[PAID]') || status === 'CONFIRMED'`
       // — but this query filters on status: 'CONFIRMED', so the second clause was
@@ -145,11 +143,17 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       //  (a) Customer has NO email, OR
       //  (b) Customer HAS email AND HAS PAID
       if (!hasEmail || isPaid) {
+        // Before the claim: see mayTextNow. Out of hours this is left for a
+        // later sweep rather than claimed and dropped.
+        if (!(await this.mayTextNow(booking.organizationId, now))) continue;
+        if (!(await this.claimMarker(booking, '[REMINDED_24H]'))) continue;
+
         await this.sendSmsNotification(
           booking.contact?.phoneNumber,
           `Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is tomorrow! Date: ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
         );
       } else {
+        if (!(await this.claimMarker(booking, '[REMINDED_24H]'))) continue;
         log.info('skipped_24h_sms_unpaid_customer', {
           bookingId: booking.id,
           reason: 'Customer has email but has not paid — emails sent at 72h & 48h',
@@ -171,6 +175,10 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     });
 
     for (const booking of bookings6h) {
+      // Held out of hours like the rest. A short-notice reminder that would
+      // land at 2am is worth less than the sleep it costs, and the citizen
+      // already has the confirmation they were sent when they booked.
+      if (!(await this.mayTextNow(booking.organizationId, now))) continue;
       if (!(await this.claimMarker(booking, '[REMINDED_6H]'))) continue;
 
       const createdAt = new Date(booking.createdAt).getTime();
@@ -184,6 +192,31 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           `Urgent Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is in 6 hours (due at ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`
         );
       }
+    }
+  }
+
+  /**
+   * May this agency text a citizen right now?
+   *
+   * ── This MUST be asked before the claim, never after ────────────────────
+   *
+   * A reminder is CLAIMED before it is sent, so that concurrent pods cannot
+   * send it twice — and a claim that is not followed by a send loses that
+   * reminder for good. Checking the window after claiming would therefore not
+   * delay a 2am text, it would delete it.
+   *
+   * Asked before the claim, an out-of-hours reminder is simply left for the
+   * next sweep five minutes later, and goes out when the window opens.
+   *
+   * Email is deliberately NOT gated. A message waiting in an inbox at 3am
+   * wakes nobody; a phone does.
+   */
+  private async mayTextNow(organizationId: string, now: Date): Promise<boolean> {
+    try {
+      return mayContactNow(await outboundContactHoursFrom(prisma, organizationId), now);
+    } catch {
+      // Never let this check be the reason a reminder is lost.
+      return true;
     }
   }
 

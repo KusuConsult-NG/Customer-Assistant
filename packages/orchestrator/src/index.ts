@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, nextServiceTime, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -2555,7 +2555,11 @@ export class ConversationOrchestrator {
     }
 
     const contact = await this.getOrCreateContact(context);
-    const hours = await serviceHoursFrom(prisma, context.organizationId);
+    // The hours a phone may RING, not the hours an appointment may be
+    // offered. An agency answering 24/7 still does not want a citizen woken
+    // at 03:00, and until this was separate the clamp went inert the moment
+    // serving hours were set to 0-24.
+    const hours = await outboundContactHoursFrom(prisma, context.organizationId);
     const dueAt = nextServiceTime(new Date(Date.now() + window.minutes * 60_000), hours);
     const promisedText = t(lang, window.key as any);
 

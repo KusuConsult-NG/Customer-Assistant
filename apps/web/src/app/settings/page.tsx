@@ -237,6 +237,11 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [openingHour, setOpeningHour] = useState<number>(org?.openingHour ?? 8);
   const [closingHour, setClosingHour] = useState<number>(org?.closingHour ?? 18);
   const [serviceDays, setServiceDays] = useState<number[]>(org?.serviceDays ?? [1, 2, 3, 4, 5]);
+  // When the platform may RING or TEXT a citizen. Empty closing hour means
+  // "same as serving hours", which is what every agency had before this
+  // existed — so leaving it blank changes nothing.
+  const [outboundOpeningHour, setOutboundOpeningHour] = useState<number | ''>(org?.outboundOpeningHour ?? '');
+  const [outboundClosingHour, setOutboundClosingHour] = useState<number | ''>(org?.outboundClosingHour ?? '');
   const [saving, setSaving] = useState(false);
 
   const toggleDay = (d: number) =>
@@ -245,6 +250,18 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+
+    // Worked out before the payload rather than inside it. A ternary in an
+    // object literal reads badly, and apps/api/test/payload-contract.spec.ts
+    // — which compares what the dashboard SENDS against what the endpoint
+    // READS — took the `null` and `0` branches for field names.
+    //
+    // A blank closing hour means "same as serving hours", and null is what
+    // clears it.
+    const outboundClosing = outboundClosingHour === '' ? null : outboundClosingHour;
+    const outboundOpening =
+      outboundClosing === null ? null : (outboundOpeningHour === '' ? 0 : outboundOpeningHour);
+
     try {
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
@@ -252,6 +269,8 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
           name, aiPersonaPrompt, welcomeMessage, defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
           openingHour, closingHour, serviceDays,
+          outboundOpeningHour: outboundOpening,
+          outboundClosingHour: outboundClosing,
         }),
       });
       // The API rejects hours that cannot produce an appointment and says why.
@@ -379,6 +398,47 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             All times are West Africa Time. A 24-hour service sets 00:00 to 24:00 and selects every day.
           </p>
         </div>
+      </Section>
+
+      <Section
+        title="When we may contact a citizen"
+        description="When the assistant may RING or TEXT someone — a callback it promised, a reminder before an appointment. Separate from serving hours on purpose: an agency answering around the clock still does not want a citizen woken at 03:00."
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Earliest we may call</label>
+            <select
+              aria-label="Earliest we may call"
+              value={outboundOpeningHour}
+              onChange={e => setOutboundOpeningHour(e.target.value === '' ? '' : Number(e.target.value))}
+              className={inputCls}
+            >
+              <option value="">Same as serving hours</option>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Latest we may call</label>
+            <select
+              aria-label="Latest we may call"
+              value={outboundClosingHour}
+              onChange={e => setOutboundClosingHour(e.target.value === '' ? '' : Number(e.target.value))}
+              className={inputCls}
+            >
+              <option value="">Same as serving hours</option>
+              {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Leave both as <strong>Same as serving hours</strong> and nothing changes. A promise that
+          falls due outside this window is held, not cancelled — the citizen keeps the reference
+          they were given, and the queue shows it as waiting.
+        </p>
       </Section>
 
       <Section

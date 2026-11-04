@@ -11,6 +11,12 @@ services:
   - type: web
     name: ace-api
     env: node
+    # Declared rather than left to whatever the dashboard was set to when the
+    # service was created. A fix can sit on main for hours while the running
+    # service still serves the old build, and nothing in the repository says
+    # which it should be — so this says it.
+    branch: main
+    autoDeploy: true
     region: frankfurt
     # NOT an optimisation — a correctness requirement for the voice channel.
     #
@@ -196,6 +202,8 @@ services:
   - type: web
     name: ace-web
     env: node
+    branch: main
+    autoDeploy: true
     region: frankfurt
     # `starter` is a COST DECISION with a customer-facing consequence — read
     # this before assuming the dashboard is internal-only.

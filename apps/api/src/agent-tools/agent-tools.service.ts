@@ -25,7 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, nextServiceTime, OPEN_CALLBACK_STATUSES } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -415,7 +415,10 @@ export class AgentToolsService {
       const promisedText =
         minutes <= 60 ? 'Within the hour' : minutes <= 240 ? 'Later today' : 'Tomorrow';
 
-      const hours = await serviceHoursFrom(prisma, organizationId);
+      // Outbound contact hours, matching the orchestrator's callback flow —
+      // the same promise made on a voice call and on WhatsApp must fall due
+      // at the same time.
+      const hours = await outboundContactHoursFrom(prisma, organizationId);
       const dueAt = nextServiceTime(new Date(Date.now() + minutes * 60_000), hours);
 
       const row = await prisma.callbackRequest.create({
