@@ -69,6 +69,55 @@ function readStdin() {
   });
 }
 
+
+/**
+ * List accounts, tolerating a database whose schema is BEHIND the code.
+ *
+ * Prisma rejects the whole query when one selected column does not exist
+ * (P2022), and this is the tool somebody reaches for when things are already
+ * broken — a schema-drifted database is precisely when they need to see who
+ * can sign in. Failing with a Prisma stack trace there is the tool refusing
+ * to work at the only moment it is wanted.
+ *
+ * So the full select is tried first, and on P2022 the newer columns are
+ * dropped and it is tried again, with the omission REPORTED. An unknown flag
+ * is shown as unknown rather than silently as false — the whole point of the
+ * listing is that an operator can trust what it says about each account.
+ */
+const OPTIONAL_COLUMNS = ['isPlatformAdmin', 'lockedUntil', 'passwordResetToken'];
+
+async function listAccounts(prisma) {
+  const base = {
+    email: true, fullName: true, role: true, isActive: true,
+    emailVerifiedAt: true, createdAt: true,
+    organization: { select: { name: true, slug: true, suspendedAt: true } },
+  };
+
+  const degraded = [];
+  // Narrow one column at a time, so a database missing only one of them still
+  // reports the others.
+  for (let attempt = 0; attempt <= OPTIONAL_COLUMNS.length; attempt++) {
+    const select = { ...base };
+    for (const col of OPTIONAL_COLUMNS) {
+      if (!degraded.includes(col)) select[col] = true;
+    }
+    try {
+      const users = await prisma.user.findMany({
+        select,
+        orderBy: [{ organizationId: 'asc' }, { createdAt: 'asc' }],
+      });
+      return { users, degraded };
+    } catch (err) {
+      const missing = OPTIONAL_COLUMNS.find(
+        (col) => !degraded.includes(col) && String(err?.message ?? '').includes(col)
+      );
+      if (!missing) throw err;
+      degraded.push(missing);
+    }
+  }
+  throw new Error('Could not list accounts even with every optional column dropped.');
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
@@ -81,15 +130,7 @@ async function main() {
     if (!email) {
       // The listing is the point when an operator does not know WHICH account
       // to sign in as, which is the state a fresh deployment leaves them in.
-      const users = await prisma.user.findMany({
-        select: {
-          email: true, fullName: true, role: true, isActive: true,
-          emailVerifiedAt: true, isPlatformAdmin: true, lockedUntil: true,
-          passwordResetToken: true, createdAt: true,
-          organization: { select: { name: true, slug: true, suspendedAt: true } },
-        },
-        orderBy: [{ organizationId: 'asc' }, { createdAt: 'asc' }],
-      });
+      const { users, degraded } = await listAccounts(prisma);
 
       if (users.length === 0) {
         console.log('No users exist in this database.');
@@ -111,13 +152,25 @@ async function main() {
           u.role,
           u.isActive ? 'active' : 'DEACTIVATED',
           u.emailVerifiedAt ? 'verified' : 'unverified',
-          u.isPlatformAdmin ? 'PLATFORM OPERATOR' : null,
+          // Absent entirely on a database that predates the column, rather
+          // than reported as "not an operator" — see listAccounts.
+          u.isPlatformAdmin === true ? 'PLATFORM OPERATOR' : null,
           u.lockedUntil && u.lockedUntil > new Date() ? 'LOCKED OUT' : null,
           // An invited officer who never completed setup cannot sign in with
           // any password, because the stored hash is of random bytes.
           u.passwordResetToken ? 'INVITE PENDING — cannot sign in yet' : null,
         ].filter(Boolean);
         console.log(`   ${u.email}  [${flags.join(', ')}]`);
+      }
+      if (degraded.length > 0) {
+        console.log('');
+        console.log(`This database is missing ${degraded.length} column(s) the current code expects:`);
+        console.log(`  ${degraded.join(', ')}`);
+        console.log('So some flags above are unknown rather than false. The schema is behind the');
+        console.log('code — run `npm run db:push` against THIS database to catch it up.');
+        console.log('');
+        console.log('If this is production, that is the deploy step that was missed: Prisma selects');
+        console.log('every mapped column, so the API itself will fail on queries touching them.');
       }
       console.log('');
       console.log('To set one of these passwords:');
@@ -126,15 +179,14 @@ async function main() {
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true, email: true, fullName: true, role: true, isActive: true,
-        emailVerifiedAt: true, lockedUntil: true, failedLoginAttempts: true,
-        passwordResetToken: true,
-        organization: { select: { name: true, slug: true, suspendedAt: true } },
-      },
-    });
+    // Only the id is strictly needed to write a password; everything else is
+    // reporting. So this reads the whole row and tolerates a drifted schema the
+    // same way the listing does.
+    const all = await listAccounts(prisma);
+    const summary = all.users.find((u) => u.email === email);
+    const user = summary
+      ? { ...summary, id: (await prisma.user.findUnique({ where: { email }, select: { id: true } })).id }
+      : null;
 
     if (!user) {
       // Named plainly: this is an operator at a terminal with database
@@ -154,7 +206,7 @@ async function main() {
     if (user.organization.suspendedAt) {
       console.log('  agency is SUSPENDED — every request from its members is refused on arrival.');
     }
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
+    if (user.lockedUntil instanceof Date && user.lockedUntil > new Date()) {
       console.log(`  locked out until ${user.lockedUntil.toISOString()} — this clears it.`);
     }
     if (user.passwordResetToken) {
@@ -188,6 +240,13 @@ async function main() {
 
     await prisma.user.update({
       where: { id: user.id },
+      // `select` is load-bearing, not a tidy-up. Without it Prisma returns the
+      // whole row, which means RETURNING every mapped column — including any
+      // the database does not have yet. So on a schema-drifted database the
+      // report worked and the WRITE failed, which is the one thing this script
+      // exists to do. Asking for the id alone keeps it working wherever the
+      // columns it actually writes exist.
+      select: { id: true },
       data: {
         passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
         // Every outstanding session dies. Setting a password out of band is
