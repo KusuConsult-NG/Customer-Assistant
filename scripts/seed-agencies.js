@@ -96,13 +96,107 @@ function readList(file) {
   return list;
 }
 
+/**
+ * Seed through the DEPLOYED API instead of the database.
+ *
+ *   npm run agencies:seed -- <file> --api https://host [--apply]
+ *   ACE_EMAIL=… ACE_PASSWORD=… is how it signs in.
+ *
+ * The database mode needs `DATABASE_URL`, and for a hosted deployment that
+ * means pointing a laptop at the production database — which this repository
+ * tells you not to do, and which nobody holding only the dashboard login can
+ * do anyway. The platform tier already has the endpoint, guarded by
+ * `PlatformAdminGuard`, so the operator who is allowed to onboard an agency
+ * can do it from wherever they are.
+ *
+ * Agencies are created with NO owner. The Ministry decides who owns each one,
+ * and an invented address is an officer who can never sign in.
+ */
+async function seedViaApi(list, { base, apply }) {
+  const email = process.env.ACE_EMAIL;
+  const password = process.env.ACE_PASSWORD;
+  if (!email || !password) {
+    throw new Error('ACE_EMAIL and ACE_PASSWORD are needed to sign in to ' + base);
+  }
+
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const auth = await login.json().catch(() => null);
+  if (!login.ok || !auth?.accessToken) {
+    throw new Error(`Sign-in to ${base} failed: ${auth?.message ?? login.status}`);
+  }
+  const headers = { authorization: `Bearer ${auth.accessToken}`, 'content-type': 'application/json' };
+
+  const existingRes = await fetch(`${base}/api/platform/agencies`, { headers });
+  if (!existingRes.ok) {
+    const why = await existingRes.json().catch(() => null);
+    throw new Error(
+      existingRes.status === 403
+        ? `${email} is not a platform operator on ${base}. Grant it with npm run platform:grant.`
+        : `Could not list agencies (HTTP ${existingRes.status}): ${why?.message ?? ''}`
+    );
+  }
+  const existing = (await existingRes.json())?.agencies ?? [];
+  const names = new Set(existing.map((a) => String(a.name).toLowerCase()));
+
+  // Matched on NAME here, not slug: the API mints the slug itself, so
+  // comparing slugs would depend on reimplementing its rules exactly.
+  const missing = list.filter((a) => !names.has(String(a.name ?? '').trim().toLowerCase()));
+
+  console.log(`${existing.length} agenc(ies) already on ${base}`);
+  console.log(`${missing.length} of ${list.length} from the file are missing\n`);
+  for (const a of missing) console.log(`   ${a.name}`);
+  console.log('');
+
+  if (missing.length === 0) return;
+  if (!apply) {
+    console.log('Report only — nothing was created. Re-run with --apply.');
+    console.log('');
+    console.log('Each becomes a TENANT whose name the AI says to citizens. Read the list above');
+    console.log('against the official directory first.');
+    return;
+  }
+
+  let created = 0;
+  for (const a of missing) {
+    const res = await fetch(`${base}/api/platform/agencies`, {
+      method: 'POST',
+      headers,
+      // No owner: see the note above, and the platform service.
+      body: JSON.stringify({
+        name: String(a.name).trim(),
+        category: a.category ? String(a.category).toUpperCase() : 'GOVERNMENT',
+        ...(a.phone ? { phone: String(a.phone).trim() } : {}),
+        ...(a.defaultLanguage ? { defaultLanguage: String(a.defaultLanguage).trim() } : {}),
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok) {
+      created++;
+      console.log(`   created  ${body?.agency?.slug ?? a.name}`);
+    } else {
+      // The server's own reason. "Failed" alone sends an operator to guess.
+      console.log(`   FAILED   ${a.name} — HTTP ${res.status}: ${body?.message ?? ''}`);
+    }
+  }
+  console.log(`\nCreated ${created} of ${missing.length}.`);
+  console.log('Each has NO staff. Invite an owner once email delivery works.');
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
-  const file = args.find((a) => !a.startsWith('--'));
+  const apiIdx = args.indexOf('--api');
+  const api = apiIdx >= 0 ? args[apiIdx + 1] : undefined;
+  const file = args.find((a, i) => !a.startsWith('--') && i !== apiIdx + 1);
 
   if (!file) {
     console.error('Usage: npm run agencies:seed -- <agencies.json> [--apply]');
+    console.error('       npm run agencies:seed -- <agencies.json> --api https://host [--apply]');
+    console.error('         (ACE_EMAIL / ACE_PASSWORD to sign in; needs no database access)');
     console.error('');
     console.error('The file is a JSON array of { name, category?, phone?, defaultLanguage? }.');
     console.error('Only `name` is required. See the header of this script.');
@@ -110,6 +204,12 @@ async function main() {
   }
 
   const list = readList(file);
+
+  if (api) {
+    await seedViaApi(list, { base: api.replace(/\/+$/, ''), apply });
+    return;
+  }
+
   const prisma = new PrismaClient();
 
   try {
