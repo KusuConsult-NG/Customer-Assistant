@@ -44,6 +44,19 @@ interface VoiceReadiness {
   }>;
 }
 
+/** `GET /api/diagnostics/providers` — see ProviderHealthService. */
+interface ProviderHealth {
+  checkedAt: string;
+  summary: string;
+  providers: Array<{
+    id: string;
+    label: string;
+    state: 'ok' | 'failed' | 'not_configured';
+    detail: string;
+    consequence: string;
+  }>;
+}
+
 interface CallLog {
   id: string;
   fromNumber: string;
@@ -84,6 +97,7 @@ export default function TelephonyPage() {
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
   const [adoptResult, setAdoptResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [providers, setProviders] = useState<ProviderHealth | null>(null);
   const [pointing, setPointing] = useState(false);
   const [pointResult, setPointResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [demoMobileNumber, setDemoMobileNumber] = useState('');
@@ -101,10 +115,11 @@ export default function TelephonyPage() {
     try {
       const token = localStorage.getItem('ace_token');
       const headers = { Authorization: `Bearer ${token}` };
-      const [logsRes, orgRes, readyRes] = await Promise.allSettled([
+      const [logsRes, orgRes, readyRes, providerRes] = await Promise.allSettled([
         apiFetch(`${API_URL}/api/telephony/calls`, { headers }),
         apiFetch(`${API_URL}/api/organizations/me`, { headers }),
         apiFetch(`${API_URL}/api/telephony/voice-readiness`, { headers }),
+        apiFetch(`${API_URL}/api/diagnostics/providers`, { headers }),
       ]);
 
       if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
@@ -135,6 +150,14 @@ export default function TelephonyPage() {
         }
       } else {
         setReadinessError('Call readiness could not be checked.');
+      }
+
+      // Silent on refusal: it is OWNER/ADMIN like the readiness panel, and the
+      // panel above already says so. A second identical notice is noise.
+      if (providerRes.status === 'fulfilled' && providerRes.value.ok) {
+        setProviders(await providerRes.value.json());
+      } else {
+        setProviders(null);
       }
     } catch {
       setCallLogs([]);
@@ -587,6 +610,48 @@ export default function TelephonyPage() {
             <RefreshCw className="w-3.5 h-3.5" /> Re-check
           </button>
         </div>
+
+        {/* Whether each provider ANSWERS, not whether a variable is set.
+            Every readiness surface here reported a provider as working
+            because its key was non-empty — a revoked, mistyped or
+            out-of-credit key looks identical, and the first thing that
+            finds out is a citizen on the phone. */}
+        {providers && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-slate-900 dark:text-white">
+                Do the providers answer?
+              </p>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                asked {new Date(providers.checkedAt).toLocaleTimeString()}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">{providers.summary}</p>
+            <ul className="space-y-1.5">
+              {providers.providers.map((p) => (
+                <li key={p.id} className="flex items-start gap-2">
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
+                      p.state === 'ok' ? 'bg-emerald-500' : p.state === 'failed' ? 'bg-red-500' : 'bg-slate-400'
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-slate-900 dark:text-white">
+                      {p.label}{' '}
+                      <span className="uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        {p.state === 'not_configured' ? 'not configured' : p.state}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 break-words">{p.detail}</p>
+                    {p.state !== 'ok' && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">{p.consequence}</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {readinessError && (
           <p className="text-xs text-slate-600 dark:text-slate-400">{readinessError}</p>

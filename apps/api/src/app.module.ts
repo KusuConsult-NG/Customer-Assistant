@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { DiagnosticsModule } from './diagnostics/diagnostics.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
@@ -51,6 +52,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     PlatformModule,
     CatalogueModule,
     CrmModule,
+    DiagnosticsModule,
     TelephonyModule,
     WhatsappModule,
     KnowledgeModule,
