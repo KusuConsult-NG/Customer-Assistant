@@ -468,12 +468,13 @@ describe('ElevenLabs agent provisioning', () => {
       expect(status.drift.join(' ')).toMatch(/no agent has been provisioned/i);
     });
 
-    it('does not tell an operator to sync away inline tools, because a sync cannot', async () => {
-      // The message used to read "Sync to move it onto tool ids." It cannot.
-      // `agentDefinition()` only ever emits `prompt.toolIds` and the update is
-      // a merge, so an inline array already on the remote agent stays exactly
-      // where it is — and an operator following that advice syncs repeatedly
-      // and watches the same drift come back.
+    it('tells the operator a sync has already tried, and what is left', async () => {
+      // This test used to assert the opposite — "NOT cleared by a sync" —
+      // because `agentDefinition()` never emitted `prompt.tools` and the
+      // remote update merges, so an inline array survived every sync. The
+      // sync now sends an empty list alongside the tool ids, so the honest
+      // message changed with the behaviour: if they are STILL here, the
+      // workspace kept them, and the remaining remedies are named.
       stubWorkspace();
       await service.syncAgent(orgId);
 
@@ -481,26 +482,16 @@ describe('ElevenLabs agent provisioning', () => {
         if (req.method === 'GET' && /\/agents\//.test(req.url)) {
           return {
             status: 200,
-            body: {
-              agent_id: 'agent_x',
-              name: 'legacy agent',
-              metadata: { created_at_unix_secs: 1, updated_at_unix_secs: 1 },
-              conversation_config: {
-                agent: {
-                  prompt: {
-                    tool_ids: [],
-                    tools: [
-                      {
-                        name: 'legacy-inline-tool',
-                        type: 'webhook',
-                        description: 'left behind by an older provisioning',
-                        api_schema: { url: 'https://old.example.test/x', method: 'POST' },
-                      },
-                    ],
-                  },
+            body: agentResponse('agent_x', {
+              tools: [
+                {
+                  name: 'legacy-inline-tool',
+                  type: 'webhook',
+                  description: 'left behind by an older provisioning',
+                  api_schema: { url: 'https://old.example.test/x', method: 'POST' },
                 },
-              },
-            },
+              ],
+            }),
           };
         }
         return undefined;
@@ -510,9 +501,107 @@ describe('ElevenLabs agent provisioning', () => {
       const inline = status.drift.find((d) => /inline/i.test(d));
 
       expect(inline).toBeTruthy();
-      expect(inline).toMatch(/NOT cleared by a sync/i);
-      // And it names something that actually works.
+      // It must not claim a sync cannot do this — it tries.
+      expect(inline).not.toMatch(/NOT cleared by a sync/i);
+      expect(inline).toMatch(/sync sends an empty list|did not clear/i);
+      // And it still names something that works when the workspace refuses.
       expect(inline).toMatch(/dashboard|delete the agent/i);
+    });
+
+    it('clears inline prompt.tools on a sync, and says so', async () => {
+      // The drift message used to end at "remove them in the dashboard, or
+      // delete the agent and sync again" — because `agentDefinition()` never
+      // emits `prompt.tools` and the remote update merges, so an inline array
+      // already there survived every sync. That left an operator with a
+      // dashboard errand and an agent that could answer a citizen from a
+      // definition nobody had updated.
+      //
+      // An EMPTY array is not "both kinds of tools": it is an instruction to
+      // remove them. The sync now sends one alongside the tool ids.
+      stubWorkspace();
+      await service.syncAgent(orgId);
+
+      const updates: any[] = [];
+      // The SDK validates inline tool entries as well, so the stub carries the
+      // shape a real one has.
+      const inlineTool = {
+        name: 'legacy-inline',
+        type: 'webhook',
+        description: 'left behind by an older provisioning',
+        api_schema: { url: 'https://old.example.test/x', method: 'POST' },
+      };
+      let remoteInlineTools: any[] = [inlineTool];
+      stubWorkspace((req) => {
+        if (req.method === 'GET' && /\/agents\//.test(req.url)) {
+          return { status: 200, body: agentResponse('agent_x', { tools: remoteInlineTools }) };
+        }
+        if (req.method === 'PATCH' && /\/agents\//.test(req.url)) {
+          updates.push(req.body);
+          // The workspace honoured it.
+          const sent = req.body?.conversation_config?.agent?.prompt?.tools;
+          if (Array.isArray(sent)) remoteInlineTools = sent;
+          return { status: 200, body: agentResponse('agent_x') };
+        }
+        return undefined;
+      });
+
+      await service.syncAgent(orgId);
+
+      const toolsSent = updates
+        .map((u) => u?.conversation_config?.agent?.prompt?.tools)
+        .filter((t) => Array.isArray(t));
+      expect(toolsSent.length).toBeGreaterThan(0);
+      expect(toolsSent[toolsSent.length - 1]).toEqual([]);
+
+      // And the tool IDS are still sent in the same breath — clearing the
+      // inline copy must not take the real tools with it.
+      const idsSent = updates
+        .map((u) => u?.conversation_config?.agent?.prompt?.tool_ids)
+        .filter(Boolean);
+      expect(idsSent.length).toBeGreaterThan(0);
+      expect(idsSent[idsSent.length - 1].length).toBe(TOOL_NAMES.length);
+
+      // Nothing is claimed about the outcome without re-reading it.
+      const status = await service.getAgentStatus(orgId);
+      expect(status.drift.some((d) => /inline/i.test(d))).toBe(false);
+    });
+
+    it('still reports inline tools when the workspace refuses to clear them', async () => {
+      // If ElevenLabs ignores the empty array, the operator must hear that —
+      // not a sync that reports success and changes nothing.
+      stubWorkspace();
+      await service.syncAgent(orgId);
+
+      stubWorkspace((req) => {
+        if (req.method === 'GET' && /\/agents\//.test(req.url)) {
+          // Unchanged, whatever was sent.
+          return {
+            status: 200,
+            body: agentResponse('agent_x', {
+              tools: [
+                {
+                  name: 'stubborn',
+                  type: 'webhook',
+                  description: 'the workspace keeps it whatever we send',
+                  api_schema: { url: 'https://old.example.test/x', method: 'POST' },
+                },
+              ],
+            }),
+          };
+        }
+        if (req.method === 'PATCH' && /\/agents\//.test(req.url)) {
+          return { status: 200, body: agentResponse('agent_x') };
+        }
+        return undefined;
+      });
+
+      await service.syncAgent(orgId);
+      const status = await service.getAgentStatus(orgId);
+      const inline = status.drift.find((d) => /inline/i.test(d));
+
+      expect(inline).toBeTruthy();
+      // It no longer sends the operator to do something a sync just tried.
+      expect(inline).toMatch(/did not clear|refused|still/i);
     });
 
     it('reports a tool whose PARAMETERS no longer match the catalogue', async () => {

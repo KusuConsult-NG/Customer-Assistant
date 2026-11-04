@@ -591,7 +591,13 @@ export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): 
 /**
  * The agent definition for one organization, referencing tools by id.
  */
-export function agentDefinitionFor(org: AgentOrganization, toolIds: string[], customPersona?: TeamPersona) {
+export function agentDefinitionFor(
+  org: AgentOrganization,
+  toolIds: string[],
+  customPersona?: TeamPersona,
+  /** See `AgentSpec.clearInlineTools` — only ever used to REMOVE them. */
+  options?: { clearInlineTools?: boolean }
+) {
   const persona = customPersona || resolvePersona(org.persona);
   const voiceId = org.voiceId || persona.voiceId;
 
@@ -612,6 +618,7 @@ export function agentDefinitionFor(org: AgentOrganization, toolIds: string[], cu
     toolIds,
     timezone: org.timezone,
     pronunciationDictionaryLocators,
+    ...(options?.clearInlineTools ? { clearInlineTools: true } : {}),
   });
 }
 

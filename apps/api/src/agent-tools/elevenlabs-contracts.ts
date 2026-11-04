@@ -151,6 +151,20 @@ export interface AgentSpec {
    * phoneme rules for an agency's own name survive every sync.
    */
   pronunciationDictionaryLocators?: Array<{ pronunciationDictionaryId: string; versionId: string }>;
+  /**
+   * Send an EMPTY `prompt.tools` alongside the tool ids.
+   *
+   * `prompt.tools` is deprecated and this platform never writes definitions
+   * into it — but an agent provisioned before that still carries them, and the
+   * remote update MERGES, so the array survived every sync. The remedy used to
+   * be a dashboard errand.
+   *
+   * An empty array is not "both kinds of tools": it is an instruction to
+   * remove the inline ones, which is why `agentDefinition` allows this
+   * combination and no other. Whether the workspace honours it is not assumed
+   * — the caller re-reads the agent and reports what is actually there.
+   */
+  clearInlineTools?: boolean;
 }
 
 /** Build the request for `conversationalAi.agents.create`. */
@@ -174,6 +188,9 @@ export function agentDefinition(spec: AgentSpec) {
           llm: spec.llm ?? 'gpt-4o-mini',
           toolIds: spec.toolIds,
           timezone: spec.timezone,
+          // See `clearInlineTools`. Emitted ONLY as an empty array, never with
+          // definitions in it.
+          ...(spec.clearInlineTools ? { tools: [] as never[] } : {}),
         },
       },
       asr: {

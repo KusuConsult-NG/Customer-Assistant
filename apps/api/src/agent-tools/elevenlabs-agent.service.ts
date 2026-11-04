@@ -545,11 +545,33 @@ export class ElevenLabsAgentService {
     let agentId = config?.agentId ?? null;
     if (agentId) {
       try {
+        // ── Clear a deprecated inline `prompt.tools` while we are here ─────
+        //
+        // This platform never writes definitions into `prompt.tools`, but an
+        // agent provisioned before that still carries them, and the update
+        // MERGES — so they survived every sync, and the remedy on the console
+        // was a dashboard errand. They matter: inline definitions are a
+        // snapshot that gains no tool added since and keeps whatever URL and
+        // auth it was created with, so an agent holding both can answer a
+        // citizen from a definition nobody has updated.
+        //
+        // An empty array is an instruction to remove them, sent alongside the
+        // real tool ids so clearing the copy cannot take the tools with it.
+        // Whether the workspace honours it is NOT assumed: `getAgentStatus`
+        // re-reads and still reports inline tools if any remain.
+        const hasInlineTools = await this.remoteHasInlineTools(client, agentId);
+        const payload = hasInlineTools
+          ? agentDefinitionFor(org, orderedIds, undefined, { clearInlineTools: true })
+          : definition;
+
         await client.conversationalAi.agents.update(agentId, {
-          name: definition.name,
-          conversationConfig: definition.conversationConfig as any,
+          name: payload.name,
+          conversationConfig: payload.conversationConfig as any,
         });
         steps.push({ target: 'agent', action: 'updated', id: agentId });
+        if (hasInlineTools) {
+          this.log.log(`agent_inline_tools_clear_attempted org=${organizationId} agent=${agentId}`);
+        }
       } catch (err) {
         if (!this.isNotFound(err)) this.fail('the agent', err);
         this.log.warn(`agent_missing_recreating org=${organizationId} agent=${agentId}`);
@@ -584,6 +606,25 @@ export class ElevenLabsAgentService {
       steps,
       ...(secret.mintedKey ? { agentKey: secret.mintedKey } : {}),
     };
+  }
+
+  /**
+   * Does the remote agent still carry deprecated inline `prompt.tools`?
+   *
+   * Read before the update so the sync only sends the clearing payload when
+   * there is something to clear — and so a workspace that cannot be read does
+   * not turn into a silent no-op.
+   */
+  private async remoteHasInlineTools(client: any, agentId: string): Promise<boolean> {
+    try {
+      const agent = await client.conversationalAi.agents.get(agentId);
+      const tools = (agent?.conversationConfig as any)?.agent?.prompt?.tools;
+      return Array.isArray(tools) && tools.length > 0;
+    } catch {
+      // A read failure is not evidence of anything. The ordinary payload is
+      // sent and the status check reports whatever is really there.
+      return false;
+    }
   }
 
   /**
@@ -687,24 +728,23 @@ export class ElevenLabsAgentService {
     }
 
     if (Array.isArray(prompt.tools) && prompt.tools.length > 0) {
-      // NOT fixed by a sync, and saying so was wrong.
+      // A sync NOW TRIES to clear these — see `remoteHasInlineTools` and the
+      // empty `prompt.tools` the update sends alongside the tool ids. So if
+      // they are still here after one, the workspace kept them, and the
+      // operator needs to hear that rather than be sent to do what was just
+      // attempted.
       //
-      // `agentDefinition()` only ever emits `prompt.toolIds`; it never sends
-      // `prompt.tools`. The update is a merge, so an inline array that was
-      // already on the remote agent is left exactly where it is — and an
-      // operator who follows the old advice syncs repeatedly and watches the
-      // same drift come back.
-      //
-      // It matters because the inline definitions are a SNAPSHOT: they do not
+      // They matter because the inline definitions are a SNAPSHOT: they do not
       // gain tools added since (request-callback, check-availability) and they
       // keep whatever URL and auth they were created with. An agent holding
       // both can answer a citizen using a definition nobody has updated.
       drift.push(
-        'Agent still carries inline `prompt.tools` (' + prompt.tools.length + '), which is deprecated ' +
-        'and is NOT cleared by a sync — this platform only ever writes `prompt.toolIds`, and the ' +
-        'update merges. Those inline definitions are a stale snapshot: they lack every tool added ' +
-        'since, and keep the URL and auth they were created with. Remove the inline tools on the ' +
-        'agent in the ElevenLabs dashboard, or delete the agent and sync again to recreate it cleanly.'
+        'Agent still carries inline `prompt.tools` (' + prompt.tools.length + '), which is ' +
+        'deprecated. A sync sends an empty list to clear them; if this is still reported after ' +
+        'one, the workspace did not clear them. Those inline definitions are a stale snapshot: ' +
+        'they lack every tool added since, and keep the URL and auth they were created with. ' +
+        'Remove them on the agent in the ElevenLabs dashboard, or delete the agent and sync ' +
+        'again to recreate it cleanly.'
       );
     }
 
