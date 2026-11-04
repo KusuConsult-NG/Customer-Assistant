@@ -87,17 +87,65 @@ type ContactDb<T extends ContactRow> = {
  * canonical, so the same person arriving by phone and by WhatsApp lands on one
  * record rather than two.
  */
+
+/**
+ * Is this number one the agency owns rather than a citizen's?
+ *
+ * Compared across every shape a number might be written in, for the same
+ * reason the lookups are: the carrier sends E.164 and an operator types what
+ * is on the letterhead, so a string comparison misses the match that matters.
+ */
+export function isAgencyOwnNumber(
+  candidate: string | null | undefined,
+  agencyNumbers?: Array<string | null | undefined>
+): boolean {
+  if (!candidate || !agencyNumbers?.length) return false;
+  const mine = new Set<string>();
+  for (const n of agencyNumbers) {
+    if (!n) continue;
+    for (const variant of phoneNumberVariants(String(n).trim())) mine.add(variant);
+  }
+  if (mine.size === 0) return false;
+  return phoneNumberVariants(candidate.trim()).some((v) => mine.has(v));
+}
+
 export async function ensureContactForPhone<T extends ContactRow>(
   db: ContactDb<T>,
   organizationId: string,
   phoneNumber: string,
-  fullName?: string
+  fullName?: string,
+  /**
+   * Numbers that belong to the AGENCY, not to a citizen — its own lines, their
+   * forwarding targets, and any number a carrier forwards from. Optional, so
+   * every existing caller keeps its behaviour; the telephony path passes them.
+   */
+  agencyNumbers?: Array<string | null | undefined>
 ): Promise<T | null> {
   const phone = (phoneNumber || '').trim();
   // Carriers send "UNKNOWN", "anonymous" or an empty value for a withheld
   // number. A contact keyed on that is one row every withheld caller in the
   // State shares, so it is not created at all.
   if (!phone || /^(unknown|anonymous|private|restricted|withheld)$/i.test(phone)) return null;
+
+  // A number the AGENCY owns is never the citizen on the line.
+  //
+  // This matters the moment a local toll-free number is forwarded to the
+  // platform's line, which is how a Nigerian citizen reaches a service whose
+  // carrier number is foreign. Many carriers forward without passing the
+  // original calling line identity through: what arrives as the caller is the
+  // dialled number, or the forwarding trunk.
+  //
+  // Unguarded, every citizen who rings that line is matched to ONE contact —
+  // and then their bookings, their tickets and their conversation history all
+  // land on the same record. That is not a duplicate, which is recoverable; it
+  // is one citizen's appointments filed under another's name, across the whole
+  // helpline, with nothing in the data to say it happened.
+  //
+  // So an agency number is treated exactly as a withheld one: the call is
+  // answered, the greeting plays, flows that need no identity still work, and
+  // nothing is attributed to a person. The raw value is still on the CallLog,
+  // so an officer can see what the carrier actually sent.
+  if (isAgencyOwnNumber(phone, agencyNumbers)) return null;
 
   const given = realName(fullName);
 

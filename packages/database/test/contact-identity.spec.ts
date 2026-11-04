@@ -17,6 +17,7 @@
  */
 import {
   ensureContactForPhone,
+  isAgencyOwnNumber,
   isPlaceholderContactName,
   placeholderContactName,
 } from '../src/contact-identity';
@@ -167,5 +168,94 @@ describe('the contact for a phone number', () => {
     };
     const row = await ensureContactForPhone(db as any, 'org1', '+2348012345678');
     expect(row!.id).toBe('c1');
+  });
+});
+
+/**
+ * A forwarded call must not become one contact for every citizen.
+ *
+ * A Nigerian citizen will not dial an international number, so a local
+ * toll-free line gets forwarded to whatever number the platform's carrier
+ * gave us. Many carriers forward WITHOUT passing the original calling line
+ * identity: what arrives as the caller is the dialled number, or the
+ * forwarding trunk.
+ *
+ * Unguarded, every citizen on that line matches the same contact — and then
+ * one citizen's appointments, cases and conversation history are filed under
+ * another's name, across the whole helpline, with nothing in the data saying
+ * so. A duplicate is recoverable; this is not.
+ */
+describe('a forwarded call is not attributed to a person', () => {
+  const AGENCY_LINE = '+17372212163';
+  const TOLL_FREE = '08001234567';
+  const FORWARD_TO = '+2348031112222';
+
+  it('refuses the agency line as a caller', async () => {
+    const db = fakeDb();
+    const made = await ensureContactForPhone(db as any, 'org1', AGENCY_LINE, undefined, [
+      AGENCY_LINE,
+      FORWARD_TO,
+    ]);
+    // Not created, and not matched to anything.
+    expect(made).toBeNull();
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it('refuses the toll-free number citizens dialled, in any format', async () => {
+    const db = fakeDb();
+    // The carrier presents the dialled number in E.164 while the agency saved
+    // it in the local form, or the other way round. A string comparison misses
+    // exactly the match that matters.
+    for (const presented of ['+2348001234567', '08001234567', '2348001234567']) {
+      expect(
+        await ensureContactForPhone(db as any, 'org1', presented, undefined, [TOLL_FREE])
+      ).toBeNull();
+    }
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it('refuses the forwarding target too', async () => {
+    const db = fakeDb();
+    expect(
+      await ensureContactForPhone(db as any, 'org1', FORWARD_TO, undefined, [AGENCY_LINE, FORWARD_TO])
+    ).toBeNull();
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it('still creates a contact for a real citizen on the same line', async () => {
+    const db = fakeDb();
+    const citizen = await ensureContactForPhone(db as any, 'org1', '+2348039998888', 'Amina Yusuf', [
+      AGENCY_LINE,
+      TOLL_FREE,
+      FORWARD_TO,
+    ]);
+    // The guard must not swallow the case it exists to protect: when the
+    // carrier DOES pass the citizen's own number through, that citizen is
+    // recorded exactly as before.
+    expect(citizen).not.toBeNull();
+    expect(citizen!.fullName).toBe('Amina Yusuf');
+    expect(db.rows).toHaveLength(1);
+  });
+
+  it('behaves exactly as before when no agency numbers are given', async () => {
+    const db = fakeDb();
+    // Every existing caller passes four arguments. They must keep working.
+    const made = await ensureContactForPhone(db as any, 'org1', AGENCY_LINE);
+    expect(made).not.toBeNull();
+    expect(db.rows).toHaveLength(1);
+  });
+});
+
+describe('isAgencyOwnNumber', () => {
+  it('is false with nothing to compare against', () => {
+    expect(isAgencyOwnNumber('+2348031112222', [])).toBe(false);
+    expect(isAgencyOwnNumber('+2348031112222', undefined)).toBe(false);
+    expect(isAgencyOwnNumber(null, ['+2348031112222'])).toBe(false);
+  });
+
+  it('ignores blanks in the agency list rather than matching them', () => {
+    // A null forwardingNumber is the common case, and it must not make every
+    // caller look like the agency.
+    expect(isAgencyOwnNumber('+2348039998888', [null, undefined, ''])).toBe(false);
   });
 });

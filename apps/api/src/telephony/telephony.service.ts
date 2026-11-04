@@ -331,7 +331,25 @@ export class TelephonyService {
     //
     // Best-effort on purpose: a contact write must never stop the call being
     // answered. A failure here is logged and the caller is still served.
-    const callerContact = await ensureContactForPhone(prisma, organizationId, fromNumber).catch(
+    //
+    // The agency's OWN numbers are passed so that a forwarded call is not
+    // attributed to a person. A local toll-free number forwarded to this line
+    // is how a Nigerian citizen reaches a service whose carrier number is
+    // foreign, and many carriers forward without passing the original calling
+    // line identity: what arrives as the caller is the dialled number or the
+    // trunk. Unguarded, every citizen on that line becomes the SAME contact,
+    // and their appointments and cases are filed under one another.
+    const agencyNumbers = [
+      config.phoneNumber,
+      config.forwardingNumber,
+      toNumber,
+      ...(await prisma.telephonyConfig
+        .findMany({ where: { organizationId }, select: { phoneNumber: true, forwardingNumber: true } })
+        .then((rows) => rows.flatMap((r) => [r.phoneNumber, r.forwardingNumber]))
+        .catch(() => [])),
+    ];
+
+    const callerContact = await ensureContactForPhone(prisma, organizationId, fromNumber, undefined, agencyNumbers).catch(
       (err) => {
         log.warn('telephony_contact_create_failed', {
           correlationId,
