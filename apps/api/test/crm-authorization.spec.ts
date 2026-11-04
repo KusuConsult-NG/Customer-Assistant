@@ -143,6 +143,93 @@ describe('CRM authorization', () => {
       expect(await prisma.contact.findUnique({ where: { id: contact.id } })).toBeNull();
     });
 
+    it('refuses to delete a citizen who has records, and names what would go', async () => {
+      // The most destructive action in the product, and it was one generic
+      // "Are you sure you want to delete this record?" away. Every relation on
+      // Contact is `onDelete: Cascade`, so deleting a citizen silently takes
+      // their appointments, the callbacks promised to them, their open
+      // complaints and the entire record of what the agency told them. The
+      // audit entry recorded the name and phone number — not that three
+      // appointments went with it.
+      const token = await memberToken('ADMIN');
+      const contact = await newContact();
+
+      const booking = await prisma.booking.create({
+        data: {
+          organizationId: agency.orgId,
+          contactId: contact.id,
+          serviceName: 'Land registration',
+          startTime: new Date(Date.now() + 3 * 24 * 3600_000),
+          endTime: new Date(Date.now() + 3 * 24 * 3600_000 + 1800_000),
+          status: 'CONFIRMED',
+        },
+      });
+      const callback = await prisma.callbackRequest.create({
+        data: {
+          organizationId: agency.orgId,
+          contactId: contact.id,
+          phoneNumber: contact.phoneNumber,
+          reason: 'water supply',
+          promisedText: 'Within the hour',
+          dueAt: new Date(),
+        },
+      });
+
+      const res = await as(token).del(`/api/crm/contacts/${contact.id}`).expect(400);
+      const message = Array.isArray(res.body.message) ? res.body.message.join(' ') : res.body.message;
+
+      // It says what, and how many, in words an officer can act on.
+      expect(message).toMatch(/1 appointment/i);
+      expect(message).toMatch(/1 (promised )?callback/i);
+      expect(message).toMatch(/acknowledge/i);
+
+      // And nothing was destroyed while it asked.
+      expect(await prisma.contact.findUnique({ where: { id: contact.id } })).not.toBeNull();
+      expect(await prisma.booking.findUnique({ where: { id: booking.id } })).not.toBeNull();
+      expect(await prisma.callbackRequest.findUnique({ where: { id: callback.id } })).not.toBeNull();
+    });
+
+    it('deletes once the officer acknowledges what goes with it', async () => {
+      const token = await memberToken('ADMIN');
+      const contact = await newContact();
+      await prisma.callbackRequest.create({
+        data: {
+          organizationId: agency.orgId,
+          contactId: contact.id,
+          phoneNumber: contact.phoneNumber,
+          reason: 'bin collection',
+          promisedText: 'Tomorrow',
+          dueAt: new Date(),
+        },
+      });
+
+      await as(token)
+        .del(`/api/crm/contacts/${contact.id}`)
+        .send({ acknowledgeDestroysRelatedRecords: true })
+        .expect(200);
+
+      expect(await prisma.contact.findUnique({ where: { id: contact.id } })).toBeNull();
+
+      // The audit says WHAT was destroyed, not just who did it — otherwise
+      // "what did we lose" has no answer once the rows are gone.
+      const entry = await prisma.auditLog.findFirst({
+        where: { organizationId: agency.orgId, action: 'agency.contact.deleted' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(entry).not.toBeNull();
+      expect(JSON.stringify(entry!.previousValue)).toMatch(/callbackRequest/i);
+    });
+
+    it('still deletes a citizen with nothing attached, without ceremony', async () => {
+      // The ordinary case — a duplicate typed in by mistake — must not get
+      // harder.
+      const token = await memberToken('ADMIN');
+      const contact = await newContact();
+
+      await as(token).del(`/api/crm/contacts/${contact.id}`).expect(200);
+      expect(await prisma.contact.findUnique({ where: { id: contact.id } })).toBeNull();
+    });
+
     it('still cannot delete another agency’s citizen, even as an OWNER', async () => {
       const theirs = await newContact(other.orgId);
 

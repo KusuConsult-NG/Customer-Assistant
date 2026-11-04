@@ -137,12 +137,15 @@ export default function CrmPage() {
       : fallback;
   };
 
+  /**
+   * Delete a lead, deal or ticket. One record, nothing hanging off it.
+   */
   const handleDelete = async (type: string, id: string) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
     try {
       const res = await apiFetch(`${API_URL}/api/crm/${type}/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('ace_token')}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem('ace_token')}` },
       });
       if (res.ok) {
         fetchAll();
@@ -151,6 +154,58 @@ export default function CrmPage() {
       }
     } catch (err) {
       toast.error('Could not reach the server to delete that record.');
+    }
+  };
+
+  /**
+   * Delete a CITIZEN, which is a different kind of act.
+   *
+   * Every relation on a contact cascades, so this destroys their appointments,
+   * the callbacks promised to them, their open cases and the whole record of
+   * what this agency told them. "Are you sure you want to delete this record?"
+   * said none of that.
+   *
+   * The server refuses the first attempt and names exactly what would go. This
+   * shows the officer THAT sentence — the counts included — and only then
+   * offers to proceed. Kept separate from `handleDelete` because only this one
+   * carries an acknowledgement, and a shared call expression would send it to
+   * three endpoints that do not read it.
+   */
+  const handleDeleteContact = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this citizen record?')) return;
+
+    try {
+      let res = await apiFetch(`${API_URL}/api/crm/contacts/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('ace_token')}` },
+      });
+
+      if (res.status === 400) {
+        const reason = await refusalFrom(res, 'Could not delete that citizen.');
+        // The server's own sentence, with the counts in it — not a rewrite.
+        if (!/acknowledge/i.test(reason)) {
+          toast.error(reason);
+          return;
+        }
+        if (!confirm(`${reason}\n\nDelete it anyway?`)) return;
+
+        res = await apiFetch(`${API_URL}/api/crm/contacts/${id}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('ace_token')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ acknowledgeDestroysRelatedRecords: true }),
+        });
+      }
+
+      if (res.ok) {
+        fetchAll();
+      } else {
+        toast.error(await refusalFrom(res, 'Could not delete that citizen.'));
+      }
+    } catch (err) {
+      toast.error('Could not reach the server to delete that citizen.');
     }
   };
 
@@ -328,7 +383,7 @@ export default function CrmPage() {
             searchQuery={search}
             onAdd={() => setModalType('contact')}
             onSelectContact={(c) => setSelectedContact(c)}
-            onDelete={(id) => handleDelete('contacts', id)}
+            onDelete={(id) => handleDeleteContact(id)}
           />
         ) : tab === 'leads' ? (
           <LeadsTable

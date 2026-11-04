@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { prisma, normalizePhoneNumber, createTicketWithUniqueNumber, recordAgencyAudit, type Actor } from '@ace/database';
+import { prisma, countContactRelations, describeContactRelation, normalizePhoneNumber, createTicketWithUniqueNumber, recordAgencyAudit, type Actor } from '@ace/database';
 import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -378,19 +378,66 @@ export class CrmService {
     });
   }
 
-  async deleteContact(contactId: string, organizationId: string, actor: Actor) {
+  /**
+   * Delete a citizen's record, and everything cascading off it.
+   *
+   * ── Why this asks ───────────────────────────────────────────────────────
+   *
+   * Every relation on `Contact` is `onDelete: Cascade`. Deleting a citizen
+   * therefore destroys their appointments, the callbacks the agency promised
+   * them, their open cases, their call records and the whole conversation
+   * history — the record of what this agency told them. It is the most
+   * destructive single action in the product, and it sat behind one generic
+   * "Are you sure you want to delete this record?".
+   *
+   * So it names the consequence before it happens, and asks again. This is
+   * the same shape as `confirmVoiceCutover` and the drop-dead-models script's
+   * `--i-have-read-the-rows`: an explicit acknowledgement for an action whose
+   * cost is invisible at the moment of clicking.
+   *
+   * A citizen with nothing attached — a duplicate typed in by mistake — is
+   * deleted without ceremony, because making the ordinary case harder is how
+   * confirmations stop being read.
+   */
+  async deleteContact(
+    contactId: string,
+    organizationId: string,
+    actor: Actor,
+    options: { acknowledgeDestroysRelatedRecords?: boolean } = {}
+  ) {
     const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId } });
     if (!contact) throw new NotFoundException('Contact not found');
+
+    const attached = await countContactRelations(prisma as any, contactId);
+
+    if (attached.length > 0 && !options.acknowledgeDestroysRelatedRecords) {
+      const described = attached.map((a) => describeContactRelation(a.model, a.count));
+      const list =
+        described.length === 1
+          ? described[0]
+          : `${described.slice(0, -1).join(', ')} and ${described[described.length - 1]}`;
+      throw new BadRequestException(
+        `Deleting ${contact.fullName} also destroys ${list}. ` +
+        `None of it can be recovered, and anyone expecting an appointment or a call back will ` +
+        `still be expecting it. Send acknowledgeDestroysRelatedRecords: true to go ahead.`
+      );
+    }
+
     const removed = await prisma.contact.delete({ where: { id: contactId } });
 
-    // Recorded with the row's own details: once it is deleted there is
-    // nothing left to resolve the id against, and an entry naming only a
-    // uuid describes a record nobody can identify.
+    // Recorded with the row's own details AND what went with it: once it is
+    // deleted there is nothing left to resolve the id against, and "what did
+    // we lose" has no answer anywhere else.
     await recordAgencyAudit(actor, organizationId, {
       action: 'agency.contact.deleted',
       targetType: 'Contact',
       targetId: contactId,
-      previousValue: { fullName: contact.fullName, phoneNumber: contact.phoneNumber, email: contact.email },
+      previousValue: {
+        fullName: contact.fullName,
+        phoneNumber: contact.phoneNumber,
+        email: contact.email,
+        destroyed: Object.fromEntries(attached.map((a) => [a.model, a.count])),
+      },
     });
 
     return removed;

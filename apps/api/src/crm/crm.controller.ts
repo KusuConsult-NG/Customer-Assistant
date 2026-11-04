@@ -101,8 +101,17 @@ export class CrmController {
 
   @Roles('OWNER', 'ADMIN')
   @Delete('contacts/:id')
-  async deleteContact(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmService.deleteContact(id, req.user.organizationId, actorFrom(req));
+  async deleteContact(
+    @Req() req: { user: AuthUser },
+    @Param('id') id: string,
+    // A DELETE with a body is unusual, and deliberate: the acknowledgement
+    // belongs to this request, not to a query string that gets copied into a
+    // log or a browser history.
+    @Body() body?: { acknowledgeDestroysRelatedRecords?: boolean }
+  ) {
+    return this.crmService.deleteContact(id, req.user.organizationId, actorFrom(req), {
+      acknowledgeDestroysRelatedRecords: body?.acknowledgeDestroysRelatedRecords === true,
+    });
   }
 
   @Roles('OWNER', 'ADMIN')
