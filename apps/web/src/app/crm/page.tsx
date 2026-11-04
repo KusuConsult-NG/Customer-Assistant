@@ -6,6 +6,7 @@ import SelfieRequestPanel from '@/components/SelfieRequestPanel';
 import SharedEmptyState from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
+import { RoleNotice } from '@/components/RoleNotice';
 import {
   Search, Plus, Users, X, ChevronDown, Phone, Mail,
   Tag, Briefcase, TicketCheck, TrendingUp, Filter,
@@ -227,6 +228,7 @@ export default function CrmPage() {
 
   return (
     <div className="space-y-6 max-w-7xl pb-12">
+      <RoleNotice path="/crm" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

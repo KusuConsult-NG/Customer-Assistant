@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { RoleNotice } from '@/components/RoleNotice';
 import {
   Briefcase, MapPin, Plus, Trash2, AlertTriangle, RefreshCw,
   CheckCircle2, CircleSlash, Info,
@@ -90,6 +91,7 @@ export default function ServiceCataloguePage() {
 
   return (
     <div className="space-y-6">
+      <RoleNotice path="/services" />
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Services &amp; Locations</h1>

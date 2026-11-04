@@ -140,7 +140,12 @@ describe('Voice handoff to a human', () => {
     expect(spoken[0]).toMatch(/can't put you through/i);
 
     // The request must survive as something a human will see.
-    expect(spoken[0]).toMatch(/TCK-\d+/);
+    // `/TCK-\d+/` was the OLD generator — `TCK-` plus the last six digits of
+    // the epoch millisecond, which repeat every 16.7 minutes across every
+    // tenant on a column that is `@unique` table-wide. This path was the last
+    // one still using it, so the pattern here was pinning the collision in
+    // place. `createTicketWithUniqueNumber` produces TCK-<base36 time>-<hex>.
+    expect(spoken[0]).toMatch(/TCK-[0-9A-Z]+-[0-9A-F]+/);
     const ticket = await prisma.ticket.findFirst({
       where: { organizationId: orgId, subject: 'Caller asked to speak to a human' },
       orderBy: { createdAt: 'desc' },

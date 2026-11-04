@@ -24,6 +24,7 @@ import { PhoneCall, Clock, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Phon
 import { API_URL, apiFetch } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import EmptyState from '@/components/ui/EmptyState';
+import { RoleNotice } from '@/components/RoleNotice';
 
 type Callback = {
   id: string;
@@ -132,6 +133,7 @@ export default function CallbacksPage() {
 
   return (
     <div className="space-y-6">
+      <RoleNotice path="/callbacks" />
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">

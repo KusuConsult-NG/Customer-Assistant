@@ -5,6 +5,7 @@ import { api, API_URL, apiFetch } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import SharedEmptyState from '@/components/ui/EmptyState';
 import { ListSkeleton } from '@/components/ui/Skeleton';
+import { RoleNotice } from '@/components/RoleNotice';
 import {
   BookOpen, Upload, Search, FileText, Loader2, AlertCircle,
   CheckCircle2, Clock, Globe, Sparkles, Trash2, RefreshCw,
@@ -488,6 +489,7 @@ export default function KnowledgePage() {
 
   return (
     <div className="space-y-6 max-w-7xl pb-12">
+      <RoleNotice path="/knowledge" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

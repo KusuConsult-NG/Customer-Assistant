@@ -5,6 +5,7 @@ import { Search, Send, MessageCircle, Phone as WhatsAppIcon, User, Bot, AlertTri
 import { API_URL, apiFetch } from '@/lib/api';
 import SharedEmptyState from '@/components/ui/EmptyState';
 import FlowInProgressPanel, { type FlowSnapshot } from '@/components/FlowInProgressPanel';
+import { RoleNotice } from '@/components/RoleNotice';
 
 interface Conversation {
   id: string;
@@ -243,6 +244,7 @@ export default function ConversationsPage() {
 
   return (
     <div className="flex h-[calc(100vh-80px)] -m-6 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      <RoleNotice path="/conversations" />
       {/*
         This screen is a full-bleed split pane, so it has no room for a visible
         page title — but it still needs one. Without it the only h1 in the

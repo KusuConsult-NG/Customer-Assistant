@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, API_URL, apiFetch } from '@/lib/api';
+import { RoleNotice } from '@/components/RoleNotice';
 import {
   PhoneCall, Sparkles, Phone, CheckCircle, AlertCircle, Radio, ShieldCheck,
   Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft, PhoneOff
@@ -144,6 +145,7 @@ export default function TelephonyPage() {
   };
   return (
     <div className="space-y-6 max-w-7xl pb-12">
+      <RoleNotice path="/telephony" />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

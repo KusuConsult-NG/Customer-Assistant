@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, API_URL, apiFetch } from '@/lib/api';
+import { RoleNotice } from '@/components/RoleNotice';
 import {
   Calendar as CalendarIcon,
   Utensils,
@@ -445,6 +446,7 @@ export default function SchedulingPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
+      <RoleNotice path="/scheduling" />
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 animate-fade-in-up">
           <div className="bg-gray-800 border border-gray-700 text-slate-900 dark:text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3">

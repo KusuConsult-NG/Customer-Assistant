@@ -31,6 +31,7 @@ import { io } from 'socket.io-client';
 
 import { API_URL, clearSession, refreshSession } from '@/lib/api';
 import { ToastProvider } from '@/components/ui/Toast';
+import { canView, storedRole, type Role } from '@/lib/roles';
 
 /**
  * Routes reachable without a session.
@@ -54,6 +55,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string; organizationName?: string; isPlatformAdmin?: boolean; logoUrl?: string } | null>(null);
+  // Read from the stored session, not from `user.role` alone, so an older
+  // session with no role recorded falls back to showing everything rather than
+  // hiding the dashboard from somebody entitled to it.
+  const role: Role | undefined = (user?.role as Role | undefined) ?? storedRole();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -299,39 +304,73 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
 
                 {/* Nav */}
+                {/* Role-aware. A front-desk officer used to be shown the
+                    agency's whole administration surface — System Settings,
+                    Branding, Agent Provisioning, Workflows, Broadcasts — and
+                    learned it was not theirs by clicking a button and getting a
+                    403 back. The server rules were right; the dashboard simply
+                    did not reflect them.
+
+                    Like the platform link below, this is what to OFFER, not a
+                    permission: `ace_user` is editable, so every screen still
+                    calls the API and still renders whatever refusal it gets. */}
                 <nav className="flex-1 px-3.5 py-3 space-y-1 overflow-y-auto">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-1">Service</p>
-                  <SidebarLink href="/" icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/analytics" icon={<BarChart3 className="w-4 h-4" />} label="Analytics" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/crm" icon={<Users className="w-4 h-4" />} label="Citizens & Contacts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/agent-console" icon={<MessageSquareText className="w-4 h-4" />} label="Agent Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/conversations" icon={<MessageCircle className="w-4 h-4" />} label="Live Conversations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/knowledge" icon={<BookOpen className="w-4 h-4" />} label="Knowledge & FAQs" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/workflows" icon={<GitFork className="w-4 h-4" />} label="Automation Workflows" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                  {(() => {
+                    const link = (href: string, icon: React.ReactNode, label: string) =>
+                      canView(href, role) ? (
+                        <SidebarLink key={href} href={href} icon={icon} label={label} pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                      ) : null;
+                    // A heading with nothing under it is a section that looks
+                    // broken rather than one that does not apply.
+                    const section = (title: string, links: React.ReactNode[]) =>
+                      links.some(Boolean) ? (
+                        <React.Fragment key={title}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4 first:mt-1">{title}</p>
+                          {links}
+                        </React.Fragment>
+                      ) : null;
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">Channels</p>
-                  <SidebarLink href="/broadcasts" icon={<MessageSquareText className="w-4 h-4" />} label="WhatsApp Broadcasts" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/telephony" icon={<PhoneCall className="w-4 h-4" />} label="Telephone Service" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/scheduling" icon={<Calendar className="w-4 h-4" />} label="Appointments" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/callbacks" icon={<PhoneCall className="w-4 h-4" />} label="Callback Queue" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/agent-provisioning" icon={<Bot className="w-4 h-4" />} label="Agent Provisioning" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                    return (
+                      <>
+                        {section('Service', [
+                          link('/', <LayoutDashboard className="w-4 h-4" />, 'Dashboard'),
+                          link('/analytics', <BarChart3 className="w-4 h-4" />, 'Analytics'),
+                          link('/crm', <Users className="w-4 h-4" />, 'Citizens & Contacts'),
+                          link('/agent-console', <MessageSquareText className="w-4 h-4" />, 'Agent Console'),
+                          link('/conversations', <MessageCircle className="w-4 h-4" />, 'Live Conversations'),
+                          link('/knowledge', <BookOpen className="w-4 h-4" />, 'Knowledge & FAQs'),
+                          link('/workflows', <GitFork className="w-4 h-4" />, 'Automation Workflows'),
+                        ])}
 
-                  {/* Shown only to a platform operator. This is a CONVENIENCE,
-                      not a permission — localStorage is editable, and every
-                      /api/platform/* route re-checks the flag against the
-                      database. Someone who forces their way to the page gets a
-                      plain "unavailable" panel, not a broken dashboard. */}
-                  {user?.isPlatformAdmin && (
-                    <>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">State Platform</p>
-                      <SidebarLink href="/platform" icon={<Landmark className="w-4 h-4" />} label="Platform Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                    </>
-                  )}
+                        {section('Channels', [
+                          link('/broadcasts', <MessageSquareText className="w-4 h-4" />, 'WhatsApp Broadcasts'),
+                          link('/telephony', <PhoneCall className="w-4 h-4" />, 'Telephone Service'),
+                          link('/scheduling', <Calendar className="w-4 h-4" />, 'Appointments'),
+                          link('/callbacks', <PhoneCall className="w-4 h-4" />, 'Callback Queue'),
+                          link('/agent-provisioning', <Bot className="w-4 h-4" />, 'Agent Provisioning'),
+                        ])}
 
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">Administration</p>
-                  <SidebarLink href="/services" icon={<Briefcase className="w-4 h-4" />} label="Services &amp; Locations" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/white-label" icon={<Building2 className="w-4 h-4" />} label="Branding & White Label" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
-                  <SidebarLink href="/settings" icon={<Settings className="w-4 h-4" />} label="System Settings" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                        {/* Shown only to a platform operator. This is a
+                            CONVENIENCE, not a permission — localStorage is
+                            editable, and every /api/platform/* route re-checks
+                            the flag against the database. Someone who forces
+                            their way to the page gets a plain "unavailable"
+                            panel, not a broken dashboard. */}
+                        {user?.isPlatformAdmin && (
+                          <>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 py-1.5 mt-4">State Platform</p>
+                            <SidebarLink href="/platform" icon={<Landmark className="w-4 h-4" />} label="Platform Console" pathname={pathname} theme={theme} onClick={() => setSidebarOpen(false)} />
+                          </>
+                        )}
+
+                        {section('Administration', [
+                          link('/services', <Briefcase className="w-4 h-4" />, 'Services & Locations'),
+                          link('/white-label', <Building2 className="w-4 h-4" />, 'Branding & White Label'),
+                          link('/settings', <Settings className="w-4 h-4" />, 'System Settings'),
+                        ])}
+                      </>
+                    );
+                  })()}
                 </nav>
 
                 {/* User footer */}

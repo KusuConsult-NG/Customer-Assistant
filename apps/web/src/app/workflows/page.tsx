@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { API_URL, apiFetch } from '@/lib/api';
+import { RoleNotice, useScreenAccess } from '@/components/RoleNotice';
 import {
   GitFork,
   Plus,
@@ -575,8 +576,16 @@ export default function WorkflowsPage() {
   const problems = activeWorkflow?.problems ?? [];
   const unconfigured = (activeWorkflow?.nodes ?? []).filter((n) => !nodeIsConfigured(n, capabilities));
 
+  // This screen exists to CHANGE things, so a member who cannot change
+  // anything here is told so instead of being shown the controls and
+  // left to discover it by pressing one. Cosmetic either way: the API
+  // re-checks the role on every request.
+  const access = useScreenAccess('/workflows');
+  if (access === 'denied') return <div className="p-6"><RoleNotice path="/workflows" /></div>;
+
   return (
     <div className="space-y-6 max-w-7xl pb-12">
+      <RoleNotice path="/workflows" />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
