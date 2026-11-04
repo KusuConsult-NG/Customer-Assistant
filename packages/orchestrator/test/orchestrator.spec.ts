@@ -36,6 +36,9 @@ const mockPrisma = {
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/callback'),
+  ...jest.requireActual('../../database/src/credentials'),
+  ...jest.requireActual('../../database/src/ticket-number'),
+  ...jest.requireActual('../../database/src/outbound-hours'),
   // `ensureContactForPhone` lives here, and these suites replace the whole
   // module: leaving it out makes it `undefined`, the flow throws where it
   // creates the citizen's record, and every booking test fails as a silent
@@ -46,9 +49,14 @@ jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/service-catalogue'),
   ...jest.requireActual('../../database/src/booking-conflicts'),
   prisma: mockPrisma,
+  upsertEnrollee: jest.fn(),
   // Stubbed, not required actual: audit.ts imports the real prisma client
   // from ./index, and these suites exist to avoid constructing one.
   recordAgencyAuditBestEffort: jest.fn(),
+  // selfie-request.ts imports the real prisma client from ./index, which is
+  // the thing these suites exist to avoid — so it is stubbed, like audit.
+  createSelfieRequest: jest.fn(),
+  selfieUploadUrl: jest.fn(),
   Prisma: { DbNull: null },
 }));
 
