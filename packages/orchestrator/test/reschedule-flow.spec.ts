@@ -24,6 +24,11 @@ const mockPrisma = {
 jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/callback'),
+  // `ensureContactForPhone` lives here, and these suites replace the whole
+  // module: leaving it out makes it `undefined`, the flow throws where it
+  // creates the citizen's record, and every booking test fails as a silent
+  // fallback to BOOK_APPOINTMENT rather than as a missing import.
+  ...jest.requireActual('../../database/src/contact-identity'),
   ...jest.requireActual('../../database/src/availability'),
   ...jest.requireActual('../../database/src/service-hours'),
   ...jest.requireActual('../../database/src/service-catalogue'),

@@ -9,7 +9,6 @@
  * how a promise and the thing that keeps it drift apart.
  */
 import { DEFAULT_SERVICE_HOURS, isWithinServiceHours, type ServiceHours } from './availability';
-import { normalizePhoneNumber, phoneNumberVariants } from './phone-number';
 
 /** Statuses that mean "somebody still owes this citizen a call". */
 export const OPEN_CALLBACK_STATUSES = ['PENDING', 'DUE', 'IN_PROGRESS'] as const;
@@ -88,58 +87,21 @@ export function isOverdue(dueAt: Date, now: Date = new Date()): boolean {
 }
 
 /**
- * The citizen record for a phone number, created if this is the first contact.
+ * The reference a citizen is given for an appointment.
  *
- * ── Why this is shared ──────────────────────────────────────────────────────
+ * ── Why it is here and not in each engine ───────────────────────────────────
  *
- * The orchestrator created contacts lazily, when a tool finally needed one.
- * So a citizen who rang, heard the greeting and hung up left a CallLog and no
- * citizen record at all — invisible on Citizens & Contacts, and impossible to
- * ring back, which is exactly the person a care line most needs to reach. The
- * inbound call handler now creates the record the moment the call is answered,
- * and both paths call THIS, so the two cannot disagree about what a new
- * citizen looks like.
+ * It was in both, differently. The orchestrator quoted
+ * `booking.id.slice(-8).toUpperCase()` on WhatsApp and the agent's tools quoted
+ * `booking.id.slice(0, 8)` on a phone call — the LAST eight characters in upper
+ * case, and the FIRST eight in lower. One booking, two references, neither
+ * matching the other, so a citizen who booked by phone and quoted their
+ * reference on WhatsApp was answered about a booking nobody could find.
  *
- * Matching is across every stored shape (`phoneNumberVariants`) and writing is
- * canonical, so the same person arriving by phone and by WhatsApp lands on one
- * record rather than two.
+ * `Booking` has no reference column, so this derives one — prefixed, like a
+ * callback's, because these get read aloud and dictated at a desk, and
+ * "AP-3F2B91CD" survives that where a bare hex string does not.
  */
-export async function ensureContactForPhone(
-  db: { contact: { findFirst: Function; create: Function } },
-  organizationId: string,
-  phoneNumber: string,
-  fullName?: string
-): Promise<{ id: string; fullName: string; phoneNumber: string } | null> {
-  const phone = (phoneNumber || '').trim();
-  // Carriers send "UNKNOWN", "anonymous" or an empty value for a withheld
-  // number. A contact keyed on that is one row every withheld caller in the
-  // State shares, so it is not created at all.
-  if (!phone || /^(unknown|anonymous|private|restricted|withheld)$/i.test(phone)) return null;
-
-  const existing = await db.contact.findFirst({
-    where: { organizationId, phoneNumber: { in: phoneNumberVariants(phone) } },
-  });
-  if (existing) return existing;
-
-  try {
-    return await db.contact.create({
-      data: {
-        organizationId,
-        phoneNumber: normalizePhoneNumber(phone),
-        // Not "Valued Customer": this is a State agency and the people on the
-        // other end are citizens. The last four digits make one unnamed caller
-        // distinguishable from the next at a glance.
-        fullName: fullName?.trim() || `Caller (···${phone.slice(-4)})`,
-      },
-    });
-  } catch (err: any) {
-    // Two calls from the same new number at once: the unique constraint is the
-    // arbiter, and the loser re-reads rather than failing the call.
-    if (err?.code === 'P2002') {
-      return db.contact.findFirst({
-        where: { organizationId, phoneNumber: { in: phoneNumberVariants(phone) } },
-      });
-    }
-    throw err;
-  }
+export function bookingReference(id: string): string {
+  return `AP-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }

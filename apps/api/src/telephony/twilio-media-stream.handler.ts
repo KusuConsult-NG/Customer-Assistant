@@ -66,7 +66,7 @@ import { VoiceAiService } from './voice-ai.service';
 import { CallBroadcastService } from './call-broadcast.service';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { ChannelType, MessageSender } from '@ace/shared-types';
-import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
+import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, createTicketWithUniqueNumber } from '@ace/database';
 
 // Early-audio buffer cap: 250 frames × 20 ms = 5 seconds maximum
 const MAX_EARLY_BUFFER_FRAMES = 250;
@@ -611,47 +611,44 @@ export class TwilioMediaStreamHandler {
     // precisely what did happen.
     let ticketNumber: string | null = null;
     try {
-      // Look up across every stored shape first, then upsert the canonical one.
-      // A bare upsert keyed on the raw carrier number files this ticket against
-      // a NEW contact when the same customer already exists from WhatsApp — so
-      // the escalation lands on a record with none of their history.
-      const existingContact = await prisma.contact.findFirst({
-        where: {
-          organizationId: session.organizationId,
-          phoneNumber: { in: phoneNumberVariants(session.fromNumber) },
-        },
-      });
-      const contact =
-        existingContact ??
-        (await prisma.contact.upsert({
-          where: {
-            organizationId_phoneNumber: {
-              organizationId: session.organizationId,
-              phoneNumber: normalizePhoneNumber(session.fromNumber),
-            },
-          },
-          update: {},
-          create: {
-            organizationId: session.organizationId,
-            phoneNumber: normalizePhoneNumber(session.fromNumber),
-            fullName: `Caller ${session.fromNumber.slice(-4)}`,
-          },
-        }));
+      // The shared helper: it matches every stored shape, so the escalation
+      // lands on the record the customer already has from WhatsApp rather than
+      // a new one with none of their history, and it refuses to key a row on a
+      // withheld number — which this upsert used to do, giving every withheld
+      // caller in the State one shared contact.
+      const contact = await ensureContactForPhone(
+        prisma,
+        session.organizationId,
+        session.fromNumber
+      );
+      if (!contact) {
+        throw new Error(
+          `the caller's number was withheld (${session.fromNumber}), so there is no record to file this against`
+        );
+      }
 
-      const ticket = await prisma.ticket.create({
-        data: {
-          organizationId: session.organizationId,
-          contactId: contact.id,
-          ticketNumber: `TCK-${Date.now().toString().slice(-6)}`,
-          subject: 'Caller asked to speak to a human',
-          description:
-            `A caller on ${session.fromNumber} asked to be put through to a person, but the call ` +
-            `could not be transferred (${forwardingNumber ? 'the redirect was refused' : 'no forwarding number is configured'}). ` +
-            `They were told someone would call back.\n\nWhat they said: "${lastUtterance}"`,
-          status: 'OPEN',
-          priority: 'HIGH',
-        },
-      });
+      // `createTicketWithUniqueNumber`, not `TCK-${Date.now()…slice(-6)}`.
+      // That generator is the last six digits of the epoch millisecond: 10^6
+      // values REPEATING EVERY 16.7 MINUTES, shared across every tenant, on a
+      // column that is `@unique` table-wide, with no retry. A collision here
+      // means the caller who just asked for a human is told we could not even
+      // log it — the one moment in the product where that is least affordable.
+      const ticket = await createTicketWithUniqueNumber((ticketNumberCandidate) =>
+        prisma.ticket.create({
+          data: {
+            organizationId: session.organizationId,
+            contactId: contact.id,
+            ticketNumber: ticketNumberCandidate,
+            subject: 'Caller asked to speak to a human',
+            description:
+              `A caller on ${session.fromNumber} asked to be put through to a person, but the call ` +
+              `could not be transferred (${forwardingNumber ? 'the redirect was refused' : 'no forwarding number is configured'}). ` +
+              `They were told someone would call back.\n\nWhat they said: "${lastUtterance}"`,
+            status: 'OPEN',
+            priority: 'HIGH',
+          },
+        })
+      );
       ticketNumber = ticket.ticketNumber;
     } catch (err) {
       this.logger.error('voice_handoff_ticket_failed', err as Error, { callSid: session.callSid });

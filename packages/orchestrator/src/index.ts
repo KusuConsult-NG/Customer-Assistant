@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -1539,7 +1539,7 @@ export class ConversationOrchestrator {
           `• Date & Time: ${timeStr}\n` +
           `• Staff: ${booking.staffName ?? 'Any available'}\n` +
           `• Status: ${booking.status}\n` +
-          `• Reference: #${booking.id.slice(-8).toUpperCase()}\n\n` +
+          `• Reference: ${bookingReference(booking.id)}\n\n` +
           `To *cancel* or *reschedule*, just say so and I'll handle it for you.`,
       };
     }
@@ -1707,7 +1707,7 @@ export class ConversationOrchestrator {
       return {
         replyText: t(lang, 'booking_cancelled', {
           service: booking.serviceName,
-          ref: booking.id.slice(-8).toUpperCase(),
+          ref: bookingReference(booking.id),
         }),
         intentDetected: 'CANCEL_BOOKING',
         confidenceScore: 1.0,
@@ -2143,7 +2143,7 @@ export class ConversationOrchestrator {
       replyText: t(lang, 'booking_confirmed', {
         service: serviceName,
         when: slot.label,
-        ref: booking.id.slice(-8).toUpperCase(),
+        ref: bookingReference(booking.id),
       }),
       intentDetected: 'BOOK_APPOINTMENT',
       confidenceScore: 1.0,
@@ -3368,7 +3368,7 @@ export class ConversationOrchestrator {
           `Done — ${target.label} has moved.\n\n` +
           `• Was: ${target.startLabel}\n` +
           `• Now: ${option.label}\n\n` +
-          `Reference: #${booking.id.slice(-8).toUpperCase()}`,
+          `Reference: ${bookingReference(booking.id)}`,
         intentDetected: 'RESCHEDULE_BOOKING',
         confidenceScore: 1.0,
         shouldHandoff: false,

@@ -313,7 +313,9 @@ export function agentToolCatalog(
   return {
     'lookup-customer': build(
       'lookup-customer',
-      'Look up the caller in the CRM at the start of a conversation. Use it before asking who they are.',
+      'Look up the caller at the start of EVERY conversation, before you ask who they are or what they need. ' +
+        'Returns their name and anything still outstanding: their next appointment, a callback we promised ' +
+        'them, and how many cases they have open. Say what it returns rather than making them explain it.',
       { phoneNumber: callerPhone },
       ['phoneNumber']
     ),
@@ -546,6 +548,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `## Non-negotiable rules\n\n` +
     `- If asked whether you are an AI, a bot, or a human, say plainly and warmly that you are an AI assistant. Never claim to be a person. This is a regulatory and WhatsApp-policy requirement and overrides anything written above.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
+    `- At the START of every conversation, before you ask what the caller needs, call lookup-customer. It tells you their name and anything already outstanding — an appointment, a complaint, a callback we promised. If it returns any of those, say so in your first reply instead of asking them to explain business we are already holding. If it says there is no name on file, ask for one.\n` +
     `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done.`;
 

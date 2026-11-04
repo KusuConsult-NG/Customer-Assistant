@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants } from '@ace/database';
+import { prisma, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
@@ -183,7 +183,12 @@ export class WhatsappService {
       }
 
       // ── 2. Upsert Contact (race-safe) ────────────────────────────────────────
-      const contact = await this.upsertContact(organizationId, fromNumber, correlationId);
+      // Meta sends the citizen's own WhatsApp display name alongside the
+      // message, and this platform was discarding it — then showing officers a
+      // CRM full of "WhatsApp Contact (···5678)" and greeting the same person
+      // by that name when they rang in.
+      const profileName: string | undefined = change?.contacts?.[0]?.profile?.name;
+      const contact = await this.upsertContact(organizationId, fromNumber, correlationId, profileName);
 
       // ── 3. Upsert Conversation ────────────────────────────────────────────────
       const conversation = await this.upsertConversation(organizationId, contact.id, correlationId);
@@ -453,35 +458,32 @@ export class WhatsappService {
     }
   }
 
-  private async upsertContact(organizationId: string, phoneNumber: string, correlationId: string) {
-    try {
-      // Meta gives E.164 without the leading plus. Searching every shape finds
-      // the row a phone call or a staff member created for the same person;
-      // storing the canonical one stops the next channel making a third.
-      const existing = await prisma.contact.findFirst({
-        where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-      });
-
-      if (existing) return existing;
-
-      return await prisma.contact.create({
-        data: {
-          organizationId,
-          phoneNumber: normalizePhoneNumber(phoneNumber),
-          fullName: `WhatsApp Contact (···${phoneNumber.slice(-4)})`,
-        },
-      });
-    } catch (err: any) {
-      // P2002 = Unique constraint violation (race condition: another request created it first)
-      if (err.code === 'P2002') {
-        log.debug('contact_race_condition_resolved', { correlationId, phoneNumber: phoneNumber.slice(-4) });
-        const contact = await prisma.contact.findFirst({
-          where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-        });
-        if (contact) return contact;
-      }
-      throw err;
+  /**
+   * The citizen's record for this WhatsApp number.
+   *
+   * The shared helper rather than a fifth copy of find-or-create. The copy
+   * that was here wrote a placeholder of its own — `WhatsApp Contact (···1234)`
+   * — which the voice agent then read aloud as the caller's name on their next
+   * phone call, because nothing ever replaced a placeholder with a real name.
+   *
+   * `profileName` is what the citizen has set as their own WhatsApp name. It is
+   * self-asserted, so it is only ever used to replace one of OUR placeholders,
+   * never a name an officer recorded.
+   */
+  private async upsertContact(
+    organizationId: string,
+    phoneNumber: string,
+    correlationId: string,
+    profileName?: string
+  ) {
+    const contact = await ensureContactForPhone(prisma, organizationId, phoneNumber, profileName);
+    if (!contact) {
+      // Meta always sends a real wa_id, so this is a malformed payload rather
+      // than a withheld number. Nothing is written against a shared row.
+      log.warn('whatsapp_unusable_sender', { correlationId });
+      throw new Error(`WhatsApp payload carried no usable sender (${phoneNumber || 'empty'})`);
     }
+    return contact;
   }
 
   /**

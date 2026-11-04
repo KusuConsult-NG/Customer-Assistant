@@ -200,10 +200,16 @@ describe('Agent tools', () => {
         // A promise of a record that does not exist is not a degradation — the
         // customer hangs up and waits for a callback nobody will make.
         expect(res.body.data.ticketId).toBeTruthy();
-        expect(res.body.speak).toContain(res.body.data.ticketId.slice(0, 8));
 
+        // This assertion used to be `ticketId.slice(0, 8)`, and it passed
+        // against a reference no officer could search. The dashboard's ticket
+        // table shows `ticketNumber`, and WhatsApp already quoted that column —
+        // so the reference a caller is told has to be the same one.
         const ticket = await prisma.ticket.findUnique({ where: { id: res.body.data.ticketId } });
         expect(ticket).not.toBeNull();
+        expect(res.body.data.ticketNumber).toBe(ticket!.ticketNumber);
+        expect(res.body.speak).toContain(ticket!.ticketNumber);
+        expect(res.body.speak).not.toContain(res.body.data.ticketId.slice(0, 8));
         expect(ticket!.priority).toBe('HIGH');
         expect(ticket!.organizationId).toBe(orgA);
       });
@@ -490,6 +496,154 @@ describe('Agent tools', () => {
         reason: 'test',
       }).expect(201);
       expect(cancelled.body.ok).toBe(true);
+    }, 30_000);
+  });
+  /**
+   * ── Does the agent remember the caller? ───────────────────────────────────
+   *
+   * It did not. `lookup-customer` found the record by number and returned the
+   * NAME and nothing else, so the agent greeted a woman with an appointment the
+   * next morning as a stranger and asked what it could help with — while her
+   * booking, her open complaint and the callback we had promised her all sat in
+   * the database the tool had just read.
+   *
+   * And when the name on that record was one of ours (`Caller (···5678)`,
+   * written when she rang and hung up), nothing ever replaced it, so it was
+   * read out to her as her own name.
+   */
+  describe('remembering a citizen who has been here before', () => {
+    const futureIso = (days: number, hour = 10) => {
+      const d = new Date(Date.now() + days * 24 * 3600_000);
+      d.setUTCHours(hour, 0, 0, 0);
+      return d.toISOString();
+    };
+
+    it('greets a returning citizen by name and nothing more when nothing is pending', async () => {
+      const phone = `+2348${Date.now().toString().slice(-9)}`;
+      await prisma.contact.create({
+        data: { organizationId: orgA, phoneNumber: phone, fullName: 'Nothing Pending' },
+      });
+
+      const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.data.known).toBe(true);
+      expect(res.body.speak).toContain('Nothing Pending');
+      // No invented business. This is the no-fabrication rule applied to a greeting.
+      expect(res.body.speak).not.toMatch(/appointment|complaint|call you back/i);
+      expect(res.body.data.upcomingBooking).toBeNull();
+    });
+
+    it('tells the agent about the appointment the citizen already has', async () => {
+      const phone = `+2348${(Date.now() + 1).toString().slice(-9)}`;
+      const booked = await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        fullName: 'Has A Booking',
+        serviceName: 'Passport Renewal',
+        startTime: futureIso(3),
+        durationMinutes: 30,
+      }).expect(201);
+      expect(booked.body.ok).toBe(true);
+
+      const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.data.upcomingBooking).toBeTruthy();
+      expect(res.body.data.upcomingBooking.serviceName).toBe('Passport Renewal');
+      // Said, not just returned: anything handed over as loose data is something
+      // the model may leave out.
+      expect(res.body.speak).toContain('Passport Renewal');
+    }, 30_000);
+
+    it('does not announce a cancelled appointment as upcoming', async () => {
+      const phone = `+2348${(Date.now() + 2).toString().slice(-9)}`;
+      await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        fullName: 'Cancelled Theirs',
+        serviceName: 'Will Be Cancelled',
+        startTime: futureIso(4),
+      }).expect(201);
+      await post('cancel-booking', keyA, { phoneNumber: phone, reason: 'test' }).expect(201);
+
+      const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.data.upcomingBooking).toBeNull();
+      expect(res.body.speak).not.toContain('Will Be Cancelled');
+    }, 30_000);
+
+    it('remembers a callback we promised, with the reference the citizen was quoted', async () => {
+      const phone = `+2348${(Date.now() + 3).toString().slice(-9)}`;
+      const asked = await post('request-callback', keyA, {
+        phoneNumber: phone,
+        fullName: 'Promised A Call',
+        reason: 'wants to know about the levy',
+      }).expect(201);
+      const reference = asked.body.data.reference;
+      expect(reference).toMatch(/^CB-/);
+
+      const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.data.openCallback).toBeTruthy();
+      expect(res.body.data.openCallback.reference).toBe(reference);
+      expect(res.body.speak).toMatch(/call back/i);
+    }, 30_000);
+
+    it('remembers an open complaint by its reference', async () => {
+      const phone = `+2348${(Date.now() + 4).toString().slice(-9)}`;
+      const filed = await post('create-ticket', keyA, {
+        phoneNumber: phone,
+        fullName: 'Has A Complaint',
+        subject: 'Bin not collected',
+        description: 'Three weeks now',
+      }).expect(201);
+      // The reference the citizen is told must be the one an officer can
+      // search: the dashboard's ticket table shows `ticketNumber`.
+      const ref = filed.body.data.ticketNumber;
+      expect(ref).toMatch(/^TCK-/);
+      expect(filed.body.speak).toContain(ref);
+
+      const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.data.openTickets).toBe(1);
+      expect(res.body.speak).toMatch(/open/i);
+    }, 30_000);
+
+    it('learns the name a caller gives, instead of reading our placeholder back to them', async () => {
+      const phone = `+2348${(Date.now() + 5).toString().slice(-9)}`;
+      // She rang once and hung up: the platform created the record itself.
+      await prisma.contact.create({
+        data: {
+          organizationId: orgA,
+          phoneNumber: phone,
+          fullName: `Caller (···${phone.slice(-4)})`,
+        },
+      });
+
+      // On the next call she gives her name and books.
+      await post('book-appointment', keyA, {
+        phoneNumber: phone,
+        fullName: 'Ada Bello',
+        serviceName: 'Consultation',
+        startTime: futureIso(5, 11),
+      }).expect(201);
+
+      const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
+      expect(res.body.speak).toContain('Ada Bello');
+      expect(res.body.speak).not.toContain('Caller (');
+
+      // And the officer reading the CRM sees her name too.
+      const row = await prisma.contact.findFirst({ where: { organizationId: orgA, phoneNumber: phone } });
+      expect(row?.fullName).toBe('Ada Bello');
+    }, 30_000);
+
+    it('does not file anything against a withheld number', async () => {
+      // A record keyed on "anonymous" is one row every withheld caller in the
+      // State shares — every one of them then "remembered" as the last.
+      const res = await post('create-ticket', keyA, {
+        phoneNumber: 'anonymous',
+        subject: 'Withheld',
+        description: 'No number',
+      }).expect(201);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.handoff).toBe(true);
+      const row = await prisma.contact.findFirst({
+        where: { organizationId: orgA, phoneNumber: 'anonymous' },
+      });
+      expect(row).toBeNull();
     }, 30_000);
   });
 });

@@ -100,6 +100,7 @@ export * from './service-hours';
 export * from './service-catalogue';
 export * from './availability';
 export * from './callback';
+export * from './contact-identity';
 export * from './agency-name';
 export * from './outbound-hours';
 export * from './audit';

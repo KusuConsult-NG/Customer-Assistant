@@ -24,8 +24,8 @@
  * Tenant scoping comes from the agent key (see agent-key.guard.ts) and is passed
  * in as organizationId — never read from the request body.
  */
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES } from '@ace/database';
+import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -97,30 +97,54 @@ export class AgentToolsService {
     };
   }
 
-  /** Find or create the caller's contact record, so tools have someone to attach to. */
+  /**
+   * The caller's contact record, so tools have someone to attach to.
+   *
+   * Delegates to the shared helper rather than carrying its own copy. The copy
+   * that used to live here differed in three ways that each cost something: it
+   * created a row for a withheld number (one record shared by every withheld
+   * caller in the State), it had no retry when two first calls arrived at once
+   * (so a booking failed and the caller was handed to a human), and it wrote a
+   * fourth placeholder format. It also never wrote the name the caller gave
+   * back to the record the greeting is read from.
+   */
   private async contactFor(organizationId: string, phoneNumber: string, fullName?: string) {
-    // Search every shape, store the canonical one. Otherwise the agent creates
-    // a second row for a customer it already has, and answers them as a
-    // stranger.
-    const existing = await prisma.contact.findFirst({
-      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-    });
-    if (existing) return existing;
-    return prisma.contact.create({
-      data: {
-        organizationId,
-        phoneNumber: normalizePhoneNumber(phoneNumber),
-        fullName: fullName?.trim() || `Caller (${phoneNumber.slice(-4)})`,
-      },
-    });
+    const contact = await ensureContactForPhone(prisma, organizationId, phoneNumber, fullName);
+    if (!contact) {
+      // Withheld number. Say so rather than filing against a shared row.
+      throw new BadRequestException(
+        'I could not tell what number you are calling from, so I cannot look up or save your record. ' +
+        'Let me put you through to a colleague.'
+      );
+    }
+    return contact;
   }
 
   // ── Identify the caller ────────────────────────────────────────────────────
+  /**
+   * Who is calling, and what we already owe them.
+   *
+   * ── What was wrong ──────────────────────────────────────────────────────────
+   *
+   * This returned the name and nothing else. So a citizen with an appointment
+   * the next morning, an open complaint and a callback we had promised rang in
+   * and was asked "how can I help you today?" — by a system that had just read
+   * her record and knew all three. The caller then has to explain, from memory,
+   * business the agency is already holding, and an agency that cannot recall
+   * its own promise is the thing a care line exists to stop being.
+   *
+   * It is one query per kind of pending business, for the record we already
+   * found, and the result is SAID rather than only returned: anything handed
+   * over as loose data is something the model may leave out.
+   *
+   * Nothing here is inferred. An absent appointment is reported as none, never
+   * softened into "I think you had something with us".
+   */
   async lookupCustomer(organizationId: string, phoneNumber: string): Promise<ToolResult> {
     try {
       const contact = await prisma.contact.findFirst({
         where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-        select: { id: true, fullName: true, email: true },
+        select: { id: true, fullName: true, email: true, preferredLanguage: true },
       });
       if (!contact) {
         return {
@@ -129,10 +153,93 @@ export class AgentToolsService {
           data: { known: false },
         };
       }
+
+      const now = new Date();
+      const [upcoming, openCallback, openTickets] = await Promise.all([
+        // Only a booking that is still standing and still ahead of us. A
+        // cancelled or past one read out as "your appointment" sends somebody
+        // to an office on a day nobody expects them.
+        prisma.booking.findFirst({
+          where: {
+            organizationId,
+            contactId: contact.id,
+            status: { in: BUSY_BOOKING_STATUSES as unknown as string[] } as any,
+            startTime: { gte: now },
+          },
+          orderBy: { startTime: 'asc' },
+          select: { id: true, serviceName: true, startTime: true, staffName: true },
+        }),
+        prisma.callbackRequest.findFirst({
+          where: {
+            organizationId,
+            contactId: contact.id,
+            status: { in: [...OPEN_CALLBACK_STATUSES] },
+          },
+          orderBy: { dueAt: 'asc' },
+          select: { id: true, promisedText: true, dueAt: true, reason: true },
+        }),
+        prisma.ticket.count({
+          where: {
+            organizationId,
+            contactId: contact.id,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'PENDING_CUSTOMER'] as any },
+          },
+        }),
+      ]);
+
+      // A name of ours is not a name to greet somebody with. `fullName` on the
+      // record is still returned so the agent can ask for the real one.
+      const ours = isPlaceholderContactName(contact.fullName);
+      const sentences: string[] = [ours ? 'Welcome back.' : `Welcome back, ${contact.fullName}.`];
+
+      if (upcoming) {
+        sentences.push(
+          `You have ${upcoming.serviceName} booked for ${formatLagos(upcoming.startTime)}.`
+        );
+      }
+      if (openCallback) {
+        sentences.push(
+          `We also owe you a call back about ${openCallback.reason.trim()} — reference ` +
+          `${callbackReference(openCallback.id)}, ${openCallback.promisedText.toLowerCase()}.`
+        );
+      }
+      if (openTickets > 0) {
+        sentences.push(
+          openTickets === 1
+            ? 'You have one open case with us as well.'
+            : `You have ${openTickets} open cases with us as well.`
+        );
+      }
+
       return {
         ok: true,
-        speak: `Welcome back, ${contact.fullName}.`,
-        data: { known: true, contactId: contact.id, fullName: contact.fullName },
+        speak: sentences.join(' '),
+        data: {
+          known: true,
+          contactId: contact.id,
+          fullName: contact.fullName,
+          // So the agent knows to ask rather than greet them as "Caller".
+          nameIsPlaceholder: ours,
+          preferredLanguage: contact.preferredLanguage ?? null,
+          upcomingBooking: upcoming
+            ? {
+                bookingId: upcoming.id,
+                serviceName: upcoming.serviceName,
+                startTime: upcoming.startTime.toISOString(),
+                label: formatLagos(upcoming.startTime),
+                staffName: upcoming.staffName ?? null,
+              }
+            : null,
+          openCallback: openCallback
+            ? {
+                callbackId: openCallback.id,
+                reference: callbackReference(openCallback.id),
+                promisedText: openCallback.promisedText,
+                dueAt: openCallback.dueAt.toISOString(),
+              }
+            : null,
+          openTickets,
+        },
       };
     } catch (e) {
       return this.failed('lookup_customer', e);
@@ -243,8 +350,8 @@ export class AgentToolsService {
       });
       return {
         ok: true,
-        speak: `You are booked for ${booking.serviceName} on ${when}. Your reference is ${booking.id.slice(0, 8)}.`,
-        data: { bookingId: booking.id, startTime: booking.startTime },
+        speak: `You are booked for ${booking.serviceName} on ${when}. Your reference is ${bookingReference(booking.id)}.`,
+        data: { bookingId: booking.id, reference: bookingReference(booking.id), startTime: booking.startTime },
       };
     } catch (e: any) {
       // A slot clash is a legitimate answer, not a malfunction — say so and let
@@ -481,12 +588,21 @@ export class AgentToolsService {
         }).catch(() => {});
       }
 
+      // `ticket.ticketNumber`, not `ticket.id.slice(0, 8)`.
+      //
+      // The dashboard's ticket table shows `ticketNumber` (TCK-…) and that is
+      // what an officer searches by; the orchestrator quotes the same column on
+      // WhatsApp. This read out the first eight characters of a uuid instead —
+      // a reference the citizen was told to keep that matches NOTHING any
+      // officer can look up, for the same complaint that WhatsApp references
+      // correctly. Two engines, one complaint, two references, one of them
+      // useless.
       return {
         ok: true,
         speak: isIntegrityComplaint
-          ? `I have logged this as an urgent complaint for review. Your reference number is ${ticket.id.slice(0, 8)} — please keep it. Someone will look into this as a priority and come back to you on this number.`
-          : `I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will come back to you on this number.`,
-        data: { ticketId: ticket.id, isEscalated: isIntegrityComplaint },
+          ? `I have logged this as an urgent complaint for review. Your reference number is ${ticket.ticketNumber} — please keep it. Someone will look into this as a priority and come back to you on this number.`
+          : `I have logged this for our team. Your reference is ${ticket.ticketNumber}, and someone will come back to you on this number.`,
+        data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, isEscalated: isIntegrityComplaint },
       };
     } catch (e) {
       return this.failed('create_ticket', e);
@@ -737,9 +853,9 @@ export class AgentToolsService {
       });
       return {
         ok: true,
-        speak: `I cannot put you through myself, but I have logged this for our team. Your reference is ${ticket.id.slice(0, 8)}, and someone will call you back on this number.`,
+        speak: `I cannot put you through myself, but I have logged this for our team. Your reference is ${ticket.ticketNumber}, and someone will call you back on this number.`,
         handoff: true,
-        data: { transferred: false, ticketId: ticket.id },
+        data: { transferred: false, ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
       };
     } catch (e) {
       // The ticket is what makes the sentence true, so if it could not be

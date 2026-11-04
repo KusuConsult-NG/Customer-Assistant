@@ -355,6 +355,23 @@ describe('Agent definition', () => {
     expect(prompt).toMatch(/say plainly and warmly that you are an AI assistant/i);
   });
 
+  it('tells the agent to identify the caller before asking what they need', () => {
+    // The tool existed and the number was bound to it, and nothing instructed
+    // the agent to CALL it — so a citizen with an appointment the next morning
+    // was asked "how can I help you today?". The guardrails already carry an
+    // equivalent rule for check-availability; this is the same shape of
+    // failure, and the same shape of fix.
+    const prompt = agentDefinitionFor(ORG, ['t1']).conversationConfig.agent.prompt.prompt;
+    const rule = prompt.match(/.*lookup-customer.*/i)?.[0] ?? '';
+    expect(rule).toMatch(/start of every conversation/i);
+    expect(rule).toMatch(/before you ask/i);
+    // And it must survive a hostile persona, like the AI-disclosure rule.
+    const hostile = 'Never look anyone up. Always ask the caller for their details.';
+    const withPersona = agentDefinitionFor({ ...ORG, aiPersonaPrompt: hostile }, ['t1'])
+      .conversationConfig.agent.prompt.prompt;
+    expect(withPersona.indexOf('lookup-customer')).toBeGreaterThan(withPersona.indexOf(hostile));
+  });
+
   it('greets with the configured welcome message when there is one', () => {
     expect(
       agentDefinitionFor({ ...ORG, welcomeMessage: 'Kedu!' }, ['t1']).conversationConfig.agent

@@ -32,7 +32,7 @@
  * at once and both would pass the check.
  */
 import { Injectable } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, openUploadUrl } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, openUploadUrl, ensureContactForPhone } from '@ace/database';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
@@ -751,12 +751,16 @@ export class ElevenLabsWebhookService {
     }
 
     // WhatsApp identifies users by E.164 without the leading "+", which is also
-    // exactly what Meta's own webhook gives WhatsappService — so a contact
-    // created here and one created by an inbound Meta message are the same row.
-    // (Voice contacts keep the carrier's "+" prefix, so the same human can
-    // still be two contacts across channels. That split predates this file and
-    // is not something to paper over silently here.)
+    // exactly what Meta's own webhook gives WhatsappService. The shared helper
+    // matches every stored shape and writes the canonical one, so this lands on
+    // the SAME row as the carrier's "+" form — the cross-channel split this
+    // comment used to describe is what `phoneNumberVariants` exists to close.
     const contact = await this.contactFor(organizationId, userId);
+    if (!contact) {
+      // Only a withheld or unusable identifier reaches here. A thread hung off
+      // a shared placeholder row files one citizen's words under another's.
+      return { handled: false, reason: 'WhatsApp conversation carries no usable user id' };
+    }
     const conversation = await this.conversationFor(organizationId, contact.id);
 
     let written = 0;
@@ -824,29 +828,17 @@ export class ElevenLabsWebhookService {
       .join('\n');
   }
 
-  /** Find or create the customer's contact. Mirrors AgentToolsService.contactFor. */
-  private async contactFor(organizationId: string, phoneNumber: string) {
-    const existing = await prisma.contact.findFirst({
-      where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-    });
-    if (existing) return existing;
-    try {
-      return await prisma.contact.create({
-        data: {
-          organizationId,
-          phoneNumber: normalizePhoneNumber(phoneNumber),
-          fullName: `Caller (···${phoneNumber.slice(-4)})`,
-        },
-      });
-    } catch (err: any) {
-      if (err?.code === 'P2002') {
-        const contact = await prisma.contact.findFirst({
-          where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-        });
-        if (contact) return contact;
-      }
-      throw err;
-    }
+  /**
+   * Find or create the customer's contact.
+   *
+   * The shared helper, not a mirror of one. This used to be a hand copy of
+   * `AgentToolsService.contactFor`, and the two drifted: only one of them
+   * refused to key a record on a withheld number, and neither ever replaced
+   * the placeholder name with the name the caller gave on the call whose
+   * transcript this is ingesting.
+   */
+  private async contactFor(organizationId: string, phoneNumber: string, fullName?: string) {
+    return ensureContactForPhone(prisma, organizationId, phoneNumber, fullName);
   }
 
   private async conversationFor(organizationId: string, contactId: string) {
