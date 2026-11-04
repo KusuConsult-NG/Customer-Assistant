@@ -596,12 +596,23 @@ export class CrmService {
       },
     });
 
+    // The note is the record of WHO approved WHAT, so a lost one is a gap in
+    // the citizen's file rather than a cosmetic miss — it is awaited and its
+    // failure is reported, not swallowed.
+    //
+    // The wording is the agency's, not the health scheme's. This read
+    // "Coverage active across accredited facilities", which describes an
+    // insurance product; for a lands registry or a water board it is simply
+    // untrue, and it is written into a citizen's record where an officer
+    // reads it back to them.
     await prisma.note.create({
       data: {
         contactId: contact.id,
-        content: `🎉 ENROLLEE APPROVED & ACTIVATED: Policy ID issued: ${policyId}. Coverage active across accredited facilities.`,
+        content:
+          `Registration approved. Reference ${policyId}, issued by ` +
+          `${contact.organization?.name ?? 'this agency'}.`,
       },
-    }).catch(() => {});
+    });
 
     return {
       success: true,
