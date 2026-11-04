@@ -27,9 +27,25 @@
 #     60 days. A quiet repo serving a live helpline is exactly the case where
 #     that bites, so `workflow_dispatch` is here to restart it by hand.
 #
-# The URL is not a secret — it is the public address citizens' carriers post
-# to — so it is a repository variable rather than a secret, and the job is
-# skipped cleanly when it is not set.
+# ── Why the URL is hardcoded with a variable as an override ─────────────────
+#
+# It was ONLY `vars.API_BASE_URL`, and that variable was never set, so every
+# run did this and nothing else:
+#
+#   API_BASE_URL:
+#   API_BASE_URL repository variable is not set — nothing to keep warm.
+#
+# The job reported SUCCESS each time, because skipping cleanly was the designed
+# behaviour — so a green tick meant "pinged nothing", and the instance went on
+# spinning down. Worse, the variable looks set from where an operator stands:
+# `API_BASE_URL` also exists as an environment variable on the API service
+# itself, which is a different place entirely, and setting it there does
+# nothing for this workflow.
+#
+# So the default is the real address. It is not a secret — it is the public
+# address citizens' carriers post to — and a keep-warm job that needs manual
+# setup before it keeps anything warm is a job that quietly does not run.
+# `vars.API_BASE_URL` still overrides it, for a different deployment.
 
 name: Keep API warm
 
@@ -51,12 +67,14 @@ jobs:
     steps:
       - name: Ping the health probe
         env:
-          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          # The repository variable wins when it is set; otherwise the known
+          # production address, so this works with no setup at all.
+          API_BASE_URL: ${{ vars.API_BASE_URL || 'https://ace-api-n7ix.onrender.com' }}
         run: |
           if [ -z "$API_BASE_URL" ]; then
-            echo "API_BASE_URL repository variable is not set — nothing to keep warm."
-            echo "Set it under Settings → Secrets and variables → Actions → Variables."
-            exit 0
+            # Only reachable if someone sets the variable to an empty string.
+            echo "::error::API_BASE_URL resolved to nothing, so this run kept nothing warm."
+            exit 1
           fi
 
           url="${API_BASE_URL%/}/api/health"
