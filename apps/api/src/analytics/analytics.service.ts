@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { zonedDayKey, zonedDayLabel, zonedWindow } from '../common/zoned-days';
 
 type Period = '7d' | '30d' | '90d';
 
@@ -7,127 +8,134 @@ function periodToDays(period: Period): number {
   return period === '90d' ? 90 : period === '30d' ? 30 : 7;
 }
 
+const BUSY_WINDOW_ROWS = 20000;
+
 @Injectable()
 export class AnalyticsService {
-
+  /**
+   * The dashboard summary.
+   *
+   * A figure that could not be READ is null, and the names of those figures
+   * come back in `unavailable`. It used to be `.catch(() => 0)` on every
+   * query inside a try that logged and fell through, so a database that was
+   * unreachable — or one connection short of the pool limit — produced a 200
+   * with a complete set of zeros: "0 bookings", "0 open tickets", "₦0", shown
+   * to an officer as the state of their agency. That is the same failure the
+   * scheduling screen had when a failed list load rendered "No bookings
+   * recorded yet", and it is worse here because the home page is the first
+   * thing anyone sees. Nothing known is not the same as nothing there.
+   */
   async getDashboardSummary(organizationId: string, period: Period = '7d') {
     const days = periodToDays(period);
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    let totalCalls = 0;
-    let totalConversations = 0;
-    let totalContacts = 0;
-    let totalLeads = 0;
-    let totalBookings = 0;
-    let totalReservations = 0;
-    let openTickets = 0;
-    let resolvedTickets = 0;
-    let totalAiMessages = 0;
-    let totalMessages = 0;
-    let handledByHumanConversations = 0;
-    let whatsappConversations = 0;
-    let webchatConversations = 0;
-    let pipelineValue = 0;
+    const org = await prisma.organization
+      .findUnique({ where: { id: organizationId }, select: { timezone: true } })
+      .catch(() => null);
+    const timezone = org?.timezone || 'Africa/Lagos';
 
-    let periodCalls = 0;
-    let periodConversations = 0;
-    let periodLeads = 0;
-    let periodBookings = 0;
+    // The period window and the per-day buckets are derived from ONE call, so
+    // the trend cannot cover a different stretch of time than the totals.
+    const { keys, since } = zonedWindow(days, timezone);
 
-    let totalCallMinutes = 0;
-    let weeklyData: { labels: string[]; conversations: number[]; calls: number[] } = { labels: [], conversations: [], calls: [] };
-    let recentCalls: any[] = [];
-    let recentConversations: any[] = [];
+    const unavailable: string[] = [];
+    const read = async <T>(name: string, query: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await query();
+      } catch (err: any) {
+        unavailable.push(name);
+        console.error(`[AnalyticsService] ${name} unavailable for ${organizationId}:`, err?.message ?? err);
+        return null;
+      }
+    };
 
-    try {
-      // Execute light sequential queries to prevent Supabase connection pool exhaustion
-      totalCalls = await prisma.callLog.count({ where: { organizationId } }).catch(() => 0);
-      totalConversations = await prisma.conversation.count({ where: { organizationId } }).catch(() => 0);
-      totalContacts = await prisma.contact.count({ where: { organizationId } }).catch(() => 0);
-      totalLeads = await prisma.lead.count({ where: { organizationId } }).catch(() => 0);
-      totalBookings = await prisma.booking.count({ where: { organizationId } }).catch(() => 0);
-      totalReservations = await prisma.reservation.count({ where: { organizationId } }).catch(() => 0);
+    // Sequential on purpose: @ace/database is one pooled client shared by the
+    // whole process, and a dozen parallel counts per dashboard load is what
+    // exhausts it under several officers at once.
+    const totalCalls = await read('totalCalls', () => prisma.callLog.count({ where: { organizationId } }));
+    const totalConversations = await read('totalConversations', () =>
+      prisma.conversation.count({ where: { organizationId } }));
+    const totalContacts = await read('totalContacts', () => prisma.contact.count({ where: { organizationId } }));
+    const totalLeads = await read('totalLeads', () => prisma.lead.count({ where: { organizationId } }));
+    const totalBookings = await read('totalBookings', () => prisma.booking.count({ where: { organizationId } }));
+    const totalReservations = await read('totalReservations', () =>
+      prisma.reservation.count({ where: { organizationId } }));
 
-      openTickets = await prisma.ticket.count({ where: { organizationId, status: 'OPEN' } }).catch(() => 0);
-      resolvedTickets = await prisma.ticket.count({ where: { organizationId, status: 'RESOLVED' } }).catch(() => 0);
-      // These two feed aiReplyRate — previously declared but never queried,
-      // so aiReplyRate was permanently null on the dashboard.
-      totalMessages = await prisma.message.count({ where: { conversation: { organizationId } } }).catch(() => 0);
-      totalAiMessages = await prisma.message.count({ where: { conversation: { organizationId }, sender: 'AI' } }).catch(() => 0);
-      whatsappConversations = await prisma.conversation.count({ where: { organizationId, channel: 'WHATSAPP' } }).catch(() => 0);
-      webchatConversations = await prisma.conversation.count({ where: { organizationId, channel: 'WEBCHAT' } }).catch(() => 0);
+    const openTickets = await read('openTickets', () =>
+      prisma.ticket.count({ where: { organizationId, status: 'OPEN' } }));
+    const resolvedTickets = await read('resolvedTickets', () =>
+      prisma.ticket.count({ where: { organizationId, status: 'RESOLVED' } }));
 
-      const deals = await prisma.deal.findMany({ where: { organizationId } }).catch(() => []);
-      pipelineValue = deals.reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+    // Each of these was queried TWICE in the old body — once near the top and
+    // again sixty lines down under a comment saying they were never assigned,
+    // which had stopped being true. Two extra round trips per dashboard load.
+    const totalMessages = await read('totalMessages', () =>
+      prisma.message.count({ where: { conversation: { organizationId } } }));
+    const totalAiMessages = await read('totalAiMessages', () =>
+      prisma.message.count({ where: { conversation: { organizationId }, sender: 'AI' } }));
 
-      periodCalls = await prisma.callLog.count({ where: { organizationId, startedAt: { gte: since } } }).catch(() => 0);
-      periodConversations = await prisma.conversation.count({ where: { organizationId, createdAt: { gte: since } } }).catch(() => 0);
-      periodLeads = await prisma.lead.count({ where: { organizationId, createdAt: { gte: since } } }).catch(() => 0);
-      periodBookings = await prisma.booking.count({ where: { organizationId, createdAt: { gte: since } } }).catch(() => 0);
+    const handledByHumanConversations = await read('handoffConversations', () =>
+      prisma.conversation.count({ where: { organizationId, isHumanHandoffActive: true } }));
 
-      const callDurationAgg = await prisma.callLog.aggregate({
-        _sum: { durationSeconds: true },
-        where: { organizationId },
-      }).catch(() => ({ _sum: { durationSeconds: 0 } }));
+    // Summed in the database. `findMany()` over every deal the agency has ever
+    // had, to add one column up in JavaScript, grows without limit.
+    const dealSum = await read('pipelineValue', () =>
+      prisma.deal.aggregate({ _sum: { amount: true }, where: { organizationId } }));
+    const pipelineValue = dealSum ? Number(dealSum._sum.amount ?? 0) : null;
 
-      totalCallMinutes = Math.ceil(((callDurationAgg._sum?.durationSeconds as number) ?? 0) / 60);
+    const periodCalls = await read('periodCalls', () =>
+      prisma.callLog.count({ where: { organizationId, startedAt: { gte: since } } }));
+    const periodConversations = await read('periodConversations', () =>
+      prisma.conversation.count({ where: { organizationId, createdAt: { gte: since } } }));
+    const periodLeads = await read('periodLeads', () =>
+      prisma.lead.count({ where: { organizationId, createdAt: { gte: since } } }));
+    const periodBookings = await read('periodBookings', () =>
+      prisma.booking.count({ where: { organizationId, createdAt: { gte: since } } }));
 
-      // Message counts, needed for aiReplyRate.
-      //
-      // `totalAiMessages` and `totalMessages` were declared and then never assigned,
-      // so they stayed at 0 and `aiReplyRate` — the headline "AI Reply Rate" tile on
-      // the dashboard — evaluated to null on every request, for every organization.
-      totalMessages = await prisma.message.count({
-        where: { conversation: { organizationId } },
-      }).catch(() => 0);
+    const callDurationAgg = await read('totalCallMinutes', () =>
+      prisma.callLog.aggregate({ _sum: { durationSeconds: true }, where: { organizationId } }));
+    const totalCallMinutes = callDurationAgg
+      ? Math.ceil(Number(callDurationAgg._sum?.durationSeconds ?? 0) / 60)
+      : null;
 
-      totalAiMessages = await prisma.message.count({
-        where: { conversation: { organizationId }, sender: 'AI' },
-      }).catch(() => 0);
+    // Conversations per channel, in one grouped query rather than one count
+    // per channel — and it reports what EXISTS, so a channel nobody has used
+    // is absent instead of being asserted as zero.
+    const byChannel = await read('channelBreakdown', () =>
+      prisma.conversation.groupBy({ by: ['channel'], where: { organizationId }, _count: { _all: true } }));
 
-      handledByHumanConversations = await prisma.conversation.count({
-        where: { organizationId, isHumanHandoffActive: true },
-      }).catch(() => 0);
-      weeklyData = await this.buildWeeklyTrend(organizationId, days).catch(() => ({ labels: [], conversations: [], calls: [] }));
+    const channelCount = (channel: string): number | null => {
+      if (!byChannel) return null;
+      const row = byChannel.find((r: any) => r.channel === channel);
+      return row ? Number(row._count._all) : 0;
+    };
 
-      recentCalls = await prisma.callLog.findMany({
-        where: { organizationId },
-        take: 10,
-        orderBy: { startedAt: 'desc' },
-      }).catch(() => []);
+    const weeklyData = await this.buildTrend(organizationId, keys, days, timezone, read);
 
-      recentConversations = await prisma.conversation.findMany({
+    const recentCalls = (await read('recentCalls', () =>
+      prisma.callLog.findMany({ where: { organizationId }, take: 10, orderBy: { startedAt: 'desc' } }))) ?? [];
+    const recentConversations = (await read('recentConversations', () =>
+      prisma.conversation.findMany({
         where: { organizationId },
         take: 5,
         orderBy: { lastMessageAt: 'desc' },
         include: { contact: true },
-      }).catch(() => []);
-    } catch (err: any) {
-      console.error('[AnalyticsService] Error retrieving dashboard summary:', err.message);
-    }
+      }))) ?? [];
 
-    const totalTickets = openTickets + resolvedTickets;
+    /** A rate needs BOTH of its inputs; one unreadable count makes it unknown, not 0%. */
+    const rate = (part: number | null, whole: number | null): number | null => {
+      if (part === null || whole === null) return null;
+      if (whole <= 0) return null;
+      return Math.round((part / whole) * 100);
+    };
 
-    /** Share of tickets that reached RESOLVED. */
-    const resolutionRate = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 100) : null;
-
-    /** Share of all messages that the AI wrote. */
-    const aiReplyRate = totalMessages > 0 ? Math.round((totalAiMessages / totalMessages) * 100) : null;
-
-    /**
-     * Share of conversations escalated to a human.
-     *
-     * This was `totalTickets / totalConversations` — the ratio of support tickets to
-     * conversations, which is a different quantity entirely and could exceed 100%
-     * (one conversation can spawn several tickets, and tickets are also raised
-     * outside conversations). It now counts conversations actually in handoff.
-     */
-    const handoverRate = totalConversations > 0
-      ? Math.round((handledByHumanConversations / totalConversations) * 100)
-      : null;
+    const totalTickets =
+      openTickets === null || resolvedTickets === null ? null : openTickets + resolvedTickets;
 
     return {
       period,
+      timezone,
+      /** Figures the database could not be asked for on this request. */
+      unavailable,
       metrics: {
         totalCalls,
         totalConversations,
@@ -136,6 +144,12 @@ export class AnalyticsService {
         totalBookings,
         totalReservations,
         openTickets,
+        /**
+         * The sum of every Deal.amount — OPEN pipeline, not money received.
+         * This platform collects no payments at all, so there is no "collected"
+         * figure for a dashboard to show; the home page labelled this one
+         * "Premiums Collected", which named revenue the State never took.
+         */
         pipelineValue,
         totalCallMinutes,
         periodCalls,
@@ -144,14 +158,23 @@ export class AnalyticsService {
         periodBookings,
       },
       aiMetrics: {
-        resolutionRate,
-        aiReplyRate,
-        handoverRate,
+        /** Share of tickets that reached RESOLVED. */
+        resolutionRate: rate(resolvedTickets, totalTickets),
+        /** Share of all messages the AI wrote. */
+        aiReplyRate: rate(totalAiMessages, totalMessages),
+        /**
+         * Share of conversations escalated to a human. Was tickets per
+         * conversation, a different quantity that could exceed 100%.
+         */
+        handoverRate: rate(handledByHumanConversations, totalConversations),
       },
       channelBreakdown: [
-        { name: 'WhatsApp', value: whatsappConversations },
+        { name: 'WhatsApp', value: channelCount('WHATSAPP') },
+        // Voice is counted from CallLog, not from Conversation: the media
+        // stream handler creates no Conversation row for a call, so a
+        // conversation count would report every phone call as zero.
         { name: 'Voice Calls', value: totalCalls },
-        { name: 'Web Chat', value: webchatConversations },
+        { name: 'Web Chat', value: channelCount('WEBCHAT') },
       ],
       weeklyData,
       recentCalls,
@@ -159,61 +182,75 @@ export class AnalyticsService {
     };
   }
 
-  private async buildWeeklyTrend(organizationId: string, days: number) {
-    const endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days + 1);
-    startDate.setHours(0, 0, 0, 0);
+  /**
+   * Conversations and calls per calendar day, in the agency's timezone, split
+   * by channel.
+   *
+   * The series used to be one undifferentiated `conversations` count that the
+   * dashboard drew under a "WhatsApp" legend, with a third "WebChat" series
+   * hardcoded to zero — so a WEBCHAT thread was displayed as a WhatsApp one
+   * and the legend asserted a breakdown the payload never carried.
+   */
+  private async buildTrend(
+    organizationId: string,
+    keys: string[],
+    days: number,
+    timezone: string,
+    read: <T>(name: string, q: () => Promise<T>) => Promise<T | null>,
+  ) {
+    const labels = keys.map((k) => zonedDayLabel(k, days, timezone));
+    const empty = () => keys.map(() => 0);
+    const since = new Date(`${keys[0]}T00:00:00Z`);
+    // The window opens at local midnight, which can be the previous UTC day;
+    // widen the query by a day at each end and let the bucketing decide.
+    const from = new Date(since.getTime() - 36 * 60 * 60 * 1000);
+    const to = new Date(Date.now() + 36 * 60 * 60 * 1000);
 
-    const conversations = await prisma.conversation.findMany({
-      where: { organizationId, createdAt: { gte: startDate, lte: endDate } },
-      select: { createdAt: true },
-    }).catch(() => []);
+    const conversations = await read('trendConversations', () =>
+      prisma.conversation.findMany({
+        where: { organizationId, createdAt: { gte: from, lte: to } },
+        select: { createdAt: true, channel: true },
+        take: BUSY_WINDOW_ROWS,
+      }));
 
-    const calls = await prisma.callLog.findMany({
-      where: { organizationId, startedAt: { gte: startDate, lte: endDate } },
-      select: { startedAt: true },
-    }).catch(() => []);
+    const calls = await read('trendCalls', () =>
+      prisma.callLog.findMany({
+        where: { organizationId, startedAt: { gte: from, lte: to } },
+        select: { startedAt: true },
+        take: BUSY_WINDOW_ROWS,
+      }));
 
-    const labels: string[] = [];
-    const convMap: Record<string, number> = {};
-    const callMap: Record<string, number> = {};
-    
-    const cursor = new Date(startDate);
-    while (cursor <= endDate) {
-      const label = cursor.toLocaleDateString('en-GB', {
-        weekday: days <= 7 ? 'short' : undefined,
-        day: days > 7 ? 'numeric' : undefined,
-        month: days > 7 ? 'short' : undefined,
-      });
-      labels.push(label);
-      convMap[label] = 0;
-      callMap[label] = 0;
-      cursor.setDate(cursor.getDate() + 1);
+    if (conversations === null && calls === null) {
+      // Not "a week of quiet days" — nothing is known about this week. The
+      // page draws no chart for a null series.
+      return { labels, timezone, conversations: null, whatsapp: null, webchat: null, calls: null };
     }
 
-    for (const c of conversations) {
-      const label = c.createdAt.toLocaleDateString('en-GB', {
-        weekday: days <= 7 ? 'short' : undefined,
-        day: days > 7 ? 'numeric' : undefined,
-        month: days > 7 ? 'short' : undefined,
-      });
-      if (convMap[label] !== undefined) convMap[label]++;
+    const index = new Map(keys.map((k, i) => [k, i]));
+    const total = empty();
+    const whatsapp = empty();
+    const webchat = empty();
+    const callsPerDay = empty();
+
+    for (const c of conversations ?? []) {
+      const i = index.get(zonedDayKey(c.createdAt, timezone));
+      if (i === undefined) continue;
+      total[i]++;
+      if (c.channel === 'WHATSAPP') whatsapp[i]++;
+      else if (c.channel === 'WEBCHAT') webchat[i]++;
     }
-    for (const c of calls) {
-      const label = c.startedAt.toLocaleDateString('en-GB', {
-        weekday: days <= 7 ? 'short' : undefined,
-        day: days > 7 ? 'numeric' : undefined,
-        month: days > 7 ? 'short' : undefined,
-      });
-      if (callMap[label] !== undefined) callMap[label]++;
+    for (const c of calls ?? []) {
+      const i = index.get(zonedDayKey(c.startedAt, timezone));
+      if (i !== undefined) callsPerDay[i]++;
     }
 
     return {
       labels,
-      conversations: labels.map(d => convMap[d]),
-      calls: labels.map(d => callMap[d]),
+      timezone,
+      conversations: conversations === null ? null : total,
+      whatsapp: conversations === null ? null : whatsapp,
+      webchat: conversations === null ? null : webchat,
+      calls: calls === null ? null : callsPerDay,
     };
   }
 }

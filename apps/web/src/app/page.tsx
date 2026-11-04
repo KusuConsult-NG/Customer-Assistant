@@ -5,21 +5,31 @@ import {
   Users, MessageSquareText, PhoneCall, BookOpen,
   TrendingUp, Activity, Clock, CheckCircle2, Bot,
   ArrowRight, Zap, DollarSign, BarChart3, RefreshCw, Sparkles, Layers, Phone,
-  ArrowUpRight
+  ArrowUpRight, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 
+/**
+ * `null` means NOT KNOWN, and it is not interchangeable with 0.
+ *
+ * Every figure here used to be a plain number that defaulted to 0, and every
+ * request behind it ends in `.catch(() => null)` with an 8s abort. So an API
+ * that was down, a bad token, or a slow cold start rendered "0 citizens, 0
+ * calls, 0 open tickets" to an officer as the state of their agency — the
+ * same class of fabrication as the scheduling screen's empty state on a
+ * failed load. Unknown figures render as "—" and the page says why.
+ */
 interface Stats {
-  contacts: number;
-  leads: number;
-  calls: number;
-  docs: number;
-  revenue: number;
-  conversionRate: number;
-  conversations: number;
-  bookings: number;
-  reservations: number;
-  openTickets: number;
+  contacts: number | null;
+  leads: number | null;
+  calls: number | null;
+  docs: number | null;
+  pipelineValue: number | null;
+  conversionRate: number | null;
+  conversations: number | null;
+  bookings: number | null;
+  reservations: number | null;
+  openTickets: number | null;
 }
 
 interface Activity {
@@ -33,17 +43,20 @@ interface Activity {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats>({
-    contacts: 0,
-    leads: 0,
-    calls: 0,
-    docs: 0,
-    revenue: 0,
-    conversionRate: 0,
-    conversations: 0,
-    bookings: 0,
-    reservations: 0,
-    openTickets: 0,
+    contacts: null,
+    leads: null,
+    calls: null,
+    docs: null,
+    pipelineValue: null,
+    conversionRate: null,
+    conversations: null,
+    bookings: null,
+    reservations: null,
+    openTickets: null,
   });
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [callsUnavailable, setCallsUnavailable] = useState(false);
+  const [unavailable, setUnavailable] = useState<string[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   // Starts true: with it false the stat cards rendered real-looking zeros before any
   // request had returned, so a populated account briefly read as an empty one.
@@ -69,12 +82,14 @@ export default function DashboardPage() {
     try {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
 
-      const [contactsRes, leadsRes, docsRes, callsRes, dealsRes, orgRes, dashboardRes] = await Promise.allSettled([
-        api.crm.getContacts().catch(() => null),
+      // The contacts and deals lists used to be fetched here too, purely as
+      // fallbacks for `m.totalContacts` and the money card. Both were wrong —
+      // a list endpoint returns one page, not an agency total — so both the
+      // fallbacks and the two round trips behind them are gone.
+      const [leadsRes, docsRes, callsRes, orgRes, dashboardRes] = await Promise.allSettled([
         api.crm.getLeads().catch(() => null),
         api.knowledge.getDocuments().catch(() => null),
         api.telephony.getCallLogs().catch(() => null),
-        api.crm.getDeals().catch(() => null),
         safeFetch(`${API_URL}/api/organizations/me`, { headers }),
         safeFetch(`${API_URL}/api/analytics/dashboard?period=${timeRange}`, { headers }),
       ]);
@@ -94,11 +109,9 @@ export default function DashboardPage() {
         return [];
       };
 
-      const contacts = contactsRes.status === 'fulfilled' ? toArray(contactsRes.value) : [];
       const leads = leadsRes.status === 'fulfilled' ? toArray(leadsRes.value) : [];
       const docs = docsRes.status === 'fulfilled' ? toArray(docsRes.value) : [];
       const calls = callsRes.status === 'fulfilled' ? toArray(callsRes.value) : [];
-      const deals = dealsRes.status === 'fulfilled' ? toArray(dealsRes.value) : [];
       const dashboard = dashboardRes.status === 'fulfilled' ? (dashboardRes.value || null) : null;
 
       if (dashboard) setDashboardData(dashboard);
@@ -112,27 +125,43 @@ export default function DashboardPage() {
       // (capped at one page). The whole dashboard displayed wrong figures.
       const m = dashboard?.metrics ?? {};
 
-      const totalRevenue = m.pipelineValue ?? deals
-        .filter((d: any) => d.stage === 'CLOSED_WON')
-        .reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+      // The dashboard call is the only source that counts the whole agency; the
+      // CRM list calls are capped at one page. If it did not answer, nothing on
+      // this page is known, and the page says so rather than showing zeros.
+      if (!dashboard) {
+        setLoadError(
+          'The dashboard figures could not be loaded, so none of the numbers below are current.'
+        );
+      } else {
+        setLoadError(null);
+      }
+      setUnavailable(Array.isArray(dashboard?.unavailable) ? dashboard.unavailable : []);
+
+      // A count is only reportable if the API returned one. `?? contacts.length`
+      // would substitute one page of a list for an agency-wide total.
+      const count = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 
       // No invented default. This used to fall back to a hardcoded 68%, so a brand
-      // new account with no leads at all was shown a 68% conversion rate.
-      const convRate = leads.length > 0
-        ? Math.round((leads.filter((l: any) => l.status === 'CONVERTED').length / leads.length) * 100)
-        : 0;
+      // new account with no leads at all was shown a 68% conversion rate. It is
+      // null, not 0, when the leads list itself did not load.
+      const convRate =
+        leadsRes.status !== 'fulfilled' || leadsRes.value === null
+          ? null
+          : leads.length > 0
+            ? Math.round((leads.filter((l: any) => l.status === 'CONVERTED').length / leads.length) * 100)
+            : 0;
 
       setStats({
-        contacts: m.totalContacts ?? contacts.length,
-        leads: m.totalLeads ?? leads.length,
-        calls: m.totalCalls ?? calls.length,
-        docs: docs.length,
-        revenue: totalRevenue,
+        contacts: count(m.totalContacts),
+        leads: count(m.totalLeads),
+        calls: count(m.totalCalls),
+        docs: docsRes.status === 'fulfilled' && docsRes.value !== null ? docs.length : null,
+        pipelineValue: count(m.pipelineValue),
         conversionRate: convRate,
-        conversations: m.totalConversations ?? 0,
-        bookings: m.totalBookings ?? 0,
-        reservations: m.totalReservations ?? 0,
-        openTickets: m.openTickets ?? 0,
+        conversations: count(m.totalConversations),
+        bookings: count(m.totalBookings),
+        reservations: count(m.totalReservations),
+        openTickets: count(m.openTickets),
       });
 
       if (orgRes.status === 'fulfilled' && orgRes.value?.name) {
@@ -160,9 +189,11 @@ export default function DashboardPage() {
           status: c.status,
         });
       });
+      setCallsUnavailable(callsRes.status !== 'fulfilled' || callsRes.value === null);
       setActivities(recentActivities);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load dashboard stats', err);
+      setLoadError(err?.message || 'The dashboard could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -174,24 +205,34 @@ export default function DashboardPage() {
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
+  /** An unknown figure is a dash. It is never a zero. */
+  const num = (v: number | null) => (v === null ? '—' : v.toLocaleString());
+
   type WeeklyDataPoint = { day: string; whatsapp: number; voice: number; web: number };
 
+  /**
+   * The per-day series, each from the channel it claims to be.
+   *
+   * The chart draws three legends — WhatsApp, Voice AI, WebChat — and used to
+   * plot the API's single undifferentiated conversation count under the
+   * WhatsApp one, with WebChat hardcoded to `web: 0`. So a WEBCHAT thread
+   * appeared as a WhatsApp message and the legend asserted a split the
+   * payload never carried. The API now returns the three series separately.
+   */
+  const raw = dashboardData?.weeklyData;
+  // null (not an empty array) is the API saying it could not read the week.
+  const trendUnavailable = !!raw && raw.conversations === null && raw.calls === null;
   const weeklyData: WeeklyDataPoint[] = (() => {
-    const raw = dashboardData?.weeklyData;
-    if (raw?.labels && Array.isArray(raw.labels)) {
-      return (raw.labels as string[]).map((label: string, i: number) => ({
-        day: label,
-        whatsapp: (raw.conversations as number[])[i] ?? 0,
-        voice: (raw.calls as number[])[i] ?? 0,
-        web: 0,
-      }));
-    }
-    // Return nothing rather than a fabricated flat line.
-    //
-    // The fallback used to spread the all-time totals evenly across seven days and
-    // render it as a trend chart, so an account with 70 conversations was shown a
-    // perfectly flat "10 per day" history that never happened.
-    return [];
+    if (!raw?.labels || !Array.isArray(raw.labels) || trendUnavailable) return [];
+    return (raw.labels as string[]).map((label: string, i: number) => ({
+      day: label,
+      whatsapp: (raw.whatsapp as number[] | null)?.[i] ?? 0,
+      voice: (raw.calls as number[] | null)?.[i] ?? 0,
+      web: (raw.webchat as number[] | null)?.[i] ?? 0,
+    }));
+    // The old fallback spread all-time totals evenly across seven days and
+    // drew it as history, so an account with 70 conversations was shown a
+    // flat "10 per day" week that never happened.
   })();
 
   // Math.max(...[]) is -Infinity, which turns every bar height into -0.
@@ -233,6 +274,28 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-7xl pb-12">
+      {/* Nothing loaded, or part of it did not. Either way the page says so
+          instead of presenting its defaults as the agency's figures. */}
+      {(loadError || unavailable.length > 0) && (
+        <div className="flex items-start gap-3 p-4 rounded-2xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+              {loadError ? 'Dashboard figures unavailable' : 'Some figures could not be read'}
+            </p>
+            <p className="text-xs text-amber-800 dark:text-amber-300/90 mt-0.5">
+              {loadError ?? `Shown as "—": ${unavailable.join(', ')}. Everything else on this page is current.`}
+            </p>
+            <button
+              onClick={fetchAll}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 dark:border-amber-500/50 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-500/15"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Try again
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Welcome Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-brand-500/10 via-brand-600/10 to-brand-500/5 border border-brand-500/30 dark:border-brand-500/20 shadow-sm">
         <div>
@@ -273,7 +336,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total Citizens"
-          value={stats.contacts}
+          value={num(stats.contacts)}
           subtitle="Registered Beneficiaries"
           icon={<Users className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
           badge={`${timeRange} active`}
@@ -281,26 +344,32 @@ export default function DashboardPage() {
         />
         <KpiCard
           title="Enrolment Inquiries"
-          value={stats.leads}
+          value={num(stats.leads)}
           subtitle="Prospective registrations"
           icon={<Activity className="w-5 h-5 text-purple-700 dark:text-purple-400" />}
-          badge={`${stats.openTickets} open tickets`}
+          badge={`${num(stats.openTickets)} open tickets`}
           badgeColor="bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20"
         />
         <KpiCard
           title="Calls"
-          value={stats.calls}
+          value={num(stats.calls)}
           subtitle="Handled by the voice assistant"
           icon={<PhoneCall className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
           badge={`${timeRange} calls`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
+        {/* This card read "Premiums Collected — Informal sector & contributions"
+            over the sum of every Deal.amount in the CRM, at any stage. The
+            platform collects no payments at all, so there was no collected
+            figure for it to show: it named money the State had not taken, in
+            naira, on the first screen an officer sees. It reports the open
+            pipeline it was always actually summing. */}
         <KpiCard
-          title="Premiums Collected"
-          value={`₦${stats.revenue.toLocaleString()}`}
-          subtitle="Informal sector & contributions"
+          title="Open Pipeline"
+          value={stats.pipelineValue === null ? '—' : `₦${stats.pipelineValue.toLocaleString()}`}
+          subtitle="Total value of recorded deals — not money received"
           icon={<DollarSign className="w-5 h-5 text-amber-700 dark:text-amber-400" />}
-          badge={`${stats.conversionRate}% conv. rate`}
+          badge={stats.conversionRate === null ? 'Conversion unknown' : `${stats.conversionRate}% conv. rate`}
           badgeColor="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
         />
       </div>
@@ -335,10 +404,14 @@ export default function DashboardPage() {
             {!hasChartActivity && (
               <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-center">
                 <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  No conversations in this period yet
+                  {trendUnavailable || loadError
+                    ? 'This week could not be loaded'
+                    : 'No conversations in this period yet'}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs">
-                  Volume appears here once customers reach you on WhatsApp or by phone.
+                  {trendUnavailable || loadError
+                    ? 'The figures for these days are unknown, not zero.'
+                    : 'Volume appears here once customers reach you on WhatsApp or by phone.'}
                 </p>
               </div>
             )}
@@ -370,15 +443,15 @@ export default function DashboardPage() {
           <div className="grid grid-cols-3 gap-4 pt-2">
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Conversations</p>
-              <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400 mt-1">{stats.conversations} msgs</p>
+              <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400 mt-1">{num(stats.conversations)} threads</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Voice Calls</p>
-              <p className="text-lg font-bold text-purple-700 dark:text-purple-400 mt-1">{stats.calls} calls</p>
+              <p className="text-lg font-bold text-purple-700 dark:text-purple-400 mt-1">{num(stats.calls)} calls</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Open Tickets</p>
-              <p className="text-lg font-bold text-amber-700 dark:text-amber-400 mt-1">{stats.openTickets}</p>
+              <p className="text-lg font-bold text-amber-700 dark:text-amber-400 mt-1">{num(stats.openTickets)}</p>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Awaiting resolution</p>
             </div>
           </div>
@@ -470,6 +543,21 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))
+            ) : callsUnavailable ? (
+              // A call list that did not load is not an account with no
+              // activity. Saying "No activity yet" here, and then offering a
+              // setup checklist, tells an officer their agency is empty on the
+              // strength of a failed request.
+              <div className="px-6 py-10 text-center">
+                <AlertTriangle className="w-6 h-6 mx-auto text-amber-600 dark:text-amber-400" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mt-2">Recent activity unavailable</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  The call and message history could not be loaded. This is not a quiet day — it is unknown.
+                </p>
+                <button onClick={fetchAll} className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                  <RefreshCw className="w-3.5 h-3.5" /> Try again
+                </button>
+              </div>
             ) : activities.length === 0 ? (
               // Previously: "No activity recorded yet. Your AI assistant is active."
               // On an account with no channel connected the assistant is NOT active and
@@ -489,10 +577,10 @@ export default function DashboardPage() {
 
                 <ul className="space-y-2 max-w-md mx-auto">
                   {[
-                    { done: stats.conversations > 0, label: 'Connect WhatsApp so customers can message you', href: '/settings' },
-                    { done: stats.calls > 0, label: 'Point a phone number at the Voice AI', href: '/telephony' },
-                    { done: stats.docs > 0, label: 'Add knowledge so the AI can answer questions', href: '/knowledge' },
-                    { done: stats.contacts > 0, label: 'Import or add your first contacts', href: '/crm' },
+                    { done: (stats.conversations ?? 0) > 0, label: 'Connect WhatsApp so customers can message you', href: '/settings' },
+                    { done: (stats.calls ?? 0) > 0, label: 'Point a phone number at the Voice AI', href: '/telephony' },
+                    { done: (stats.docs ?? 0) > 0, label: 'Add knowledge so the AI can answer questions', href: '/knowledge' },
+                    { done: (stats.contacts ?? 0) > 0, label: 'Import or add your first contacts', href: '/crm' },
                   ].map((step) => (
                     <li key={step.label}>
                       <a
