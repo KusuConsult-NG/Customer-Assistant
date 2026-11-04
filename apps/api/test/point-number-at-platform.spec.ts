@@ -50,6 +50,8 @@ describe('pointing a number at the platform', () => {
     /** What Twilio claims the webhook is AFTER the update. */
     echoVoiceUrl?: string;
     networkError?: boolean;
+    /** What the account holds, for the not-found path. */
+    accountHolds?: string[];
   }) => {
     globalThis.fetch = (async (input: any, init?: any) => {
       const url = String(input);
@@ -59,6 +61,14 @@ describe('pointing a number at the platform', () => {
       if (url.includes('/IncomingPhoneNumbers.json?')) {
         if (opts.listStatus && opts.listStatus !== 200) {
           return new Response('{"message":"Authenticate"}', { status: opts.listStatus });
+        }
+        // The second listing, without a PhoneNumber filter, is the "what does
+        // this account actually hold" lookup on the failure path.
+        if (url.includes('PageSize=')) {
+          return new Response(
+            JSON.stringify({ incoming_phone_numbers: (opts.accountHolds ?? []).map((phone_number) => ({ phone_number })) }),
+            { status: 200 }
+          );
         }
         const body = opts.found === false
           ? { incoming_phone_numbers: [] }
@@ -222,15 +232,28 @@ describe('pointing a number at the platform', () => {
     expect(result.voiceUrl).toBe('https://somewhere.else/voice');
   });
 
-  it('says the number is on a different account when Twilio does not know it', async () => {
+  it('names the numbers the account DOES hold, rather than leaving a dead end', async () => {
     await withLine();
-    stubTwilio({ found: false });
+    // Exactly the state the live deployment was in: a valid SID and token
+    // alongside a TWILIO_PHONE_NUMBER from a different account.
+    stubTwilio({ found: false, accountHolds: ['+15005550006', '+2348031112222'] });
+
     await expect(
       readiness.pointNumberAtPlatform(orgId, { confirmRepointsCarrierWebhook: true })
-    ).rejects.toThrow(/not on the Twilio account these credentials belong to/);
-    // The useful failure: credentials and number belong to different accounts,
-    // which no amount of webhook configuration would fix.
-    expect(calls).toHaveLength(1);
+    ).rejects.toThrow(/That account holds: \+15005550006, \+2348031112222/);
+
+    // The credentials just answered, so the account's own numbers can be
+    // listed — which turns "not on this account" into the answer.
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toContain('PageSize=');
+  });
+
+  it('says so plainly when the account holds no numbers at all', async () => {
+    await withLine();
+    stubTwilio({ found: false, accountHolds: [] });
+    await expect(
+      readiness.pointNumberAtPlatform(orgId, { confirmRepointsCarrierWebhook: true })
+    ).rejects.toThrow(/holds NO phone numbers at all/);
   });
 
   it('reports a refused credential as a credential problem', async () => {

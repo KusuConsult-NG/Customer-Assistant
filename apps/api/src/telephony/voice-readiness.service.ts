@@ -543,9 +543,34 @@ export class VoiceReadinessService {
     const found = (await lookup.json()) as { incoming_phone_numbers?: Array<{ sid: string; voice_url?: string }> };
     const number = found.incoming_phone_numbers?.[0];
     if (!number) {
+      // "Not on this account" is true but a dead end. The credentials just
+      // answered, so the account's own numbers can be listed — and that turns
+      // the refusal into the answer: these credentials work, here is what they
+      // can actually reach, one of these is the number you meant.
+      //
+      // This is the shape the deployment's own environment was in: a valid
+      // TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN alongside a
+      // TWILIO_PHONE_NUMBER from a different account, which no amount of
+      // webhook configuration would reconcile.
+      const owned = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${target.accountSid}/IncomingPhoneNumbers.json?PageSize=20`,
+        { headers: { Authorization: auth }, signal: AbortSignal.timeout(15_000) }
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+      const list = (owned as { incoming_phone_numbers?: Array<{ phone_number?: string }> } | null)
+        ?.incoming_phone_numbers?.map((n) => n.phone_number)
+        .filter(Boolean) as string[] | undefined;
+
       throw new BadRequestException(
         `${target.phoneNumber} is not on the Twilio account these credentials belong to ` +
-          `(${target.accountSid}). Check which account holds the number.`
+          `(${target.accountSid}). ` +
+          (list && list.length > 0
+            ? `That account holds: ${list.join(', ')}. Save one of those as this agency's line instead.`
+            : list
+              ? 'That account holds NO phone numbers at all — buy or transfer one in the Twilio console first.'
+              : 'Its numbers could not be listed, so check in the Twilio console which account holds it.')
       );
     }
 
