@@ -120,6 +120,13 @@ describe('provider health', () => {
     setEnv('ELEVENLABS_API_KEY', ELEVEN);
     setEnv('OPENAI_API_KEY', OPENAI);
     setEnv('RESEND_API_KEY', RESEND);
+    // Exactly one provider, so which one answers is not left to resolution
+    // order inside a test about something else.
+    setEnv('EMAIL_PROVIDER', 'resend');
+    setEnv('BREVO_API_KEY', undefined);
+    setEnv('SENDGRID_API_KEY', undefined);
+    setEnv('POSTMARK_SERVER_TOKEN', undefined);
+    setEnv('MAILGUN_API_KEY', undefined);
     setEnv('SUPABASE_URL', 'https://proj.supabase.co');
     setEnv('SUPABASE_SERVICE_ROLE_KEY', SUPABASE);
     setEnv('QDRANT_URL', 'https://qdrant.example');
@@ -158,7 +165,7 @@ describe('provider health', () => {
 
   it('reports ok when every provider accepts its credential', async () => {
     const { body } = await get();
-    for (const id of ['deepgram', 'elevenlabs', 'openai', 'qdrant', 'supabase-storage', 'resend']) {
+    for (const id of ['deepgram', 'elevenlabs', 'openai', 'qdrant', 'supabase-storage', 'email']) {
       expect(find(body, id).state).toBe('ok');
     }
     // WhatsApp is genuinely not configured here, and that is not a fault.
@@ -190,14 +197,26 @@ describe('provider health', () => {
   });
 
   it('separates NOT CONFIGURED from broken', async () => {
+    // Every provider cleared, not just Resend: the check is provider-agnostic
+    // now, so leaving a second key set would make it report that one as ready
+    // and the test would prove nothing.
     setEnv('RESEND_API_KEY', undefined);
+    setEnv('BREVO_API_KEY', undefined);
+    setEnv('SENDGRID_API_KEY', undefined);
+    setEnv('POSTMARK_SERVER_TOKEN', undefined);
+    setEnv('MAILGUN_API_KEY', undefined);
+    setEnv('EMAIL_PROVIDER', undefined);
+
     const { body } = await get();
-    const resend = find(body, 'resend');
-    expect(resend.state).toBe('not_configured');
-    expect(resend.detail).toMatch(/not set/);
+    const email = find(body, 'email');
+    expect(email.state).toBe('not_configured');
+    // It names every variable that WOULD configure one, rather than one
+    // vendor — the point of the change is that the choice is open.
+    expect(email.detail).toMatch(/RESEND_API_KEY/);
+    expect(email.detail).toMatch(/BREVO_API_KEY/);
     // Absent is not a failure — but what it costs is stated, because every
     // route back into a staff account is an email.
-    expect(resend.consequence).toMatch(/invitation|password reset/i);
+    expect(email.consequence).toMatch(/invitation|password reset/i);
     expect(seen.some((u) => u.includes('api.resend.com'))).toBe(false);
   });
 

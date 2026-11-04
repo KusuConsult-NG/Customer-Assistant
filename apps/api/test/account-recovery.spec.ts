@@ -29,13 +29,21 @@ describe('account recovery when email cannot be delivered', () => {
 
   jest.setTimeout(60000);
 
-  const realResendKey = process.env.RESEND_API_KEY;
+  const saved: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
     process.env.JWT_SECRET ??= 'test_jwt_secret_that_is_at_least_32_chars_long';
     process.env.JWT_REFRESH_SECRET ??= 'test_jwt_refresh_secret_at_least_32_chars';
-    // The condition under test: no provider configured.
-    delete process.env.RESEND_API_KEY;
+    // The condition under test: NO provider configured at all. Clearing only
+    // Resend would leave another key answering and the suite would be testing
+    // a working mailer.
+    for (const k of [
+      'RESEND_API_KEY', 'BREVO_API_KEY', 'SENDGRID_API_KEY',
+      'POSTMARK_SERVER_TOKEN', 'MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'EMAIL_PROVIDER',
+    ]) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
 
     app = await createTestApp();
     organizations = app.get(OrganizationsService);
@@ -47,8 +55,10 @@ describe('account recovery when email cannot be delivered', () => {
   });
 
   afterAll(async () => {
-    if (realResendKey === undefined) delete process.env.RESEND_API_KEY;
-    else process.env.RESEND_API_KEY = realResendKey;
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
     await prisma.auditLog.deleteMany({ where: { organizationId: orgId } });
     await prisma.user.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
@@ -65,7 +75,11 @@ describe('account recovery when email cannot be delivered', () => {
 
     // Not a bare success. The administrator is told what happened and why.
     expect(result.emailDelivered).toBe(false);
-    expect(String(result.deliveryProblem)).toMatch(/RESEND_API_KEY is unset/);
+    // It names every variable that would configure a provider, not one
+    // vendor: the whole point is that the choice is open, and SMTP is not an
+    // option on this host.
+    expect(String(result.deliveryProblem)).toMatch(/No email provider is configured/);
+    expect(String(result.deliveryProblem)).toMatch(/BREVO_API_KEY/);
 
     // And given the one credential that can still activate the account. It is
     // stored only as a hash, so this response is the last copy in existence —
@@ -88,6 +102,7 @@ describe('account recovery when email cannot be delivered', () => {
 
   it('does not put a working credential in the response when delivery succeeded', async () => {
     process.env.RESEND_API_KEY = 'test_key_that_will_make_resend_fail_fast';
+    process.env.EMAIL_PROVIDER = 'resend';
     try {
       const email = `invitee2.${randomBytes(4).toString('hex')}@recovery.test`;
       const result: any = await organizations.addTeamMember(
@@ -101,12 +116,19 @@ describe('account recovery when email cannot be delivered', () => {
       // happens to be present — and the first version of this fix got that
       // wrong in exactly the same way the original code did.
       expect(result.emailDelivered).toBe(false);
-      expect(String(result.deliveryProblem)).toMatch(/refused/i);
+      // Either phrasing proves the same thing: the provider did not accept
+      // the message. A bogus key is REFUSED where the provider is reachable,
+      // and UNREACHABLE where egress is proxied (Node's fetch does not honour
+      // HTTPS_PROXY, so a CI sandbox gets the network error). Pinning only
+      // "refused" made this test pass or fail on the shape of the sandbox
+      // rather than on the behaviour it exists to check.
+      expect(String(result.deliveryProblem)).toMatch(/refused|could not reach/i);
       // The link is still handed over, because the officer still cannot sign
       // in without it.
       expect(result.inviteUrl).toContain('/setup-account?token=');
     } finally {
       delete process.env.RESEND_API_KEY;
+      delete process.env.EMAIL_PROVIDER;
     }
   });
 

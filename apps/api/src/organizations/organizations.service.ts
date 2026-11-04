@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
-import { Resend } from 'resend';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
+import { sendTransactionalEmail } from '../common/mailer';
 
 /**
  * Replaces a secret with a non-reversible hint: whether it is set, and its last four
@@ -421,34 +421,23 @@ export class OrganizationsService {
     let emailDelivered = false;
     let deliveryProblem: string | null = null;
 
-    const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey) {
-      try {
-        const resend = new Resend(resendKey);
-        // `{ data, error }`, not a rejection — see the note in
-        // AuthService.sendEmail. Without reading `error`, an invalid key or an
-        // unverified sending domain is reported as a delivered invitation.
-        const result: any = await resend.emails.send({
-          from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
-          to: user.email,
-          subject: `You've been invited to join ${org?.name || 'Customer Care Agent'}`,
-          html: `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p><p><a href="${inviteUrl}">Click here to set up your account</a></p>`,
-        });
-        if (result?.error) {
-          deliveryProblem = `The invitation email was refused: ${result.error?.message ?? JSON.stringify(result.error)}`;
-          console.error('[Organizations] invite email refused:', deliveryProblem);
-        } else {
-          emailDelivered = true;
-        }
-      } catch (err: any) {
-        deliveryProblem = `The invitation email was refused: ${err?.message ?? err}`;
-        console.error('[Organizations] invite email failed:', err?.message ?? err);
-      }
+    // Any configured provider, over HTTPS — see common/mailer.ts. SMTP is not
+    // an option on this host (Render blocks outbound 25/465/587), and hard-
+    // coding one vendor meant a rejected key could only be replaced by a
+    // deploy.
+    const sent = await sendTransactionalEmail({
+      to: user.email,
+      subject: `You've been invited to join ${org?.name || 'Customer Care Agent'}`,
+      html:
+        `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p>` +
+        `<p><a href="${inviteUrl}">Click here to set up your account</a></p>`,
+    });
+
+    if (sent.ok) {
+      emailDelivered = true;
     } else {
-      deliveryProblem =
-        'No email provider is configured on this deployment (RESEND_API_KEY is unset), ' +
-        'so no invitation was sent.';
-      console.warn(`[Organizations] RESEND_API_KEY not set. Invite link: ${inviteUrl}`);
+      deliveryProblem = sent.error ?? 'The invitation email was not sent.';
+      console.error('[Organizations] invite email not sent:', deliveryProblem);
     }
 
     // The role is the point of the record: an invitation is how somebody

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma, withTelephonyCredentials, withWhatsAppCredentials, decryptSecret } from '@ace/database';
+import { resolveEmailProvider, emailProviderProblem, verifyEmailProvider } from '../common/mailer';
 
 /**
  * Does each provider actually answer us?
@@ -301,33 +302,35 @@ export class ProviderHealthService {
     };
   }
 
-  /** Resend. Every route back into a staff account is an email. */
+  /** Whichever email provider is configured. Every route into a staff account is an email. */
   private async email(): Promise<ProviderCheck> {
-    const key = process.env.RESEND_API_KEY;
+    const provider = resolveEmailProvider();
     const base = {
-      id: 'resend',
-      label: 'Email delivery (Resend)',
+      id: 'email',
+      label: provider ? `Email delivery (${provider.id})` : 'Email delivery',
       consequence:
         'No staff invitation, email verification or password reset can be delivered, and ' +
         'those endpoints still answer 200. Recovery is then npm run user:password, which ' +
         'needs database credentials.',
     };
-    if (!key) {
-      return { ...base, state: 'not_configured', detail: 'RESEND_API_KEY is not set.' };
+    if (!provider) {
+      return {
+        ...base,
+        state: 'not_configured',
+        detail: emailProviderProblem() ?? 'No email provider is configured.',
+      };
     }
-    // Listing domains proves the key AND is where an unverified sending domain
-    // shows up — the most common reason mail is accepted and never delivered.
-    const r = await probe('https://api.resend.com/domains', {
-      headers: { Authorization: `Bearer ${key}` },
-    });
+
+    // Asks the provider, whichever it is. Reading an env var cannot tell a
+    // working key from a revoked one — this deployment's Resend key is present
+    // and answers "API key is invalid".
+    const verified = await verifyEmailProvider();
     return {
       ...base,
-      state: r.ok ? 'ok' : 'failed',
-      detail: r.ok
-        ? 'Resend accepted the key.'
-        : r.error
-          ? `Could not reach Resend: ${r.error}`
-          : `Resend refused the key (HTTP ${r.status}). ${r.body ?? ''}`,
+      state: verified.ok ? 'ok' : 'failed',
+      detail: verified.ok
+        ? `${provider.id} accepted the credential.`
+        : verified.error ?? `${provider.id} refused the credential.`,
     };
   }
 
