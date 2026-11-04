@@ -162,10 +162,21 @@ export class TelephonyService {
     // withTelephonyCredentials on every read: the carrier credentials are
     // encrypted at rest, and handing Twilio a `v1.…` ciphertext looks like a
     // revoked auth token rather than a decryption bug.
+    // Matched across every shape the number might be SAVED in, not just the
+    // exact string the carrier sent.
+    //
+    // Twilio sends E.164 (`+2348031234567`). An operator setting the line up
+    // types what is printed on the agency's letterhead — `08031234567`, or
+    // `0803 123 4567`. An exact match then finds nothing and every citizen who
+    // rings the number hears "This number is not currently configured",
+    // with the dashboard showing a line that looks correctly set up. It is the
+    // same mismatch that made one citizen three contacts, and the same
+    // helper fixes it.
+    const dialledVariants = phoneNumberVariants(toNumber);
     let config = withTelephonyCredentials(
       await prisma.telephonyConfig.findFirst({
         where: {
-          phoneNumber: toNumber,
+          phoneNumber: { in: dialledVariants },
           ...(orgIdHint ? { organizationId: orgIdHint } : {}),
         },
         include: { organization: true },

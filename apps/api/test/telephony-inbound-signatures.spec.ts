@@ -540,6 +540,56 @@ describe('inbound telephony webhook signatures', () => {
     });
   });
 
+  it('answers a number saved in the local format the operator typed', async () => {
+    // Twilio sends E.164; an operator sets the line up by typing what is on
+    // the agency's letterhead. An exact match found nothing, so every citizen
+    // ringing that number heard "This number is not currently configured"
+    // while the dashboard showed a line that looked correctly configured.
+    const local = `0803${String(Date.now()).slice(-7)}`;
+    const e164 = `+234${local.slice(1)}`;
+
+    const org = await prisma.organization.create({
+      data: { name: `Local Format ${Date.now()}`, slug: `local-fmt-${randomBytes(4).toString('hex')}`, industry: 'GOVERNMENT' },
+    });
+    await prisma.telephonyConfig.create({
+      data: {
+        organizationId: org.id,
+        provider: 'TWILIO',
+        phoneNumber: local, // as typed, not as Twilio sends it
+        accountSid: 'AC_local_format',
+        authToken: TWILIO_TOKEN,
+      },
+    });
+
+    try {
+      const params = {
+        CallSid: `CA${randomBytes(8).toString('hex')}`,
+        From: '+2348031234567',
+        To: e164, // as Twilio sends it
+        CallStatus: 'ringing',
+      };
+      const paramString = Object.keys(params)
+        .sort()
+        .map((k) => `${k}${(params as any)[k]}`)
+        .join('');
+      const signature = createHmac('sha1', TWILIO_TOKEN)
+        .update(`${API_BASE}/api/telephony/inbound/twilio${paramString}`)
+        .digest('base64');
+
+      const res = await request(app.getHttpServer())
+        .post('/api/telephony/inbound/twilio')
+        .type('form')
+        .set('x-twilio-signature', signature)
+        .send(params)
+        .expect(201);
+
+      expect(res.text).not.toMatch(/not currently configured/i);
+      expect(res.text).toContain('<Response>');
+    } finally {
+      await prisma.organization.delete({ where: { id: org.id } }).catch(() => {});
+    }
+  });
+
   it('never guesses which agency an unrecognised number belongs to', async () => {
     const params = {
       CallSid: `CA${randomBytes(8).toString('hex')}`,
