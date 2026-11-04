@@ -692,7 +692,11 @@ function Configured({ value }: { value?: string | null }) {
 }
 
 function VoiceTab({ org, authHeaders, showToast }: any) {
-  const tc = org?.telephonyConfigs?.[0] || {};
+  // The API orders these — default line first — so this is the line outbound
+  // calls use, and it is the same line on every refresh. It was an unordered
+  // array, so a multi-line agency saw a different line after reloading.
+  const lines = org?.telephonyConfigs ?? [];
+  const tc = lines[0] || {};
   const [provider, setProvider] = useState(tc.provider || 'TWILIO');
   const [phoneNumber, setPhoneNumber] = useState(tc.phoneNumber || '');
   const [forwardingNumber, setForwardingNumber] = useState(tc.forwardingNumber || '');
@@ -722,7 +726,13 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
     setSaving(true);
     setError(null);
     try {
+      // The id of the line THIS form is showing. An agency can hold several
+      // voice lines — a toll-free Twilio number, a Telnyx number, a
+      // carrier-forward line — and without the id the API updated whichever
+      // row came back first, so a save could rewrite a different line from the
+      // one on screen. Absent (no line configured yet) the API creates one.
       const body: Record<string, unknown> = { provider, phoneNumber, forwardingNumber };
+      if (tc.id) body.id = tc.id;
       if (usesAccount) {
         if (accountSid) body.accountSid = accountSid;
         if (authToken) body.authToken = authToken;
@@ -762,6 +772,16 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
   return (
     <form onSubmit={save} className="space-y-5">
       <Section title="Voice AI Telephony" description="How citizens' calls reach this agency">
+        {/* Say so, rather than letting the form imply the agency has one line.
+            The other lines keep answering calls and are edited from whichever
+            tooling created them; this form only ever touches the one shown. */}
+        {lines.length > 1 && (
+          <p className="text-xs rounded-lg px-3 py-2 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">
+            This agency has {lines.length} voice lines. This form edits{' '}
+            <span className="font-mono">{tc.phoneNumber || 'the default line'}</span> only — the
+            others keep answering calls and are not changed by saving here.
+          </p>
+        )}
         <Field
           id="voice-provider"
           label="Provider"

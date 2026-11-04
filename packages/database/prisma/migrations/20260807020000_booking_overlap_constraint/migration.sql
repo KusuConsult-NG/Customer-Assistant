@@ -1,3 +1,9 @@
+-- SQL-ONLY-MIGRATION
+--
+-- `db push` cannot express EXCLUDE, so this file is applied separately. The
+-- marker above is what selects it; grepping for the SQL itself missed every
+-- other kind of SQL-only constraint.
+--
 -- Database-level guarantee that one staff member cannot hold two bookings at once.
 --
 -- The application already checks for a conflict before inserting, but that is a

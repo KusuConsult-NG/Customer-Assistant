@@ -207,7 +207,7 @@ if [ "$LOCAL_DB" = "1" ]; then
   # for databases that predate them, and on a fresh database `db push` has
   # already created all of it, so re-running them collides outright.
   applied=0; failed=0
-  for m in $(grep -l 'EXCLUDE USING' packages/database/prisma/migrations/*/migration.sql 2>/dev/null | sort); do
+  for m in $(grep -l 'SQL-ONLY-MIGRATION' packages/database/prisma/migrations/*/migration.sql 2>/dev/null | sort); do
     if psql "${DIRECT_URL:-$DATABASE_URL}" -q -v ON_ERROR_STOP=1 -f "$m" >> "$LOG_DIR/exclude.log" 2>&1; then
       applied=$((applied + 1))
     else

@@ -122,7 +122,18 @@ export class OrganizationsController {
   @Post('whatsapp-config')
   async updateWhatsAppConfig(
     @Req() req: { user: AuthUser },
-    @Body() body: { phoneNumberId: string; accessToken: string; webhookVerifyToken: string; whatsappBusinessId?: string; displayPhoneNumber?: string }
+    @Body() body: {
+      // The line being edited. An agency may hold several WhatsApp lines
+      // (inbound is resolved by Meta's phoneNumberId), and without this the
+      // save overwrote whichever row came back first — not necessarily the one
+      // the settings screen was showing.
+      id?: string;
+      phoneNumberId: string;
+      accessToken: string;
+      webhookVerifyToken: string;
+      whatsappBusinessId?: string;
+      displayPhoneNumber?: string;
+    }
   ) {
     return this.orgsService.updateWhatsAppConfig(req.user.organizationId, body);
   }
@@ -132,6 +143,10 @@ export class OrganizationsController {
   async updateTelephonyConfig(
     @Req() req: { user: AuthUser },
     @Body() body: {
+      // The voice line being edited — see the WhatsApp note above. An agency
+      // can have a Twilio number, a Telnyx number and a carrier-forward line
+      // at once, each signing its webhooks differently.
+      id?: string;
       provider: any;
       phoneNumber: string;
       accountSid?: string;

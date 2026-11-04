@@ -166,7 +166,7 @@ export class PlatformService {
       agencyCount, suspendedCount, staffCount, citizenCount,
       conversationCount, callCount, openCaseCount, bookingCount,
       aiMessageCount, totalMessageCount, handoverCount,
-      withWhatsApp, withTelephony,
+      whatsAppAgencies, telephonyAgencies,
     ] = await Promise.all([
       prisma.organization.count(),
       prisma.organization.count({ where: { suspendedAt: { not: null } } }),
@@ -179,10 +179,17 @@ export class PlatformService {
       prisma.message.count({ where: { sender: 'AI' } }),
       prisma.message.count(),
       prisma.conversation.count({ where: { isHumanHandoffActive: true } }),
-      prisma.whatsAppConfig.count({ where: { isActive: true } }),
+      // DISTINCT AGENCIES, not rows. These two figures are reported as
+      // "agencies with the channel connected", and both models allowed more
+      // than one row per agency until the unique index landed — so a single
+      // agency that had been saved twice was counted twice, and the overview
+      // could report more agencies with telephony connected than agencies on
+      // the platform. Grouped rather than counted, so the figure is right on
+      // a database that still predates the index.
+      prisma.whatsAppConfig.groupBy({ by: ['organizationId'], where: { isActive: true } }),
       // A TelephonyConfig row IS the connection — the model has no isActive flag,
       // and a configured number is what decides whether citizens can call.
-      prisma.telephonyConfig.count(),
+      prisma.telephonyConfig.groupBy({ by: ['organizationId'] }),
     ]);
 
     const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : null);
@@ -194,8 +201,8 @@ export class PlatformService {
         suspended: suspendedCount,
         // Readiness, not activity: an agency with no channel connected cannot
         // receive a citizen at all, however well configured it looks.
-        withWhatsAppConnected: withWhatsApp,
-        withTelephonyConnected: withTelephony,
+        withWhatsAppConnected: whatsAppAgencies.length,
+        withTelephonyConnected: telephonyAgencies.length,
       },
       volume: {
         activeStaff: staffCount,

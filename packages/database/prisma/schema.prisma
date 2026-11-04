@@ -322,6 +322,24 @@ model ApiKey {
 
 model TelephonyConfig {
   id               String                @id @default(uuid())
+  /// ONE row per agency. The uniqueness is a SQL-ONLY index, not `@unique`
+  /// here — see `20261104000000_one_channel_config_per_agency`.
+  ///
+  /// Every reader of this model is a `findFirst({ where: { organizationId } })`
+  /// with no ordering — seventeen call sites across telephony, agent
+  /// provisioning, takeover, onboarding and the settings screen — and the save
+  /// path was find-then-update-or-create with nothing stopping two concurrent
+  /// saves from writing two rows. With two rows each of those call sites gets
+  /// whichever one Postgres happens to return: an officer changes the number,
+  /// the settings screen shows the change, and outbound calls keep using the
+  /// other row's credentials. The service comment asserted "a single
+  /// TelephonyConfig row per organization" while nothing enforced it.
+  ///
+  /// It is not declared `@unique` because `db push` answers a new unique
+  /// constraint by demanding `--accept-data-loss` — it cannot know whether
+  /// duplicates exist — and carrying that flag in the deploy path would
+  /// silence the warning for every future schema change. Same reason the
+  /// `HostedAgentConfig.agentId` uniqueness is enforced in code.
   organizationId   String
   organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   provider         TelephonyProviderType @default(TWILIO)
@@ -360,6 +378,12 @@ model TelephonyConfig {
 
 model WhatsAppConfig {
   id                 String       @id @default(uuid())
+  /// NOT unique, for the same reason as `TelephonyConfig.organizationId`: an
+  /// agency may have more than one WhatsApp line, inbound is resolved by
+  /// `phoneNumberId` (the only tenant identifier Meta sends), and
+  /// `GET /api/organizations/me` returns `whatsAppConfigs` as an array. So no
+  /// reader may treat an unordered `findFirst({ where: { organizationId } })`
+  /// as "the agency's line", and no writer may update whichever row it got.
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   phoneNumberId      String

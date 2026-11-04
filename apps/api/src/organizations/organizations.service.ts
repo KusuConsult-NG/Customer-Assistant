@@ -100,6 +100,28 @@ export interface Actor {
   ipAddress?: string | null;
 }
 
+/**
+ * Which channel-configuration row a settings save is allowed to overwrite.
+ *
+ * An agency may hold several voice lines and several WhatsApp lines — inbound
+ * is resolved by dialled number and by Meta `phoneNumberId`, `isDefault`
+ * picks the outbound line, and `GET /api/organizations/me` returns both as
+ * arrays. The save paths ignored all of that: each did an unordered
+ * `findFirst({ where: { organizationId } })` and updated whatever came back.
+ * On an agency with three lines that overwrites an ARBITRARY one, so Twilio
+ * credentials could land on the Telnyx row, and the line the officer was
+ * looking at on the settings screen was not necessarily the line they
+ * changed.
+ *
+ * So a save must name its target. `id` is what the settings screen now sends:
+ * the id of the row it actually rendered. With no id the target is the row the
+ * read orders FIRST — the same deterministic line the screen shows when it has
+ * not been told otherwise — and an id belonging to another agency is a 404
+ * rather than a cross-tenant write.
+ */
+const TELEPHONY_ROW_ORDER = [{ isDefault: 'desc' as const }, { createdAt: 'asc' as const }];
+const WHATSAPP_ROW_ORDER = [{ isActive: 'desc' as const }, { createdAt: 'asc' as const }];
+
 @Injectable()
 export class OrganizationsService {
   /**
@@ -120,8 +142,15 @@ export class OrganizationsService {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       include: {
-        telephonyConfigs: true,
-        whatsAppConfigs: true,
+        // ORDERED, because the settings screen renders `telephonyConfigs[0]`
+        // and `whatsAppConfigs[0]`. Unordered, Postgres is free to return the
+        // rows of a multi-line agency in a different sequence on different
+        // requests, so the screen showed a different line after a refresh and
+        // the officer had no way to tell. The order matches what
+        // `getOutboundConfig` prefers — the default line first — so the line
+        // the screen shows is the line outbound calls actually use.
+        telephonyConfigs: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
+        whatsAppConfigs: { orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] },
         users: { select: { id: true, email: true, fullName: true, role: true, isActive: true } },
       },
     });
@@ -381,9 +410,28 @@ export class OrganizationsService {
 
   async updateWhatsAppConfig(
     organizationId: string,
-    data: { phoneNumberId: string; accessToken: string; webhookVerifyToken: string; whatsappBusinessId?: string; displayPhoneNumber?: string }
+    data: {
+      /** The line being edited. Omitted means the first one the read returns. */
+      id?: string;
+      phoneNumberId: string;
+      accessToken: string;
+      webhookVerifyToken: string;
+      whatsappBusinessId?: string;
+      displayPhoneNumber?: string;
+    }
   ) {
-    const existing = await prisma.whatsAppConfig.findFirst({ where: { organizationId } });
+    // The row this save is allowed to overwrite — named by the caller, or the
+    // one the read orders first. NOT "whichever row findFirst returned": see
+    // the note on WHATSAPP_ROW_ORDER.
+    const existing = data.id
+      ? await prisma.whatsAppConfig.findFirst({ where: { id: data.id, organizationId } })
+      : await prisma.whatsAppConfig.findFirst({ where: { organizationId }, orderBy: WHATSAPP_ROW_ORDER });
+    if (data.id && !existing) {
+      // Either the row was deleted or it belongs to another agency. Both are a
+      // 404 here; writing a new row instead would silently turn an edit of a
+      // line that no longer exists into a second line.
+      throw new NotFoundException('That WhatsApp line no longer exists for this agency.');
+    }
 
     // sealWhatsAppCredentials encrypts accessToken and webhookVerifyToken. It
     // THROWS when ENCRYPTION_KEY is unset rather than storing them in the clear
@@ -407,17 +455,15 @@ export class OrganizationsService {
       return maskedWhatsAppConfig(saved);
     }
 
-    const created = await prisma.whatsAppConfig.create({
-      data: sealWhatsAppCredentials({
-        organizationId,
-        phoneNumberId: data.phoneNumberId,
-        accessToken: data.accessToken,
-        webhookVerifyToken: data.webhookVerifyToken,
-        whatsappBusinessId: data.whatsappBusinessId || `waba_${data.phoneNumberId}`,
-        displayPhoneNumber: data.displayPhoneNumber || `+234 WhatsApp`,
-        isActive: true,
-      }),
+    const payload = sealWhatsAppCredentials({
+      phoneNumberId: data.phoneNumberId,
+      accessToken: data.accessToken,
+      webhookVerifyToken: data.webhookVerifyToken,
+      whatsappBusinessId: data.whatsappBusinessId || `waba_${data.phoneNumberId}`,
+      displayPhoneNumber: data.displayPhoneNumber || `+234 WhatsApp`,
+      isActive: true,
     });
+    const created = await prisma.whatsAppConfig.create({ data: { organizationId, ...payload } });
     return maskedWhatsAppConfig(created);
   }
 
@@ -448,6 +494,8 @@ export class OrganizationsService {
   async updateTelephonyConfig(
     organizationId: string,
     data: {
+      /** The voice line being edited. Omitted means the first one the read returns. */
+      id?: string;
       provider: any;
       phoneNumber: string;
       accountSid?: string;
@@ -490,7 +538,15 @@ export class OrganizationsService {
       }
     }
 
-    const existing = await prisma.telephonyConfig.findFirst({ where: { organizationId } });
+    // The line this save is allowed to overwrite. See TELEPHONY_ROW_ORDER: an
+    // agency can have several, and the previous unordered findFirst meant a
+    // save could rewrite a different line from the one on screen.
+    const existing = data.id
+      ? await prisma.telephonyConfig.findFirst({ where: { id: data.id, organizationId } })
+      : await prisma.telephonyConfig.findFirst({ where: { organizationId }, orderBy: TELEPHONY_ROW_ORDER });
+    if (data.id && !existing) {
+      throw new NotFoundException('That voice line no longer exists for this agency.');
+    }
 
     // A half-filled pair is not partial authentication, it is none, and the
     // import silently drops it. Saying so here is the difference between a
@@ -566,9 +622,8 @@ export class OrganizationsService {
       return maskedTelephonyConfig(saved);
     }
 
-    const created = await prisma.telephonyConfig.create({
-      data: sealTelephonyCredentials({ organizationId, ...common }),
-    });
+    const sealed = sealTelephonyCredentials(common);
+    const created = await prisma.telephonyConfig.create({ data: { organizationId, ...sealed } });
     return maskedTelephonyConfig(created);
   }
 

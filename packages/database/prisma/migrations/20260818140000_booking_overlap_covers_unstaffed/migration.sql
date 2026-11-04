@@ -1,3 +1,9 @@
+-- SQL-ONLY-MIGRATION
+--
+-- `db push` cannot express EXCLUDE, so this file is applied separately. The
+-- marker above is what selects it; grepping for the SQL itself missed every
+-- other kind of SQL-only constraint.
+--
 -- Extend the booking overlap guarantee to bookings with NO staff assigned.
 --
 -- The original constraint (20260807020000) closed the read-then-write race for

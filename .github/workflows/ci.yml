@@ -86,13 +86,24 @@ jobs:
       # has already created all of it, so re-running them collides outright
       # (`type "SelfieRequestStatus" already exists`).
       #
-      # A future SQL-only constraint that is not an EXCLUDE — a trigger, a
-      # partial index, a CHECK — will not match this and must be added here.
+      # Selected by an explicit `-- SQL-ONLY-MIGRATION` marker on the first
+      # line, not by grepping for EXCLUDE. The previous version matched the SQL
+      # itself, and the comment above it already predicted the failure: a
+      # SQL-only constraint that is NOT an exclusion — a trigger, a CHECK, a
+      # unique index `db push` refuses without --accept-data-loss — matched
+      # nothing and would have sat in the repo unapplied while CI reported
+      # every guarantee as holding. Adding the marker to a new file is now the
+      # whole step.
       - name: Apply SQL-only constraints
         run: |
           set -e
-          found=$(grep -l 'EXCLUDE USING' packages/database/prisma/migrations/*/migration.sql | sort)
-          test -n "$found" || { echo "no EXCLUDE migrations found — did they move?"; exit 1; }
+          found=$(grep -l 'SQL-ONLY-MIGRATION' packages/database/prisma/migrations/*/migration.sql | sort)
+          test -n "$found" || { echo "no SQL-ONLY-MIGRATION files found — did they move?"; exit 1; }
+          # The booking constraint must be among them: it is the guarantee a
+          # silent miss costs the most, so its absence here is a failure rather
+          # than a quiet pass.
+          echo "$found" | grep -q 'booking_overlap_constraint' \
+            || { echo "the booking EXCLUDE migration lost its marker"; exit 1; }
           for m in $found; do
             echo "── $m"
             PGPASSWORD=ace psql -h localhost -U ace -d ace_ci -v ON_ERROR_STOP=1 -f "$m"
