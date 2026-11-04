@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { TelephonyService } from './telephony.service';
+import { CallbackDispatcherService } from './callback-dispatcher.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -11,7 +12,14 @@ import { TelephonyProviderType, AuthUser, CallStatus } from '@ace/shared-types';
 
 @Controller('api/telephony')
 export class TelephonyController {
-  constructor(private telephonyService: TelephonyService) {}
+  constructor(
+    private telephonyService: TelephonyService,
+    // A carrier's call-status callback is the only thing that knows whether a
+    // promised callback was actually answered, so it is settled here, where
+    // that callback lands. The dispatcher depends on TelephonyService, so the
+    // reconciliation cannot live inside TelephonyService without a cycle.
+    private callbacks: CallbackDispatcherService
+  ) {}
 
   // ─── Inbound Webhooks (public — verified via HMAC inside service) ─────────────
 
@@ -90,12 +98,31 @@ export class TelephonyController {
     const callSid = data.call_control_id || data.call_leg_id || data.call_session_id;
     const eventType = body.data?.event_type || body.event_type;
     const duration = data.duration_seconds || data.duration;
-    
+
+    // A hangup is not an answer.
+    //
+    // Every hangup used to map to COMPLETED, whatever the cause. COMPLETED is
+    // what settles a promised callback as KEPT, so a citizen whose line was
+    // engaged or who never picked up had their callback closed as though we
+    // had spoken to them — and `hangup_cause` was sitting in the same payload
+    // saying otherwise.
+    const cause = String(data.hangup_cause || '').toLowerCase();
     let status = CallStatus.IN_PROGRESS;
-    if (eventType === 'call.hangup' || eventType === 'call.ended') status = CallStatus.COMPLETED;
+    if (eventType === 'call.hangup' || eventType === 'call.ended') {
+      status =
+        cause === 'busy' || cause === 'user_busy'
+          ? CallStatus.BUSY
+          : cause === 'timeout' || cause === 'no_answer' || cause === 'no_user_response'
+            ? CallStatus.NO_ANSWER
+            : cause === 'call_rejected' || cause === 'unspecified' || cause === 'originator_cancel'
+              ? CallStatus.FAILED
+              : CallStatus.COMPLETED;
+    }
 
     if (callSid) {
-      await this.telephonyService.updateCallStatus(callSid, status, duration ? parseInt(duration, 10) : undefined);
+      const seconds = duration ? parseInt(duration, 10) : undefined;
+      await this.telephonyService.updateCallStatus(callSid, status, seconds);
+      await this.callbacks.reconcileFromCall(callSid, status, seconds);
     }
   }
 
@@ -112,11 +139,15 @@ export class TelephonyController {
     const callStatus = body.CallStatus;
     const duration = body.CallDuration ? parseInt(body.CallDuration, 10) : undefined;
 
+    // `busy` and `no-answer` used to be flattened into FAILED, throwing away
+    // the only two reasons an officer can actually explain to a citizen — and
+    // CallStatus has had both values all along. "We tried" is not an answer;
+    // "your line was engaged" is.
     const statusMap: Record<string, CallStatus> = {
       completed:   CallStatus.COMPLETED,
       failed:      CallStatus.FAILED,
-      busy:        CallStatus.FAILED,
-      'no-answer': CallStatus.FAILED,
+      busy:        CallStatus.BUSY,
+      'no-answer': CallStatus.NO_ANSWER,
       canceled:    CallStatus.FAILED,
       'in-progress': CallStatus.IN_PROGRESS,
     };
@@ -124,6 +155,8 @@ export class TelephonyController {
     const mappedStatus = statusMap[callStatus];
     if (callSid && mappedStatus) {
       await this.telephonyService.updateCallStatus(callSid, mappedStatus, duration);
+      // Whether a promised callback was kept is decided here and nowhere else.
+      await this.callbacks.reconcileFromCall(callSid, mappedStatus, duration);
     }
   }
 

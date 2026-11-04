@@ -49,6 +49,23 @@ const STATUS_STYLES: Record<Callback['status'], string> = {
   CANCELLED: 'bg-slate-100 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700',
 };
 
+/**
+ * What each status means to the officer reading the queue.
+ *
+ * The raw enum names were shown, and two of them were actively misleading
+ * once the dispatcher stopped claiming a dialled call had been answered:
+ * IN_PROGRESS is "we are ringing them, nobody has answered yet", and
+ * COMPLETED is "the carrier reported that they answered" — not "we tried".
+ */
+const STATUS_LABELS: Record<Callback['status'], string> = {
+  PENDING: 'PROMISED',
+  DUE: 'DUE NOW',
+  IN_PROGRESS: 'DIALLING',
+  COMPLETED: 'REACHED',
+  FAILED: 'NOT REACHED',
+  CANCELLED: 'CANCELLED',
+};
+
 export default function CallbacksPage() {
   const toast = useToast();
   const [rows, setRows] = useState<Callback[]>([]);
@@ -91,7 +108,12 @@ export default function CallbacksPage() {
       }
       // Reports what the server recorded, not what was asked for.
       if (path === 'call-now') {
-        if (body.status === 'COMPLETED') toast.success(`Call placed — ${body.reference}`);
+        // DIALLING is the honest success state. The dispatcher no longer writes
+        // COMPLETED when the carrier accepts a dial — the citizen may not pick
+        // up — so this must not report a kept promise either. COMPLETED can
+        // still arrive here if the carrier's status callback beat the response.
+        if (body.status === 'COMPLETED') toast.success(`Answered — ${body.reference}`);
+        else if (body.status === 'IN_PROGRESS') toast.success(`Dialling now — ${body.reference}`);
         else if (body.failureReason) toast.error(`Not placed: ${body.failureReason}`);
         else toast.error(`Not placed — the callback is now ${body.status}`);
       } else {
@@ -130,7 +152,11 @@ export default function CallbacksPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Stat label="Open promises" value={open.length} icon={<Clock className="w-4 h-4" />} />
         <Stat label="Overdue" value={late.length} icon={<AlertTriangle className="w-4 h-4" />} tone={late.length ? 'warn' : undefined} />
-        <Stat label="Completed" value={rows.filter((r) => r.status === 'COMPLETED').length} icon={<CheckCircle2 className="w-4 h-4" />} />
+        {/* "Reached", not "Completed": COMPLETED now means the carrier reported
+            the citizen actually answered. A dialled-but-unanswered promise is
+            still open, and counting it here was the console's version of
+            recording a call that never happened. */}
+        <Stat label="Reached" value={rows.filter((r) => r.status === 'COMPLETED').length} icon={<CheckCircle2 className="w-4 h-4" />} />
       </div>
 
       {loading ? (
@@ -177,7 +203,7 @@ export default function CallbacksPage() {
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border ${STATUS_STYLES[r.status]}`}>{r.status}</span>
+                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border ${STATUS_STYLES[r.status]}`}>{STATUS_LABELS[r.status] ?? r.status}</span>
                     {r.attempts > 0 && (
                       <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                         {r.attempts} of {r.maxAttempts} attempts

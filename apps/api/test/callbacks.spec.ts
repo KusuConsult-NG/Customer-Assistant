@@ -220,7 +220,14 @@ describe('Callback queue', () => {
       expect(after!.dueAt.getTime()).toBeGreaterThan(Date.now());
     });
 
-    it('records the SID when the carrier does answer', async () => {
+    it('records the SID, and does NOT yet claim the citizen was reached', async () => {
+      // This assertion used to be `status === 'COMPLETED'`, and the schema
+      // says COMPLETED means "the citizen was reached". A carrier accepting a
+      // dial request is not that: the phone may be engaged, switched off, or
+      // ring out. Marking it COMPLETED told the console a promise had been
+      // kept, used up nothing of `maxAttempts`, and retried nothing — the
+      // exact "recorded as a call that never happened" this file exists for,
+      // reintroduced one step later in the same flow.
       const row = await seedCallback(agency.orgId, contactId, { dueAt: new Date(Date.now() - 60_000) });
 
       await dispatcherWith({
@@ -228,9 +235,157 @@ describe('Callback queue', () => {
       }).placeOne(row.id);
 
       const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
-      expect(after?.status).toBe('COMPLETED');
+      expect(after?.status).toBe('IN_PROGRESS');
       expect(after?.callSid).toBe('CA_spec_sid_0001');
+      expect(after?.completedAt).toBeNull();
+      expect(after?.attempts).toBe(1);
+    });
+
+    it('is kept once the carrier reports the citizen answered', async () => {
+      const row = await seedCallback(agency.orgId, contactId, { dueAt: new Date(Date.now() - 60_000) });
+      await dispatcherWith({
+        initiateOutboundCall: async () => ({ callId: 'CA_answered_0001' }),
+      }).placeOne(row.id);
+
+      await dispatcherWith({}).reconcileFromCall('CA_answered_0001', 'COMPLETED', 42);
+
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('COMPLETED');
       expect(after?.completedAt).toBeTruthy();
+    });
+
+    it('tries again when the citizen did not pick up', async () => {
+      const row = await seedCallback(agency.orgId, contactId, { dueAt: new Date(Date.now() - 60_000) });
+      await dispatcherWith({
+        initiateOutboundCall: async () => ({ callId: 'CA_noanswer_0001' }),
+      }).placeOne(row.id);
+
+      await dispatcherWith({}).reconcileFromCall('CA_noanswer_0001', 'NO_ANSWER');
+
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('PENDING');
+      expect(after?.completedAt).toBeNull();
+      expect(after?.failureReason).toMatch(/did not answer/i);
+      expect(after!.dueAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('gives up honestly when the last attempt also went unanswered', async () => {
+      const row = await seedCallback(agency.orgId, contactId, {
+        dueAt: new Date(Date.now() - 60_000),
+        maxAttempts: 1,
+      });
+      await dispatcherWith({
+        initiateOutboundCall: async () => ({ callId: 'CA_busy_final' }),
+      }).placeOne(row.id);
+
+      await dispatcherWith({}).reconcileFromCall('CA_busy_final', 'BUSY');
+
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('FAILED');
+      expect(after?.failureReason).toMatch(/engaged|busy/i);
+      expect(after?.completedAt).toBeNull();
+    });
+
+    it('does not resolve another agency\'s promise from a shared SID', async () => {
+      // CallLog and CallbackRequest both key on the carrier's SID, and the
+      // reconciliation runs from a carrier callback — so it must stay inside
+      // the organization that owns the row.
+      const row = await seedCallback(agency.orgId, contactId, { dueAt: new Date(Date.now() - 60_000) });
+      await dispatcherWith({
+        initiateOutboundCall: async () => ({ callId: 'CA_scoped_0001' }),
+      }).placeOne(row.id);
+
+      const handled = await dispatcherWith({}).reconcileFromCall(
+        'CA_scoped_0001', 'COMPLETED', 10, other.orgId
+      );
+      expect(handled).toBe(false);
+
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('IN_PROGRESS');
+    });
+
+    it('does not leave a promise dialling forever when the carrier says nothing', async () => {
+      // The carrier's status callback can be lost, the SIP path reports no
+      // outcome at all, and a crash between the claim and the dial leaves the
+      // same state. Before this, such a row sat IN_PROGRESS until somebody
+      // noticed — which is indistinguishable from a promise nobody kept.
+      const row = await seedCallback(agency.orgId, contactId, {
+        status: 'IN_PROGRESS',
+        attempts: 1,
+        maxAttempts: 3,
+        callSid: 'CA_silent_0001',
+        lastAttemptAt: new Date(Date.now() - 60 * 60_000),
+        dueAt: new Date(Date.now() - 90 * 60_000),
+      });
+
+      const result = await dispatcherWith({
+        initiateOutboundCall: async () => ({ callId: 'should_not_be_called_here' }),
+      }).sweep(new Date());
+
+      expect(result.reopened).toBeGreaterThan(0);
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.status).toBe('PENDING');
+      expect(after?.failureReason).toMatch(/never reported/i);
+    });
+
+    it('does not let one agency\'s held promises starve another\'s', async () => {
+      // Held rows stay DUE at the head of the queue, ordered by dueAt. With a
+      // fixed `take`, an agency with a nightful of promises outside its own
+      // contact window filled every sweep, and an agency whose window IS open
+      // was never reached — its citizens waiting on a queue that was busy
+      // skipping somebody else's.
+      await prisma.organization.update({
+        where: { id: agency.orgId },
+        data: {
+          openingHour: 0, closingHour: 24, serviceDays: [0, 1, 2, 3, 4, 5, 6],
+          outboundOpeningHour: 8, outboundClosingHour: 20, outboundDays: [0, 1, 2, 3, 4, 5, 6],
+        },
+      });
+      // The other agency may ring at any hour.
+      await prisma.organization.update({
+        where: { id: other.orgId },
+        data: {
+          openingHour: 0, closingHour: 24, serviceDays: [0, 1, 2, 3, 4, 5, 6],
+          outboundOpeningHour: 0, outboundClosingHour: 24, outboundDays: [0, 1, 2, 3, 4, 5, 6],
+        },
+      });
+      const otherContact = await prisma.contact.create({
+        data: { organizationId: other.orgId, phoneNumber: phone(), fullName: 'Reachable Now' },
+      });
+
+      const night = new Date(Date.UTC(2026, 10, 3, 2, 0)); // 03:00 WAT
+      // 30 promises for the agency that may not ring yet, all older.
+      const backlog: string[] = [];
+      for (let i = 0; i < 30; i++) {
+        const held = await seedCallback(agency.orgId, contactId, {
+          status: 'DUE',
+          dueAt: new Date(night.getTime() - (i + 10) * 60_000),
+        });
+        backlog.push(held.id);
+      }
+      const reachable = await seedCallback(other.orgId, otherContact.id, {
+        status: 'DUE',
+        dueAt: new Date(night.getTime() - 60_000),
+      });
+
+      let dialled: string[] = [];
+      const d = dispatcherWith({
+        initiateOutboundCall: async (_org: string, to: string) => {
+          dialled.push(to);
+          return { callId: `CA_starve_${dialled.length}` };
+        },
+      });
+      const result = await d.sweep(night);
+
+      expect(result.held).toBeGreaterThanOrEqual(30);
+      const after = await prisma.callbackRequest.findUnique({ where: { id: reachable.id } });
+      expect(after?.status).toBe('IN_PROGRESS');
+      expect(after?.callSid).toBeTruthy();
+
+      // This backlog exists to crowd a sweep, so leaving it behind crowds the
+      // sweeps the later tests run — the dial budget is real and shared.
+      await prisma.callbackRequest.deleteMany({ where: { id: { in: backlog } } });
+      await prisma.callbackRequest.deleteMany({ where: { id: reachable.id } });
     });
 
     it('rings the citizen ONCE when two pods sweep together', async () => {
@@ -333,7 +488,8 @@ describe('Callback queue', () => {
       await d.sweep(new Date(Date.UTC(2026, 10, 3, 8, 0)));
 
       const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
-      expect(after?.status).toBe('COMPLETED');
+      // Dialled, outcome not yet known — see "records the SID" above.
+      expect(after?.status).toBe('IN_PROGRESS');
       expect(after?.callSid).toBe('CA_after_window_opened');
     });
 

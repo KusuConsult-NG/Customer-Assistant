@@ -599,11 +599,21 @@ export class TelephonyService {
       return null;
     }
 
+    // Every status that ends a call closes the record. BUSY and NO_ANSWER were
+    // missing — they could not previously arrive here, because the Twilio
+    // callback flattened them into FAILED, so a call log for an engaged line
+    // would have sat with no `endedAt` and read as still in progress.
+    const TERMINAL = [
+      CallStatus.COMPLETED,
+      CallStatus.FAILED,
+      CallStatus.BUSY,
+      CallStatus.NO_ANSWER,
+    ];
     const updated = await prisma.callLog.update({
       where: { id: callLog.id },
       data: {
         status,
-        ...(status === CallStatus.COMPLETED || status === CallStatus.FAILED
+        ...(TERMINAL.includes(status)
           ? { endedAt: new Date(), durationSeconds: duration }
           : {}),
       },
