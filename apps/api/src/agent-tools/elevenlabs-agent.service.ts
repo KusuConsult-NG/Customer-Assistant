@@ -726,6 +726,15 @@ export class ElevenLabsAgentService {
       );
     }
 
+    // The catalogue this platform would publish, for comparing what is really
+    // out there against it. The authorization is a placeholder: nothing here
+    // writes, and the secret id is not part of what is compared.
+    const expectedCatalog = agentToolCatalog({
+      baseUrl,
+      authorization: fromSecret(config.agentKeySecretId ?? 'unknown'),
+      namePrefix: org.slug,
+    });
+
     // The URL check is the one that catches a rename. Fetch each tracked tool
     // and compare where it actually posts against where it should.
     for (const name of TOOL_NAMES) {
@@ -743,6 +752,35 @@ export class ElevenLabsAgentService {
         const expectedName = remoteToolName(name, org.slug);
         if (cfg?.name && cfg.name !== expectedName) {
           drift.push(`Tool ${id} is named "${cfg.name}"; expected "${expectedName}".`);
+        }
+
+        // ── The parameters, which nothing compared ────────────────────────
+        //
+        // Adding a parameter changes neither the tool COUNT nor its URL, so an
+        // agent provisioned before the change looked perfectly healthy while
+        // being unable to send the new field. `reference` on cancel-booking is
+        // the case that exposed it: a citizen with two appointments is asked
+        // which one they mean, and an un-synced agent has no way to answer —
+        // the caller loops, and the console says the agent is fine.
+        //
+        // Unlike inline `prompt.tools`, this one IS fixed by a sync, because a
+        // tool update is exactly what the sync writes.
+        const remoteParams = Object.keys(cfg?.apiSchema?.requestBodySchema?.properties ?? {});
+        if (remoteParams.length) {
+          const expectedParams = Object.keys(
+            (expectedCatalog[name] as any)?.toolConfig?.apiSchema?.requestBodySchema?.properties ??
+              {}
+          );
+          const missing = expectedParams.filter((p) => !remoteParams.includes(p));
+          const extra = remoteParams.filter((p) => !expectedParams.includes(p));
+          if (missing.length || extra.length) {
+            drift.push(
+              `Tool "${name}" takes different parameters from this platform's catalogue` +
+              (missing.length ? ` — missing ${missing.join(', ')}` : '') +
+              (extra.length ? ` — unexpected ${extra.join(', ')}` : '') +
+              '. Run a sync to update it.'
+            );
+          }
         }
       } catch (err) {
         if (this.isNotFound(err)) {

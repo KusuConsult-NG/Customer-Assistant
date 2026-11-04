@@ -515,6 +515,60 @@ describe('ElevenLabs agent provisioning', () => {
       expect(inline).toMatch(/dashboard|delete the agent/i);
     });
 
+    it('reports a tool whose PARAMETERS no longer match the catalogue', async () => {
+      // The gap this closes. Adding a parameter to a tool — `reference` on
+      // cancel-booking, so a citizen with two appointments can say which —
+      // changes neither the tool count nor the URL, so nothing flagged it. An
+      // agent provisioned before the change simply cannot pass the new
+      // parameter, and the caller loops on a question the agent has no way to
+      // answer, with the console reporting the agent as healthy.
+      stubWorkspace();
+      await service.syncAgent(orgId);
+
+      stubWorkspace((req) => {
+        if (req.method === 'GET' && req.url.includes('/tools/')) {
+          const id = req.url.split('/').pop()!;
+          return {
+            status: 200,
+            body: {
+              ...toolResponse(id, undefined),
+              tool_config: {
+                type: 'webhook',
+                name: `${slug}__cancel-booking`,
+                description: 'x',
+                api_schema: {
+                  url: `${PUBLIC_URL}/api/agent-tools/cancel-booking`,
+                  method: 'POST',
+                  // The old shape: phoneNumber and reason, no reference.
+                  request_body_schema: {
+                    type: 'object',
+                    properties: {
+                      phoneNumber: { type: 'string' },
+                      reason: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          };
+        }
+        return undefined;
+      });
+
+      const status = await service.getAgentStatus(orgId);
+      // The stub answers every tool id with the cancel-booking shape, so the
+      // drift list names several tools; the one under test is the entry that
+      // notices `reference` is gone.
+      const parameterDrift = status.drift.filter((d) => /parameter/i.test(d));
+      expect(parameterDrift.length).toBeGreaterThan(0);
+
+      const missingReference = parameterDrift.find((d) => d.includes('reference'));
+      expect(missingReference).toBeTruthy();
+      expect(missingReference).toMatch(/missing/i);
+      // And it names the remedy, which for a parameter change really is a sync.
+      expect(missingReference).toMatch(/sync/i);
+    });
+
     it('reports a drifted tool URL without repairing it', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);
