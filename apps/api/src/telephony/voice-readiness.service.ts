@@ -430,7 +430,164 @@ export class VoiceReadinessService {
       // rest holds.
       nextStep:
         `Point this number's Voice webhook at ${apiBaseUrl()}/api/telephony/inbound/twilio ` +
-        '(HTTP POST) in the Twilio console, then re-check readiness.',
+        `(HTTP POST) — POST /api/telephony/point-number-at-platform does it, or set it in ` +
+        'the Twilio console — then re-check readiness.',
+    };
+  }
+
+  /**
+   * Tell Twilio to send this number's calls here.
+   *
+   * This was the last step in the chain that was only manual because nothing
+   * had been written to do it. Everything else can be in place — line saved,
+   * credentials stored, speech configured, agent provisioned — and the number
+   * still rings to whatever its Voice webhook was pointed at, which on a fresh
+   * Twilio number is a demo TwiML bin. The readiness report cannot see that:
+   * it knows what WE hold, not what Twilio will do with a call.
+   *
+   * We already hold the tenant's `accountSid` and `authToken`, and already use
+   * them to redirect live calls (`transferCallToHuman`) and to import numbers
+   * into ElevenLabs. Pointing the webhook is the same authority applied to the
+   * same number.
+   *
+   * It is behind a confirmation because it CHANGES WHERE A CITIZEN'S CALL
+   * GOES, in the tenant's own Twilio account — the same reason
+   * `confirmVoiceCutover` exists. It reports what Twilio actually did, read
+   * back from Twilio's own response, never from the intention: the whole
+   * handoff rule of this codebase is act, then announce.
+   */
+  async pointNumberAtPlatform(
+    organizationId: string,
+    body: { phoneNumber?: string; confirmRepointsCarrierWebhook?: boolean }
+  ) {
+    const base = apiBaseUrl();
+    if (/localhost|127\.0\.0\.1|^http:/i.test(base)) {
+      throw new BadRequestException(
+        `API_BASE_URL is ${base}. Twilio cannot reach that, and pointing a real number at it ` +
+          'would take the line out of service. Set the public https origin first.'
+      );
+    }
+
+    const lines = (
+      await prisma.telephonyConfig.findMany({
+        where: { organizationId, provider: 'TWILIO' as any },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      })
+    ).map((row) => withTelephonyCredentials(row)!);
+
+    if (lines.length === 0) {
+      throw new BadRequestException(
+        'This agency has no Twilio line to point. Save one at Settings → Voice & Telephony first.'
+      );
+    }
+
+    // Named explicitly when there are several, because this decides which
+    // number starts ringing here and the others keep whatever they had.
+    const target = body?.phoneNumber
+      ? lines.find((l) => normalizePhoneNumber(l.phoneNumber) === normalizePhoneNumber(body.phoneNumber!))
+      : lines.length === 1
+        ? lines[0]
+        : undefined;
+
+    if (!target) {
+      throw new BadRequestException(
+        body?.phoneNumber
+          ? `This agency has no Twilio line for ${body.phoneNumber}.`
+          : `This agency has ${lines.length} Twilio lines (${lines
+              .map((l) => l.phoneNumber)
+              .join(', ')}). Say which one with phoneNumber.`
+      );
+    }
+
+    if (!target.accountSid || !target.authToken) {
+      throw new BadRequestException(
+        `${target.phoneNumber} has no stored Twilio credentials, so Twilio cannot be asked to ` +
+          'change anything. Save the Account SID and Auth Token at Settings → Voice & Telephony.'
+      );
+    }
+
+    const voiceUrl = `${base}/api/telephony/inbound/twilio`;
+    const statusCallback = `${base}/api/telephony/status/twilio`;
+
+    if (!body?.confirmRepointsCarrierWebhook) {
+      throw new BadRequestException(
+        `This will change ${target.phoneNumber} in Twilio so its calls arrive at ${voiceUrl}. ` +
+          'Whatever it points at now stops receiving them. Re-send with ' +
+          'confirmRepointsCarrierWebhook: true to go ahead.'
+      );
+    }
+
+    const auth = 'Basic ' + Buffer.from(`${target.accountSid}:${target.authToken}`).toString('base64');
+    const canonical = normalizePhoneNumber(target.phoneNumber);
+
+    // Twilio addresses a number by its OWN sid, not by the number, so it has
+    // to be looked up first. A number absent from the account is the useful
+    // failure: it means the credentials and the number belong to different
+    // accounts, which no amount of webhook configuration would fix.
+    const lookup = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${target.accountSid}/IncomingPhoneNumbers.json` +
+        `?PhoneNumber=${encodeURIComponent(canonical)}`,
+      { headers: { Authorization: auth }, signal: AbortSignal.timeout(15_000) }
+    ).catch((err: any) => {
+      throw new BadRequestException(`Twilio could not be reached: ${err?.message ?? err}`);
+    });
+
+    if (!lookup.ok) {
+      const detail = await lookup.text().catch(() => '');
+      throw new BadRequestException(
+        `Twilio refused the credential check for ${target.phoneNumber} (HTTP ${lookup.status}). ` +
+          `${detail.slice(0, 200)}`
+      );
+    }
+
+    const found = (await lookup.json()) as { incoming_phone_numbers?: Array<{ sid: string; voice_url?: string }> };
+    const number = found.incoming_phone_numbers?.[0];
+    if (!number) {
+      throw new BadRequestException(
+        `${target.phoneNumber} is not on the Twilio account these credentials belong to ` +
+          `(${target.accountSid}). Check which account holds the number.`
+      );
+    }
+
+    const previousVoiceUrl = number.voice_url || null;
+
+    const update = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${target.accountSid}/IncomingPhoneNumbers/${number.sid}.json`,
+      {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          VoiceUrl: voiceUrl,
+          VoiceMethod: 'POST',
+          StatusCallback: statusCallback,
+          StatusCallbackMethod: 'POST',
+        }).toString(),
+        signal: AbortSignal.timeout(15_000),
+      }
+    ).catch((err: any) => {
+      throw new BadRequestException(`Twilio could not be reached: ${err?.message ?? err}`);
+    });
+
+    if (!update.ok) {
+      const detail = await update.text().catch(() => '');
+      throw new BadRequestException(
+        `Twilio refused the change to ${target.phoneNumber} (HTTP ${update.status}). ${detail.slice(0, 300)}`
+      );
+    }
+
+    // Read back from Twilio's OWN response. Reporting the intention would make
+    // this the one place in the voice path that claims an outcome it did not
+    // verify, which is the bug the act-then-announce rule exists for.
+    const after = (await update.json()) as { voice_url?: string; status_callback?: string };
+
+    return {
+      phoneNumber: target.phoneNumber,
+      twilioSid: number.sid,
+      previousVoiceUrl,
+      voiceUrl: after.voice_url ?? null,
+      statusCallback: after.status_callback ?? null,
+      /** True only when Twilio echoed back the URL we asked for. */
+      pointedHere: after.voice_url === voiceUrl,
     };
   }
 }

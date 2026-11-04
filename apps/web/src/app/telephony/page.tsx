@@ -84,6 +84,8 @@ export default function TelephonyPage() {
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
   const [adoptResult, setAdoptResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [pointing, setPointing] = useState(false);
+  const [pointResult, setPointResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [demoMobileNumber, setDemoMobileNumber] = useState('');
   const [callLoading, setCallLoading] = useState(false);
   const [callStatus, setCallStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -175,6 +177,57 @@ export default function TelephonyPage() {
       setAdoptResult({ ok: false, message: err?.message || 'The line could not be adopted.' });
     } finally {
       setAdopting(false);
+    }
+  };
+
+  /**
+   * What TWILIO said, not what we asked for.
+   *
+   * The server reads the new webhook back out of Twilio's own response and
+   * reports `pointedHere` from that. This renders that answer rather than
+   * "done!", for the same reason a voice handoff announces the transfer only
+   * after the carrier accepts it: a confirmation nobody verified is the bug
+   * the first invariant exists for.
+   */
+  const pointNumberAtPlatform = async () => {
+    setPointing(true);
+    setPointResult(null);
+    try {
+      const token = localStorage.getItem('ace_token');
+      const res = await apiFetch(`${API_URL}/api/telephony/point-number-at-platform`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmRepointsCarrierWebhook: true }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          (Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message) ||
+            'Twilio did not accept the change.'
+        );
+      }
+      setPointResult(
+        payload?.pointedHere
+          ? {
+              ok: true,
+              message: `Twilio now sends ${payload.phoneNumber} to ${payload.voiceUrl}${
+                payload.previousVoiceUrl ? ` (was ${payload.previousVoiceUrl})` : ''
+              }.`,
+            }
+          : {
+              // Twilio answered, but not with the URL we asked for. Saying
+              // "done" here is exactly the fabrication to avoid.
+              ok: false,
+              message: `Twilio accepted the request but reports the Voice webhook as ${
+                payload?.voiceUrl ?? 'something else'
+              }. The number is NOT pointed here.`,
+            }
+      );
+      await fetchCallLogs();
+    } catch (err: any) {
+      setPointResult({ ok: false, message: err?.message || 'Twilio did not accept the change.' });
+    } finally {
+      setPointing(false);
     }
   };
 
@@ -614,6 +667,36 @@ export default function TelephonyPage() {
                 </div>
               ))}
             </div>
+
+            {/* The carrier is the one thing readiness cannot see: every check
+                above can be green while the number still rings to whatever its
+                Voice webhook pointed at. We hold the credentials, so this asks
+                Twilio directly rather than printing a URL to retype. */}
+            {lines && lines.length > 0 && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
+                <p className="text-xs font-bold text-slate-900 dark:text-white">
+                  Does Twilio send this number&apos;s calls here?
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Everything above can be ready while the number still rings somewhere else — a new
+                  Twilio number points at a demo TwiML bin. This sets its Voice webhook and status
+                  callback to the URLs below. Whatever it points at now stops receiving calls.
+                </p>
+                {pointResult && (
+                  <p className={`text-[11px] font-semibold ${pointResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                    {pointResult.message}
+                  </p>
+                )}
+                <button
+                  onClick={pointNumberAtPlatform}
+                  disabled={pointing}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-500 text-brand-700 dark:text-brand-300 hover:bg-brand-50 dark:hover:bg-brand-500/10 disabled:opacity-60 text-xs font-bold"
+                >
+                  <Radio className="w-3.5 h-3.5" />
+                  {pointing ? 'Asking Twilio…' : 'Point the number at this platform'}
+                </button>
+              </div>
+            )}
 
             {/* Generated from the same API_BASE_URL the signature check uses,
                 so what is shown here is what will be verified against. */}

@@ -59,6 +59,27 @@ export class TelephonyController {
     return this.voiceReadiness.adoptDeploymentLine(req.user.organizationId, body);
   }
 
+  /**
+   * Ask Twilio to send this number's calls here.
+   *
+   * The last step that was manual only because nothing had been written to do
+   * it: everything can be configured on our side and the number still rings to
+   * whatever its Voice webhook pointed at. We already hold the tenant's
+   * credentials and already use them to redirect live calls, so this is the
+   * same authority on the same number. Confirmation required — it changes
+   * where a citizen's call goes, in the tenant's own Twilio account — and the
+   * outcome is read back from Twilio's response, never assumed.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
+  @Post('point-number-at-platform')
+  async pointNumberAtPlatform(
+    @Req() req: { user: AuthUser },
+    @Body() body: { phoneNumber?: string; confirmRepointsCarrierWebhook?: boolean }
+  ) {
+    return this.voiceReadiness.pointNumberAtPlatform(req.user.organizationId, body);
+  }
+
   // ─── Inbound Webhooks (public — verified via HMAC inside service) ─────────────
 
   @Post('inbound/twilio')
