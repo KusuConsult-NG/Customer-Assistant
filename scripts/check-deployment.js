@@ -152,7 +152,32 @@ async function req(path, init = {}) {
   const status = await req('/api/agent-provisioning/status', { headers: auth });
   const smsg = typeof status.body === 'object' ? (status.body.message || JSON.stringify(status.body)) : String(status.body);
   if (status.ok) {
-    say('OK', 'Hosted agent', JSON.stringify(status.body).slice(0, 160));
+    // A 200 is not the same as a healthy agent. `getAgentStatus` is read-only
+    // on purpose — repairing drift silently destroys the evidence of how it
+    // happened — so it REPORTS the mismatch and something has to read it.
+    // Truncating the JSON to 160 characters hid exactly that, and the line
+    // said OK while the remote agent carried deprecated inline tools.
+    const b = status.body || {};
+    const drift = Array.isArray(b.drift) ? b.drift : [];
+    const toolsWrong =
+      typeof b.toolCount === 'number' &&
+      typeof b.expectedToolCount === 'number' &&
+      b.toolCount !== b.expectedToolCount;
+
+    const summary =
+      `agentId=${b.agentId ?? 'none'} remoteFound=${b.remoteAgentFound} ` +
+      `tools=${b.toolCount}/${b.expectedToolCount}`;
+
+    if (!b.configured || !b.remoteAgentFound) {
+      say('DOWN', 'Hosted agent', summary,
+        'No agent is provisioned in the workspace. POST /api/agent-provisioning/sync.');
+    } else if (drift.length || toolsWrong) {
+      say('DEGRADED', 'Hosted agent', summary,
+        (drift.length ? drift.join(' | ') : '') +
+        (toolsWrong ? ` | tool count does not match the catalogue (${b.toolCount} of ${b.expectedToolCount})` : ''));
+    } else {
+      say('OK', 'Hosted agent', summary);
+    }
   } else if (/could not reach/i.test(smsg)) {
     // The wording matters: unreachable is a network fact, not a bad key.
     say('DOWN', 'Hosted agent', smsg.slice(0, 200),

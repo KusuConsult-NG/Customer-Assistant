@@ -116,16 +116,30 @@ export class ElevenLabsApi {
       );
     }
 
-    // No status: nothing answered. Name the host, because a data-residency
-    // deployment is pointed somewhere other than the default.
     const host = (process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io')
       .replace(/^https?:\/\//, '')
       .replace(/\/+$/, '');
-    const cause =
-      (err as any)?.cause?.code ||
-      (err as any)?.cause?.message ||
-      (err instanceof Error ? err.message : String(err)) ||
-      'no response';
+    const causeCode = (err as any)?.cause?.code;
+    const message = err instanceof Error ? err.message : String(err);
+    const cause = causeCode || (err as any)?.cause?.message || message || 'no response';
+
+    // A status-less error is not automatically a network failure. The SDK
+    // validates RESPONSES too, so a provider that answered with an unexpected
+    // shape lands here as well — and telling an operator the request "was NOT
+    // delivered" sends them to check their network for a schema problem.
+    const looksLikeNetwork =
+      Boolean(causeCode) ||
+      /fetch failed|network|socket|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|abort/i.test(message);
+
+    if (!looksLikeNetwork) {
+      this.log.error(`elevenlabs_unreadable_response ${what} host=${host} error=${message.slice(0, 400)}`);
+      throw new ServiceUnavailableException(
+        `${host} answered ${what} with a response this platform could not read: ` +
+        `${message.slice(0, 300)}. The request WAS delivered — this is a response-shape ` +
+        `mismatch, not a network or key problem.`
+      );
+    }
+
     this.log.error(`elevenlabs_unreachable ${what} host=${host} error=${cause}`);
     throw new ServiceUnavailableException(
       `Could not reach ${host} for ${what} (${cause}). The request was NOT delivered, ` +

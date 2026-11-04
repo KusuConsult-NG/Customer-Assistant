@@ -304,6 +304,25 @@ describe('the ElevenLabs workspace boundary', () => {
       expect(message).toMatch(/not a rejected key/i);
     });
 
+    it('does not call an unreadable response a network failure', () => {
+      // The SDK validates RESPONSES as well as requests, so a provider that
+      // answered with an unexpected shape arrives here with no status code —
+      // exactly like a network failure. Reporting it as "the request was NOT
+      // delivered" sends an operator to check their network for a schema
+      // problem, which is the same class of misdirection as calling an
+      // unreachable host a rejected key.
+      const err = new Error(
+        'response -> conversation_config -> agent -> prompt: Missing required key "tool_ids"'
+      );
+      let message = '';
+      try { api().fail('the agent status', err); } catch (e: any) { message = e.message; }
+
+      expect(message).toMatch(/could not read/i);
+      expect(message).toMatch(/WAS delivered/i);
+      expect(message).not.toMatch(/could not reach/i);
+      expect(message).not.toMatch(/ElevenLabs rejected/i);
+    });
+
     it('treats a plain network error the same way', () => {
       let message = '';
       try { api().fail('the agent status', new Error('getaddrinfo ENOTFOUND api.elevenlabs.io')); }

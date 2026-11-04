@@ -687,8 +687,24 @@ export class ElevenLabsAgentService {
     }
 
     if (Array.isArray(prompt.tools) && prompt.tools.length > 0) {
+      // NOT fixed by a sync, and saying so was wrong.
+      //
+      // `agentDefinition()` only ever emits `prompt.toolIds`; it never sends
+      // `prompt.tools`. The update is a merge, so an inline array that was
+      // already on the remote agent is left exactly where it is — and an
+      // operator who follows the old advice syncs repeatedly and watches the
+      // same drift come back.
+      //
+      // It matters because the inline definitions are a SNAPSHOT: they do not
+      // gain tools added since (request-callback, check-availability) and they
+      // keep whatever URL and auth they were created with. An agent holding
+      // both can answer a citizen using a definition nobody has updated.
       drift.push(
-        'Agent still carries inline `prompt.tools`, which is deprecated. Sync to move it onto tool ids.'
+        'Agent still carries inline `prompt.tools` (' + prompt.tools.length + '), which is deprecated ' +
+        'and is NOT cleared by a sync — this platform only ever writes `prompt.toolIds`, and the ' +
+        'update merges. Those inline definitions are a stale snapshot: they lack every tool added ' +
+        'since, and keep the URL and auth they were created with. Remove the inline tools on the ' +
+        'agent in the ElevenLabs dashboard, or delete the agent and sync again to recreate it cleanly.'
       );
     }
 

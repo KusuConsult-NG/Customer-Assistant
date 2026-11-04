@@ -468,6 +468,53 @@ describe('ElevenLabs agent provisioning', () => {
       expect(status.drift.join(' ')).toMatch(/no agent has been provisioned/i);
     });
 
+    it('does not tell an operator to sync away inline tools, because a sync cannot', async () => {
+      // The message used to read "Sync to move it onto tool ids." It cannot.
+      // `agentDefinition()` only ever emits `prompt.toolIds` and the update is
+      // a merge, so an inline array already on the remote agent stays exactly
+      // where it is — and an operator following that advice syncs repeatedly
+      // and watches the same drift come back.
+      stubWorkspace();
+      await service.syncAgent(orgId);
+
+      stubWorkspace((req) => {
+        if (req.method === 'GET' && /\/agents\//.test(req.url)) {
+          return {
+            status: 200,
+            body: {
+              agent_id: 'agent_x',
+              name: 'legacy agent',
+              metadata: { created_at_unix_secs: 1, updated_at_unix_secs: 1 },
+              conversation_config: {
+                agent: {
+                  prompt: {
+                    tool_ids: [],
+                    tools: [
+                      {
+                        name: 'legacy-inline-tool',
+                        type: 'webhook',
+                        description: 'left behind by an older provisioning',
+                        api_schema: { url: 'https://old.example.test/x', method: 'POST' },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          };
+        }
+        return undefined;
+      });
+
+      const status = await service.getAgentStatus(orgId);
+      const inline = status.drift.find((d) => /inline/i.test(d));
+
+      expect(inline).toBeTruthy();
+      expect(inline).toMatch(/NOT cleared by a sync/i);
+      // And it names something that actually works.
+      expect(inline).toMatch(/dashboard|delete the agent/i);
+    });
+
     it('reports a drifted tool URL without repairing it', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);
