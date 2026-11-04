@@ -34,7 +34,10 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { prisma } from '@ace/database';
 import { CallBroadcastService } from './call-broadcast.service';
-import { authenticateSocket, socketCorsOrigin, SocketIdentity } from '../events/socket-auth';
+import {
+  authenticateSocket, socketCorsOrigin, SocketIdentity,
+  socketRevalidator, REVOCATION_MESSAGES,
+} from '../events/socket-auth';
 import { AceLogger } from '../config/logger';
 
 @WebSocketGateway({
@@ -76,6 +79,16 @@ export class VoiceStreamGateway
     }
 
     this.identities.set(client.id, identity);
+
+    // See the note in socket-auth.ts: a live call's audio and transcript keep
+    // arriving on an open socket long after the officer's access was revoked.
+    socketRevalidator.register(client.id, identity, (socketId, reason) => {
+      const sock = this.server?.sockets?.sockets?.get(socketId);
+      this.logger.warn('voice_stream_socket_revoked', { socketId, reason });
+      sock?.emit('unauthorized', { reason, message: REVOCATION_MESSAGES[reason] });
+      sock?.disconnect(true);
+    });
+
     this.logger.info('agent_console_socket_connected', {
       socketId: client.id,
       organizationId: identity.organizationId,
@@ -83,6 +96,7 @@ export class VoiceStreamGateway
   }
 
   handleDisconnect(client: Socket): void {
+    socketRevalidator.unregister(client.id);
     this.identities.delete(client.id);
     this.logger.info('agent_console_socket_disconnected', { socketId: client.id });
   }

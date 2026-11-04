@@ -10,7 +10,10 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { authenticateSocket, socketCorsOrigin, SocketIdentity } from './socket-auth';
+import {
+  authenticateSocket, socketCorsOrigin, SocketIdentity,
+  socketRevalidator, REVOCATION_MESSAGES,
+} from './socket-auth';
 import {
   ElevenLabsLiveService,
   LiveConversation,
@@ -66,6 +69,19 @@ export class AgentConsoleGateway
 
     this.identities.set(client.id, identity);
 
+    // A socket outlives the decision that let it in. Deactivating an officer,
+    // signing them out, or suspending the agency all cut HTTP access on the
+    // next request and did nothing to a console already streaming every
+    // citizen message for that tenant. Re-checked on a sweep from here on.
+    socketRevalidator.register(client.id, identity, (socketId, reason) => {
+      const sock = this.server?.sockets?.sockets?.get(socketId);
+      this.logger.warn(`Revoking agent-console socket ${socketId}: ${reason}`);
+      // Said out loud, then dropped. A silent disconnect reads as a network
+      // fault, and the officer reconnects and wonders why it keeps happening.
+      sock?.emit('unauthorized', { reason, message: REVOCATION_MESSAGES[reason] });
+      sock?.disconnect(true);
+    });
+
     // Join the caller's own organization room immediately. There is no client-driven
     // room selection any more: `join_organization` used to accept an arbitrary
     // organizationId from the message body and join it without checking.
@@ -81,6 +97,7 @@ export class AgentConsoleGateway
   }
 
   handleDisconnect(client: Socket) {
+    socketRevalidator.unregister(client.id);
     const identity = this.identities.get(client.id);
     // Only for a socket that actually registered — an unauthenticated socket
     // was disconnected before watch() was called, and decrementing for it would
