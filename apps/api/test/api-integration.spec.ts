@@ -98,47 +98,67 @@ describe('Customer Care Agent API Integration Tests', () => {
   });
 
   describe('3. Registration payload contract', () => {
+    /**
+     * Register, retrying once past the rate limiter.
+     *
+     * These assert that a BAD payload is rejected as a 400. Registration is
+     * throttled per client, the throttle is shared (Redis, when it is
+     * configured), and other suites register tenants of their own — so a
+     * rejected payload can come back 429 before validation ever looks at it,
+     * and the assertion then reads as "the contract broke" when nothing did.
+     * A throttled attempt is retried past the window once; still throttled is
+     * reported as throttled, not as a contract failure.
+     */
+    const registerExpectingRejection = async (body: Record<string, unknown>) => {
+      let res = await request(app.getHttpServer()).post('/api/auth/register').send(body);
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 2000));
+        res = await request(app.getHttpServer()).post('/api/auth/register').send(body);
+      }
+      if (res.status === 429) {
+        throw new Error(
+          'Registration is rate-limited in this environment, so the payload contract could not ' +
+          'be checked. Stop any other API process sharing this Redis and run it again.'
+        );
+      }
+      return res;
+    };
+
     it('rejects the legacy adminEmail/adminPassword field names with 400, not 500', async () => {
       // These are the exact field names the dashboard used to send. They must produce
       // a validation error, not an unhandled crash inside bcrypt.
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/register')
-        .send({
-          organizationName: 'Legacy Field Test',
-          industry: 'SME',
-          adminFullName: 'Test User',
-          adminEmail: 'legacy@example.com',
-          adminPassword: 'TestPassword123!',
-        });
+      const res = await registerExpectingRejection({
+        organizationName: 'Legacy Field Test',
+        industry: 'SME',
+        adminFullName: 'Test User',
+        adminEmail: 'legacy@example.com',
+        adminPassword: 'TestPassword123!',
+      });
 
       expect(res.status).toBe(400);
     });
 
     it('rejects an industry value outside the IndustryType enum', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/register')
-        .send({
-          organizationName: 'Bad Industry Test',
-          industry: 'HOSPITALITY', // never existed server-side
-          fullName: 'Test User',
-          email: `test.${Date.now()}@example.com`,
-          password: 'TestPassword123!',
-        });
+      const res = await registerExpectingRejection({
+        organizationName: 'Bad Industry Test',
+        industry: 'HOSPITALITY', // never existed server-side
+        fullName: 'Test User',
+        email: `test.${Date.now()}@example.com`,
+        password: 'TestPassword123!',
+      });
 
       expect(res.status).toBe(400);
       expect(JSON.stringify(res.body.message)).toMatch(/industry/i);
     });
 
     it('rejects a password shorter than 8 characters', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/register')
-        .send({
-          organizationName: 'Short Password Test',
-          industry: 'SME',
-          fullName: 'Test User',
-          email: `test.${Date.now()}@example.com`,
-          password: 'short',
-        });
+      const res = await registerExpectingRejection({
+        organizationName: 'Short Password Test',
+        industry: 'SME',
+        fullName: 'Test User',
+        email: `test.${Date.now()}@example.com`,
+        password: 'short',
+      });
 
       expect(res.status).toBe(400);
     });

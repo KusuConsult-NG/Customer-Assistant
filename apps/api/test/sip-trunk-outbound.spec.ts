@@ -226,8 +226,13 @@ describe('SIP trunk outbound', () => {
       await app.get(CallbackDispatcherService).placeOne(row.id);
 
       const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
-      expect(after!.status).toBe('COMPLETED');
+      // IN_PROGRESS, not COMPLETED: the trunk accepted the call, which is not
+      // the citizen answering it. The SIP path reports no per-call outcome at
+      // all, so the dispatcher's own grace period is what eventually requeues
+      // or fails this one — see `reopenAbandoned`.
+      expect(after!.status).toBe('IN_PROGRESS');
       expect(after!.callSid).toBe('sip_callback_1');
+      expect(after!.completedAt).toBeNull();
     });
 
     it('leaves a callback unplaced, with the reason, when the trunk refuses', async () => {
