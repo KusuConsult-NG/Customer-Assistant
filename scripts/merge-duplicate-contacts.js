@@ -42,8 +42,9 @@ require(path.join(__dirname, '..', 'apps', 'api', 'dist', 'config', 'load-env.js
 
 const DB = path.join(__dirname, '..', 'packages', 'database', 'dist', 'index.js');
 let normalizePhoneNumber;
+let isPlaceholderContactName;
 try {
-  ({ normalizePhoneNumber } = require(DB));
+  ({ normalizePhoneNumber, isPlaceholderContactName } = require(DB));
 } catch (err) {
   console.error(
     'Could not load @ace/database. Build it first:\n\n' +
@@ -54,7 +55,7 @@ try {
 }
 
 const { PrismaClient } = require('@prisma/client');
-
+const { contactRelationModels } = require(path.join(__dirname, 'lib', 'contact-relations.js'));
 async function main() {
   const apply = process.argv.includes('--apply');
   const prisma = new PrismaClient();
@@ -145,25 +146,17 @@ async function main() {
             }
           }
 
-          for (const model of [
-            'lead',
-            'deal',
-            'ticket',
-            'callLog',
-            'booking',
-            'reservation',
-            'note',
-            'selfieRequest',
-          ]) {
+          for (const model of contactRelationModels()) {
             await tx[model].updateMany({
               where: { contactId: loser.id },
               data: { contactId: survivor.id },
             });
           }
 
-          // A real name beats a generated placeholder.
-          const looksGenerated = (name) =>
-            !name || /^(Caller|WhatsApp Contact|Valued Customer)\b/.test(name);
+          // A real name beats a generated placeholder — using the SAME
+          // detector the platform writes them with, so the two cannot disagree
+          // about which names are ours.
+          const looksGenerated = (name) => isPlaceholderContactName(name);
           const data = {};
           if (looksGenerated(survivor.fullName) && !looksGenerated(loser.fullName)) {
             data.fullName = loser.fullName;
