@@ -336,6 +336,44 @@ export class OrganizationsService {
     userData: { email: string; fullName: string; role: any },
     actor: Actor
   ) {
+    /**
+     * The address is NORMALISED here, because every reader lowercases it.
+     *
+     * `AuthService` looks a user up with `email.trim().toLowerCase()` — on
+     * login, on forgot-password, on resend-verification — and `register`
+     * lowercases before it writes. This path wrote `userData.email` exactly as
+     * an administrator typed it. So inviting "Jane.Doe@Plateau.gov.ng" stored
+     * a row that no lookup can ever find:
+     *
+     *   - the invite link still worked, because `setupAccount` matches on the
+     *     TOKEN, so the officer set a password and was signed straight in and
+     *     everything looked correct;
+     *   - the next time she signed in, `findUnique({ email: lowercased })`
+     *     found nothing and she was told "Invalid email or password
+     *     credentials";
+     *   - forgot-password lowercases too, so it found nothing and returned its
+     *     deliberately vague "if an account exists" message while sending
+     *     nothing. The account did exist.
+     *
+     * She was locked out permanently, with no path back through the product,
+     * and nothing in any log said why. `User.email` is `@unique`, so this also
+     * let "Jane@x.gov.ng" and "jane@x.gov.ng" exist as two different officers.
+     */
+    const email = userData.email?.trim().toLowerCase();
+    if (!email) throw new BadRequestException('A team member needs an email address.');
+
+    // Checked before the invite is written so the caller gets a clear reason
+    // rather than a P2002. The lookup is on the normalised address, which is
+    // also what makes a differently-cased duplicate impossible.
+    const clash = await prisma.user.findUnique({ where: { email } });
+    if (clash) {
+      throw new BadRequestException(
+        clash.organizationId === organizationId
+          ? 'Somebody with that email address is already a member of this agency.'
+          : 'That email address already belongs to a user on this platform.'
+      );
+    }
+
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
     // Unusable password — user must set a real password via the invite link.
@@ -347,8 +385,8 @@ export class OrganizationsService {
     const user = await prisma.user.create({
       data: {
         organizationId,
-        email: userData.email,
-        fullName: userData.fullName,
+        email,
+        fullName: userData.fullName?.trim() || email,
         role: userData.role,
         passwordHash: unusablePasswordHash,
         passwordResetToken: hashedToken,

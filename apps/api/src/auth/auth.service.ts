@@ -347,7 +347,16 @@ export class AuthService {
         },
         ...tokens,
       };
-    } catch {
+    } catch (err) {
+      // Its OWN refusals are preserved. This used to swallow every one of
+      // them, so a deactivated officer and a signed-out session both came back
+      // as "Invalid or expired refresh token" — which reads as a client bug
+      // and tells the officer nothing about why they are being turned away.
+      // There is nothing to protect here: whoever presents a validly signed
+      // refresh token for an account already holds that account's credential,
+      // so naming the reason reveals nothing they could not get from a login
+      // attempt, which states it plainly.
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
