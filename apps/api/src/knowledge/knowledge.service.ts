@@ -465,10 +465,46 @@ export class KnowledgeService {
     // These were previously left in Qdrant, with a comment claiming the worker would
     // clear them "on re-index" — it never does. The orphaned vectors stayed
     // searchable, so the AI kept quoting deleted documents to customers indefinitely.
+    // A FAILURE HERE STOPS THE DELETE.
+    //
+    // It used to be swallowed with a warning, and then the row was deleted
+    // anyway — which reinstates the exact bug the paragraph above describes,
+    // only now with nothing left in the dashboard to point at. The operator
+    // sees "removed from knowledge base", the document is gone from the list,
+    // and the vectors keep answering citizens with whatever the agency just
+    // decided was wrong enough to delete.
+    //
+    // So the document stays until its vectors are actually gone. The operator
+    // is told why, and the delete is safe to repeat: everything here is
+    // idempotent, so a second attempt once Qdrant is reachable completes it.
     try {
       await this.ragService.deleteDocumentVectors(organizationId, documentId);
     } catch (err: any) {
-      log.warn('qdrant_vector_delete_failed', { organizationId, documentId, error: err?.message });
+      log.error('qdrant_vector_delete_failed', err instanceof Error ? err : new Error(String(err)), {
+        organizationId,
+        documentId,
+      });
+      const couldBeIndexed = Boolean(process.env.OPENAI_API_KEY) && (doc.chunkCount ?? 0) > 0;
+      if (couldBeIndexed) {
+        throw new ServiceUnavailableException(
+          `"${doc.title}" was NOT deleted. Its indexed text could not be removed from the ` +
+          `search index (${err?.message ?? 'the vector store did not respond'}), and deleting ` +
+          `the record while that text remains would leave the assistant quoting this document ` +
+          `with nothing in the dashboard to show for it. Try again once the search index is ` +
+          `reachable — repeating this is safe.`
+        );
+      }
+
+      // Otherwise it could not be in the index in the first place: vectors are
+      // only ever written when embeddings are configured, and a document with
+      // no chunks was never indexed. Refusing these would mean a deployment
+      // running on the Postgres fallback — a supported way to run this — could
+      // never delete a document, because a Qdrant it does not use is down.
+      log.warn('knowledge_vector_cleanup_skipped_not_indexed', {
+        organizationId,
+        documentId,
+        chunkCount: doc.chunkCount ?? 0,
+      });
     }
 
     // Delete chunks and document record from PostgreSQL

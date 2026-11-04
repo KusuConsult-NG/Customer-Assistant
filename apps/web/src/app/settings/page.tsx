@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api, API_URL, apiFetch } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
+import { RoleNotice } from '@/components/RoleNotice';
 import {
   Settings, Building2, Bot, Phone, MessageSquare, Users, User,
   Save, CheckCircle2, AlertCircle, AlertTriangle, Eye, EyeOff, Copy, Plus,
@@ -86,6 +87,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
+      <RoleNotice path="/settings" />
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {/* Header */}
