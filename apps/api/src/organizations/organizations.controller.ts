@@ -1,4 +1,5 @@
 import { Controller, Get, Patch, Post, Delete, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { UpdateWhatsAppConfigDto } from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -122,18 +123,12 @@ export class OrganizationsController {
   @Post('whatsapp-config')
   async updateWhatsAppConfig(
     @Req() req: { user: AuthUser },
-    @Body() body: {
-      // The line being edited. An agency may hold several WhatsApp lines
-      // (inbound is resolved by Meta's phoneNumberId), and without this the
-      // save overwrote whichever row came back first — not necessarily the one
-      // the settings screen was showing.
-      id?: string;
-      phoneNumberId: string;
-      accessToken: string;
-      webhookVerifyToken: string;
-      whatsappBusinessId?: string;
-      displayPhoneNumber?: string;
-    }
+    // A CLASS, not an inline type: the ValidationPipe has no metatype for an
+    // inline one, so `webhookVerifyToken` was required by TypeScript and
+    // enforced by nothing — a request omitting it reached Prisma as undefined
+    // and answered 500 "An unexpected error occurred" instead of naming the
+    // field. See organizations.dto.ts.
+    @Body() body: UpdateWhatsAppConfigDto
   ) {
     return this.orgsService.updateWhatsAppConfig(req.user.organizationId, body);
   }
