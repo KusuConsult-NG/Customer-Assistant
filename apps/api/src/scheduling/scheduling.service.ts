@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import {
   prisma, phoneNumberVariants,
-  isOverlapViolation, withDeadlockRetry, recordAgencyAudit, type AuditActor } from '@ace/database';
+  isOverlapViolation, isDeadlock, withDeadlockRetry, recordAgencyAudit, type AuditActor } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -173,6 +173,27 @@ export class SchedulingService {
           'That slot was just taken by another booking. Please choose another time.'
         );
       }
+      // A deadlock that survived every retry is still an ANSWERABLE question.
+      //
+      // 40P01 means the write was rolled back, not that it was rejected — so
+      // nothing has been said about whether the slot is free. Under real
+      // contention (eight callers on one slot, each collision costing a second
+      // of server-side detection) the retries can run out before the
+      // constraint ever gets to speak, and the caller was then told "I could
+      // not complete that just now" and handed to a human, when the true
+      // answer was simply "that time is taken".
+      //
+      // So ask the database what is actually there now. Only a booking that
+      // really occupies the slot produces the conflict; anything else is a
+      // genuine failure and is reported as one.
+      if (isDeadlock(err)) {
+        const taken = await this.findConflictingBooking(organizationId, start, end, data.staffName);
+        if (taken) {
+          throw new ConflictException(
+            'That slot was just taken by another booking. Please choose another time.'
+          );
+        }
+      }
       throw err;
     }
 
@@ -328,6 +349,29 @@ export class SchedulingService {
         throw new ConflictException(
           'That slot was just taken by another booking. Please choose another time.'
         );
+      }
+      // A deadlock that survived every retry is still an ANSWERABLE question.
+      //
+      // 40P01 means the write was rolled back, not that it was rejected — so
+      // nothing has been said about whether the slot is free. Under real
+      // contention (eight callers on one slot, each collision costing a second
+      // of server-side detection) the retries can run out before the
+      // constraint ever gets to speak, and the caller was then told "I could
+      // not complete that just now" and handed to a human, when the true
+      // answer was simply "that time is taken".
+      //
+      // So ask the database what is actually there now. Only a booking that
+      // really occupies the slot produces the conflict; anything else is a
+      // genuine failure and is reported as one.
+      if (isDeadlock(err)) {
+        const taken = await this.findConflictingBooking(
+          organizationId, start, end, booking.staffName ?? undefined, bookingId
+        );
+        if (taken) {
+          throw new ConflictException(
+            'That slot was just taken by another booking. Please choose another time.'
+          );
+        }
       }
       throw err;
     }

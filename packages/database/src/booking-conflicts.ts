@@ -50,14 +50,25 @@ export function isDeadlock(err: any): boolean {
  * caller should hear about. Every other error propagates untouched on the first
  * try.
  */
-export async function withDeadlockRetry<T>(write: () => Promise<T>, attempts = 3): Promise<T> {
+export async function withDeadlockRetry<T>(write: () => Promise<T>, attempts = 5): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await write();
     } catch (err: any) {
       if (!isDeadlock(err) || attempt >= attempts) throw err;
+      // Backoff scaled to how PostgreSQL finds a deadlock at all.
+      //
+      // It does not detect one until `deadlock_timeout` has passed — one
+      // second by default, on the server, before our own wait even begins. The
+      // previous schedule was 3 attempts at roughly 15–65ms, which is over in
+      // less time than a single detection takes: eight contending writers
+      // exhausted it, and the seven who lost were told there had been a
+      // technical problem rather than that the time was taken. That is the
+      // very outcome the header above says retrying exists to prevent.
+      //
       // Jittered, so retries of a pile-up do not re-collide in lockstep.
-      await new Promise((r) => setTimeout(r, 15 * attempt + Math.floor(Math.random() * 25)));
+      const base = [60, 180, 450, 900][Math.min(attempt - 1, 3)];
+      await new Promise((r) => setTimeout(r, base + Math.floor(Math.random() * base)));
     }
   }
 }

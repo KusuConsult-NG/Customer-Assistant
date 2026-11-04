@@ -102,6 +102,38 @@ describe('withDeadlockRetry', () => {
     expect(calls).toBe(3);
   });
 
+  it('waits long enough for PostgreSQL to have detected a deadlock at all', async () => {
+    // `deadlock_timeout` is one second by default: the server does not even
+    // LOOK for a cycle until then. The old schedule was 3 attempts at roughly
+    // 15–65ms, so the whole budget was spent inside a single detection window
+    // — eight contending callers exhausted it and were told there had been a
+    // technical problem, which is the outcome this retry exists to prevent.
+    const waits: number[] = [];
+    const realSetTimeout = global.setTimeout;
+    // @ts-expect-error — test double
+    global.setTimeout = (fn: any, ms: number) => {
+      waits.push(ms);
+      return realSetTimeout(fn, 0);
+    };
+
+    try {
+      await expect(
+        withDeadlockRetry(async () => {
+          throw deadlockError();
+        })
+      ).rejects.toThrow(/deadlock/);
+    } finally {
+      global.setTimeout = realSetTimeout;
+    }
+
+    // Four waits for five attempts, and they grow.
+    expect(waits).toHaveLength(4);
+    expect(waits[0]).toBeGreaterThanOrEqual(60);
+    expect(waits[waits.length - 1]).toBeGreaterThan(waits[0]);
+    // Enough, in total, to outlast more than one detection window.
+    expect(waits.reduce((a, b) => a + b, 0)).toBeGreaterThan(1000);
+  });
+
   it('propagates an unrelated failure on the first attempt', async () => {
     let calls = 0;
     await expect(
