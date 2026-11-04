@@ -9,6 +9,35 @@ import {
   Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft, PhoneOff
 } from 'lucide-react';
 
+/** One of the agency's voice lines, as `GET /api/organizations/me` returns it. */
+interface CarrierLine {
+  id: string;
+  provider: string;
+  phoneNumber: string;
+  forwardingNumber?: string | null;
+  isDefault?: boolean;
+}
+
+/** `GET /api/telephony/voice-readiness` — see VoiceReadinessService. */
+interface VoiceReadiness {
+  state: 'ready' | 'degraded' | 'blocked';
+  summary: string;
+  note: string;
+  twilio: {
+    voiceWebhook: { method: string; url: string };
+    statusCallback: { method: string; url: string };
+    mediaStream: string;
+  };
+  checks: Array<{
+    id: string;
+    label: string;
+    state: 'ready' | 'degraded' | 'blocked';
+    detail: string;
+    consequence: string;
+    remedy: string;
+  }>;
+}
+
 interface CallLog {
   id: string;
   fromNumber: string;
@@ -39,8 +68,14 @@ const PROVIDER_LABELS: Record<string, string> = {
 export default function TelephonyPage() {
   // Read for display only — see the note by the carrier panel.
   const [provider, setProvider] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('+234 1 700 8000');
-  const [forwardingTarget, setForwardingTarget] = useState('+234 803 123 4567 (MTN Business Line)');
+  // No invented defaults. These were '+234 1 700 8000' and '+234 803 123 4567
+  // (MTN Business Line)' — and `forwardingTarget` was never assigned from the
+  // API at all, so this screen displayed a phone number and an MTN forwarding
+  // line that belonged to nobody, as the agency's configuration, on the screen
+  // an operator uses to check whether their line works.
+  const [lines, setLines] = useState<CarrierLine[] | null>(null);
+  const [readiness, setReadiness] = useState<VoiceReadiness | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [demoMobileNumber, setDemoMobileNumber] = useState('');
   const [callLoading, setCallLoading] = useState(false);
   const [callStatus, setCallStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -56,9 +91,10 @@ export default function TelephonyPage() {
     try {
       const token = localStorage.getItem('ace_token');
       const headers = { Authorization: `Bearer ${token}` };
-      const [logsRes, orgRes] = await Promise.allSettled([
+      const [logsRes, orgRes, readyRes] = await Promise.allSettled([
         apiFetch(`${API_URL}/api/telephony/calls`, { headers }),
         apiFetch(`${API_URL}/api/organizations/me`, { headers }),
+        apiFetch(`${API_URL}/api/telephony/voice-readiness`, { headers }),
       ]);
 
       if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
@@ -68,11 +104,27 @@ export default function TelephonyPage() {
       }
       if (orgRes.status === 'fulfilled' && orgRes.value.ok) {
         const orgData = await orgRes.value.json();
-        if (orgData?.telephonyConfigs?.[0]) {
-          const cfg = orgData.telephonyConfigs[0];
-          if (cfg.provider) setProvider(cfg.provider);
-          if (cfg.phoneNumber) setPhoneNumber(cfg.phoneNumber);
+        const configs: CarrierLine[] = Array.isArray(orgData?.telephonyConfigs)
+          ? orgData.telephonyConfigs
+          : [];
+        setLines(configs);
+        if (configs[0]?.provider) setProvider(configs[0].provider);
+      }
+
+      // Readiness is OWNER/ADMIN. A 403 is not a fault — an AGENT simply does
+      // not get this panel — so it is reported as what it is rather than as a
+      // broken line.
+      if (readyRes.status === 'fulfilled') {
+        if (readyRes.value.ok) {
+          setReadiness(await readyRes.value.json());
+          setReadinessError(null);
+        } else if (readyRes.value.status === 403) {
+          setReadinessError('Call readiness is visible to owners and administrators.');
+        } else {
+          setReadinessError('Call readiness could not be checked.');
         }
+      } else {
+        setReadinessError('Call readiness could not be checked.');
       }
     } catch {
       setCallLogs([]);
@@ -364,30 +416,149 @@ export default function TelephonyPage() {
           </div>
         </div>
 
-        {/* Carrier Config */}
+        {/* The agency's real lines, read-only.
+            This was two editable inputs with no save path: an officer could
+            type a forwarding number into "Carrier Forwarding Target" and
+            nothing was sent anywhere. Both also started as invented values —
+            and the forwarding one was never assigned from the API at all — so
+            an unconfigured agency was shown a phone number and an MTN
+            business line it did not have. Editing happens at Settings → Voice
+            & Telephony, which is the one place that writes these. */}
         <div className="rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
           <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400" /> Carrier Forwarding
+            <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400" /> Lines on this agency
           </h3>
-          <div>
-            <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Assigned Business Number</label>
-            <input
-              type="text"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-blue-700 dark:text-blue-400 focus:outline-none focus:border-brand-600"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-600 dark:text-slate-400 block mb-1">Carrier Forwarding Target</label>
-            <input
-              type="text"
-              value={forwardingTarget}
-              onChange={(e) => setForwardingTarget(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-brand-600"
-            />
-          </div>
+
+          {lines === null ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">Loading…</p>
+          ) : lines.length === 0 ? (
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              No line is configured, so no call can reach this agency. Add one at Settings → Voice &amp; Telephony.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {lines.map((l) => (
+                <li key={l.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs text-blue-700 dark:text-blue-400">{l.phoneNumber}</span>
+                    {l.isDefault && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                        outbound default
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    {PROVIDER_LABELS[l.provider] ?? l.provider}
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Handoff goes to{' '}
+                    {l.forwardingNumber
+                      ? <span className="font-mono">{l.forwardingNumber}</span>
+                      : <span className="text-amber-700 dark:text-amber-400">nobody — the AI files a ticket instead of transferring</span>}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Link
+            href="/settings"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" /> Edit at Settings → Voice
+          </Link>
         </div>
+      </div>
+
+      {/* ── Can a call actually complete right now ──────────────────────────
+          Four separate things each produce a call that connects and goes
+          nowhere — no TTS key means the caller hears pure silence, because the
+          inbound TwiML is <Connect><Stream/> with no <Say> in it; no STT key
+          means they are never transcribed; a wrong API_BASE_URL means every
+          call is refused as unauthenticated. None of that was visible
+          anywhere, so a failed test call looked the same as a broken number. */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+            <Radio className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Can a call complete right now?
+          </h3>
+          <button
+            onClick={fetchCallLogs}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Re-check
+          </button>
+        </div>
+
+        {readinessError && (
+          <p className="text-xs text-slate-600 dark:text-slate-400">{readinessError}</p>
+        )}
+
+        {readiness && (
+          <>
+            <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+              readiness.state === 'ready'
+                ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10'
+                : readiness.state === 'degraded'
+                  ? 'border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10'
+                  : 'border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10'
+            }`}>
+              {readiness.state === 'ready'
+                ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-700 dark:text-emerald-400 mt-0.5" />
+                : <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${readiness.state === 'degraded' ? 'text-amber-700 dark:text-amber-400' : 'text-red-700 dark:text-red-400'}`} />}
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-900 dark:text-white">{readiness.summary}</p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{readiness.note}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {readiness.checks.map((c) => (
+                <div key={c.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${
+                      c.state === 'ready' ? 'bg-emerald-500' : c.state === 'degraded' ? 'bg-amber-500' : 'bg-red-500'
+                    }`} />
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">{c.label}</span>
+                    {/* The state is written out as well as coloured — a dot
+                        alone is unreadable to anyone who cannot distinguish
+                        the colours. */}
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
+                      {c.state}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-mono text-slate-700 dark:text-slate-300 mt-1 break-all">{c.detail}</p>
+                  {c.consequence && (
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{c.consequence}</p>
+                  )}
+                  {c.state !== 'ready' && c.remedy && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 italic">{c.remedy}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Generated from the same API_BASE_URL the signature check uses,
+                so what is shown here is what will be verified against. */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
+              <p className="text-xs font-bold text-slate-900 dark:text-white">Paste into the Twilio console for this number</p>
+              <div className="space-y-1 text-[11px] font-mono break-all">
+                <p className="text-slate-700 dark:text-slate-300">
+                  <span className="text-slate-500 dark:text-slate-400">A call comes in ({readiness.twilio.voiceWebhook.method}): </span>
+                  {readiness.twilio.voiceWebhook.url}
+                </p>
+                <p className="text-slate-700 dark:text-slate-300">
+                  <span className="text-slate-500 dark:text-slate-400">Call status changes ({readiness.twilio.statusCallback.method}): </span>
+                  {readiness.twilio.statusCallback.url}
+                </p>
+                <p className="text-slate-700 dark:text-slate-300">
+                  <span className="text-slate-500 dark:text-slate-400">Media stream (set by us, not in the console): </span>
+                  {readiness.twilio.mediaStream}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Transcript Modal */}

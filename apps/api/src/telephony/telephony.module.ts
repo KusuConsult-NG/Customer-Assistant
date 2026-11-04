@@ -12,6 +12,7 @@ import { CallbackDispatcherService } from './callback-dispatcher.service';
 import { CallbacksController } from './callbacks.controller';
 import { SipTrunkOriginationService } from './sip-trunk-origination.service';
 import { ElevenLabsApi } from '../agent-tools/elevenlabs-client';
+import { VoiceReadinessService } from './voice-readiness.service';
 
 @Module({
   // AuthModule exports JwtService, used by VoiceStreamGateway to authenticate
@@ -44,6 +45,12 @@ import { ElevenLabsApi } from '../agent-tools/elevenlabs-client';
     // avoided rather than worked around.
     ElevenLabsApi,
     SipTrunkOriginationService,
+
+    // Reports whether a call can actually complete. Nothing else answers that
+    // question: /api/health is liveness, /api/health/ready covers PostgreSQL
+    // and Redis, and every voice prerequisite fails as a call that connects
+    // and goes nowhere.
+    VoiceReadinessService,
   ],
   controllers: [TelephonyController, CallbacksController],
   exports: [

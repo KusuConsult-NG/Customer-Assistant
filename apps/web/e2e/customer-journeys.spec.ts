@@ -77,10 +77,36 @@ test.describe('Customer Care Agent Customer Journey E2E Tests', () => {
     expect(await script.text()).toMatch(/retired/i);
   });
 
-  test('J2: Telephony Dashboard & Voice Simulator', async ({ page }) => {
+  test('J2: the telephony screen reports the real line, and offers no simulator', async ({ page }) => {
     await page.goto('/telephony');
     await expect(pageHeading(page, /Telephone Service/i)).toBeVisible();
-    await expect(page.getByRole('button', { name: /Start Demo Simulation/i })).toBeVisible();
+
+    // "Start Demo Simulation" is GONE and must stay gone. It drove a
+    // fabricated session: an invented AI greeting, a RINGING → CONNECTED flip
+    // on a two-second timer regardless of what the carrier did, a waveform,
+    // and a box where an officer typed a "customer response" and got an
+    // invented AI reply. An operator testing a real number watched a
+    // conversation that never happened and concluded the line worked.
+    //
+    // This assertion used to require that button to be VISIBLE — so the suite
+    // was pinning the fabrication in place, and removing it is what made this
+    // test fail rather than pass.
+    await expect(page.getByRole('button', { name: /Start Demo Simulation/i })).toHaveCount(0);
+    await expect(page.getByText(/simulat/i)).toHaveCount(0);
+
+    // What the screen owes an operator instead: whether a call can actually
+    // complete, and the webhook URL to paste into the carrier console.
+    await expect(page.getByText(/Can a call complete right now\?/i)).toBeVisible();
+    await expect(page.getByText(/api\/telephony\/inbound\/twilio/)).toBeVisible();
+
+    // And the carrier panel shows the agency's real lines rather than two
+    // editable boxes that saved nothing. Those boxes also started life
+    // pre-filled with '+234 1 700 8000' and '+234 803 123 4567 (MTN Business
+    // Line)' — a number and a forwarding target that belonged to nobody,
+    // presented as this agency's configuration.
+    await expect(page.getByText(/Lines on this agency/i)).toBeVisible();
+    await expect(page.getByText('+234 1 700 8000')).toHaveCount(0);
+    await expect(page.getByText(/MTN Business Line/i)).toHaveCount(0);
   });
 
   test('J3: CRM Pipeline & Contacts Board', async ({ page }) => {

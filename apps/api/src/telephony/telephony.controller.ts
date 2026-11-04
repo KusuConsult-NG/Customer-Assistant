@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { TelephonyService } from './telephony.service';
+import { VoiceReadinessService } from './voice-readiness.service';
 import { CallbackDispatcherService } from './callback-dispatcher.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -18,8 +19,25 @@ export class TelephonyController {
     // promised callback was actually answered, so it is settled here, where
     // that callback lands. The dispatcher depends on TelephonyService, so the
     // reconciliation cannot live inside TelephonyService without a cycle.
-    private callbacks: CallbackDispatcherService
+    private callbacks: CallbackDispatcherService,
+    private voiceReadiness: VoiceReadinessService
   ) {}
+
+  /**
+   * Can this agency complete a phone call right now, and if not, why not.
+   *
+   * OWNER/ADMIN: it returns the public webhook URLs and names which provider
+   * credentials and which platform keys are present. It returns no credential
+   * VALUE — the stored token is reported as a length and its last four
+   * characters, which is what an operator can compare against the Twilio
+   * console, and the env-held keys are reported only as present or absent.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN')
+  @Get('voice-readiness')
+  async voiceReadinessReport(@Req() req: { user: AuthUser }) {
+    return this.voiceReadiness.forOrganization(req.user.organizationId);
+  }
 
   // ─── Inbound Webhooks (public — verified via HMAC inside service) ─────────────
 
