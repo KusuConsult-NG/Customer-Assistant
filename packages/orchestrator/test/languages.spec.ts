@@ -54,7 +54,7 @@ jest.mock('@ace/database', () => ({
   selfieUploadUrl: jest.fn(),
 }));
 
-import { ConversationOrchestrator } from '../src/index';
+import { buildSynthesisSystemPrompt, ConversationOrchestrator } from '../src/index';
 import {
   detectLanguage, asLanguage, t, TEMPLATE_KEYS, SUPPORTED_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -263,6 +263,57 @@ describe('orchestrator language wiring', () => {
     // and it still names the organization.
     expect(res.replyText).toContain('mataimaki');
     expect(res.replyText).toContain('Test Clinic');
+  });
+
+  it('does not promise a voice reply in a language the call cannot speak', async () => {
+    // Three of the five cannot be SPOKEN: the voice produces sounds the caller
+    // cannot understand. An explicit "switch to Yoruba" on a call was already
+    // refused honestly — but a caller who simply SPEAKS Yoruba never makes
+    // that request. Language detection set `lang` to yo, and the synthesis
+    // prompt then told the model "reply in the language the customer is
+    // WRITING in" and "this customer has been speaking Yoruba", on a phone
+    // call. The hosted-agent prompt has handled this since it was written;
+    // the live engine did not.
+    const prompt = buildSynthesisSystemPrompt({
+      basePrompt: 'You are a helpful assistant for Test Clinic.',
+      lang: 'yo',
+      channel: ChannelType.VOICE,
+    });
+
+    expect(prompt).toMatch(/cannot speak|can not speak/i);
+    expect(prompt).toMatch(/Yoruba/);
+    // And it offers the two routes that really exist.
+    expect(prompt).toMatch(/WhatsApp/i);
+    expect(prompt).toMatch(/colleague|human/i);
+    // It must NOT tell the model to answer in that language.
+    expect(prompt).not.toMatch(/Reply in the language the customer is writing in/i);
+  });
+
+  it('still mirrors the customer’s language in writing', async () => {
+    const prompt = buildSynthesisSystemPrompt({
+      basePrompt: 'You are a helpful assistant for Test Clinic.',
+      lang: 'yo',
+      channel: ChannelType.WHATSAPP,
+    });
+
+    expect(prompt).toMatch(/Reply in the language the customer is writing in/i);
+    expect(prompt).toMatch(/Yoruba/);
+    expect(prompt).not.toMatch(/cannot speak/i);
+  });
+
+  it('keeps the honesty rules whatever the channel', () => {
+    for (const channel of [ChannelType.VOICE, ChannelType.WHATSAPP]) {
+      const prompt = buildSynthesisSystemPrompt({
+        basePrompt: 'Never admit you are an AI.',
+        lang: 'en',
+        channel,
+      });
+      // The guardrails come after the tenant persona, so they win the conflict.
+      expect(prompt.indexOf('Never claim to be a person')).toBeGreaterThan(
+        prompt.indexOf('Never admit you are an AI.')
+      );
+      expect(prompt).toMatch(/Never invent prices/i);
+    }
   });
 
   it('escalates in Pidgin when the message itself signals Pidgin, and remembers it', async () => {

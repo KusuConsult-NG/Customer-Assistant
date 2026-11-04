@@ -762,6 +762,58 @@ export function describeConversationFlow(
 }
 
 /**
+ * The system prompt for RAG synthesis, assembled per conversation.
+ *
+ * Extracted so the language rule can be stated for the CHANNEL and tested
+ * directly. It used to be built inline and said, on every channel, "reply in
+ * the language the customer is writing in" plus "this customer has been
+ * speaking <language>".
+ *
+ * On a phone call that is a promise the voice cannot keep. Three of the five
+ * supported languages have no speakable voice — an explicit "switch to Yoruba"
+ * was already refused honestly, but a caller who simply SPEAKS Yoruba never
+ * makes that request: detection set the language, the model answered in it,
+ * and the caller heard sounds nobody could follow. The hosted-agent prompt has
+ * drawn this distinction since it was written; the live engine did not.
+ *
+ * The guardrails stay last, after the tenant's own persona, so a persona that
+ * instructs the opposite loses the conflict.
+ */
+export function buildSynthesisSystemPrompt(input: {
+  basePrompt: string;
+  lang: Language;
+  channel?: ChannelType | string;
+}): string {
+  const { basePrompt, lang } = input;
+  const onACall = input.channel === ChannelType.VOICE;
+  const speakable = SPEAKABLE_LANGUAGES.includes(lang);
+
+  const languageRule =
+    onACall && !speakable
+      ? `- The customer is speaking ${LANGUAGE_NAMES[lang]} and this is a PHONE CALL. You understand ` +
+        `them, but you cannot speak ${LANGUAGE_NAMES[lang]} aloud — the voice you are given does not ` +
+        `produce it, and attempting it makes sounds they cannot follow. Keep helping them, answer in ` +
+        `the simplest English you can, say plainly that you cannot speak their language on this call, ` +
+        `and offer the two things that really exist: a human colleague who speaks it, or continuing ` +
+        `on WhatsApp where it can be written. Never pretend to switch.`
+      : onACall
+        ? `- Reply in the language the customer is speaking. On a call you can speak English and ` +
+          `Nigerian Pidgin.`
+        : `- Reply in the language the customer is writing in. You support English, Nigerian Pidgin, ` +
+          `Hausa, Igbo and Yoruba; if the customer mixes languages, follow their most recent message.` +
+          (lang !== 'en' ? ` This customer has been writing in ${LANGUAGE_NAMES[lang]}.` : '');
+
+  return (
+    `${basePrompt}\n\n` +
+    `Non-negotiable rules:\n` +
+    `- If asked whether you are an AI, a bot, or a human, say plainly that you are an AI assistant. Never claim to be a person.\n` +
+    `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If you do not have a fact, say so and offer a human colleague.\n` +
+    `- Only state something as confirmed when the information above shows it was actually done.\n` +
+    languageRule
+  );
+}
+
+/**
  * What starts an enrollment. Deliberately narrow: these are people saying they
  * want to JOIN, not people asking what the scheme is. A question about the
  * plans should be answered, not turned into a form.
@@ -1392,14 +1444,11 @@ export class ConversationOrchestrator {
         // well-meaning (or careless) persona cannot instruct the model to claim it is
         // human, or to invent prices, availability or bank details — the exact
         // failure modes this file used to hardcode.
-        const systemPrompt =
-          `${basePrompt}\n\n` +
-          `Non-negotiable rules:\n` +
-          `- If asked whether you are an AI, a bot, or a human, say plainly that you are an AI assistant. Never claim to be a person.\n` +
-          `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If you do not have a fact, say so and offer a human colleague.\n` +
-          `- Only state something as confirmed when the information above shows it was actually done.\n` +
-          `- Reply in the language the customer is writing in. You support English, Nigerian Pidgin, Hausa, Igbo and Yoruba; if the customer mixes languages, follow their most recent message.` +
-          (lang !== 'en' ? ` This customer has been speaking ${LANGUAGE_NAMES[lang]}.` : '');
+        const systemPrompt = buildSynthesisSystemPrompt({
+          basePrompt,
+          lang,
+          channel: context.channel,
+        });
 
         const userContent = kbContextText
           ? `The following information from our knowledge base may be relevant:\n\n${kbContextText}\n\n---\n\nCustomer message: ${cleanInput}`
