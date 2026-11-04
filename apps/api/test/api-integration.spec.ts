@@ -109,10 +109,39 @@ describe('Customer Care Agent API Integration Tests', () => {
      * A throttled attempt is retried past the window once; still throttled is
      * reported as throttled, not as a contract failure.
      */
+    /**
+     * The limiter counts every registration the WHOLE suite makes, and these
+     * three assertions are about validation, not about throttling. So a
+     * throttled attempt clears the counter and tries once more: the contract
+     * is still checked exactly as written, rather than the build going red
+     * over how many tenants an unrelated spec happened to create first.
+     */
+    const clearRateLimiter = async () => {
+      const url = process.env.REDIS_URL;
+      if (!url) return false;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { createClient } = require('redis');
+        const client = createClient({ url });
+        await client.connect();
+        const keys = await client.keys('throttle:*');
+        if (keys.length) await client.del(keys);
+        await client.quit();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     const registerExpectingRejection = async (body: Record<string, unknown>) => {
+      // Cleared BEFORE the attempt, not only after a 429: by the time the
+      // limiter has refused once, another spec may already have refilled the
+      // bucket, and the retry fails for the same unrelated reason.
+      await clearRateLimiter();
       let res = await request(app.getHttpServer()).post('/api/auth/register').send(body);
       if (res.status === 429) {
-        await new Promise((r) => setTimeout(r, 2000));
+        const cleared = await clearRateLimiter();
+        if (!cleared) await new Promise((r) => setTimeout(r, 2000));
         res = await request(app.getHttpServer()).post('/api/auth/register').send(body);
       }
       if (res.status === 429) {

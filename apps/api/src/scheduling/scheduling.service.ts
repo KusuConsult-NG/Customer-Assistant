@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import {
-  prisma, phoneNumberVariants,
+  prisma, phoneNumberVariants, BUSY_BOOKING_STATUSES,
   isOverlapViolation, isDeadlock, withDeadlockRetry, recordAgencyAudit, type AuditActor } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
@@ -16,6 +16,17 @@ import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
  * importer and test keeps working against the one implementation.
  */
 export { isOverlapViolation, isDeadlock, withDeadlockRetry } from '@ace/database';
+
+/**
+ * How long a booking write may wait for its turn behind the slot lock.
+ *
+ * Generous because the lock serialises a pile-up: with eight callers on one
+ * slot the last of them waits for seven short transactions, not for anything
+ * slow. Prisma's own default is five seconds, which a contended burst can
+ * exceed — and a timeout here would be reported as a malfunction when the
+ * caller was simply in a queue.
+ */
+const BOOKING_LOCK_TIMEOUT_MS = 20_000;
 
 @Injectable()
 export class SchedulingService {
@@ -147,45 +158,92 @@ export class SchedulingService {
       );
     }
 
-    // The check above is a read-then-write race — under concurrency every in-flight
-    // request passes it before any commits (measured: 8 simultaneous requests all
-    // created a booking in the same slot). The database exclusion constraint
-    // `bookings_no_staff_overlap` is what actually guarantees exclusivity; this
-    // translates its violation into a 409 instead of a 500.
+    // ── Why the write takes a lock before it touches the table ─────────────
+    //
+    // The check above is a read-then-write race: under concurrency every
+    // in-flight request passes it before any of them commits (measured: 8
+    // simultaneous requests all created a booking in the same slot). The
+    // `bookings_no_staff_overlap` EXCLUSION constraint is what actually
+    // guarantees exclusivity, and it still does.
+    //
+    // But leaving the constraint to settle a PILE-UP is not free. Eight
+    // writers contending on one GiST exclusion key do not queue politely:
+    // PostgreSQL resolves the tangle by aborting transactions with 40P01, and
+    // it does not even look for the cycle until `deadlock_timeout` — a second,
+    // by default. Retrying is correct but racy in a way that matters: a loser
+    // can exhaust its attempts BEFORE any winner has committed, so asking the
+    // diary afterwards finds nothing, and a caller whose slot was merely taken
+    // is told the system broke and handed to a human. CI reproduced exactly
+    // that, twice.
+    //
+    // So the contention is removed instead of survived. A transaction-scoped
+    // advisory lock keyed on the agency, the staff member and the slot makes
+    // the writers queue; with the lock held, one read is authoritative, so the
+    // answer is either a real conflict or an insert that cannot collide. The
+    // lock is released by commit or rollback, so nothing can leak it, and two
+    // different slots that happen to hash together merely take turns.
+    //
+    // The constraint and the deadlock retry both stay. This makes them rare
+    // rather than redundant: the constraint is still the only thing that can
+    // guarantee exclusivity against a writer that does not pass through here.
+    const lockKey = `${organizationId}|${data.staffName ?? ''}|${start.toISOString()}`;
+
     let booking;
     try {
-      booking = await withDeadlockRetry(() => prisma.booking.create({
-        data: {
-          organizationId,
-          contactId: data.contactId,
-          serviceName: data.serviceName,
-          staffName: data.staffName,
-          startTime: start,
-          endTime: end,
-          notes: data.notes,
-          status: BookingStatus.CONFIRMED,
-        },
-        include: { contact: true },
-      }));
+      booking = await withDeadlockRetry(() =>
+        prisma.$transaction(
+          async (tx) => {
+            // `$executeRaw`, not `$queryRaw`: the function returns void, and
+            // Prisma cannot deserialise a void column.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
+
+            // Authoritative now: every competing writer is either behind this
+            // lock or already committed.
+            const taken = await tx.booking.findFirst({
+              where: {
+                organizationId,
+                ...(data.staffName ? { staffName: data.staffName } : {}),
+                status: { in: BUSY_BOOKING_STATUSES as unknown as string[] } as any,
+                startTime: { lt: end },
+                endTime: { gt: start },
+              },
+              select: { id: true },
+            });
+            if (taken) {
+              throw new ConflictException(
+                'That slot was just taken by another booking. Please choose another time.'
+              );
+            }
+
+            return tx.booking.create({
+              data: {
+                organizationId,
+                contactId: data.contactId,
+                serviceName: data.serviceName,
+                staffName: data.staffName,
+                startTime: start,
+                endTime: end,
+                notes: data.notes,
+                status: BookingStatus.CONFIRMED,
+              },
+              include: { contact: true },
+            });
+          },
+          { timeout: BOOKING_LOCK_TIMEOUT_MS }
+        )
+      );
     } catch (err: any) {
+      // A conflict raised inside the transaction is the answer, not a failure.
+      if (err instanceof ConflictException) throw err;
       if (isOverlapViolation(err)) {
         throw new ConflictException(
           'That slot was just taken by another booking. Please choose another time.'
         );
       }
-      // A deadlock that survived every retry is still an ANSWERABLE question.
-      //
-      // 40P01 means the write was rolled back, not that it was rejected — so
-      // nothing has been said about whether the slot is free. Under real
-      // contention (eight callers on one slot, each collision costing a second
-      // of server-side detection) the retries can run out before the
-      // constraint ever gets to speak, and the caller was then told "I could
-      // not complete that just now" and handed to a human, when the true
-      // answer was simply "that time is taken".
-      //
-      // So ask the database what is actually there now. Only a booking that
-      // really occupies the slot produces the conflict; anything else is a
-      // genuine failure and is reported as one.
+      // A deadlock that still survived every retry is an ANSWERABLE question:
+      // 40P01 means the write was rolled back, not rejected, so nothing has
+      // been said about whether the slot is free. Ask the diary before
+      // reporting a malfunction.
       if (isDeadlock(err)) {
         const taken = await this.findConflictingBooking(organizationId, start, end, data.staffName);
         if (taken) {

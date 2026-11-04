@@ -101,6 +101,84 @@ describe('Voice handoff to a human', () => {
   const runHandoff = (session: any, utterance = 'let me speak to a human') =>
     (handler as any).handOffCallToHuman(session, { readyState: 1 } as any, utterance);
 
+  /**
+   * ── The record of the call, when the summary cannot be written ────────────
+   *
+   * Teardown generated a summary first and wrote the CallLog INSIDE the
+   * `.then`. So when summarisation failed — an LLM outage, a quota, a network
+   * blip — the `.catch` logged and emitted, and the row was never touched:
+   * no `endedAt`, no duration, status stuck on IN_PROGRESS, and the TRANSCRIPT
+   * of what the agency said to a citizen discarded.
+   *
+   * The call history is the record. The summary is a convenience on top of it,
+   * and a convenience must not be able to destroy the thing it decorates.
+   */
+  describe('teardown', () => {
+    const seedCallLog = async (callSid: string, fromNumber: string) =>
+      prisma.callLog.create({
+        data: {
+          organizationId: orgId,
+          callSid,
+          fromNumber,
+          toNumber: '+15550001111',
+          direction: 'INBOUND',
+          status: 'IN_PROGRESS',
+          provider: 'TWILIO',
+        },
+      });
+
+    it('still closes the call record when the summary cannot be generated', async () => {
+      const session = makeSession({
+        conversationHistory: [
+          { sender: 'CUSTOMER', content: 'my water has been off for a week', timestamp: new Date() },
+          { sender: 'AI', content: 'I have logged that for the water board.', timestamp: new Date() },
+        ],
+        startedAt: new Date(Date.now() - 42_000),
+      });
+      await seedCallLog(session.callSid, session.fromNumber);
+
+      (voiceAi as any).generateSummary = jest.fn(async () => {
+        throw new Error('LLM provider returned 503');
+      });
+
+      await (handler as any).teardown(session, 'CALLER_DISCONNECTED');
+      // Teardown fires the summary without awaiting it; let it settle.
+      await new Promise((r) => setTimeout(r, 50));
+
+      const after = await prisma.callLog.findFirst({ where: { callSid: session.callSid } });
+      expect(after!.status).toBe('COMPLETED');
+      expect(after!.endedAt).not.toBeNull();
+      expect(after!.durationSeconds).toBeGreaterThan(0);
+      // The words themselves survive, which is the part that cannot be regenerated.
+      expect(after!.transcript).toContain('my water has been off for a week');
+      // No summary was produced, and none is invented.
+      expect(after!.summary ?? '').toBe('');
+    });
+
+    it('adds the summary when it does arrive, without rewriting the record', async () => {
+      const session = makeSession({
+        conversationHistory: [
+          { sender: 'CUSTOMER', content: 'I need a new bin', timestamp: new Date() },
+        ],
+        startedAt: new Date(Date.now() - 30_000),
+      });
+      await seedCallLog(session.callSid, session.fromNumber);
+
+      (voiceAi as any).generateSummary = jest.fn(async () => ({
+        summary: 'Citizen requested a replacement bin.',
+        sentiment: 'NEUTRAL',
+      }));
+
+      await (handler as any).teardown(session, 'CALLER_DISCONNECTED');
+      await new Promise((r) => setTimeout(r, 50));
+
+      const after = await prisma.callLog.findFirst({ where: { callSid: session.callSid } });
+      expect(after!.summary).toBe('Citizen requested a replacement bin.');
+      expect(after!.status).toBe('COMPLETED');
+      expect(after!.transcript).toContain('I need a new bin');
+    });
+  });
+
   it('transfers the live call to the forwarding number', async () => {
     stubTwilio(200);
     const session = makeSession();

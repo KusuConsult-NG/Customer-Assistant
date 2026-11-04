@@ -752,21 +752,40 @@ export class TwilioMediaStreamHandler {
       .map((m) => `${m.sender}: ${m.content}`)
       .join('\n');
 
-    // Run summary generation asynchronously — don't block teardown
+    // ── The record FIRST, the summary after ──────────────────────────────
+    //
+    // This used to write the CallLog inside the summariser's `.then`, so when
+    // summarisation failed — an LLM outage, an exhausted quota, a network blip
+    // — the `.catch` logged and the row was never touched: no `endedAt`, no
+    // duration, the status stuck on IN_PROGRESS, and the TRANSCRIPT of what
+    // the agency said to a citizen thrown away with it.
+    //
+    // The call history is the record; the summary is a convenience on top of
+    // it, and a convenience must not be able to destroy what it decorates.
+    // So the facts this platform already holds are written immediately, and
+    // the summary is added if and when it arrives.
+    await prisma.callLog
+      .updateMany({
+        where: { callSid },
+        data: {
+          status: 'COMPLETED',
+          durationSeconds: duration,
+          transcript: fullTranscript || null,
+          endedAt: new Date(),
+        },
+      })
+      .catch((err: any) =>
+        this.logger.error('Failed to close the call record on teardown', err, { callSid })
+      );
+
+    // Run summary generation asynchronously — don't block teardown.
     this.voiceAiService.generateSummary(fullTranscript)
       .then(({ summary, sentiment }) => {
         prisma.callLog.updateMany({
           where: { callSid },
-          data:  {
-            status:          'COMPLETED',
-            summary,
-            sentiment,
-            durationSeconds: duration,          // FIX 9: correct schema field name
-            transcript:      fullTranscript || null,
-            endedAt:         new Date(),
-          },
+          data: { summary, sentiment },
         }).catch((err: any) =>
-          this.logger.error('Failed to update CallLog on teardown', err, { callSid })
+          this.logger.error('Failed to attach the call summary', err, { callSid })
         );
 
         this.broadcast.emit(callSid, 'stream_ended', { callSid, duration, summary, reason });
