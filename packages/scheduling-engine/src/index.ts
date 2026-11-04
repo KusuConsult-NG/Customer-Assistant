@@ -1,66 +1,20 @@
-export interface TimeSlot {
-  startTime: string; // ISO String
-  endTime: string;   // ISO String
-  isAvailable: boolean;
-  staffId?: string;
-  staffName?: string;
-}
-
-export interface AvailabilityRule {
-  dayOfWeek: number; // 0 (Sun) to 6 (Sat)
-  startHour: number; // e.g. 9 for 9 AM
-  endHour: number;   // e.g. 17 for 5 PM
-  slotDurationMinutes: number; // e.g. 30
-  bufferDurationMinutes: number; // e.g. 10
-}
+// Appointment SEARCH does not live here.
+//
+// `SchedulingEngine.generateAvailableSlots` used to, and it was a SECOND
+// implementation of "what is free" — the one thing this repo keeps shared on
+// purpose, because two of them drift into a double booking that both paths
+// believed was legitimate. It was also wrong in three ways no caller ever hit
+// only because nothing imported it:
+//   - it read opening hours from a rule argument, so the AGENCY's configured
+//     openingHour/closingHour/serviceDays were ignored;
+//   - it set those hours with setUTCHours, so 09:00 meant 10:00 in Lagos;
+//   - its conflict test compared only the slot's edges, so a booking lying
+//     wholly INSIDE a slot (09:50-10:00 inside 09:40-10:10) left the slot
+//     marked available.
+// The real search is `findAvailableSlots` in @ace/database (availability.ts),
+// which takes a BusyLoader and the agency's own ServiceHours. Call that.
 
 export class SchedulingEngine {
-  /**
-   * Generates valid open availability slots for a given date based on working hours & buffer rules.
-   */
-  static generateAvailableSlots(
-    dateIso: string,
-    rule: AvailabilityRule,
-    existingBookings: Array<{ startTime: string; endTime: string }>
-  ): TimeSlot[] {
-    const targetDate = new Date(dateIso);
-    const slots: TimeSlot[] = [];
-
-    const start = new Date(dateIso);
-    start.setUTCHours(rule.startHour, 0, 0, 0);
-
-    const end = new Date(dateIso);
-    end.setUTCHours(rule.endHour, 0, 0, 0);
-
-    let current = new Date(start);
-
-    while (current.getTime() + rule.slotDurationMinutes * 60 * 1000 <= end.getTime()) {
-      const slotStart = new Date(current);
-      const slotEnd = new Date(current.getTime() + rule.slotDurationMinutes * 60 * 1000);
-
-      // Check collision with existing bookings
-      const isConflicting = existingBookings.some((b) => {
-        const bStart = new Date(b.startTime).getTime();
-        const bEnd = new Date(b.endTime).getTime();
-        return (
-          (slotStart.getTime() >= bStart && slotStart.getTime() < bEnd) ||
-          (slotEnd.getTime() > bStart && slotEnd.getTime() <= bEnd)
-        );
-      });
-
-      slots.push({
-        startTime: slotStart.toISOString(),
-        endTime: slotEnd.toISOString(),
-        isAvailable: !isConflicting,
-      });
-
-      // Increment current time by slot duration + buffer duration
-      current = new Date(slotEnd.getTime() + rule.bufferDurationMinutes * 60 * 1000);
-    }
-
-    return slots;
-  }
-
   /**
    * Generates standard iCal (.ics) string for calendar syncing (Google, Outlook, Apple Calendar).
    *

@@ -2,25 +2,26 @@ const { SchedulingEngine } = require('../dist/index.js');
 const assert = require('assert');
 
 async function testSchedulingEngine() {
-  console.log('Testing Dedicated Scheduling & iCal Calendar Engine...');
+  console.log('Testing iCal Calendar Invitation Builder...');
 
-  // Test 1: Availability Slots Generator
-  const rule = {
-    dayOfWeek: 1,
-    startHour: 9, // 9 AM
-    endHour: 12, // 12 PM (3 hours)
-    slotDurationMinutes: 30,
-    bufferDurationMinutes: 10,
-  };
-
-  const existingBookings = [
-    { startTime: new Date('2026-08-03T09:00:00Z').toISOString(), endTime: new Date('2026-08-03T09:30:00Z').toISOString() },
-  ];
-
-  const slots = SchedulingEngine.generateAvailableSlots('2026-08-03T00:00:00Z', rule, existingBookings);
-  assert.ok(slots.length > 0, 'Should generate available time slots');
-  assert.strictEqual(slots[0].isAvailable, false, 'First slot (9:00 AM) should be booked/unavailable');
-  assert.strictEqual(slots[1].isAvailable, true, 'Second slot (9:40 AM after 10m buffer) should be available');
+  // There must be NO availability search in this package. It had one, it was a
+  // second implementation of what @ace/database's findAvailableSlots already
+  // decides, and it disagreed with it (UTC-only hours, agency serviceDays
+  // ignored, a booking contained inside a slot not counted as a conflict).
+  // Two answers to "what is free" is how both paths confirm the same slot.
+  assert.strictEqual(
+    typeof SchedulingEngine.generateAvailableSlots,
+    'undefined',
+    'availability search belongs to findAvailableSlots in @ace/database, not here'
+  );
+  const exported = Object.getOwnPropertyNames(SchedulingEngine).filter(
+    (k) => typeof SchedulingEngine[k] === 'function'
+  );
+  assert.deepStrictEqual(
+    exported,
+    ['generateIcalEvent'],
+    `this package builds calendar invitations only; found ${exported.join(', ')}`
+  );
 
   // Test 2: iCal Event Generation
   const icalArgs = {

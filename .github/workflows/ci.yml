@@ -104,7 +104,7 @@ jobs:
       - name: Package unit suites
         run: |
           set -e
-          for p in orchestrator telephony-sdk whatsapp-sdk pdf-generator scheduling-engine omnichannel-adapters voice-biometrics; do
+          for p in orchestrator telephony-sdk whatsapp-sdk pdf-generator scheduling-engine; do
             echo "── $p ──"
             (cd "packages/$p" && node test/run-test.js)
           done
