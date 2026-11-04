@@ -71,7 +71,8 @@ async function req(path, init = {}) {
   const slow = health.ms > 10000;
   say(slow ? 'DEGRADED' : 'OK', 'API service', `HTTP 200 in ${health.ms}ms`,
     slow
-      ? `${Math.round(health.ms / 1000)}s is a COLD START. Twilio and ElevenLabs time out well before that, so an inbound call to a sleeping instance is dropped. Use a plan that does not spin down before taking real calls.`
+      ? `${Math.round(health.ms / 1000)}s is a COLD START. Twilio and ElevenLabs time out well before that, so an inbound call to a sleeping instance is dropped. ` +
+        `Two ways out: the Keep API warm workflow (.github/workflows/keep-warm.yml) pings this probe every 10 minutes so the instance never idles — set the API_BASE_URL repository variable to switch it on — or a plan that does not spin down, which is the only one that also survives a restart.`
       : null);
 
   // `/ready` is the one that refuses to pass without the double-booking

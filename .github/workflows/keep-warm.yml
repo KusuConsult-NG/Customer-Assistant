@@ -1,0 +1,82 @@
+# Keep the API awake, so a citizen's call is never the thing that wakes it.
+#
+# ── The problem this exists for ─────────────────────────────────────────────
+#
+# A Render instance that has spun down takes tens of seconds to come back —
+# 43s and 84s were measured against this deployment. A carrier gives a webhook
+# roughly 10 to 15 seconds before it gives up, so the first call after an idle
+# period is DROPPED, and the service then looks perfectly healthy when somebody
+# checks it by hand a minute later. That is the worst shape a fault can take:
+# invisible to the person testing, and only ever suffered by a citizen.
+#
+# An instance that is never idle never spins down. This pings the health probe
+# often enough to keep it that way.
+#
+# ── What this does and does not buy ─────────────────────────────────────────
+#
+# It makes a cold start UNLIKELY, not impossible. A deploy, a crash, a platform
+# restart or a run that GitHub delays all put the instance back to sleep, and
+# the next caller pays for it. It is a mitigation, not a guarantee — a paid
+# plan that does not spin down is the guarantee.
+#
+# Two things about GitHub's scheduler worth knowing before trusting it:
+#   · `schedule` is best-effort. Runs are queued and can be minutes late under
+#     load, so the interval is well inside the spin-down window rather than at
+#     its edge.
+#   · GitHub disables scheduled workflows in a repository with no activity for
+#     60 days. A quiet repo serving a live helpline is exactly the case where
+#     that bites, so `workflow_dispatch` is here to restart it by hand.
+#
+# The URL is not a secret — it is the public address citizens' carriers post
+# to — so it is a repository variable rather than a secret, and the job is
+# skipped cleanly when it is not set.
+
+name: Keep API warm
+
+on:
+  schedule:
+    # Every 10 minutes. Render's free tier sleeps after 15 minutes idle, so
+    # this leaves room for a late run without the instance dropping off.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the health probe
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          if [ -z "$API_BASE_URL" ]; then
+            echo "API_BASE_URL repository variable is not set — nothing to keep warm."
+            echo "Set it under Settings → Secrets and variables → Actions → Variables."
+            exit 0
+          fi
+
+          url="${API_BASE_URL%/}/api/health"
+          start=$(date +%s%3N)
+          # --max-time 120: a request that WAKES a sleeping instance is slow by
+          # definition, and timing out on it would defeat the point.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 "$url" || echo 000)
+          end=$(date +%s%3N)
+          ms=$((end - start))
+
+          echo "$url -> HTTP $code in ${ms}ms"
+
+          if [ "$code" != "200" ]; then
+            echo "::warning::Health probe answered $code. The API may be down, not merely asleep."
+            exit 1
+          fi
+
+          # Reported, not failed: a slow answer here means this run WOKE the
+          # instance, which is the job working rather than a fault. A carrier
+          # would have given up at ~10s, so it is worth seeing in the log.
+          if [ "$ms" -gt 10000 ]; then
+            echo "::warning::Took ${ms}ms — the instance had spun down. A real call arriving then would have been dropped."
+          fi
