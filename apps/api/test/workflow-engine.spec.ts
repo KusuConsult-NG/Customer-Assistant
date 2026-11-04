@@ -23,6 +23,7 @@ import { INestApplication } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { AppModule } from '../src/app.module';
 import { WorkflowTriggerService } from '../src/workflows/workflow-trigger.service';
+import { WorkflowActionsService } from '../src/workflows/workflow-actions.service';
 import { WorkflowExecutorService } from '../src/workflows/workflow-executor.service';
 import { createTenant, dropTenant, TestTenant } from './support/tenant';
 
@@ -118,6 +119,82 @@ describe('Workflow engine', () => {
     // "succeeds".
     const after = await prisma.contact.findUnique({ where: { id: contactId } });
     expect(after?.tags ?? []).toContain('automation-proof');
+  });
+
+  it('files an automation ticket with a reference of the shared shape', async () => {
+    // CREATE_TICKET carried its own numbering — `WF-<base36>-<THREE random
+    // bytes>` with its own retry loop. Three bytes is the entropy the shared
+    // module documents as NOT enough (CI returned 4,999 distinct numbers from
+    // a 5,000 burst), and the loop retried a P2002 on ANY field, so a
+    // duplicate on something else was reported as a numbering collision after
+    // five attempts.
+    const wf = await makeWorkflow(
+      [
+        { id: 'n1', kind: 'TRIGGER', label: 'Ticket raised' },
+        {
+          id: 'n2',
+          kind: 'ACTION',
+          action: 'CREATE_TICKET',
+          config: { subject: 'Automation follow-up', description: 'Raised by a workflow.' },
+        },
+      ],
+      [{ from: 'n1', to: 'n2' }],
+      'LEAD_CREATED',
+    );
+
+    await trigger.emit(agency.orgId, 'LEAD_CREATED', { contactId });
+    const run = await runFor(wf.id);
+    expect(run!.status).toBe('SUCCEEDED');
+
+    const ticket = await prisma.ticket.findFirst({
+      where: { organizationId: agency.orgId, subject: 'Automation follow-up' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(ticket).toBeTruthy();
+    // Same generator as every other ticket: prefix, base-36 time, five bytes.
+    expect(ticket!.ticketNumber).toMatch(/^WF-[0-9A-Z]+-[0-9A-F]{10}$/);
+  });
+
+  it('keeps a record of what an automation said to a citizen', async () => {
+    // SEND_WHATSAPP mirrored the message into the thread only IF a WhatsApp
+    // conversation already existed. For a citizen the agency had never
+    // messaged — which is most of the people an automation reaches first —
+    // the message was delivered and then appeared nowhere: an officer opening
+    // their record saw no sign the agency had written to them, and the next
+    // officer wrote again.
+    //
+    // Meta is not called here (no credentials in this environment), so the
+    // action fails at the send. The assertion is about the thread, which must
+    // exist for the mirror to have anywhere to go.
+    const fresh = await prisma.contact.create({
+      data: { organizationId: agency.orgId, phoneNumber: phone(), fullName: 'Never Messaged' },
+    });
+
+    const conversationsBefore = await prisma.conversation.count({
+      where: { organizationId: agency.orgId, contactId: fresh.id },
+    });
+    expect(conversationsBefore).toBe(0);
+
+    const actions = app.get(WorkflowActionsService);
+    await actions
+      .execute(
+        {
+          id: 'n1',
+          kind: 'ACTION',
+          action: 'SEND_WHATSAPP',
+          config: { to: fresh.phoneNumber, message: 'Your appointment is tomorrow at 10.' },
+        } as any,
+        { organizationId: agency.orgId, payload: {} } as any
+      )
+      .catch(() => {
+        /* no Meta credentials here: the send is expected to fail */
+      });
+
+    // Either way, nothing may be recorded as said when it was not sent.
+    const messages = await prisma.message.count({
+      where: { conversation: { organizationId: agency.orgId, contactId: fresh.id } },
+    });
+    expect(messages).toBe(0);
   });
 
   it('follows the branch a condition selects, and not the other one', async () => {

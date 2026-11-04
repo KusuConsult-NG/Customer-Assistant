@@ -75,6 +75,7 @@ export default function BroadcastsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [recipientsText, setRecipientsText] = useState('');
   const [useAllContacts, setUseAllContacts] = useState(false);
+  const [contactTotal, setContactTotal] = useState<number | null>(null);
   const [varValue1, setVarValue1] = useState('Valued Customer');
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -103,6 +104,12 @@ export default function BroadcastsPage() {
       if (cRes.status === 'fulfilled' && cRes.value.ok) {
         const cData = await cRes.value.json();
         setContacts(Array.isArray(cData) ? cData : cData?.data || []);
+        // The TOTAL, not the page. `contacts` is one page of fifty, and the
+        // "send to everyone" label was drawn from its length — so an agency
+        // with thousands of citizens read "Send to all 50" and believed it.
+        setContactTotal(
+          Array.isArray(cData) ? cData.length : typeof cData?.total === 'number' ? cData.total : null
+        );
       }
     } catch (e) {
       console.error(e);
@@ -185,17 +192,17 @@ export default function BroadcastsPage() {
       return;
     }
 
-    let recipientList: string[] = [];
-    if (useAllContacts) {
-      recipientList = contacts.map(c => c.phoneNumber).filter(Boolean);
-    } else {
-      recipientList = recipientsText
-        .split(/[\n,;]+/)
-        .map(p => p.trim())
-        .filter(p => p.length >= 7);
-    }
+    // "Everyone" is asked for by NAME and resolved on the server, from the
+    // database. Sending the page of contacts this browser happens to hold is
+    // what made "all" mean fifty.
+    const recipientList = useAllContacts
+      ? []
+      : recipientsText
+          .split(/[\n,;]+/)
+          .map(p => p.trim())
+          .filter(p => p.length >= 7);
 
-    if (recipientList.length === 0) {
+    if (!useAllContacts && recipientList.length === 0) {
       toast.warning('Add at least one recipient phone number.');
       return;
     }
@@ -210,7 +217,7 @@ export default function BroadcastsPage() {
         body: JSON.stringify({
           name: campaignName,
           templateId: selectedTemplateId,
-          recipients: recipientList,
+          ...(useAllContacts ? { audience: 'ALL_CONTACTS' } : { recipients: recipientList }),
           variables: { '1': varValue1 },
         }),
       });
@@ -599,7 +606,11 @@ export default function BroadcastsPage() {
                     onChange={(e) => setUseAllContacts(e.target.checked)}
                     className="rounded bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-blue-700 focus:ring-0"
                   />
-                  <span>Send to all {contacts.length} CRM registered contacts</span>
+                  <span>
+                    {contactTotal === null
+                      ? 'Send to every citizen on this agency\u2019s record'
+                      : `Send to all ${contactTotal} citizens on this agency\u2019s record`}
+                  </span>
                 </label>
 
                 {!useAllContacts && (

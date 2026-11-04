@@ -640,10 +640,55 @@ export class WhatsappService {
     });
   }
 
+  /**
+   * How many citizens one campaign may reach in a single request.
+   *
+   * The send is a loop of Meta calls inside the HTTP request, so a very large
+   * audience would outlive the connection: the officer would see a timeout
+   * while messages kept going out, which is the worst of both answers. The
+   * limit is REFUSED rather than silently truncated — truncating is the bug
+   * this whole path was carrying.
+   */
+  private static readonly MAX_BROADCAST_RECIPIENTS = Number(
+    process.env.BROADCAST_MAX_RECIPIENTS ?? 1000
+  );
+
+  /**
+   * Every citizen of this agency who has a number we can message.
+   *
+   * Read in batches, from the database, scoped to the agency — never from a
+   * list the browser supplied. Duplicates are collapsed on the canonical form,
+   * so a citizen stored twice under two shapes is messaged once.
+   */
+  private async allContactNumbers(organizationId: string): Promise<string[]> {
+    const seen = new Set<string>();
+    const BATCH = 1000;
+    let cursor: string | undefined;
+
+    for (;;) {
+      const page = await prisma.contact.findMany({
+        where: { organizationId, phoneNumber: { not: '' } },
+        select: { id: true, phoneNumber: true },
+        orderBy: { id: 'asc' },
+        take: BATCH,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+      if (page.length === 0) break;
+      for (const c of page) {
+        if (c.phoneNumber) seen.add(normalizePhoneNumber(c.phoneNumber));
+      }
+      if (page.length < BATCH) break;
+      cursor = page[page.length - 1].id;
+    }
+
+    return [...seen];
+  }
+
   async sendBroadcast(organizationId: string, data: {
     name: string;
     templateId: string;
-    recipients: string[];
+    recipients?: string[];
+    audience?: 'ALL_CONTACTS';
     variables?: Record<string, string>;
   }) {
     const template = await prisma.whatsAppTemplate.findFirst({
@@ -651,6 +696,30 @@ export class WhatsappService {
     });
 
     if (!template) throw new NotFoundException('WhatsApp template not found');
+
+    // Resolve WHO before anything is written, so the campaign row records the
+    // audience that was actually addressed.
+    const recipients =
+      data.audience === 'ALL_CONTACTS'
+        ? await this.allContactNumbers(organizationId)
+        : (data.recipients ?? []);
+
+    if (recipients.length === 0) {
+      throw new BadRequestException(
+        data.audience === 'ALL_CONTACTS'
+          ? 'This agency has no citizen records with a phone number, so there is nobody to broadcast to.'
+          : 'At least one recipient phone number is required.'
+      );
+    }
+
+    const limit = WhatsappService.MAX_BROADCAST_RECIPIENTS;
+    if (recipients.length > limit) {
+      throw new BadRequestException(
+        `That audience is ${recipients.length} citizens and this platform sends at most ${limit} ` +
+        `in one campaign, so NOTHING has been sent. Split it into smaller campaigns, or raise ` +
+        `BROADCAST_MAX_RECIPIENTS if this deployment's WhatsApp number can take the volume.`
+      );
+    }
 
     if (template.status !== 'APPROVED') {
       throw new BadRequestException(
@@ -670,8 +739,8 @@ export class WhatsappService {
         organizationId,
         templateId: data.templateId,
         name: data.name,
-        recipients: data.recipients,
-        totalCount: data.recipients.length,
+        recipients,
+        totalCount: recipients.length,
         status: 'SENDING',
         variables: data.variables ? (data.variables as any) : undefined,
         sentAt: new Date(),
@@ -688,7 +757,7 @@ export class WhatsappService {
     if (!config?.phoneNumberId || !config?.accessToken) {
       await prisma.broadcastCampaign.update({
         where: { id: campaign.id },
-        data: { sentCount: 0, failedCount: data.recipients.length, status: 'FAILED' },
+        data: { sentCount: 0, failedCount: recipients.length, status: 'FAILED' },
       });
       throw new BadRequestException(
         'WhatsApp is not connected for this organization, so no messages were sent. ' +
@@ -698,7 +767,7 @@ export class WhatsappService {
 
     const client = resolveWhatsAppClient(config);
 
-    for (const phone of data.recipients) {
+    for (const phone of recipients) {
       try {
         const components: any[] = [];
         if (data.variables && Object.keys(data.variables).length > 0) {

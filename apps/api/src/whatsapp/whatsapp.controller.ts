@@ -258,11 +258,19 @@ export class WhatsappController {
     @Body() body: {
       name: string;
       templateId: string;
-      recipients: string[];
+      recipients?: string[];
+      /**
+       * "Everyone" is resolved by the SERVER. The dashboard used to send the
+       * page of contacts the browser happened to hold — fifty — under a label
+       * reading "all N CRM registered contacts", so an agency with thousands
+       * of citizens reached fifty of them and was told that was everyone.
+       */
+      audience?: 'ALL_CONTACTS';
       variables?: Record<string, string>;
     }
   ) {
-    if (!body.name || !body.templateId || !body.recipients || body.recipients.length === 0) {
+    const hasList = Array.isArray(body.recipients) && body.recipients.length > 0;
+    if (!body.name || !body.templateId || (!hasList && body.audience !== 'ALL_CONTACTS')) {
       throw new BadRequestException('Campaign name, templateId, and at least one recipient phone number are required');
     }
     return this.whatsappService.sendBroadcast(req.user.organizationId, body);
@@ -276,11 +284,19 @@ export class WhatsappController {
     @Body() body: {
       name: string;
       templateId: string;
-      recipients: string[];
+      recipients?: string[];
+      /**
+       * "Everyone" is resolved by the SERVER. The dashboard used to send the
+       * page of contacts the browser happened to hold — fifty — under a label
+       * reading "all N CRM registered contacts", so an agency with thousands
+       * of citizens reached fifty of them and was told that was everyone.
+       */
+      audience?: 'ALL_CONTACTS';
       variables?: Record<string, string>;
     }
   ) {
-    if (!body.name || !body.templateId || !body.recipients || body.recipients.length === 0) {
+    const hasList = Array.isArray(body.recipients) && body.recipients.length > 0;
+    if (!body.name || !body.templateId || (!hasList && body.audience !== 'ALL_CONTACTS')) {
       throw new BadRequestException('Campaign name, templateId, and at least one recipient phone number are required');
     }
     return this.whatsappService.sendBroadcast(req.user.organizationId, body);

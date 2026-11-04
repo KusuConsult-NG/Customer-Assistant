@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { prisma, withWhatsAppCredentials, phoneNumberVariants } from '@ace/database';
+import { prisma, withWhatsAppCredentials, phoneNumberVariants, createTicketWithUniqueNumber } from '@ace/database';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { randomBytes } from 'crypto';
 import { AceLogger } from '../config/logger';
@@ -82,15 +82,39 @@ export class WorkflowActionsService {
     const result: any = await client.sendTextMessage(to, message);
     const wamid = result?.messages?.[0]?.id ?? null;
 
-    // Mirror into the conversation transcript so an agent opening the thread sees
-    // what the automation said on the business's behalf.
+    // Mirror into the conversation transcript so an officer opening the thread
+    // sees what the automation said on the agency's behalf.
+    //
+    // The thread is CREATED if it does not exist. It used to be written only
+    // when one already did, which is the opposite of when it matters: for a
+    // citizen the agency had never messaged — most of the people an
+    // automation reaches first — the message went out and then appeared
+    // nowhere. An officer opening their record saw no sign the agency had
+    // written to them, and wrote again.
+    //
+    // Only ever after Meta accepted the send, so nothing is recorded as said
+    // that was not sent.
     const contact = await prisma.contact.findFirst({
       where: { organizationId: ctx.organizationId, phoneNumber: { in: phoneNumberVariants(to) } },
     });
     if (contact) {
-      const conversation = await prisma.conversation.findFirst({
+      let conversation = await prisma.conversation.findFirst({
         where: { organizationId: ctx.organizationId, contactId: contact.id, channel: 'WHATSAPP' },
       });
+      if (!conversation) {
+        conversation = await prisma.conversation
+          .create({
+            data: { organizationId: ctx.organizationId, contactId: contact.id, channel: 'WHATSAPP' },
+          })
+          // Two automations reaching the same citizen at once: the unique
+          // constraint settles it and the loser re-reads.
+          .catch(async (err: any) => {
+            if (err?.code !== 'P2002') throw err;
+            return prisma.conversation.findFirst({
+              where: { organizationId: ctx.organizationId, contactId: contact.id, channel: 'WHATSAPP' },
+            });
+          });
+      }
       if (conversation) {
         await prisma.message.create({
           data: {
@@ -121,10 +145,18 @@ export class WorkflowActionsService {
       ? String(config.priority).toUpperCase()
       : 'MEDIUM';
 
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const ticketNumber = `WF-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
-      try {
-        const ticket = await prisma.ticket.create({
+    // The SHARED generator, not a fourth hand-rolled one.
+    //
+    // This built `WF-<base36 time>-<THREE random bytes>` with its own retry
+    // loop. Three bytes is 2^24, which the shared module documents as not
+    // enough — the birthday bound makes a repeat likelier than not across a
+    // few thousand references in one millisecond, and CI measured exactly
+    // that. The loop also retried a P2002 on ANY column, so a duplicate on
+    // something else was retried four more times and then reported as a
+    // numbering collision.
+    const ticket = await createTicketWithUniqueNumber(
+      (ticketNumber) =>
+        prisma.ticket.create({
           data: {
             organizationId: ctx.organizationId,
             contactId,
@@ -135,15 +167,11 @@ export class WorkflowActionsService {
             status: 'OPEN',
             updatedAt: new Date(),
           },
-        });
-        log.info('workflow_action_ticket_created', { organizationId: ctx.organizationId, ticketId: ticket.id });
-        return { output: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, priority } };
-      } catch (err: any) {
-        if (err?.code === 'P2002' && attempt < 4) continue;
-        throw err;
-      }
-    }
-    throw new Error('CREATE_TICKET: could not allocate a unique ticket number.');
+        }),
+      'WF'
+    );
+    log.info('workflow_action_ticket_created', { organizationId: ctx.organizationId, ticketId: ticket.id });
+    return { output: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, priority } };
   }
 
   private async updateLeadStatus(config: any, ctx: ActionContext): Promise<ActionResult> {

@@ -212,6 +212,92 @@ describe('WhatsApp templates and broadcasts', () => {
       expect(campaign!.failedCount).toBe(2);
     });
 
+    it('reaches EVERY citizen when the audience is "everyone", not one page of them', async () => {
+      // The dashboard offered a checkbox reading "Send to all N CRM registered
+      // contacts", where N was the length of the FIRST PAGE of contacts the
+      // browser happened to have loaded — fifty. An agency with five thousand
+      // citizens ticked a box that said "all", and four thousand nine hundred
+      // and fifty of them were never sent anything. The number on the label
+      // made it read as the agency's whole list.
+      //
+      // "Everyone" is now resolved by the server, from the database, and a
+      // recipient list from the client is ignored when it is asked for.
+      const approved = await seedTemplate(agency.orgId, { status: 'APPROVED' });
+      const made: string[] = [];
+      for (let i = 0; i < 60; i++) {
+        const c = await prisma.contact.create({
+          data: {
+            organizationId: agency.orgId,
+            phoneNumber: `+23470${String(Date.now()).slice(-6)}${String(i).padStart(2, '0')}`,
+            fullName: `Citizen ${i}`,
+          },
+        });
+        made.push(c.phoneNumber);
+      }
+
+      // WhatsApp is not connected in this suite, so the send refuses — but the
+      // campaign row records who it WOULD have reached, which is the number
+      // under test.
+      await owner()
+        .post('/api/whatsapp/broadcasts')
+        .send({
+          name: 'Everyone',
+          templateId: approved.id,
+          audience: 'ALL_CONTACTS',
+          // Deliberately wrong, and deliberately short: it must be ignored.
+          recipients: [made[0]],
+        })
+        .expect(400);
+
+      const campaign = await prisma.broadcastCampaign.findFirst({
+        where: { organizationId: agency.orgId, name: 'Everyone' },
+      });
+      expect(campaign).not.toBeNull();
+      // More than one page, and no more than the agency actually has.
+      expect(campaign!.totalCount).toBeGreaterThanOrEqual(60);
+      const contactsInAgency = await prisma.contact.count({ where: { organizationId: agency.orgId } });
+      expect(campaign!.totalCount).toBeLessThanOrEqual(contactsInAgency);
+    }, 60_000);
+
+    it('never reaches another agency\'s citizens, whoever asks for "everyone"', async () => {
+      const approved = await seedTemplate(agency.orgId, { status: 'APPROVED' });
+      const theirs = await prisma.contact.create({
+        data: {
+          organizationId: other.orgId,
+          phoneNumber: `+23471${String(Date.now()).slice(-7)}`,
+          fullName: 'Belongs To Another Agency',
+        },
+      });
+
+      await owner()
+        .post('/api/whatsapp/broadcasts')
+        .send({ name: 'Scoped', templateId: approved.id, audience: 'ALL_CONTACTS' })
+        .expect(400);
+
+      const campaign = await prisma.broadcastCampaign.findFirst({
+        where: { organizationId: agency.orgId, name: 'Scoped' },
+      });
+      expect(JSON.stringify(campaign!.recipients)).not.toContain(theirs.phoneNumber);
+    }, 60_000);
+
+    it('refuses an audience it cannot deliver in one request rather than truncating it', async () => {
+      // Silently sending to some of them is the bug above wearing a different
+      // hat. The operator is told the number, the limit, and what to do.
+      const approved = await seedTemplate(agency.orgId, { status: 'APPROVED' });
+      const tooMany = Array.from({ length: 1001 }, (_, i) => `+23472${String(i).padStart(9, '0')}`);
+
+      const res = await owner()
+        .post('/api/whatsapp/broadcasts')
+        .send({ name: 'Too many', templateId: approved.id, recipients: tooMany })
+        .expect(400);
+
+      expect(res.body.message).toMatch(/1001/);
+      expect(res.body.message).toMatch(/nothing (has been |was )?sent/i);
+      expect(
+        await prisma.broadcastCampaign.count({ where: { organizationId: agency.orgId, name: 'Too many' } })
+      ).toBe(0);
+    });
+
     it('requires a name, a template and at least one recipient', async () => {
       const t = await seedTemplate(agency.orgId, { status: 'APPROVED' });
       await owner().post('/api/whatsapp/broadcasts').send({ templateId: t.id, recipients: ['+234801'] }).expect(400);
