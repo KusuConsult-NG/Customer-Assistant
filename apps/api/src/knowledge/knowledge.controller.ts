@@ -68,7 +68,9 @@ export class KnowledgeController {
   @Roles('OWNER', 'ADMIN')
   @Post('crawl-website')
   async crawlWebsite(@Req() req: { user: AuthUser }, @Body() body: CrawlWebsiteDto) {
-    return this.knowledgeService.crawlAndIndexWebsite(req.user.organizationId, body.url);
+    return this.knowledgeService.crawlAndIndexWebsite(req.user.organizationId, body.url, {
+      maxPages: body.maxPages,
+    });
   }
 
   /**

@@ -535,103 +535,263 @@ export class KnowledgeService {
   /**
    * Crawl a website URL, extract text content, and index it directly into the Knowledge Base.
    */
-  async crawlAndIndexWebsite(organizationId: string, websiteUrl: string) {
+  /**
+   * Fetch one URL, following redirects WITHOUT weakening the SSRF guard.
+   *
+   * Refusing redirects outright was safe and useless: a government site that
+   * redirects `/mda` to `/mda/` could not be indexed at all, and the operator
+   * was told to "supply the final URL directly" — which they cannot know
+   * without a browser. Every hop is RE-VALIDATED instead, so a public URL
+   * still cannot bounce us onto an internal address; it just takes the hop
+   * rather than giving up.
+   */
+  private async fetchFollowingRedirects(
+    startUrl: string,
+    maxHops = 5
+  ): Promise<{ finalUrl: string; contentType: string; buffer: Buffer }> {
+    let url = startUrl;
+    for (let hop = 0; hop <= maxHops; hop++) {
+      // Re-checked on EVERY hop. Checking only the first is the hole that
+      // refusing redirects was working around.
+      await assertPublicHttpUrl(url);
+
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'ACE-Platform-Bot/1.0 (+knowledge-base crawler)' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(20_000),
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) {
+          throw new BadRequestException(`${url} answered ${response.status} with no destination.`);
+        }
+        url = new URL(location, url).toString();
+        continue;
+      }
+      if (!response.ok) {
+        throw new BadRequestException(`Failed to fetch URL ${url} (HTTP ${response.status})`);
+      }
+      return {
+        finalUrl: url,
+        contentType: response.headers.get('content-type') ?? '',
+        buffer: Buffer.from(await response.arrayBuffer()),
+      };
+    }
+    throw new BadRequestException(`${startUrl} redirected more than ${maxHops} times.`);
+  }
+
+  /** Same-origin links on a page, for walking a site rather than one page. */
+  private sameOriginLinks(html: string, pageUrl: string, limit: number): string[] {
+    const origin = new URL(pageUrl).origin;
+    const found = new Set<string>();
+    for (const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["']/gi)) {
+      if (found.size >= limit) break;
+      try {
+        const u = new URL(m[1], pageUrl);
+        if (u.origin !== origin) continue;
+        if (!/^https?:$/.test(u.protocol)) continue;
+        u.hash = '';
+        // Assets are not pages. PDFs ARE indexed, so they stay.
+        if (/\.(png|jpe?g|gif|svg|webp|css|js|ico|woff2?|mp4|zip)$/i.test(u.pathname)) continue;
+        found.add(u.toString());
+      } catch {
+        // A malformed href is not a reason to abandon the page.
+      }
+    }
+    return [...found];
+  }
+
+  /** URLs a site advertises about itself. Far better than guessing paths. */
+  private async sitemapUrls(origin: string, limit: number): Promise<string[]> {
+    const out = new Set<string>();
+    for (const path of ['/sitemap.xml', '/wp-sitemap.xml', '/sitemap_index.xml']) {
+      if (out.size >= limit) break;
+      try {
+        const { buffer, contentType } = await this.fetchFollowingRedirects(origin + path);
+        if (!/xml|text/i.test(contentType)) continue;
+        const xml = buffer.toString('utf-8');
+        const locs = [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1]);
+        for (const loc of locs) {
+          if (out.size >= limit) break;
+          // A sitemap index points at more sitemaps; follow one level.
+          if (/\.xml($|\?)/i.test(loc)) {
+            try {
+              const sub = await this.fetchFollowingRedirects(loc);
+              for (const m of sub.buffer.toString('utf-8').matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)) {
+                if (out.size >= limit) break;
+                if (!/\.xml($|\?)/i.test(m[1])) out.add(m[1]);
+              }
+            } catch {
+              // One unreadable child sitemap must not lose the others.
+            }
+            continue;
+          }
+          out.add(loc);
+        }
+      } catch {
+        // No sitemap at this path is normal, not a failure.
+      }
+    }
+    return [...out];
+  }
+
+  /**
+   * Index a web page, a PDF, or a whole site.
+   *
+   * Three things this refused to do, each of which made a public government
+   * site unindexable while reporting the refusal as a property of the site:
+   *
+   *  - **Redirects.** `/mda` → `/mda/` ended the crawl with "supply the final
+   *    URL directly", which the operator cannot know without a browser.
+   *  - **PDFs.** `Only HTML and plain-text pages can be indexed` — while the
+   *    upload path has parsed PDFs all along, through the same extractor this
+   *    now calls. A state's service booklet is a PDF; refusing it is refusing
+   *    the content.
+   *  - **More than one page.** One URL per request, so indexing a site meant
+   *    guessing its paths by hand.
+   *
+   * `maxPages > 1` walks the site: the sitemap first, because a site that
+   * advertises its own URLs is better than any guess, then same-origin links
+   * from the starting page. Bounded, same-origin only, and every hop
+   * re-validated against the SSRF guard.
+   */
+  async crawlAndIndexWebsite(
+    organizationId: string,
+    websiteUrl: string,
+    opts: { maxPages?: number } = {}
+  ) {
     let cleanUrl = websiteUrl.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       cleanUrl = 'https://' + cleanUrl;
     }
+    const maxPages = Math.min(Math.max(opts.maxPages ?? 1, 1), 40);
 
-    // SSRF prevention.
-    //
-    // The previous check inspected the hostname STRING only, so it was defeated by
-    // anything that is not a literal private address: a public DNS name that resolves
-    // to 169.254.169.254 or a VPC address, decimal/hex notation (`http://2130706433/`),
-    // or an IPv6-mapped form (`http://[::ffff:169.254.169.254]/`). The hostname is now
-    // RESOLVED and every returned address checked against private ranges before we
-    // fetch, and redirects are refused so a public URL cannot bounce us internally.
-    await assertPublicHttpUrl(cleanUrl);
-
-    let html = '';
-    try {
-      const response = await fetch(cleanUrl, {
-        headers: { 'User-Agent': 'ACE-Platform-Bot/1.0 (+knowledge-base crawler)' },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(15_000),
-      });
-
-      if (response.status >= 300 && response.status < 400) {
-        throw new BadRequestException(
-          `${cleanUrl} redirects elsewhere. Please supply the final URL directly.`
-        );
-      }
-      if (!response.ok) {
-        throw new BadRequestException(`Failed to fetch URL ${cleanUrl} (HTTP ${response.status})`);
-      }
-
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!/text\/html|text\/plain|application\/xhtml/i.test(contentType)) {
-        throw new BadRequestException(
-          `${cleanUrl} returned "${contentType || 'an unknown content type'}". ` +
-          `Only HTML and plain-text pages can be indexed.`
-        );
-      }
-
-      html = await response.text();
-    } catch (err: any) {
+    // The first page is fetched before anything else, so a bad URL fails as
+    // itself rather than as "nothing could be indexed".
+    const first = await this.fetchFollowingRedirects(cleanUrl).catch((err) => {
       if (err instanceof BadRequestException) throw err;
-      throw new BadRequestException(`Could not reach website URL ${cleanUrl}: ${err?.message || 'Network error'}`);
+      throw new BadRequestException(
+        `Could not reach website URL ${cleanUrl}: ${err?.message || 'Network error'}`
+      );
+    });
+
+    const queue: string[] = [first.finalUrl];
+    if (maxPages > 1) {
+      const origin = new URL(first.finalUrl).origin;
+      for (const u of await this.sitemapUrls(origin, maxPages * 2)) {
+        if (!queue.includes(u)) queue.push(u);
+      }
+      if (queue.length < maxPages && /html/i.test(first.contentType)) {
+        for (const u of this.sameOriginLinks(first.buffer.toString('utf-8'), first.finalUrl, maxPages * 2)) {
+          if (!queue.includes(u)) queue.push(u);
+        }
+      }
     }
 
-    // Strip scripts, styles, and HTML tags to get clean plain text
-    const textContent = html
-      .replace(/<script\b[^<]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style\b[^<]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const indexed: Array<{ url: string; documentId: string; chunks: number }> = [];
+    const skipped: Array<{ url: string; reason: string }> = [];
+    const causes: unknown[] = [];
 
-    if (!textContent || textContent.length < 50) {
-      throw new BadRequestException('No readable text content could be extracted from this website URL.');
+    for (const pageUrl of queue.slice(0, maxPages)) {
+      try {
+        const page =
+          pageUrl === first.finalUrl ? first : await this.fetchFollowingRedirects(pageUrl);
+        const result = await this.indexOnePage(organizationId, page);
+        indexed.push({ url: page.finalUrl, documentId: result.documentId, chunks: result.chunks });
+      } catch (err: any) {
+        // One unreadable page must not lose the rest of the site, and the
+        // reason is kept rather than reduced to a count.
+        skipped.push({ url: pageUrl, reason: err?.message ?? String(err) });
+        causes.push(err);
+      }
     }
 
-    let domain = cleanUrl;
-    try { domain = new URL(cleanUrl).hostname; } catch {}
-    const title = `Website: ${domain}`;
+    if (indexed.length === 0) {
+      // A page that could not be READ is the caller's problem — a 400 naming
+      // it. A database or embedding failure is OURS, and flattening it into a
+      // 400 would tell an operator their URL was wrong when the service was
+      // broken. The original error is rethrown so it surfaces as what it is.
+      const first_cause = causes[0];
+      if (first_cause && !(first_cause instanceof BadRequestException)) throw first_cause;
+      throw new BadRequestException(
+        skipped[0]?.reason ?? 'No readable content could be extracted from that address.'
+      );
+    }
+
+    const chunksIndexed = indexed.reduce((n, p) => n + p.chunks, 0);
+    return {
+      // Kept for the single-page callers that read these.
+      documentId: indexed[0].documentId,
+      title: `Website: ${new URL(indexed[0].url).hostname}`,
+      chunksIndexed,
+      status: 'INDEXED',
+      semanticSearchEnabled: true,
+      pagesIndexed: indexed.length,
+      pagesFound: queue.length,
+      indexed,
+      skipped,
+      message:
+        `Indexed ${indexed.length} page(s), ${chunksIndexed} section(s) from ${first.finalUrl}` +
+        (skipped.length ? `; ${skipped.length} could not be read.` : '.'),
+    };
+  }
+
+  /** One fetched resource → one knowledge document. HTML or PDF or text. */
+  private async indexOnePage(
+    organizationId: string,
+    page: { finalUrl: string; contentType: string; buffer: Buffer }
+  ): Promise<{ documentId: string; chunks: number }> {
+    const isPdf = /application\/pdf/i.test(page.contentType);
+    const isText = /text\/html|text\/plain|application\/xhtml|text\/markdown/i.test(page.contentType);
+    if (!isPdf && !isText) {
+      throw new BadRequestException(
+        `${page.finalUrl} returned "${page.contentType || 'an unknown content type'}", which cannot be read as text.`
+      );
+    }
+
+    let body: Buffer;
+    let mimeType: string;
+    if (isPdf) {
+      // Straight to the same extractor the upload path uses. Decoding a PDF
+      // as UTF-8 would index its binary as if it were prose.
+      body = page.buffer;
+      mimeType = 'application/pdf';
+    } else {
+      const textContent = page.buffer
+        .toString('utf-8')
+        .replace(/<script\b[^<]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style\b[^<]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!textContent || textContent.length < 50) {
+        throw new BadRequestException('No readable text content could be extracted.');
+      }
+      body = Buffer.from(textContent, 'utf-8');
+      mimeType = 'text/plain';
+    }
+
+    let hostname = page.finalUrl;
+    try { hostname = new URL(page.finalUrl).hostname; } catch {}
+    const path = (() => { try { return new URL(page.finalUrl).pathname; } catch { return ''; } })();
 
     const doc = await prisma.knowledgeDocument.create({
       data: {
         organizationId,
-        title,
-        fileName: cleanUrl,
-        fileSize: Buffer.byteLength(textContent, 'utf-8'),
-        mimeType: 'text/html',
-        storageUrl: cleanUrl,
+        // The path is in the title because a site indexed page by page
+        // otherwise produces a list of identical rows.
+        title: `Website: ${hostname}${path && path !== '/' ? path : ''}`,
+        fileName: page.finalUrl,
+        fileSize: body.byteLength,
+        mimeType: isPdf ? 'application/pdf' : 'text/html',
+        storageUrl: page.finalUrl,
         status: 'PROCESSING',
       },
     });
 
-    // Crawled pages go through the same chunk → embed → upsert path as uploads.
-    // This used to write raw 500-character slices straight to PostgreSQL and set
-    // status INDEXED with no embeddings at all, so semantic search never returned a
-    // single crawled page even though the UI reported it as indexed.
-    const { chunkCount, vectorised } = await this.indexDocumentInline(
-      organizationId,
-      doc.id,
-      Buffer.from(textContent, 'utf-8'),
-      'text/plain'
-    );
-
-    return {
-      documentId: doc.id,
-      title: doc.title,
-      chunksIndexed: chunkCount,
-      status: 'INDEXED',
-      semanticSearchEnabled: vectorised,
-      message: vectorised
-        ? `Successfully crawled and indexed ${chunkCount} sections from ${cleanUrl}`
-        : `Crawled ${chunkCount} sections from ${cleanUrl}, but embeddings could not be ` +
-          `generated — only keyword search will find this page.`,
-    };
+    const { chunkCount } = await this.indexDocumentInline(organizationId, doc.id, body, mimeType);
+    return { documentId: doc.id, chunks: chunkCount };
   }
 }
 
