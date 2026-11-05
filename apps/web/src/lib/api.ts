@@ -465,6 +465,21 @@ export const api = {
       });
       return handleResponse(res);
     },
+    /**
+     * Deletes the agent and rebuilds it from the catalogue. The LAST resort
+     * for drift a sync cannot clear, and it CHANGES THE AGENT ID — so an
+     * imported number, an attached WhatsApp line and post-call attribution
+     * all stop matching until re-pointed. The server refuses without the
+     * confirmation, and reports what it restored and what still needs doing.
+     */
+    recreate: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/recreate`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ confirmReplacesAgent: true }),
+      });
+      return handleResponse(res);
+    },
     /** Read-only comparison of the remote agent against this repo. Writes nothing. */
     getStatus: async () => {
       const res = await fetch(`${API_URL}/api/agent-provisioning/status`, { headers: getHeaders() });

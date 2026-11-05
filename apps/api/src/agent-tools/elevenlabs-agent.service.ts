@@ -34,7 +34,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { encryptSecret, isEncrypted, prisma, secretFingerprint } from '@ace/database';
+import { Prisma, encryptSecret, isEncrypted, prisma, secretFingerprint } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import {
@@ -486,6 +486,130 @@ export class ElevenLabsAgentService {
    * Bring the ElevenLabs side into line with this repo, creating whatever is
    * missing and updating whatever exists. Safe to run repeatedly.
    */
+  /**
+   * Delete the agent and build it again from the catalogue.
+   *
+   * The LAST resort for drift, and it exists because the gentler route can
+   * fail silently. An agent created before tools were first-class carries
+   * inline `prompt.tools`; a sync sends an empty list to clear them, and when
+   * the workspace does not clear them there is nothing further the API can
+   * do — the stale definitions keep the URL and auth they were created with,
+   * lack every tool added since, and the agent goes on calling them.
+   *
+   * WHAT THIS COSTS, and why it is not the default:
+   *
+   *  - The AGENT ID CHANGES. Anything holding the old one stops matching —
+   *    an imported phone number, an attached WhatsApp line, and post-call
+   *    webhooks, which identify the tenant by agent id alone.
+   *  - A conversation in progress on the old agent ends with it.
+   *
+   * So the attachments are READ FIRST and restored afterwards, and what could
+   * not be restored is named rather than left for the operator to discover.
+   * `confirmReplacesAgent` is required and never defaulted, exactly as the
+   * voice cutover is.
+   */
+  async recreateAgent(
+    organizationId: string,
+    opts: { confirmReplacesAgent?: boolean } = {}
+  ): Promise<{
+    previousAgentId: string | null;
+    agentId: string | null;
+    deleted: boolean;
+    detail: string;
+    restored: string[];
+    manualFollowUp: string[];
+    sync: SyncReport | null;
+  }> {
+    if (opts.confirmReplacesAgent !== true) {
+      throw new BadRequestException(
+        'Recreating replaces the agent and CHANGES ITS ID, so an imported number, an ' +
+        'attached WhatsApp line and post-call webhook attribution all stop matching until ' +
+        'they are re-pointed. Pass confirmReplacesAgent: true to proceed.'
+      );
+    }
+
+    const { config, apiKey } = await this.tenant(organizationId);
+    const previousAgentId = config?.agentId ?? null;
+    if (!previousAgentId) {
+      throw new BadRequestException('No agent is provisioned for this agency, so there is nothing to replace.');
+    }
+
+    // Read the attachments BEFORE anything is destroyed. Afterwards the ids
+    // that referenced the old agent are the only record that they existed.
+    const previousWhatsAppId = config?.whatsappPhoneNumberId ?? null;
+    const previousPhoneNumberId = config?.phoneNumberId ?? null;
+
+    const client = this.client(apiKey);
+    let deleted = false;
+    let detail: string;
+    try {
+      await client.conversationalAi.agents.delete(previousAgentId);
+      deleted = true;
+      detail = `Deleted agent ${previousAgentId}.`;
+    } catch (err: any) {
+      // An agent already gone is not a failure — the end state is the same,
+      // and refusing here would leave a tenant unable to recover from a
+      // deletion made in the dashboard.
+      const message = err?.message ?? String(err);
+      if (/not.?found|404/i.test(message)) {
+        deleted = true;
+        detail = `Agent ${previousAgentId} was already absent in the workspace.`;
+      } else {
+        throw new BadRequestException(`ElevenLabs refused to delete the agent: ${message}`);
+      }
+    }
+
+    // Clear OUR record before rebuilding, so a sync creates rather than
+    // trying to update an id that no longer exists.
+    await prisma.hostedAgentConfig.update({
+      where: { organizationId },
+      data: { agentId: null, toolIds: Prisma.DbNull, phoneNumberId: null },
+    });
+
+    const sync = await this.syncAgent(organizationId);
+
+    const restored: string[] = [];
+    const manualFollowUp: string[] = [];
+
+    if (previousWhatsAppId) {
+      // The LINE still exists in the workspace — only the agent assigned to
+      // it was replaced — so re-assigning is a configuration change, not a
+      // reconnection.
+      try {
+        await client.conversationalAi.whatsappAccounts.update(previousWhatsAppId, {
+          agentId: sync.agentId,
+        } as any);
+        restored.push(`WhatsApp line ${previousWhatsAppId} re-assigned to the new agent.`);
+      } catch (err: any) {
+        manualFollowUp.push(
+          `WhatsApp line ${previousWhatsAppId} could NOT be re-assigned (${err?.message ?? err}). ` +
+          'Re-attach it with POST /api/agent-provisioning/whatsapp/attach, or it will answer with the deleted agent.'
+        );
+      }
+    }
+
+    if (previousPhoneNumberId) {
+      // Not re-imported automatically: importing a number IS the voice
+      // cutover, and doing it unasked as a side effect of a repair is
+      // exactly the kind of silent decision confirmVoiceCutover exists to
+      // prevent.
+      manualFollowUp.push(
+        `The imported phone number (${previousPhoneNumberId}) no longer points at an agent. ` +
+        'Re-import it with POST /api/agent-provisioning/numbers/import and confirmVoiceCutover: true.'
+      );
+    }
+
+    return {
+      previousAgentId,
+      agentId: sync.agentId ?? null,
+      deleted,
+      detail,
+      restored,
+      manualFollowUp,
+      sync,
+    };
+  }
+
   async syncAgent(organizationId: string): Promise<SyncReport> {
     const { org, config, apiKey } = await this.tenant(organizationId);
     const baseUrl = this.baseUrl();

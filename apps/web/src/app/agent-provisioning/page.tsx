@@ -323,6 +323,34 @@ export default function AgentProvisioningPage() {
               <Note key={i} kind="warn"><p>{d}</p></Note>
             ))}
 
+            {/* Offered only when a sync has something it cannot clear.
+                Destructive, so it is behind a confirm and says what breaks
+                rather than only what it fixes. */}
+            {status?.configured && (status?.drift ?? []).length > 0 && (
+              <div className="pt-1">
+                <button
+                  onClick={() => {
+                    const ok = window.confirm(
+                      'Replace the agent?\n\n' +
+                      'This DELETES it and builds a new one, so the agent ID changes. An ' +
+                      'attached WhatsApp line is re-assigned automatically; an imported phone ' +
+                      'number must be re-imported, and post-call webhooks will not match the ' +
+                      'old agent.\n\nOnly do this when a sync cannot clear the drift above.'
+                    );
+                    if (!ok) return;
+                    run('recreate', () => api.agentProvisioning.recreate(), (r: any) => {
+                      setReport(r.sync ?? null);
+                    });
+                  }}
+                  disabled={busy !== null}
+                  className={btnDanger}
+                >
+                  {busy === 'recreate' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Replace the agent
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2 pt-1">
               {!status?.configured ? (
                 <button

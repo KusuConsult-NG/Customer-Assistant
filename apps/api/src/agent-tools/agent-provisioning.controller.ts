@@ -109,6 +109,23 @@ export class AgentProvisioningController {
   }
 
   @Roles('OWNER', 'ADMIN')
+  /**
+   * Replaces the agent when a sync cannot clear its drift — the last resort,
+   * because the agent ID CHANGES and everything holding the old one stops
+   * matching. Attachments are read first and restored after; what could not
+   * be is named rather than left to be discovered.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('recreate')
+  recreateAgent(
+    @Req() req: { user: AuthUser },
+    @Body() body: { confirmReplacesAgent?: boolean }
+  ) {
+    return this.agents.recreateAgent(req.user.organizationId, {
+      confirmReplacesAgent: body?.confirmReplacesAgent === true,
+    });
+  }
+
   @Post('create')
   create(@Req() req: { user: AuthUser }): Promise<SyncReport> {
     return this.agents.createAgent(req.user.organizationId);
