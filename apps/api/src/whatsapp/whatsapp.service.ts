@@ -620,8 +620,14 @@ export class WhatsappService {
 
     if (!conversation) throw new NotFoundException(`Conversation not found: ${conversationId}`);
 
-    // Resolve client first — throws early if credentials missing before writing to DB
-    const config = conversation.organization.whatsAppConfigs[0];
+    // Resolve client first — throws early if credentials missing before writing to DB.
+    //
+    // DECRYPTED, via withWhatsAppCredentials. This read used the raw row, so an
+    // officer replying from the console handed Meta a `v1.…` ciphertext as the
+    // access token. That does not fail loudly: Meta rejects it as a bad
+    // credential, and the operator goes looking for a fault in their Meta app
+    // for a message the platform never encrypted its way out of.
+    const config = withWhatsAppCredentials(conversation.organization.whatsAppConfigs[0] as any);
     const client = resolveWhatsAppClient(config ?? {});
 
     // Attempt sending via Meta WhatsApp Cloud API

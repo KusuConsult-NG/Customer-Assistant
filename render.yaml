@@ -136,6 +136,18 @@ services:
         sync: false
       # Render terminates TLS at its proxy; trust 1 hop so per-IP rate limiting
       # sees real client IPs instead of the proxy's (see main.ts).
+      # A WhatsApp conversation that goes quiet is closed with a sign-off
+      # pointing at the State's own channels. Minutes of silence before that
+      # happens; CONVERSATION_CLOSING_DISABLED=1 turns it off entirely.
+      #
+      # It sends UNPROMPTED messages to citizens, so two bounds are built in
+      # and are not configurable: never during a handoff or a flow in
+      # progress, and never outside WhatsApp's 24-hour window, which Meta
+      # refuses anyway.
+      - key: CONVERSATION_CLOSING_MINUTES
+        value: "5"
+      - key: CONVERSATION_CLOSING_DISABLED
+        sync: false
       - key: TRUST_PROXY
         value: "1"
       # Also not read — see WHATSAPP_ACCESS_TOKEN above.
