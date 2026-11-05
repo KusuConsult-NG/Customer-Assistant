@@ -126,6 +126,16 @@ export class OrganizationsController {
    * Whether a citizen's message can actually arrive — asked of Meta, not
    * inferred from what we hold. Read-only, OWNER/ADMIN, no credential value.
    */
+  /**
+   * Asks Meta to deliver this agency's messages here. Two subscriptions, both
+   * attempted, and the outcome READ BACK rather than inferred from a 200.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('whatsapp-config/subscribe')
+  async subscribeWhatsAppWebhooks(@Req() req: { user: AuthUser }) {
+    return this.orgsService.subscribeWhatsAppWebhooks(req.user.organizationId);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Get('whatsapp-config/readiness')
   async whatsAppReadiness(@Req() req: { user: AuthUser }) {

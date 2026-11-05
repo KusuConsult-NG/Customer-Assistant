@@ -506,6 +506,35 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [loadingReadiness, setLoadingReadiness] = useState(false);
 
+  const [subscribing, setSubscribing] = useState(false);
+  const [subscribeResult, setSubscribeResult] = useState<any | null>(null);
+  const [subscribeError, setSubscribeError] = useState<string | null>(null);
+
+  const subscribeWebhooks = async () => {
+    setSubscribing(true);
+    setSubscribeError(null);
+    setSubscribeResult(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/subscribe`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // A refused subscribe must not render as a successful one.
+        setSubscribeError(body?.message || `Could not subscribe (HTTP ${res.status}).`);
+        return;
+      }
+      setSubscribeResult(body);
+      // Re-read readiness, so the panel is not left showing a stale verdict.
+      await checkReadiness();
+    } catch (err: any) {
+      setSubscribeError(err?.message || 'Could not reach the API.');
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
   const checkReadiness = async () => {
     setLoadingReadiness(true);
     setReadinessError(null);
@@ -618,7 +647,36 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
             >
               {loadingReadiness ? 'Asking Meta…' : 'Run check'}
             </button>
+            {/* Meta accepts a citizen's message and delivers it NOWHERE
+                unless the app is subscribed to the account AND to the
+                `messages` field. Both are one button rather than a trip
+                through two Meta screens. */}
+            <button
+              type="button"
+              onClick={subscribeWebhooks}
+              disabled={subscribing || !wa.phoneNumberId}
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
+            >
+              {subscribing ? 'Subscribing…' : 'Subscribe to Meta webhooks'}
+            </button>
           </div>
+
+          {subscribeResult && (
+            <div className="mt-3 space-y-1">
+              {subscribeResult.steps?.map((st: any, i: number) => (
+                <p
+                  key={i}
+                  className={`text-xs ${st.ok ? 'text-slate-500 dark:text-slate-400' : 'text-red-600 dark:text-red-400'}`}
+                >
+                  {st.ok ? '✓' : '✗'} {st.step} — {st.detail}
+                </p>
+              ))}
+              <p className="text-xs font-medium pt-1">{subscribeResult.nextStep}</p>
+            </div>
+          )}
+          {subscribeError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">{subscribeError}</p>
+          )}
 
           {readinessError && (
             <p className="mt-2 text-xs text-red-600 dark:text-red-400">{readinessError}</p>
