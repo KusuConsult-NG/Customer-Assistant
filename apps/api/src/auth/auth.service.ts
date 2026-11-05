@@ -4,8 +4,8 @@ import { prisma } from '@ace/database';
 import { generateUniqueSlug } from '../common/slug';
 import { UserRole, IndustryType } from '@ace/shared-types';
 import * as bcrypt from 'bcryptjs';
+import { sendTransactionalEmail } from '../common/mailer';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
-import { Resend } from 'resend';
 
 /**
  * bcrypt work factor. Kept in one place so every password write path (register,
@@ -32,37 +32,20 @@ export class AuthService {
    * "check your inbox" for mail that was never sent.
    */
   private async sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-    const resendKey = process.env.RESEND_API_KEY;
-    if (!resendKey) {
-      console.warn(`[AuthService] RESEND_API_KEY is not set — "${subject}" email to ${to} was NOT sent.`);
+    // One transport for every provider, chosen by configuration — see
+    // common/mailer.ts. It used to be `new Resend(key)` right here, so
+    // replacing a vendor whose key had been rejected meant a code change and
+    // a deploy, on the one capability whose absence stops a new officer ever
+    // signing in. And SMTP is not an alternative on this host: Render blocks
+    // outbound 25, 465 and 587.
+    const result = await sendTransactionalEmail({ to, subject, html });
+    if (!result.ok) {
+      // Named, with the provider's own words. "Failed to send" sends an
+      // operator to check a key that may be perfectly good.
+      console.error(`[AuthService] "${subject}" to ${to} was NOT sent: ${result.error}`);
       return false;
     }
-    try {
-      // Resend RESOLVES with `{ data, error }` and does not throw on an API
-      // error. So a `try/catch` around this call catches a network fault and
-      // nothing else: an invalid key, an unverified sending domain, a
-      // suppressed address and a rate limit all came back as success, and this
-      // returned true for mail that was refused. Every caller then reported
-      // "check your inbox" for an email that does not exist — which is the
-      // whole reason this helper returns a boolean in the first place.
-      const result: any = await new Resend(resendKey).emails.send({
-        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
-        to,
-        subject,
-        html,
-      });
-      if (result?.error) {
-        console.error(
-          `[AuthService] Resend REFUSED "${subject}" to ${to}:`,
-          result.error?.message ?? JSON.stringify(result.error)
-        );
-        return false;
-      }
-      return true;
-    } catch (err: any) {
-      console.error(`[AuthService] Failed to send "${subject}" email:`, err?.message ?? err);
-      return false;
-    }
+    return true;
   }
 
   async registerOrganization(dto: {

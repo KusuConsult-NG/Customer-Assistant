@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma, withTelephonyCredentials, withWhatsAppCredentials, decryptSecret } from '@ace/database';
+import { resolveEmailProvider, emailProviderProblem, verifyEmailProvider } from '../common/mailer';
 
 /**
  * Does each provider actually answer us?
@@ -301,33 +302,44 @@ export class ProviderHealthService {
     };
   }
 
-  /** Resend. Every route back into a staff account is an email. */
+  /** Whichever email provider is configured. Every route into a staff account is an email. */
   private async email(): Promise<ProviderCheck> {
-    const key = process.env.RESEND_API_KEY;
+    const provider = resolveEmailProvider();
     const base = {
-      id: 'resend',
-      label: 'Email delivery (Resend)',
+      id: 'email',
+      label: provider ? `Email delivery (${provider.id})` : 'Email delivery',
       consequence:
         'No staff invitation, email verification or password reset can be delivered, and ' +
         'those endpoints still answer 200. Recovery is then npm run user:password, which ' +
         'needs database credentials.',
     };
-    if (!key) {
-      return { ...base, state: 'not_configured', detail: 'RESEND_API_KEY is not set.' };
+    if (!provider) {
+      return {
+        ...base,
+        state: 'not_configured',
+        detail: emailProviderProblem() ?? 'No email provider is configured.',
+      };
     }
-    // Listing domains proves the key AND is where an unverified sending domain
-    // shows up — the most common reason mail is accepted and never delivered.
-    const r = await probe('https://api.resend.com/domains', {
-      headers: { Authorization: `Bearer ${key}` },
-    });
+
+    // Asks the provider, whichever it is. Reading an env var cannot tell a
+    // working key from a revoked one — this deployment's Resend key is present
+    // and answers "API key is invalid".
+    const verified = await verifyEmailProvider();
+
+    // A WARNING here is not a lesser finding — it means the key was accepted
+    // and a send will still be refused, which costs exactly what a bad key
+    // costs: no invitation, no verification, no password reset. Reporting it
+    // as `ok` with a note beside it is how a screen stays green on a
+    // deployment where nothing can be delivered.
+    const blocked = !verified.ok || !!verified.warning;
     return {
       ...base,
-      state: r.ok ? 'ok' : 'failed',
-      detail: r.ok
-        ? 'Resend accepted the key.'
-        : r.error
-          ? `Could not reach Resend: ${r.error}`
-          : `Resend refused the key (HTTP ${r.status}). ${r.body ?? ''}`,
+      state: blocked ? 'failed' : 'ok',
+      detail: verified.warning
+        ? verified.warning
+        : verified.ok
+          ? `${provider.id} accepted the credential.`
+          : verified.error ?? `${provider.id} refused the credential.`,
     };
   }
 
@@ -346,7 +358,30 @@ export class ProviderHealthService {
     ).map((r) => withWhatsAppCredentials(r)!);
 
     if (rows.length === 0) {
-      return { ...base, state: 'not_configured', detail: 'This agency has no WhatsApp line configured.' };
+      // Naming the trap, because the deployment-level variables LOOK like the
+      // line. `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` and
+      // `WHATSAPP_BUSINESS_ID` are declared in render.yaml and read NOWHERE:
+      // sending always uses the agency's own stored row, and inbound messages
+      // are resolved by Meta's `phoneNumberId` against that same table. So a
+      // deployment can hold all three, show them set in the Render dashboard,
+      // and still log "no config found" for every message a citizen sends.
+      // Only WHATSAPP_APP_SECRET and WHATSAPP_VERIFY_TOKEN are used, and both
+      // are for verifying the webhook rather than for being reachable on it.
+      const inertEnv = ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_BUSINESS_ID']
+        .filter((k) => !!process.env[k]?.trim());
+      return {
+        ...base,
+        state: 'not_configured',
+        detail:
+          'This agency has no WhatsApp line configured. Store one at Settings → WhatsApp ' +
+          '(POST /api/organizations/whatsapp-config), which is the only place the platform ' +
+          'reads a line from.' +
+          (inertEnv.length
+            ? ` This deployment sets ${inertEnv.join(', ')}, and nothing reads ${
+                inertEnv.length === 1 ? 'it' : 'them'
+              } — a deployment-level token does not make any agency reachable.`
+            : ''),
+      };
     }
 
     const results: string[] = [];

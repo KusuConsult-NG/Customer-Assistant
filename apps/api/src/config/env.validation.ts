@@ -67,6 +67,53 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
   { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
   { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
+  // ── Email, over HTTPS, from whichever provider is configured ──────────────
+  //
+  // SMTP is NOT an alternative on this host: Render blocks outbound traffic to
+  // ports 25, 465 and 587 on free web services, so nodemailer against any
+  // relay times out with a network error that reads nothing like a
+  // configuration problem. Every provider below is used through its HTTPS API
+  // on 443.
+  //
+  // One of these is enough. `EMAIL_PROVIDER` names which to use when several
+  // are present; without it the first one set wins, in the order listed, so a
+  // deployment already holding RESEND_API_KEY keeps working unchanged.
+  {
+    key: 'EMAIL_PROVIDER',
+    required: false,
+    description:
+      'Which email provider to use: resend | brevo | sendgrid | postmark | mailgun. ' +
+      'Optional — without it, the first configured key wins.',
+  },
+  {
+    key: 'BREVO_API_KEY',
+    required: false,
+    description:
+      'Brevo (ex-Sendinblue) HTTPS API key. An alternative to RESEND_API_KEY. Brevo also ' +
+      'requires EMAIL_FROM to be one of the account\'s VERIFIED senders — a valid key with ' +
+      'an unverified sender accepts every probe and refuses every send, so check ' +
+      'GET /api/diagnostics/providers after setting it.',
+  },
+  {
+    key: 'SENDGRID_API_KEY',
+    required: false,
+    description: 'SendGrid HTTPS API key. An alternative to RESEND_API_KEY.',
+  },
+  {
+    key: 'POSTMARK_SERVER_TOKEN',
+    required: false,
+    description: 'Postmark server token. An alternative to RESEND_API_KEY.',
+  },
+  {
+    key: 'MAILGUN_API_KEY',
+    required: false,
+    description: 'Mailgun private API key. Needs MAILGUN_DOMAIN as well.',
+  },
+  {
+    key: 'MAILGUN_DOMAIN',
+    required: false,
+    description: 'The Mailgun sending domain. Required with MAILGUN_API_KEY, useless without it.',
+  },
   {
     key: 'RESEND_API_KEY',
     required: false,

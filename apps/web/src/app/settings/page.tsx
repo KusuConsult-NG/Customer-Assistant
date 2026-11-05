@@ -493,7 +493,48 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   const [showVerifyToken, setShowVerifyToken] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // What Meta says this account holds. `null` is NOT an empty account — it is
+  // "not asked yet" — and `linesError` carries Meta's own refusal, because
+  // "could not load" is what somebody reads instead of the actual cause.
+  const [lines, setLines] = useState<any[] | null>(null);
+  const [linesError, setLinesError] = useState<string | null>(null);
+  const [loadingLines, setLoadingLines] = useState(false);
+
   const webhookUrl = `${API_URL}/api/whatsapp/webhook`;
+
+  /**
+   * The Phone Number ID is not the phone number, and Meta rarely shows the
+   * two together — so this field was a free-text box filled in from another
+   * tab, and getting it wrong is SILENT: the row saves, this screen reports
+   * the line connected, and the number that actually rings belongs to
+   * somebody else's test account. That is how this deployment came to hold
+   * Meta's sandbox "+1 555-671-9884 / Test Number".
+   *
+   * So ask Meta, with the credential already stored server-side. The operator
+   * never handles the token to find out which line is theirs.
+   */
+  const loadLines = async () => {
+    setLoadingLines(true);
+    setLinesError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/numbers`, {
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // A failed load must not render as an account with no numbers on it.
+        setLines(null);
+        setLinesError(body?.message || `Could not ask Meta (HTTP ${res.status}).`);
+        return;
+      }
+      setLines(Array.isArray(body.numbers) ? body.numbers : []);
+    } catch (err: any) {
+      setLines(null);
+      setLinesError(err?.message || 'Could not reach the API.');
+    } finally {
+      setLoadingLines(false);
+    }
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -538,6 +579,78 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
         <div>
           <label className={labelCls}>Phone Number ID</label>
           <input type="text" value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} className={inputCls} placeholder="From Meta → WhatsApp → Phone Numbers" />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={loadLines}
+              disabled={loadingLines || !wa.phoneNumberId}
+              title={wa.phoneNumberId ? '' : 'Save a line first — Meta is asked with the stored credential.'}
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
+            >
+              {loadingLines ? 'Asking Meta…' : "Show this account's lines"}
+            </button>
+            {!wa.phoneNumberId && (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Save a line first — Meta is asked with the stored credential.
+              </span>
+            )}
+          </div>
+
+          {linesError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">{linesError}</p>
+          )}
+
+          {lines && lines.length === 0 && (
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Meta answered, and this business account holds no phone numbers.
+            </p>
+          )}
+
+          {lines && lines.length > 0 && (
+            <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-500/20 divide-y divide-slate-200 dark:divide-slate-500/20">
+              {lines.map((n: any) => (
+                <div key={n.phoneNumberId} className="p-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">
+                      {n.displayPhoneNumber || '(no number)'}{' '}
+                      <span className="font-normal text-slate-500 dark:text-slate-400">
+                        {n.verifiedName || ''}
+                      </span>
+                    </p>
+                    <p className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate">
+                      {n.phoneNumberId}
+                    </p>
+                    {/* A sandbox number only exchanges messages with recipients
+                        added by hand in Meta, so it proves the stack works and
+                        is never a number to publish. Saying so here is cheaper
+                        than finding out after it is announced. */}
+                    {n.isMetaTestNumber && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Meta test number — only reaches recipients you add in Meta. Not for publishing.
+                      </p>
+                    )}
+                  </div>
+                  {n.isConnectedHere ? (
+                    <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                      Connected here
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneNumberId(n.phoneNumberId || '');
+                        if (n.displayPhoneNumber) setDisplayPhoneNumber(n.displayPhoneNumber);
+                        showToast('Fields filled — enter the token and save to switch line.');
+                      }}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold whitespace-nowrap"
+                    >
+                      Use this line
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div>
           <label className={labelCls}>WhatsApp Business Account ID (WABA ID)</label>

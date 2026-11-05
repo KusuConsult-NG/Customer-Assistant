@@ -1,6 +1,10 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { prisma, outboundContactHoursFrom, mayContactNow } from '@ace/database';
-import { Resend } from 'resend';
+import {
+  sendTransactionalEmail,
+  resolveEmailProvider,
+  emailProviderProblem,
+} from '../common/mailer';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('AppointmentReminderService');
@@ -26,14 +30,18 @@ const log = new AceLogger('AppointmentReminderService');
  */
 @Injectable()
 export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy {
-  private resend: Resend | null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor() {
-    // No fake fallback key: with no RESEND_API_KEY every send is skipped with
-    // an explicit log line, instead of failing against 're_mock_key' each time.
-    const key = process.env.RESEND_API_KEY;
-    this.resend = key ? new Resend(key) : null;
+  /**
+   * Resolved per send, not held from construction.
+   *
+   * It used to be `new Resend(key)` captured in the constructor, so a provider
+   * configured after boot was never picked up and a reminder was skipped for
+   * the life of the process. Any configured provider now, over HTTPS — SMTP is
+   * not available on this host.
+   */
+  private get emailConfigured(): boolean {
+    return !!resolveEmailProvider();
   }
 
   onModuleInit() {
@@ -223,8 +231,11 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
   private async sendBookingEmailReminder(booking: any, timeUntil: string) {
     const email = booking.contact?.email;
     if (!email) return;
-    if (!this.resend) {
-      log.warn('booking_email_reminder_skipped', { bookingId: booking.id, reason: 'RESEND_API_KEY not set' });
+    if (!this.emailConfigured) {
+      log.warn('booking_email_reminder_skipped', {
+        bookingId: booking.id,
+        reason: emailProviderProblem() ?? 'no email provider configured',
+      });
       return;
     }
 
@@ -239,8 +250,7 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     });
 
     try {
-      await this.resend!.emails.send({
-        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
+      const sent = await sendTransactionalEmail({
         to: email,
         subject: `Upcoming Appointment Reminder (${timeUntil} before) — ${booking.organization.name}`,
         html: `
@@ -257,7 +267,19 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           </div>
         `,
       });
-      log.info('booking_email_reminder_sent', { bookingId: booking.id, email, timeUntil });
+      // Only when the provider actually accepted it. Logging `_sent` on a
+      // refusal is how a reminder nobody received reads as delivered in the
+      // record, and the citizen simply does not turn up.
+      if (sent.ok) {
+        log.info('booking_email_reminder_sent', { bookingId: booking.id, email, timeUntil });
+      } else {
+        log.warn('booking_email_reminder_not_sent', {
+          bookingId: booking.id,
+          email,
+          timeUntil,
+          reason: sent.error,
+        });
+      }
     } catch (err: any) {
       log.error('booking_email_reminder_failed', err, { bookingId: booking.id });
     }
@@ -285,8 +307,11 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     });
 
     if (!booking || !booking.contact?.email) return;
-    if (!this.resend) {
-      log.warn('booking_confirmation_email_skipped', { bookingId, reason: 'RESEND_API_KEY not set' });
+    if (!this.emailConfigured) {
+      log.warn('booking_confirmation_email_skipped', {
+        bookingId,
+        reason: emailProviderProblem() ?? 'no email provider configured',
+      });
       return;
     }
 
@@ -303,8 +328,7 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     const bookingRef = `BK-${booking.id.slice(-6).toUpperCase()}`;
 
     try {
-      await this.resend!.emails.send({
-        from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
+      const sent = await sendTransactionalEmail({
         to: booking.contact.email,
         subject: `Booking Confirmation #${bookingRef} — ${booking.organization.name}`,
         html: `
@@ -336,7 +360,21 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           </div>
         `,
       });
-      log.info('booking_confirmation_email_sent', { bookingId: booking.id, email: booking.contact.email, bookingRef });
+      if (sent.ok) {
+        log.info('booking_confirmation_email_sent', {
+          bookingId: booking.id,
+          email: booking.contact.email,
+          bookingRef,
+        });
+      } else {
+        // A confirmation the citizen never got, recorded as not got.
+        log.warn('booking_confirmation_email_not_sent', {
+          bookingId: booking.id,
+          email: booking.contact.email,
+          bookingRef,
+          reason: sent.error,
+        });
+      }
     } catch (err: any) {
       log.error('booking_confirmation_email_failed', err, { bookingId: booking.id });
     }

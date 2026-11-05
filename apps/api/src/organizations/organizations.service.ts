@@ -1,9 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { prisma, withWhatsAppCredentials, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
-import { Resend } from 'resend';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
+import { sendTransactionalEmail } from '../common/mailer';
 
 /**
  * Replaces a secret with a non-reversible hint: whether it is set, and its last four
@@ -421,34 +421,23 @@ export class OrganizationsService {
     let emailDelivered = false;
     let deliveryProblem: string | null = null;
 
-    const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey) {
-      try {
-        const resend = new Resend(resendKey);
-        // `{ data, error }`, not a rejection — see the note in
-        // AuthService.sendEmail. Without reading `error`, an invalid key or an
-        // unverified sending domain is reported as a delivered invitation.
-        const result: any = await resend.emails.send({
-          from: process.env.EMAIL_FROM || 'Customer Care Agent <noreply@kusuconsult.com>',
-          to: user.email,
-          subject: `You've been invited to join ${org?.name || 'Customer Care Agent'}`,
-          html: `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p><p><a href="${inviteUrl}">Click here to set up your account</a></p>`,
-        });
-        if (result?.error) {
-          deliveryProblem = `The invitation email was refused: ${result.error?.message ?? JSON.stringify(result.error)}`;
-          console.error('[Organizations] invite email refused:', deliveryProblem);
-        } else {
-          emailDelivered = true;
-        }
-      } catch (err: any) {
-        deliveryProblem = `The invitation email was refused: ${err?.message ?? err}`;
-        console.error('[Organizations] invite email failed:', err?.message ?? err);
-      }
+    // Any configured provider, over HTTPS — see common/mailer.ts. SMTP is not
+    // an option on this host (Render blocks outbound 25/465/587), and hard-
+    // coding one vendor meant a rejected key could only be replaced by a
+    // deploy.
+    const sent = await sendTransactionalEmail({
+      to: user.email,
+      subject: `You've been invited to join ${org?.name || 'Customer Care Agent'}`,
+      html:
+        `<p>You have been invited to join ${org?.name || 'Customer Care Agent'} on Customer Care Agent.</p>` +
+        `<p><a href="${inviteUrl}">Click here to set up your account</a></p>`,
+    });
+
+    if (sent.ok) {
+      emailDelivered = true;
     } else {
-      deliveryProblem =
-        'No email provider is configured on this deployment (RESEND_API_KEY is unset), ' +
-        'so no invitation was sent.';
-      console.warn(`[Organizations] RESEND_API_KEY not set. Invite link: ${inviteUrl}`);
+      deliveryProblem = sent.error ?? 'The invitation email was not sent.';
+      console.error('[Organizations] invite email not sent:', deliveryProblem);
     }
 
     // The role is the point of the record: an invitation is how somebody
@@ -558,6 +547,99 @@ export class OrganizationsService {
     return maskedWhatsAppConfig(created);
   }
 
+
+  /**
+   * Which WhatsApp lines does Meta actually hold for this agency?
+   *
+   * Connecting a line needs a `phoneNumberId`, and nothing in this product
+   * could tell an operator what theirs is — the id is not the phone number,
+   * it is not shown next to it in most of Meta's UI, and getting it wrong is
+   * silent: the row saves, the dashboard shows the line as connected, and the
+   * number that actually rings belongs to somebody else's test account.
+   *
+   * That is how this deployment ended up storing Meta's generic sandbox
+   * number, `+1 555-671-9884` / "Test Number", while the line the agency
+   * recognised as its own was a different id on the same business account.
+   *
+   * So this ASKS Meta, with the credential already stored and decrypted here —
+   * the operator never handles the token to find out. Read-only: it lists
+   * numbers and sends nothing.
+   *
+   * Returns the WABA's numbers with `isConnectedHere` marking the one this
+   * agency has stored, so choosing is a comparison rather than a guess.
+   */
+  async listMetaPhoneNumbers(organizationId: string) {
+    const row = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'This agency has no WhatsApp line stored, so there is no credential to ask Meta with. ' +
+        'Save a line first at Settings → WhatsApp.'
+      );
+    }
+
+    const config = withWhatsAppCredentials(row)!;
+    const businessId = config.whatsappBusinessId;
+    if (!config.accessToken || !businessId) {
+      throw new BadRequestException(
+        'The stored line is missing ' +
+        [!config.accessToken && 'an access token', !businessId && 'a WhatsApp business ID']
+          .filter(Boolean)
+          .join(' and ') +
+        ', which are what Meta needs to list the account\'s numbers.'
+      );
+    }
+
+    const url =
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(businessId)}/phone_numbers` +
+      `?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type`;
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err: any) {
+      // Could not ask is not the same as holds nothing, and reporting an empty
+      // list here would read as an account with no numbers on it.
+      throw new ServiceUnavailableException(
+        `Could not reach Meta to list this account's numbers: ${err?.message ?? err}`
+      );
+    }
+
+    const body: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      // Meta's own words. An expired token and a business ID belonging to
+      // another account read identically as "it did not work" otherwise.
+      const message = body?.error?.message ?? `HTTP ${res.status}`;
+      throw new BadRequestException(`Meta refused to list this account's numbers: ${message}`);
+    }
+
+    const numbers: any[] = Array.isArray(body?.data) ? body.data : [];
+    return {
+      whatsappBusinessId: businessId,
+      connectedPhoneNumberId: row.phoneNumberId,
+      numbers: numbers.map((n) => ({
+        phoneNumberId: n?.id ?? null,
+        displayPhoneNumber: n?.display_phone_number ?? null,
+        verifiedName: n?.verified_name ?? null,
+        codeVerificationStatus: n?.code_verification_status ?? null,
+        qualityRating: n?.quality_rating ?? null,
+        platformType: n?.platform_type ?? null,
+        isConnectedHere: !!n?.id && n.id === row.phoneNumberId,
+        // Meta's sandbox numbers live in the +1 555 range and only exchange
+        // messages with a handful of recipients added by hand, so one is
+        // proof the stack works and is never a number to publish. Saying so
+        // here is cheaper than finding out after it is announced.
+        isMetaTestNumber:
+          typeof n?.display_phone_number === 'string' &&
+          /^\+1\s*555/.test(n.display_phone_number),
+      })),
+    };
+  }
 
   /**
    * The agency's one voice line.
