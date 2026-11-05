@@ -82,6 +82,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   AFRICAS_TALKING: "Africa's Talking",
   NIGERIA_CARRIER_FORWARD: 'Nigerian carrier forwarding',
   SIP_TRUNK: 'SIP trunk (your own carrier)',
+  // Not a carrier anyone configures here — it is what a CallLog carries
+  // when the call came in over WhatsApp, with no carrier involved. Listed
+  // so the call history names it instead of printing the raw enum value.
+  WHATSAPP_CLOUD: 'WhatsApp call (no carrier)',
 };
 
 export default function TelephonyPage() {

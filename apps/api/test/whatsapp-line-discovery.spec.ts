@@ -636,6 +636,67 @@ describe('WhatsApp line discovery and handshake', () => {
       expect(call.url).toContain('object=whatsapp_business_account');
     });
 
+    /**
+     * `calls` as well as `messages`.
+     *
+     * Calling can be switched on for a line while this subscription covers only
+     * `messages` — and that combination is the worst of both: Meta rings the
+     * business, nothing is ever delivered here, and no log records that a
+     * citizen tried.
+     */
+    it('asks for `calls` alongside `messages`', async () => {
+      await storeLine();
+      graph();
+      await subscribe();
+      const call = seen.find((c) => c.url.includes('/subscriptions'))!;
+      expect(call.url).toContain(`fields=${encodeURIComponent('messages,calls')}`);
+    });
+
+    it('keeps `messages` when Meta refuses `calls`', async () => {
+      await storeLine();
+      // Only the request carrying `calls` is refused: that permission is not
+      // granted to every app. Asked for in ONE request, the refusal would have
+      // taken the `messages` subscription with it — breaking the channel that
+      // was working in order to add one that was not.
+      const asked: string[] = [];
+      globalThis.fetch = (async (input: any, init?: any) => {
+        const url = String(input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/subscriptions')) {
+          const fields = decodeURIComponent(new URL(url).searchParams.get('fields') ?? '');
+          asked.push(fields);
+          if (fields.includes('calls')) {
+            return new Response(
+              JSON.stringify({ error: { message: 'Permission calls is not granted' } }),
+              { status: 400 }
+            );
+          }
+          return new Response(JSON.stringify({ success: true }), { status: 200 });
+        }
+        if (url.includes('/subscribed_apps')) {
+          if (method === 'POST') return new Response(JSON.stringify({ success: true }), { status: 200 });
+          return new Response(
+            JSON.stringify({ data: [{ whatsapp_business_api_data: { id: APP_ID, name: 'Plateau Care' } }] }),
+            { status: 200 }
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+
+      const res = await subscribe();
+      expect(asked).toEqual(['messages,calls', 'messages']);
+
+      const messagesStep = res.body.steps.find((st: any) => /`messages` field$/.test(st.step));
+      expect(messagesStep.ok).toBe(true);
+
+      // The gap is reported rather than hidden, in Meta's own words.
+      const callsStep = res.body.steps.find((st: any) => st.step.includes('`calls` field'));
+      expect(callsStep.ok).toBe(false);
+      expect(callsStep.detail).toContain('Permission calls is not granted');
+      expect(callsStep.detail).toMatch(/Messaging is unaffected/);
+      expect(callsStep.detail).toMatch(/ring the business and reach nobody/);
+    });
+
     it('does NOT confirm when Meta still reports nothing subscribed', async () => {
       await storeLine();
       graph({ after: { data: [] } });
