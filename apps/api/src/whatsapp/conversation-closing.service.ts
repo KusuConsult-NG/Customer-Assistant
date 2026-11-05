@@ -116,6 +116,20 @@ export class ConversationClosingService implements OnModuleInit, OnModuleDestroy
     // Nothing said yet, or the citizen spoke last and is owed an answer.
     if (!last || last.sender === MessageSender.CUSTOMER) return false;
 
+    // ALREADY CLOSED, and nothing has happened since.
+    //
+    // This is the bug that sent a citizen the same sign-off every five
+    // minutes. Closing wrote a message and then bumped `lastMessageAt` to
+    // now, so five minutes later the conversation was quiet again, its last
+    // message was still ours rather than the citizen's, and the claim key —
+    // which is built from `lastMessageAt` — had MOVED, so the unique index
+    // could not block the repeat. Every condition passed again, forever,
+    // until the 24-hour window closed.
+    //
+    // A conversation is closed once, and only a reply from the citizen makes
+    // it closeable again.
+    if (isClosingMessage(last)) return false;
+
     const config = withWhatsAppCredentials(conversation.organization.whatsAppConfigs[0] as any);
     if (!config?.accessToken || !config?.phoneNumberId) return false;
 
@@ -152,16 +166,33 @@ export class ConversationClosingService implements OnModuleInit, OnModuleDestroy
       throw err;
     }
 
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { lastMessageAt: new Date() },
-    });
+    // `lastMessageAt` is deliberately NOT bumped. It marks when the CITIZEN
+    // was last active, which is what the quiet window measures and what the
+    // claim key is built from — moving it re-armed the sweep against the same
+    // conversation and invalidated the claim that was meant to stop exactly
+    // that. The closing message carries its own `sentAt` for display order.
     log.info('conversation_closed_after_silence', {
       conversationId: conversation.id,
       organizationId: conversation.organizationId,
     });
     return true;
   }
+}
+
+/**
+ * Is this message one of ours, closing the conversation?
+ *
+ * Checked on the metadata flag the closing write sets, falling back to the
+ * deterministic `externalId` prefix. Not on the TEXT: an officer quoting the
+ * sign-off back to a citizen would otherwise read as a close, and a reworded
+ * sign-off would stop matching and bring the repeat straight back.
+ */
+export function isClosingMessage(message: {
+  externalId?: string | null;
+  metadata?: any;
+}): boolean {
+  if (message?.metadata && (message.metadata as any).closedAfterSilence === true) return true;
+  return typeof message?.externalId === 'string' && message.externalId.startsWith('closing:');
 }
 
 /**

@@ -169,6 +169,65 @@ describe('closing a WhatsApp conversation after silence', () => {
     expect(messages.filter((m) => m.content.includes('PLSGov'))).toHaveLength(0);
   });
 
+  /**
+   * The bug this file missed the first time.
+   *
+   * "Closes once when two sweeps run together" tested CONCURRENCY and passed,
+   * so the suite looked like it covered idempotence. It did not test
+   * REPETITION OVER TIME, which is the axis that actually broke: closing
+   * bumped `lastMessageAt`, so five minutes later the conversation was quiet
+   * again, its last message was still ours, and the claim key had moved with
+   * `lastMessageAt` — so nothing blocked it. A citizen received the same
+   * sign-off every five minutes until the 24-hour window shut.
+   */
+  describe('never closes the same quiet spell twice', () => {
+    it('stays closed across repeated sweeps', async () => {
+      await conversationWith({ lastMessageAt: minutesAgo(7) });
+
+      expect((await service.sweep()).closed).toBe(1);
+      for (let i = 0; i < 5; i++) {
+        // Each sweep is a later one in real time; nothing has changed but the
+        // clock, which is exactly the situation that produced the repeat.
+        expect((await service.sweep(new Date(Date.now() + (i + 1) * 6 * 60_000))).closed).toBe(0);
+      }
+      expect(sent).toHaveLength(1);
+    });
+
+    it('does not move lastMessageAt, which is when the CITIZEN was last active', async () => {
+      const c = await conversationWith({ lastMessageAt: minutesAgo(7) });
+      await service.sweep();
+      const after = await prisma.conversation.findUnique({ where: { id: c.id } });
+      // Moving it re-arms the sweep and invalidates the claim built from it.
+      expect(after!.lastMessageAt.toISOString()).toBe(c.lastMessageAt.toISOString());
+    });
+
+    it('closes AGAIN only once the citizen has written back', async () => {
+      const c = await conversationWith({ lastMessageAt: minutesAgo(7) });
+      expect((await service.sweep()).closed).toBe(1);
+
+      // The citizen returns AFTER the sign-off — which is the only order
+      // that can happen in reality, and the order the first version of this
+      // test got wrong by dating the reply before the close.
+      const returned = new Date(Date.now() + 60_000);
+      await prisma.message.create({
+        data: { conversationId: c.id, sender: MessageSender.CUSTOMER, content: 'One more thing', sentAt: returned },
+      });
+      await prisma.message.create({
+        data: {
+          conversationId: c.id,
+          sender: MessageSender.AI,
+          content: 'Here you are',
+          sentAt: new Date(returned.getTime() + 1000),
+        },
+      });
+      await prisma.conversation.update({ where: { id: c.id }, data: { lastMessageAt: returned } });
+
+      // Seven minutes after they went quiet again.
+      expect((await service.sweep(new Date(returned.getTime() + 7 * 60_000))).closed).toBe(1);
+      expect(sent).toHaveLength(2);
+    });
+  });
+
   it('is off when disabled', async () => {
     process.env.CONVERSATION_CLOSING_DISABLED = '1';
     await conversationWith({ lastMessageAt: minutesAgo(30) });
