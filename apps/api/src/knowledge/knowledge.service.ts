@@ -750,14 +750,40 @@ export class KnowledgeService {
       );
     }
 
+    let hostnameForTitle = page.finalUrl;
+    try { hostnameForTitle = new URL(page.finalUrl).hostname; } catch {}
+
+    if (isPdf) {
+      // Handed to the SAME path an uploaded PDF takes, rather than a second
+      // extractor here. `indexDocumentInline` cannot read a PDF and says so
+      // ("PDF and DOCX extraction requires the background worker"), because
+      // pdf-parse runs in the worker. Routing the bytes through
+      // uploadAndIndexDocument stores the file and queues that worker, so a
+      // crawled PDF is indexed exactly as an uploaded one is — one
+      // implementation, which cannot drift from the other.
+      const fileName = (() => {
+        try {
+          const path = new URL(page.finalUrl).pathname;
+          return decodeURIComponent(path.split('/').pop() || 'document.pdf');
+        } catch {
+          return 'document.pdf';
+        }
+      })();
+      const uploaded = await this.uploadAndIndexDocument(organizationId, {
+        title: `${hostnameForTitle}: ${fileName}`,
+        fileName,
+        fileSize: page.buffer.byteLength,
+        mimeType: 'application/pdf',
+        fileBuffer: page.buffer,
+      });
+      // The worker finishes asynchronously, so chunks are not known yet. The
+      // caller is told how many pages were taken, not a count invented here.
+      return { documentId: (uploaded as any).documentId, chunks: (uploaded as any).chunksIndexed ?? 0 };
+    }
+
     let body: Buffer;
     let mimeType: string;
-    if (isPdf) {
-      // Straight to the same extractor the upload path uses. Decoding a PDF
-      // as UTF-8 would index its binary as if it were prose.
-      body = page.buffer;
-      mimeType = 'application/pdf';
-    } else {
+    {
       const textContent = page.buffer
         .toString('utf-8')
         .replace(/<script\b[^<]*>[\s\S]*?<\/script>/gi, '')
@@ -772,8 +798,7 @@ export class KnowledgeService {
       mimeType = 'text/plain';
     }
 
-    let hostname = page.finalUrl;
-    try { hostname = new URL(page.finalUrl).hostname; } catch {}
+    const hostname = hostnameForTitle;
     const path = (() => { try { return new URL(page.finalUrl).pathname; } catch { return ''; } })();
 
     const doc = await prisma.knowledgeDocument.create({
@@ -784,7 +809,7 @@ export class KnowledgeService {
         title: `Website: ${hostname}${path && path !== '/' ? path : ''}`,
         fileName: page.finalUrl,
         fileSize: body.byteLength,
-        mimeType: isPdf ? 'application/pdf' : 'text/html',
+        mimeType: 'text/html',
         storageUrl: page.finalUrl,
         status: 'PROCESSING',
       },
