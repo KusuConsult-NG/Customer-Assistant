@@ -136,6 +136,26 @@ export class OrganizationsController {
    * through the API — which is why a verified number can sit unusable with
    * nothing offering to finish it.
    */
+  /**
+   * WhatsApp CALLING — the only way a citizen reaches a voice agent on a
+   * Nigerian number with no carrier involved. Off by default on every
+   * business number, and not switchable from the WhatsApp Manager screens.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Get('whatsapp-config/calling')
+  async getWhatsAppCalling(@Req() req: { user: AuthUser }) {
+    return this.orgsService.getWhatsAppCalling(req.user.organizationId);
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Post('whatsapp-config/calling')
+  async setWhatsAppCalling(
+    @Req() req: { user: AuthUser },
+    @Body() body: { enabled?: boolean }
+  ) {
+    return this.orgsService.setWhatsAppCalling(req.user.organizationId, body?.enabled !== false);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Post('whatsapp-config/register-number')
   async registerNumberForCloudApi(

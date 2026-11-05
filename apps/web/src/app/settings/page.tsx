@@ -544,6 +544,44 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
     }
   };
 
+  // WhatsApp CALLING. Off by default on every business number, and not
+  // switchable from the WhatsApp Manager screens an operator would look in.
+  const [calling, setCalling] = useState<any | null>(null);
+  const [callingBusy, setCallingBusy] = useState(false);
+  const [callingError, setCallingError] = useState<string | null>(null);
+
+  const loadCalling = async () => {
+    setCallingError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/calling`, { headers: authHeaders });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setCalling(null); setCallingError(body?.message || `HTTP ${res.status}`); return; }
+      setCalling(body);
+    } catch (err: any) {
+      setCalling(null);
+      setCallingError(err?.message || 'Could not reach the API.');
+    }
+  };
+
+  const toggleCalling = async (enabled: boolean) => {
+    setCallingBusy(true);
+    setCallingError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/calling`, {
+        method: 'POST', headers: authHeaders, body: JSON.stringify({ enabled }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setCallingError(body?.message || `HTTP ${res.status}`); return; }
+      // Meta's own verdict, read back — not the fact that the POST returned.
+      setCalling(body);
+      if (!body.enabled && body.requestDetail) setCallingError(body.requestDetail);
+    } catch (err: any) {
+      setCallingError(err?.message || 'Could not reach the API.');
+    } finally {
+      setCallingBusy(false);
+    }
+  };
+
   const [subscribing, setSubscribing] = useState(false);
   const [subscribeResult, setSubscribeResult] = useState<any | null>(null);
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
@@ -672,6 +710,43 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   return (
     <form onSubmit={save} className="space-y-5">
       <Section title="WhatsApp Cloud API" description="Connect your Meta Business WhatsApp number">
+        {/* Calling: a citizen phones the agency from inside WhatsApp. The
+            only route to a voice agent on a Nigerian number with no carrier,
+            no international leg and nothing for the citizen to pay but data. */}
+        <div className="p-4 rounded-xl bg-slate-500/[0.06] border border-slate-200 dark:border-slate-500/20">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs font-semibold flex-1">
+              Calling — let citizens phone this line from inside WhatsApp
+            </p>
+            <button
+              type="button"
+              onClick={loadCalling}
+              disabled={callingBusy || !wa.phoneNumberId}
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
+            >
+              Check
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleCalling(!(calling?.enabled))}
+              disabled={callingBusy || !wa.phoneNumberId}
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
+            >
+              {callingBusy ? 'Asking Meta…' : calling?.enabled ? 'Turn calling off' : 'Turn calling on'}
+            </button>
+          </div>
+          {calling && (
+            <p className={`mt-2 text-xs ${calling.enabled ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+              Meta reports calling as {calling.callingStatus ?? 'unknown'}
+              {calling.displayPhoneNumber ? ` on ${calling.displayPhoneNumber}` : ''}.
+              {calling.nextStep ? ` ${calling.nextStep}` : ''}
+            </p>
+          )}
+          {callingError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">{callingError}</p>
+          )}
+        </div>
+
         {/* Can a citizen's message actually arrive? Asked of Meta, because
             every other signal on this screen describes what WE hold. */}
         <div className="p-4 rounded-xl bg-slate-500/[0.06] border border-slate-200 dark:border-slate-500/20">

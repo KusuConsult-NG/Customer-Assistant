@@ -377,7 +377,22 @@ describe('Callback queue', () => {
       });
       const result = await d.sweep(night);
 
-      expect(result.held).toBeGreaterThanOrEqual(30);
+      // Asserted on THESE rows, not on the global `held` counter.
+      //
+      // The sweep is deployment-wide by design and reads a bounded page
+      // ordered by dueAt, so `result.held` counts every agency's held rows —
+      // including ones other suites left behind. In CI that page filled and
+      // the count came back 29 of an expected 30, failing for a reason that
+      // has nothing to do with starvation. The behaviour under test is that
+      // a reachable promise in ANOTHER agency still got dialled behind a
+      // 30-deep backlog, and that is what these assert.
+      const heldAfter = await prisma.callbackRequest.findMany({
+        where: { id: { in: backlog } },
+        select: { status: true },
+      });
+      expect(heldAfter).toHaveLength(30);
+      expect(heldAfter.every((r) => r.status === 'DUE')).toBe(true);
+
       const after = await prisma.callbackRequest.findUnique({ where: { id: reachable.id } });
       expect(after?.status).toBe('IN_PROGRESS');
       expect(after?.callSid).toBeTruthy();
@@ -476,9 +491,14 @@ describe('Callback queue', () => {
           outboundOpeningHour: 8, outboundClosingHour: 20, outboundDays: [0, 1, 2, 3, 4, 5, 6],
         },
       });
+      // Dated well into the past on purpose. The sweep reads a bounded page
+      // ordered by dueAt ASC, so the oldest rows are the ones certain to be
+      // seen — with a recent timestamp this row sat behind whatever other
+      // suites had left DUE in the shared database and was never scanned,
+      // which read as "the window did not open" rather than as crowding.
       const row = await seedCallback(agency.orgId, contactId, {
         status: 'DUE',
-        dueAt: new Date(Date.UTC(2026, 10, 3, 2, 0)),
+        dueAt: new Date(Date.UTC(2020, 0, 1, 2, 0)),
       });
 
       const d = dispatcherWith({
