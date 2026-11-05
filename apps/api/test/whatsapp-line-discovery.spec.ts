@@ -556,4 +556,150 @@ describe('WhatsApp line discovery and handshake', () => {
       expect(raw).not.toContain('v1.');
     });
   });
+  /**
+   * Asking Meta to deliver here, which is the step that was invisible.
+   *
+   * A valid token, a correct callback URL and a connected number are not
+   * enough: Meta accepts a citizen's message and delivers it NOWHERE unless
+   * the app is subscribed to that specific account AND to the `messages`
+   * field. Neither is visible from the other, and a portfolio with several
+   * accounts subscribes them one at a time — so adding the real line to a
+   * second account leaves it unsubscribed while the first still works.
+   */
+  describe('subscribing to Meta webhooks', () => {
+    const APP_ID = '1234567890';
+    const APP_SECRET = 'app_secret_value';
+
+    beforeEach(() => {
+      setEnv('API_BASE_URL', 'https://api.example.test');
+      setEnv('META_APP_ID', APP_ID);
+      setEnv('WHATSAPP_APP_SECRET', APP_SECRET);
+      setEnv('WHATSAPP_VERIFY_TOKEN', 'verify_value');
+    });
+
+    const seen: Array<{ url: string; method: string; auth: string }> = [];
+    const graph = (opts: { subscribe?: any; fields?: any; after?: any } = {}) => {
+      seen.length = 0;
+      globalThis.fetch = (async (input: any, init?: any) => {
+        const url = String(input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        seen.push({ url, method, auth: String((init?.headers ?? {}).Authorization ?? '') });
+        const answer = (kind: any, happy: any) => {
+          if (kind === 'refused') {
+            return new Response(JSON.stringify({ error: { message: 'Object does not exist' } }), { status: 400 });
+          }
+          if (kind === 'unreachable') throw new Error('ECONNRESET');
+          if (kind === 'lying') return new Response(JSON.stringify({ success: false }), { status: 200 });
+          return new Response(JSON.stringify(kind ?? happy), { status: 200 });
+        };
+        if (url.includes('/subscriptions')) return answer(opts.fields, { success: true });
+        if (url.includes('/subscribed_apps')) {
+          if (method === 'POST') return answer(opts.subscribe, { success: true });
+          return answer(opts.after, { data: [{ whatsapp_business_api_data: { id: APP_ID, name: 'Plateau Care' } }] });
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+    };
+
+    const subscribe = (token = ownerToken) =>
+      request(app.getHttpServer())
+        .post('/api/organizations/whatsapp-config/subscribe')
+        .set('Authorization', `Bearer ${token}`);
+
+    it('does both subscriptions and confirms from a READ-BACK, not from the 200s', async () => {
+      await storeLine();
+      graph();
+      const res = await subscribe();
+      expect(res.status).toBe(201);
+
+      expect(res.body.steps).toHaveLength(2);
+      expect(res.body.steps.every((s: any) => s.ok)).toBe(true);
+      expect(res.body.confirmed).toBe(true);
+      expect(res.body.subscribedApps).toContain('Plateau Care');
+
+      // The account edge uses the TENANT's token; the field registration needs
+      // an APP access token, which is the id and secret together.
+      const post = seen.filter((c) => c.method === 'POST');
+      expect(post.find((c) => c.url.includes('subscribed_apps'))!.auth).toBe(`Bearer ${META}`);
+      expect(post.find((c) => c.url.includes('/subscriptions'))!.auth).toBe(`Bearer ${APP_ID}|${APP_SECRET}`);
+      // And the read-back happened after.
+      expect(seen.filter((c) => c.url.includes('subscribed_apps') && c.method === 'GET')).toHaveLength(1);
+    });
+
+    it('registers OUR callback url and the messages field', async () => {
+      await storeLine();
+      graph();
+      await subscribe();
+      const call = seen.find((c) => c.url.includes('/subscriptions'))!;
+      expect(call.url).toContain(encodeURIComponent('https://api.example.test/api/whatsapp/webhook'));
+      expect(call.url).toContain('fields=messages');
+      expect(call.url).toContain('object=whatsapp_business_account');
+    });
+
+    it('does NOT confirm when Meta still reports nothing subscribed', async () => {
+      await storeLine();
+      graph({ after: { data: [] } });
+      const res = await subscribe();
+      // Both requests answered 200 and the thing still is not true. This is
+      // the whole reason the outcome is read back.
+      expect(res.body.steps.every((s: any) => s.ok)).toBe(true);
+      expect(res.body.confirmed).toBe(false);
+      expect(res.body.nextStep).toMatch(/still reports no app subscribed/i);
+    });
+
+    it('treats a 200 carrying success:false as a refusal', async () => {
+      await storeLine();
+      graph({ subscribe: 'lying' });
+      const res = await subscribe();
+      expect(res.body.steps[0].ok).toBe(false);
+      expect(res.body.steps[0].detail).toMatch(/success: false/i);
+    });
+
+    it('reports each step independently, so one failure does not hide the other', async () => {
+      await storeLine();
+      graph({ fields: 'refused' });
+      const res = await subscribe();
+      expect(res.body.steps[0].ok).toBe(true);
+      expect(res.body.steps[1].ok).toBe(false);
+      expect(res.body.steps[1].detail).toContain('Object does not exist');
+    });
+
+    it('says what is missing when META_APP_ID is unset, instead of skipping', async () => {
+      setEnv('META_APP_ID', undefined);
+      await storeLine();
+      graph();
+      const res = await subscribe();
+      expect(res.body.steps[1].ok).toBe(false);
+      expect(res.body.steps[1].detail).toContain('META_APP_ID');
+    });
+
+    it('does not claim UNKNOWN is unsubscribed when the read-back fails', async () => {
+      await storeLine();
+      graph({ after: 'unreachable' });
+      const res = await subscribe();
+      expect(res.body.subscribedApps).toBeNull();
+      expect(res.body.confirmed).toBe(false);
+      expect(res.body.nextStep).toMatch(/unknown — not confirmed/i);
+    });
+
+    it('refuses when there is no line to subscribe', async () => {
+      graph();
+      expect((await subscribe()).status).toBe(404);
+    });
+
+    it('returns no credential value', async () => {
+      await storeLine();
+      graph();
+      const raw = JSON.stringify((await subscribe()).body);
+      expect(raw).not.toContain(META);
+      expect(raw).not.toContain(APP_SECRET);
+      expect(raw).not.toContain('v1.');
+    });
+
+    it('is OWNER/ADMIN only', async () => {
+      await storeLine();
+      graph();
+      expect((await subscribe(agentToken)).status).toBe(403);
+    });
+  });
 });

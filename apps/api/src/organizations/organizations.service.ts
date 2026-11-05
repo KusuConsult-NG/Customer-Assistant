@@ -135,6 +135,36 @@ function whatsAppWebhookUrl(): string {
 }
 
 /**
+ * One Graph WRITE. Same distinction as `metaGet`: a refusal and an
+ * unreachable endpoint are different outcomes and are fixed in different
+ * places, so they are never collapsed into "it did not work".
+ */
+async function metaPost(
+  url: string,
+  accessToken: string
+): Promise<{ reached: boolean; ok: boolean; body: any; error?: string }> {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      return { reached: true, ok: false, body, error: body?.error?.message ?? `HTTP ${res.status}` };
+    }
+    // Meta answers `{"success": true}` here. A 200 carrying anything else is
+    // not a success we are willing to report as one.
+    if (body && body.success === false) {
+      return { reached: true, ok: false, body, error: 'Meta answered 200 with success: false.' };
+    }
+    return { reached: true, ok: true, body };
+  } catch (err: any) {
+    return { reached: false, ok: false, body: null, error: err?.message ?? String(err) };
+  }
+}
+
+/**
  * One read-only Graph call, with "could not reach" kept distinct from
  * "answered and refused". Collapsing the two is what makes a readiness report
  * claim something works when it was never asked.
@@ -845,6 +875,133 @@ export class OrganizationsService {
     }
 
     return { identity, accounts, notes };
+  }
+
+  /**
+   * Subscribe this deployment to Meta's webhooks for the agency's line.
+   *
+   * A valid token, a correct callback URL and a connected number are not
+   * enough: Meta accepts a citizen's message and delivers it NOWHERE unless
+   * TWO separate subscriptions exist, and neither is visible from the other.
+   *
+   *  1. THE APP → THE ACCOUNT. The Meta app must be subscribed to that
+   *     specific WhatsApp Business Account (`/{waba}/subscribed_apps`). A
+   *     portfolio with several accounts subscribes them one at a time, so
+   *     adding the real line to a second account leaves it unsubscribed while
+   *     the first still works.
+   *  2. THE APP → THE `messages` FIELD, with our callback URL registered
+   *     (`/{app-id}/subscriptions`). Without it there is nowhere to deliver
+   *     even a subscribed account's messages. This call needs an APP access
+   *     token — `{META_APP_ID}|{WHATSAPP_APP_SECRET}` — not the tenant's.
+   *
+   * Both are attempted, independently: one failing must not hide whether the
+   * other worked, because they fail for different reasons and are fixed in
+   * different places.
+   *
+   * ACT, THEN ANNOUNCE. The outcome is read back from `subscribed_apps`
+   * afterwards and reported from THAT, never from the fact that a request
+   * returned 200. Reporting the request as the outcome is the fabrication this
+   * codebase exists to keep out.
+   */
+  async subscribeWhatsAppWebhooks(organizationId: string) {
+    const row = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+    if (!row) {
+      throw new NotFoundException('This agency has no WhatsApp line stored, so there is nothing to subscribe.');
+    }
+    const config = withWhatsAppCredentials(row)!;
+    if (!config.accessToken || !config.whatsappBusinessId) {
+      throw new BadRequestException(
+        'The stored line needs both an access token and a WhatsApp business ID before Meta can be asked to subscribe.'
+      );
+    }
+
+    const callbackUrl = whatsAppWebhookUrl();
+    const steps: Array<{ step: string; ok: boolean; detail: string }> = [];
+
+    // 1. The app → this account.
+    const sub = await metaPost(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(config.whatsappBusinessId)}/subscribed_apps`,
+      config.accessToken
+    );
+    steps.push({
+      step: `Subscribe the app to account ${config.whatsappBusinessId}`,
+      ok: sub.ok,
+      detail: sub.ok
+        ? 'Meta accepted the request.'
+        : sub.reached
+          ? `Meta refused it — ${sub.error}`
+          : `Could not reach Meta — ${sub.error}`,
+    });
+
+    // 2. The app → the `messages` field, with our callback URL.
+    const appId = process.env.META_APP_ID?.trim();
+    const appSecret = process.env.WHATSAPP_APP_SECRET?.trim();
+    const verifyToken = (process.env.WHATSAPP_VERIFY_TOKEN?.trim() || config.webhookVerifyToken || '').trim();
+    if (!appId || !appSecret) {
+      steps.push({
+        step: 'Register the callback URL and the `messages` field',
+        ok: false,
+        detail:
+          'Needs ' + [!appId && 'META_APP_ID', !appSecret && 'WHATSAPP_APP_SECRET'].filter(Boolean).join(' and ') +
+          '. Meta requires an APP access token for this call, which is the app id and secret together — ' +
+          'the tenant\'s own token cannot make it.',
+      });
+    } else if (!verifyToken) {
+      steps.push({
+        step: 'Register the callback URL and the `messages` field',
+        ok: false,
+        detail:
+          'No verify token available. Meta calls the callback URL back with it before accepting the ' +
+          'registration, so there is nothing for the handshake to match.',
+      });
+    } else {
+      const fields = await metaPost(
+        `https://graph.facebook.com/v21.0/${encodeURIComponent(appId)}/subscriptions` +
+        `?object=whatsapp_business_account&callback_url=${encodeURIComponent(callbackUrl)}` +
+        `&verify_token=${encodeURIComponent(verifyToken)}&fields=messages`,
+        // The APP access token. Never logged, never returned.
+        `${appId}|${appSecret}`
+      );
+      steps.push({
+        step: 'Register the callback URL and the `messages` field',
+        ok: fields.ok,
+        detail: fields.ok
+          ? `Meta accepted ${callbackUrl} for the \`messages\` field.`
+          : fields.reached
+            ? `Meta refused it — ${fields.error}`
+            : `Could not reach Meta — ${fields.error}`,
+      });
+    }
+
+    // What is TRUE now, read back rather than inferred from the calls above.
+    const after = await metaGet(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(config.whatsappBusinessId)}/subscribed_apps`,
+      config.accessToken
+    );
+    const subscribedApps = after.ok
+      ? (Array.isArray(after.body?.data) ? after.body.data : [])
+          .map((d: any) => d?.whatsapp_business_api_data?.name || d?.whatsapp_business_api_data?.id)
+          .filter(Boolean)
+      : null;
+
+    return {
+      whatsappBusinessId: config.whatsappBusinessId,
+      callbackUrl,
+      steps,
+      // `null` means the read-back failed, NOT that nothing is subscribed.
+      subscribedApps,
+      ...(after.ok ? {} : { verificationError: after.error }),
+      confirmed: Array.isArray(subscribedApps) && subscribedApps.length > 0,
+      nextStep:
+        Array.isArray(subscribedApps) && subscribedApps.length > 0
+          ? 'Meta now reports an app subscribed to this account. Send a message to the line to confirm end to end.'
+          : after.ok
+            ? 'Meta still reports no app subscribed to this account. The steps above say why.'
+            : 'The subscription could not be read back, so whether it took is unknown — not confirmed.',
+    };
   }
 
   /**
