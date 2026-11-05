@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { prisma, withWhatsAppCredentials, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -547,6 +547,99 @@ export class OrganizationsService {
     return maskedWhatsAppConfig(created);
   }
 
+
+  /**
+   * Which WhatsApp lines does Meta actually hold for this agency?
+   *
+   * Connecting a line needs a `phoneNumberId`, and nothing in this product
+   * could tell an operator what theirs is — the id is not the phone number,
+   * it is not shown next to it in most of Meta's UI, and getting it wrong is
+   * silent: the row saves, the dashboard shows the line as connected, and the
+   * number that actually rings belongs to somebody else's test account.
+   *
+   * That is how this deployment ended up storing Meta's generic sandbox
+   * number, `+1 555-671-9884` / "Test Number", while the line the agency
+   * recognised as its own was a different id on the same business account.
+   *
+   * So this ASKS Meta, with the credential already stored and decrypted here —
+   * the operator never handles the token to find out. Read-only: it lists
+   * numbers and sends nothing.
+   *
+   * Returns the WABA's numbers with `isConnectedHere` marking the one this
+   * agency has stored, so choosing is a comparison rather than a guess.
+   */
+  async listMetaPhoneNumbers(organizationId: string) {
+    const row = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'This agency has no WhatsApp line stored, so there is no credential to ask Meta with. ' +
+        'Save a line first at Settings → WhatsApp.'
+      );
+    }
+
+    const config = withWhatsAppCredentials(row)!;
+    const businessId = config.whatsappBusinessId;
+    if (!config.accessToken || !businessId) {
+      throw new BadRequestException(
+        'The stored line is missing ' +
+        [!config.accessToken && 'an access token', !businessId && 'a WhatsApp business ID']
+          .filter(Boolean)
+          .join(' and ') +
+        ', which are what Meta needs to list the account\'s numbers.'
+      );
+    }
+
+    const url =
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(businessId)}/phone_numbers` +
+      `?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type`;
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err: any) {
+      // Could not ask is not the same as holds nothing, and reporting an empty
+      // list here would read as an account with no numbers on it.
+      throw new ServiceUnavailableException(
+        `Could not reach Meta to list this account's numbers: ${err?.message ?? err}`
+      );
+    }
+
+    const body: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      // Meta's own words. An expired token and a business ID belonging to
+      // another account read identically as "it did not work" otherwise.
+      const message = body?.error?.message ?? `HTTP ${res.status}`;
+      throw new BadRequestException(`Meta refused to list this account's numbers: ${message}`);
+    }
+
+    const numbers: any[] = Array.isArray(body?.data) ? body.data : [];
+    return {
+      whatsappBusinessId: businessId,
+      connectedPhoneNumberId: row.phoneNumberId,
+      numbers: numbers.map((n) => ({
+        phoneNumberId: n?.id ?? null,
+        displayPhoneNumber: n?.display_phone_number ?? null,
+        verifiedName: n?.verified_name ?? null,
+        codeVerificationStatus: n?.code_verification_status ?? null,
+        qualityRating: n?.quality_rating ?? null,
+        platformType: n?.platform_type ?? null,
+        isConnectedHere: !!n?.id && n.id === row.phoneNumberId,
+        // Meta's sandbox numbers live in the +1 555 range and only exchange
+        // messages with a handful of recipients added by hand, so one is
+        // proof the stack works and is never a number to publish. Saying so
+        // here is cheaper than finding out after it is announced.
+        isMetaTestNumber:
+          typeof n?.display_phone_number === 'string' &&
+          /^\+1\s*555/.test(n.display_phone_number),
+      })),
+    };
+  }
 
   /**
    * The agency's one voice line.

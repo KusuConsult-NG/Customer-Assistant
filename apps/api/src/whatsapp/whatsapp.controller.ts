@@ -17,7 +17,7 @@ import {
 import { Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
-import { WhatsappService } from './whatsapp.service';
+import { WhatsappService, handshakeTokenIsAccepted } from './whatsapp.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -77,19 +77,27 @@ export class WhatsappController {
    */
   @SkipThrottle()
   @Get('webhook')
-  verifyWebhook(
+  async verifyWebhook(
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
     @Res() res: Response
   ) {
-    const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN;
-    if (!expectedToken) {
-      log.error('WHATSAPP_VERIFY_TOKEN is not set. Cannot verify webhook.', new Error('Missing env var'));
+    // Accepts WHATSAPP_VERIFY_TOKEN or any active line's own stored token, so
+    // a second agency's line does not need a deployment-wide secret change and
+    // a restart. See handshakeTokenIsAccepted.
+    const { accepted, configured } = await handshakeTokenIsAccepted(token);
+    if (!configured) {
+      log.error(
+        'No verify token anywhere: WHATSAPP_VERIFY_TOKEN is unset and no active WhatsApp line stores one.',
+        new Error('Missing verify token')
+      );
+      // 500, not 403: Meta retries a 500 and gives up on a 403, and this is
+      // our misconfiguration rather than a rejected caller.
       return res.status(500).send('Server misconfiguration');
     }
 
-    if (mode === 'subscribe' && token === expectedToken) {
+    if (mode === 'subscribe' && accepted) {
       log.info('whatsapp_webhook_verified', { event: 'webhook_verified' });
       return res.status(200).send(challenge);
     }

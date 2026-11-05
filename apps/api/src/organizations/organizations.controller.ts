@@ -119,6 +119,17 @@ export class OrganizationsController {
     return this.orgsService.removeTeamMember(req.user.organizationId, userId, actor(req));
   }
 
+  /**
+   * Read-only, and OWNER/ADMIN because it is answered with the agency's own
+   * stored Meta credential. Returns no credential value — only what Meta says
+   * about the numbers on the account.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Get('whatsapp-config/numbers')
+  async listMetaPhoneNumbers(@Req() req: { user: AuthUser }) {
+    return this.orgsService.listMetaPhoneNumbers(req.user.organizationId);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Post('whatsapp-config')
   async updateWhatsAppConfig(

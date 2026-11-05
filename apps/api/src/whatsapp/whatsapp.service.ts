@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { prisma, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
@@ -35,6 +36,70 @@ function resolveWhatsAppClient(config: {
     accessToken: config.accessToken,
     verifyToken: config.webhookVerifyToken ?? '',
   });
+}
+
+/**
+ * Does this handshake token match anything this deployment will accept?
+ *
+ * ── Why the row, and not only the env var ───────────────────────────────────
+ *
+ * `WHATSAPP_VERIFY_TOKEN` is deployment-wide, and lines are not. Every agency
+ * on this deployment shares one line of Meta configuration, so connecting a
+ * second agency's number means either handing them the same secret or
+ * changing an environment variable and restarting the API for everyone. The
+ * `WhatsAppConfig.webhookVerifyToken` column already existed, already round
+ * trips through the settings form, and was read by NOTHING on this path — so
+ * an operator could set it, see it saved and masked, and still have the
+ * handshake answered only by the env var.
+ *
+ * Both are accepted. The env var stays first and keeps working, so no
+ * deployment changes behaviour; a stored token is an additional accepted
+ * value, which is what makes a per-agency line possible without a restart.
+ *
+ * ── Why compared this way ───────────────────────────────────────────────────
+ *
+ * Meta sends this as a `hub.verify_token` QUERY PARAMETER, so it is in the
+ * request URL and therefore in access logs. That is why it must never be a
+ * credential — but it is still a shared secret, so it is compared with
+ * `timingSafeEqual` over equal-length buffers rather than with `===`. Every
+ * candidate is compared, with no early return on the first match, so the time
+ * taken does not reveal how many lines this deployment holds.
+ */
+export async function handshakeTokenIsAccepted(token: string | undefined): Promise<
+  { accepted: boolean; configured: boolean }
+> {
+  const candidates: string[] = [];
+
+  const fromEnv = process.env.WHATSAPP_VERIFY_TOKEN?.trim();
+  if (fromEnv) candidates.push(fromEnv);
+
+  // A failure to read is NOT a reason to accept. It is also not a reason to
+  // report "nothing is configured" when the env var is set, so the two are
+  // tracked separately.
+  const rows = await prisma.whatsAppConfig
+    .findMany({ where: { isActive: true }, select: { id: true, webhookVerifyToken: true } })
+    .catch((err) => {
+      log.error('whatsapp_verify_token_lookup_failed', err as Error);
+      return [] as Array<{ id: string; webhookVerifyToken: string | null }>;
+    });
+  for (const row of rows) {
+    const stored = withWhatsAppCredentials(row as any)?.webhookVerifyToken?.trim();
+    if (stored) candidates.push(stored);
+  }
+
+  if (candidates.length === 0) return { accepted: false, configured: false };
+  if (!token) return { accepted: false, configured: true };
+
+  const given = Buffer.from(token);
+  let accepted = false;
+  for (const candidate of candidates) {
+    const expected = Buffer.from(candidate);
+    // timingSafeEqual throws on a length mismatch, which would itself be a
+    // length oracle, so the lengths are checked first and every candidate is
+    // still visited.
+    if (expected.length === given.length && timingSafeEqual(expected, given)) accepted = true;
+  }
+  return { accepted, configured: true };
 }
 
 @Injectable()
