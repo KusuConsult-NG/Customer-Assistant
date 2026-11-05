@@ -536,8 +536,10 @@ export class OrganizationsService {
       /** The line being edited. Omitted means the first one the read returns. */
       id?: string;
       phoneNumberId: string;
-      accessToken: string;
-      webhookVerifyToken: string;
+      /** Omitted on an update means UNCHANGED. Required to create. */
+      accessToken?: string;
+      /** Omitted on an update means UNCHANGED. Required to create. */
+      webhookVerifyToken?: string;
       whatsappBusinessId?: string;
       displayPhoneNumber?: string;
     }
@@ -563,18 +565,42 @@ export class OrganizationsService {
     // handed the caller's own access token straight back in the response body.
     // Neither is what a settings form needs — it needs to know it saved.
     if (existing) {
+      // CHANGING THE LINE MUST NOT REQUIRE RE-ENTERING THE TOKEN.
+      //
+      // Both credentials were required on every save, so switching a line to
+      // a different `phoneNumberId` — moving from a test number to the real
+      // one, the single most likely edit this form will ever see — meant
+      // fetching the Meta token out of Business Manager again. The form even
+      // said otherwise, placeholding the masked value with "enter new to
+      // replace", so it read as optional and refused as required.
+      //
+      // Omitted now means UNCHANGED: the field is left out of the update
+      // entirely rather than passed through, because the stored value is
+      // ciphertext and sealing it a second time would encrypt the encryption
+      // and lock the credential away behind a value nothing can read.
+      const changes: Record<string, unknown> = {
+        phoneNumberId: data.phoneNumberId,
+        whatsappBusinessId: data.whatsappBusinessId || existing.whatsappBusinessId,
+        displayPhoneNumber: data.displayPhoneNumber || existing.displayPhoneNumber,
+        isActive: true,
+      };
+      if (data.accessToken?.trim()) changes.accessToken = data.accessToken;
+      if (data.webhookVerifyToken?.trim()) changes.webhookVerifyToken = data.webhookVerifyToken;
+
       const saved = await prisma.whatsAppConfig.update({
         where: { id: existing.id },
-        data: sealWhatsAppCredentials({
-          phoneNumberId: data.phoneNumberId,
-          accessToken: data.accessToken,
-          webhookVerifyToken: data.webhookVerifyToken,
-          whatsappBusinessId: data.whatsappBusinessId || existing.whatsappBusinessId,
-          displayPhoneNumber: data.displayPhoneNumber || existing.displayPhoneNumber,
-          isActive: true,
-        }),
+        data: sealWhatsAppCredentials(changes as any),
       });
       return maskedWhatsAppConfig(saved);
+    }
+
+    // A NEW line still needs both: there is nothing stored to fall back on,
+    // and a row without a token is a line that reaches nobody.
+    if (!data.accessToken?.trim() || !data.webhookVerifyToken?.trim()) {
+      throw new BadRequestException(
+        'A new WhatsApp line needs both an accessToken and a webhookVerifyToken. ' +
+        'They may be omitted only when updating a line that already stores them.'
+      );
     }
 
     const payload = sealWhatsAppCredentials({

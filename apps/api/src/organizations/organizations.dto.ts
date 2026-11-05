@@ -38,10 +38,20 @@ export class UpdateWhatsAppConfigDto {
   @MaxLength(64)
   phoneNumberId!: string;
 
+  /**
+   * Omitted on an UPDATE means unchanged; required to create a line.
+   *
+   * It was required on every save, so changing which number a line points at
+   * — a test number to the real one, the most likely edit this form will ever
+   * see — meant fetching the Meta token out of Business Manager again. The
+   * form's own placeholder said "enter new to replace", so it read as
+   * optional and refused as required.
+   */
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(1024)
-  accessToken!: string;
+  accessToken?: string;
 
   /**
    * Answers Meta's GET verification handshake for this line, and is stored
@@ -49,10 +59,11 @@ export class UpdateWhatsAppConfigDto {
    * hold a null here, and because a line saved without one cannot complete
    * Meta's handshake.
    */
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(512)
-  webhookVerifyToken!: string;
+  webhookVerifyToken?: string;
 
   @IsOptional()
   @IsString()
