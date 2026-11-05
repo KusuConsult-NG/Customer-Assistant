@@ -834,4 +834,122 @@ describe('WhatsApp line discovery and handshake', () => {
       expect((await register({ phoneNumberId: NG, pin: '123456' }, agentToken)).status).toBe(403);
     });
   });
+  /**
+   * WhatsApp CALLING — a citizen phoning the agency from inside WhatsApp.
+   *
+   * The only route to a voice agent on a Nigerian number with no carrier
+   * involved: no number to buy, no international leg, and no toll-free that
+   * is only free in another country. Off by default on every business
+   * number, and not switchable from the WhatsApp Manager screens an operator
+   * would think to look at.
+   */
+  describe('WhatsApp calling', () => {
+    const settings = (over: { post?: any; after?: any } = {}) => {
+      globalThis.fetch = (async (input: any, init?: any) => {
+        const url = String(input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/settings')) {
+          if (method === 'POST') {
+            if (over.post === 'refused') {
+              return new Response(
+                JSON.stringify({ error: { message: 'Calling APIs cannot be enabled for this phone number' } }),
+                { status: 400 }
+              );
+            }
+            if (over.post === 'unreachable') throw new Error('ECONNRESET');
+            expect(JSON.parse(String(init?.body))).toEqual({ calling: { status: 'ENABLED' } });
+            return new Response(JSON.stringify({ success: true }), { status: 200 });
+          }
+          if (over.after === 'unreachable') throw new Error('ECONNRESET');
+          return new Response(
+            JSON.stringify({ calling: { status: over.after ?? 'ENABLED' } }),
+            { status: 200 }
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+    };
+
+    const setCalling = (body: any, token = ownerToken) =>
+      request(app.getHttpServer())
+        .post('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+
+    it('enables calling and confirms from a READ-BACK', async () => {
+      await storeLine();
+      settings();
+      const res = await setCalling({ enabled: true });
+      expect(res.status).toBe(201);
+      expect(res.body.accepted).toBe(true);
+      expect(res.body.callingStatus).toBe('ENABLED');
+      expect(res.body.enabled).toBe(true);
+      expect(res.body.nextStep).toMatch(/can now call/i);
+    });
+
+    it('does NOT report enabled when Meta still says disabled', async () => {
+      await storeLine();
+      settings({ after: 'DISABLED' });
+      const res = await setCalling({ enabled: true });
+      // The POST was accepted and the thing is still off. This is why the
+      // verdict is read back rather than taken from the 200.
+      expect(res.body.accepted).toBe(true);
+      expect(res.body.enabled).toBe(false);
+      expect(res.body.nextStep).toMatch(/messaging-limit/i);
+    });
+
+    it("quotes Meta's refusal verbatim", async () => {
+      await storeLine();
+      settings({ post: 'refused', after: 'DISABLED' });
+      const res = await setCalling({ enabled: true });
+      expect(res.body.accepted).toBe(false);
+      // The exact error this deployment already hit on an unregistered number.
+      expect(res.body.requestDetail).toContain('Calling APIs cannot be enabled');
+    });
+
+    it('says UNKNOWN when the setting cannot be read back', async () => {
+      await storeLine();
+      settings({ after: 'unreachable' });
+      const res = await setCalling({ enabled: true });
+      expect(res.body.callingStatus).toBeNull();
+      expect(res.body.enabled).toBe(false);
+      expect(res.body.nextStep).toMatch(/unknown — not confirmed/i);
+    });
+
+    it('reads the current setting without changing it', async () => {
+      await storeLine();
+      let posted = false;
+      globalThis.fetch = (async (input: any, init?: any) => {
+        if ((init?.method ?? 'GET').toUpperCase() === 'POST') posted = true;
+        return new Response(JSON.stringify({ calling: { status: 'DISABLED' } }), { status: 200 });
+      }) as any;
+      const res = await request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(res.body.callingStatus).toBe('DISABLED');
+      expect(posted).toBe(false);
+    });
+
+    it('does not read "could not ask" as "calling is off"', async () => {
+      await storeLine();
+      globalThis.fetch = (async () => { throw new Error('ECONNRESET'); }) as any;
+      const res = await request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(res.body.callingStatus).toBeNull();
+      expect(res.body.error).toMatch(/could not reach meta/i);
+    });
+
+    it('returns no credential value', async () => {
+      await storeLine();
+      settings();
+      expect(JSON.stringify((await setCalling({ enabled: true })).body)).not.toContain(META);
+    });
+
+    it('is OWNER/ADMIN only', async () => {
+      await storeLine();
+      settings();
+      expect((await setCalling({ enabled: true }, agentToken)).status).toBe(403);
+    });
+  });
 });

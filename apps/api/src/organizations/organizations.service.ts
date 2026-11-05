@@ -1123,6 +1123,111 @@ export class OrganizationsService {
   }
 
   /**
+   * WhatsApp CALLING: let a citizen phone the agency from inside WhatsApp.
+   *
+   * This is the only route by which someone in Plateau reaches a voice agent
+   * on a NIGERIAN number without a carrier being involved at all. No Twilio
+   * number to buy, no international leg, no toll-free that is only free in
+   * another country, and nothing for the citizen to pay beyond data.
+   *
+   * Calling is OFF by default on every business number, and there is no way
+   * to turn it on from the WhatsApp Manager screens an operator would think
+   * to look at — `POST /{phone-number-id}/settings` is the switch.
+   *
+   * Eligibility is Meta's, not ours, and the refusals are worth reading
+   * rather than retrying: the number must be registered on Cloud API (see
+   * registerNumberForCloudApi — a number at platform_type NOT_APPLICABLE
+   * cannot have calling enabled), and published guidance says a messaging
+   * limit of 2,000 is required, which a newly registered number does not
+   * start with. So Meta's own words are reported verbatim.
+   */
+  async setWhatsAppCalling(organizationId: string, enabled: boolean) {
+    const row = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+    if (!row) {
+      throw new NotFoundException('This agency has no WhatsApp line stored, so there is nothing to enable calling on.');
+    }
+    const config = withWhatsAppCredentials(row)!;
+    if (!config.accessToken) {
+      throw new BadRequestException('The stored line has no access token, so Meta cannot be asked.');
+    }
+
+    const settingsUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`;
+
+    const res = await metaPost(settingsUrl, config.accessToken, {
+      calling: { status: enabled ? 'ENABLED' : 'DISABLED' },
+    });
+
+    // ACT, THEN ANNOUNCE. The verdict comes from reading the setting back,
+    // never from the request returning 200.
+    const after = await metaGet(settingsUrl, config.accessToken);
+    const status = after.ok ? (after.body?.calling?.status ?? null) : null;
+
+    return {
+      phoneNumberId: row.phoneNumberId,
+      displayPhoneNumber: row.displayPhoneNumber,
+      requested: enabled ? 'ENABLED' : 'DISABLED',
+      accepted: res.ok,
+      requestDetail: res.ok
+        ? 'Meta accepted the request.'
+        : res.reached
+          ? `Meta refused it — ${res.error}`
+          : `Could not reach Meta — ${res.error}`,
+      // `null` means the read-back failed, NOT that calling is off.
+      callingStatus: status,
+      ...(after.ok ? {} : { verificationError: after.error }),
+      enabled: status === 'ENABLED',
+      nextStep:
+        status === 'ENABLED'
+          ? `Citizens can now call ${row.displayPhoneNumber || row.phoneNumberId} from inside WhatsApp. ` +
+            'Point the ElevenLabs agent at this line so the call is answered.'
+          : after.ok
+            ? `Meta reports calling as ${status ?? 'unset'}. The request detail above says why. Calling needs the ` +
+              'number registered on Cloud API, and Meta publishes a messaging-limit requirement a newly ' +
+              'registered number does not meet on day one.'
+            : 'The setting could not be read back, so whether calling is on is unknown — not confirmed.',
+    };
+  }
+
+  /** What Meta currently reports for this line's calling setting. Read-only. */
+  async getWhatsAppCalling(organizationId: string) {
+    const row = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+    if (!row) throw new NotFoundException('This agency has no WhatsApp line stored.');
+    const config = withWhatsAppCredentials(row)!;
+    if (!config.accessToken) {
+      throw new BadRequestException('The stored line has no access token, so Meta cannot be asked.');
+    }
+
+    const res = await metaGet(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`,
+      config.accessToken
+    );
+    if (!res.ok) {
+      return {
+        phoneNumberId: row.phoneNumberId,
+        displayPhoneNumber: row.displayPhoneNumber,
+        callingStatus: null,
+        enabled: false,
+        // Could not ask is not the same as off.
+        error: res.reached ? `Meta refused the read — ${res.error}` : `Could not reach Meta — ${res.error}`,
+      };
+    }
+    const status = res.body?.calling?.status ?? null;
+    return {
+      phoneNumberId: row.phoneNumberId,
+      displayPhoneNumber: row.displayPhoneNumber,
+      callingStatus: status,
+      enabled: status === 'ENABLED',
+      settings: res.body?.calling ?? null,
+    };
+  }
+
+  /**
    * Will a citizen's WhatsApp message actually REACH us?
    *
    * Everything else about this channel reports what WE hold. Nothing asked
