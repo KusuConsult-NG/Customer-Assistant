@@ -2,7 +2,7 @@ import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
-import { prisma } from '@ace/database';
+import { prisma, decryptSecret } from '@ace/database';
 import { createTestApp } from './support/create-test-app';
 
 /**
@@ -124,5 +124,58 @@ describe('POST /api/organizations/whatsapp-config validation', () => {
     // declared or the save fails on something cosmetic.
     const res = await post({ ...complete(), isActive: true });
     expect([200, 201]).toContain(res.status);
+  });
+  /**
+   * Switching which number a line points at must not require the Meta token
+   * again. It is the most likely edit this endpoint will ever see — a test
+   * number replaced by the real one — and both credentials were required on
+   * every save, so it meant a trip back into Business Manager. The form's own
+   * placeholder read "enter new to replace".
+   */
+  describe('updating a line without re-entering its credentials', () => {
+    it('changes the number and leaves the stored credentials readable', async () => {
+      const created = await post(complete());
+      expect([200, 201]).toContain(created.status);
+      const row = await prisma.whatsAppConfig.findFirst({ where: { organizationId: orgId } });
+
+      const res = await post({
+        id: row!.id,
+        phoneNumberId: '9988776655443322',
+        displayPhoneNumber: '+234 803 000 1111',
+      });
+      expect([200, 201]).toContain(res.status);
+
+      const after = await prisma.whatsAppConfig.findUnique({ where: { id: row!.id } });
+      expect(after!.phoneNumberId).toBe('9988776655443322');
+      expect(after!.displayPhoneNumber).toBe('+234 803 000 1111');
+      // Unchanged, and still ONE layer of encryption. Passing the stored
+      // ciphertext back through the seal would encrypt the encryption and
+      // lock the credential behind a value nothing can read.
+      expect(after!.accessToken).toBe(row!.accessToken);
+      expect(decryptSecret(after!.accessToken, 'test')).toBe(TOKEN);
+      expect(decryptSecret(after!.webhookVerifyToken, 'test')).toBe(VERIFY);
+    });
+
+    it('replaces a credential when one IS supplied', async () => {
+      await post(complete());
+      const row = await prisma.whatsAppConfig.findFirst({ where: { organizationId: orgId } });
+      const rotated = 'rotated_verify_value';
+
+      await post({ id: row!.id, phoneNumberId: row!.phoneNumberId, webhookVerifyToken: rotated });
+
+      const after = await prisma.whatsAppConfig.findUnique({ where: { id: row!.id } });
+      expect(decryptSecret(after!.webhookVerifyToken, 'test')).toBe(rotated);
+      // And did not disturb the other one.
+      expect(decryptSecret(after!.accessToken, 'test')).toBe(TOKEN);
+    });
+
+    it('still refuses to CREATE a line with no credentials', async () => {
+      await prisma.whatsAppConfig.deleteMany({ where: { organizationId: orgId } });
+      const res = await post({ phoneNumberId: '1319842031202307' });
+      // Nothing stored to fall back on, and a row without a token is a line
+      // that reaches nobody.
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/new whatsapp line needs both/i);
+    });
   });
 });

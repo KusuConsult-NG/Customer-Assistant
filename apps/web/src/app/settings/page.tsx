@@ -566,8 +566,18 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phoneNumberId.trim() || !accessToken.trim() || !webhookVerifyToken.trim()) {
-      showToast('Phone Number ID, Access Token, and Webhook Verify Token are required', 'error');
+    // On an existing line the credentials are OPTIONAL — omitted means
+    // unchanged — so switching which number the line points at does not
+    // require fetching the Meta token out of Business Manager again. The
+    // placeholder has always said "enter new to replace"; the form used to
+    // refuse anyway.
+    const isNewLine = !wa.phoneNumberId;
+    if (!phoneNumberId.trim()) {
+      showToast('Phone Number ID is required', 'error');
+      return;
+    }
+    if (isNewLine && (!accessToken.trim() || !webhookVerifyToken.trim())) {
+      showToast('A new line needs an Access Token and a Webhook Verify Token', 'error');
       return;
     }
     setSaving(true);
@@ -577,8 +587,9 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
         body: JSON.stringify({
           phoneNumberId: phoneNumberId.trim(),
           whatsappBusinessId: whatsappBusinessId.trim(),
-          accessToken: accessToken.trim(),
-          webhookVerifyToken: webhookVerifyToken.trim(),
+          // Left out entirely when blank, so the stored value stands.
+          ...(accessToken.trim() ? { accessToken: accessToken.trim() } : {}),
+          ...(webhookVerifyToken.trim() ? { webhookVerifyToken: webhookVerifyToken.trim() } : {}),
           displayPhoneNumber: displayPhoneNumber.trim() || phoneNumberId.trim(),
         }),
       });
@@ -722,7 +733,7 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
                       onClick={() => {
                         setPhoneNumberId(n.phoneNumberId || '');
                         if (n.displayPhoneNumber) setDisplayPhoneNumber(n.displayPhoneNumber);
-                        showToast('Fields filled — enter the token and save to switch line.');
+                        showToast('Fields filled — press Save to switch to this line.');
                       }}
                       className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold whitespace-nowrap"
                     >

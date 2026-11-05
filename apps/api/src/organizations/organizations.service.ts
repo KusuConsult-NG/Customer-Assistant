@@ -536,8 +536,10 @@ export class OrganizationsService {
       /** The line being edited. Omitted means the first one the read returns. */
       id?: string;
       phoneNumberId: string;
-      accessToken: string;
-      webhookVerifyToken: string;
+      /** Omitted on an update means UNCHANGED. Required to create. */
+      accessToken?: string;
+      /** Omitted on an update means UNCHANGED. Required to create. */
+      webhookVerifyToken?: string;
       whatsappBusinessId?: string;
       displayPhoneNumber?: string;
     }
@@ -563,18 +565,42 @@ export class OrganizationsService {
     // handed the caller's own access token straight back in the response body.
     // Neither is what a settings form needs — it needs to know it saved.
     if (existing) {
+      // CHANGING THE LINE MUST NOT REQUIRE RE-ENTERING THE TOKEN.
+      //
+      // Both credentials were required on every save, so switching a line to
+      // a different `phoneNumberId` — moving from a test number to the real
+      // one, the single most likely edit this form will ever see — meant
+      // fetching the Meta token out of Business Manager again. The form even
+      // said otherwise, placeholding the masked value with "enter new to
+      // replace", so it read as optional and refused as required.
+      //
+      // Omitted now means UNCHANGED: the field is left out of the update
+      // entirely rather than passed through, because the stored value is
+      // ciphertext and sealing it a second time would encrypt the encryption
+      // and lock the credential away behind a value nothing can read.
+      const changes: Record<string, unknown> = {
+        phoneNumberId: data.phoneNumberId,
+        whatsappBusinessId: data.whatsappBusinessId || existing.whatsappBusinessId,
+        displayPhoneNumber: data.displayPhoneNumber || existing.displayPhoneNumber,
+        isActive: true,
+      };
+      if (data.accessToken?.trim()) changes.accessToken = data.accessToken;
+      if (data.webhookVerifyToken?.trim()) changes.webhookVerifyToken = data.webhookVerifyToken;
+
       const saved = await prisma.whatsAppConfig.update({
         where: { id: existing.id },
-        data: sealWhatsAppCredentials({
-          phoneNumberId: data.phoneNumberId,
-          accessToken: data.accessToken,
-          webhookVerifyToken: data.webhookVerifyToken,
-          whatsappBusinessId: data.whatsappBusinessId || existing.whatsappBusinessId,
-          displayPhoneNumber: data.displayPhoneNumber || existing.displayPhoneNumber,
-          isActive: true,
-        }),
+        data: sealWhatsAppCredentials(changes as any),
       });
       return maskedWhatsAppConfig(saved);
+    }
+
+    // A NEW line still needs both: there is nothing stored to fall back on,
+    // and a row without a token is a line that reaches nobody.
+    if (!data.accessToken?.trim() || !data.webhookVerifyToken?.trim()) {
+      throw new BadRequestException(
+        'A new WhatsApp line needs both an accessToken and a webhookVerifyToken. ' +
+        'They may be omitted only when updating a line that already stores them.'
+      );
     }
 
     const payload = sealWhatsAppCredentials({
@@ -610,7 +636,7 @@ export class OrganizationsService {
    * Returns the WABA's numbers with `isConnectedHere` marking the one this
    * agency has stored, so choosing is a comparison rather than a guess.
    */
-  async listMetaPhoneNumbers(organizationId: string) {
+  async listMetaPhoneNumbers(organizationId: string, opts: { discover?: boolean; businessId?: string } = {}) {
     const row = await prisma.whatsAppConfig.findFirst({
       where: { organizationId },
       orderBy: WHATSAPP_ROW_ORDER,
@@ -661,9 +687,28 @@ export class OrganizationsService {
     }
 
     const numbers: any[] = Array.isArray(body?.data) ? body.data : [];
+
+    // Optional WIDER SEARCH, because the numbers are not always on the
+    // account we hold a credential for.
+    //
+    // A WhatsApp Business Account is not the business, and one Meta business
+    // portfolio can own several WABAs — a sandbox one created by a quickstart
+    // and the real one created later. A number added to the second is
+    // invisible from the first, so the operator sees "no numbers" and
+    // reasonably concludes the verification did not take. Asking which
+    // accounts this credential can see at all turns that dead end into the
+    // answer.
+    //
+    // Off by default: it is several Graph calls, all of them subject to
+    // Meta's business-use-case rate limits, and the common case needs one.
+    const discovered = opts.discover || opts.businessId
+      ? await this.discoverWhatsAppAccounts(config.accessToken, opts.businessId, row.phoneNumberId)
+      : null;
+
     return {
       whatsappBusinessId: businessId,
       connectedPhoneNumberId: row.phoneNumberId,
+      ...(discovered ? { discovered } : {}),
       numbers: numbers.map((n) => ({
         phoneNumberId: n?.id ?? null,
         displayPhoneNumber: n?.display_phone_number ?? null,
@@ -681,6 +726,125 @@ export class OrganizationsService {
           /^\+1\s*555/.test(n.display_phone_number),
       })),
     };
+  }
+
+  /**
+   * Which WhatsApp Business Accounts can this credential see, and what
+   * numbers are on each?
+   *
+   * `businessId` narrows it to one portfolio when the operator knows which —
+   * otherwise the token's own businesses are walked. Every step is read-only
+   * and every failure is reported rather than thrown: a System User token
+   * without `business_management` cannot list businesses at all, and that is
+   * not the same as there being none.
+   *
+   * Bounded on purpose. These calls carry Meta's business-use-case rate
+   * limits, so the fan-out is capped and says when it truncated rather than
+   * quietly returning part of the picture as if it were all of it.
+   */
+  private async discoverWhatsAppAccounts(
+    accessToken: string,
+    businessId: string | undefined,
+    connectedPhoneNumberId: string
+  ) {
+    const MAX_BUSINESSES = 5;
+    const MAX_ACCOUNTS = 10;
+    const notes: string[] = [];
+
+    const who = await metaGet('https://graph.facebook.com/v21.0/me?fields=id,name', accessToken);
+    const identity = who.ok ? { id: who.body?.id ?? null, name: who.body?.name ?? null } : null;
+    if (!who.ok) notes.push(`Could not identify the credential — ${who.error}`);
+
+    let businesses: Array<{ id: string; name?: string }> = [];
+    if (businessId) {
+      businesses = [{ id: businessId }];
+    } else {
+      const mine = await metaGet(
+        'https://graph.facebook.com/v21.0/me/businesses?fields=id,name&limit=25',
+        accessToken
+      );
+      if (mine.ok) {
+        businesses = (Array.isArray(mine.body?.data) ? mine.body.data : []).map((b: any) => ({
+          id: b?.id,
+          name: b?.name,
+        })).filter((b: any) => b.id);
+        if (businesses.length === 0) {
+          notes.push('This credential reports no Meta business portfolios. Pass a businessId to look in one directly.');
+        }
+      } else {
+        notes.push(
+          `Could not list this credential's businesses — ${mine.error}. A System User token ` +
+          'without business_management cannot, which is not the same as there being none. ' +
+          'Pass a businessId to look in one directly.'
+        );
+      }
+    }
+
+    if (businesses.length > MAX_BUSINESSES) {
+      notes.push(`${businesses.length} businesses found; only the first ${MAX_BUSINESSES} were searched.`);
+      businesses = businesses.slice(0, MAX_BUSINESSES);
+    }
+
+    const accounts: any[] = [];
+    for (const business of businesses) {
+      const found: Array<{ id: string; name?: string; relation: string }> = [];
+
+      // Owned and shared accounts are different edges, and a line can sit on
+      // either, so both are asked and a failure on one does not hide the other.
+      for (const [edge, relation] of [
+        ['owned_whatsapp_business_accounts', 'owned'],
+        ['client_whatsapp_business_accounts', 'shared'],
+      ] as const) {
+        const res = await metaGet(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(business.id)}/${edge}?fields=id,name&limit=25`,
+          accessToken
+        );
+        if (res.ok) {
+          for (const w of Array.isArray(res.body?.data) ? res.body.data : []) {
+            if (w?.id) found.push({ id: w.id, name: w.name, relation });
+          }
+        } else {
+          notes.push(`${business.name || business.id}: could not list ${relation} accounts — ${res.error}`);
+        }
+      }
+
+      for (const waba of found.slice(0, MAX_ACCOUNTS)) {
+        const nums = await metaGet(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(waba.id)}/phone_numbers` +
+          '?fields=id,display_phone_number,verified_name,code_verification_status,platform_type&limit=25',
+          accessToken
+        );
+        accounts.push({
+          businessId: business.id,
+          businessName: business.name ?? null,
+          whatsappBusinessId: waba.id,
+          whatsappBusinessName: waba.name ?? null,
+          relation: waba.relation,
+          // `null` means NOT READ, never "holds none".
+          numbers: nums.ok
+            ? (Array.isArray(nums.body?.data) ? nums.body.data : []).map((n: any) => ({
+                phoneNumberId: n?.id ?? null,
+                displayPhoneNumber: n?.display_phone_number ?? null,
+                verifiedName: n?.verified_name ?? null,
+                codeVerificationStatus: n?.code_verification_status ?? null,
+                platformType: n?.platform_type ?? null,
+                isConnectedHere: !!n?.id && n.id === connectedPhoneNumberId,
+                isMetaTestNumber:
+                  typeof n?.display_phone_number === 'string' &&
+                  /^\+1\s*555/.test(n.display_phone_number),
+              }))
+            : null,
+          ...(nums.ok ? {} : { numbersError: nums.error }),
+        });
+      }
+      if (found.length > MAX_ACCOUNTS) {
+        notes.push(
+          `${business.name || business.id} holds ${found.length} WhatsApp accounts; only the first ${MAX_ACCOUNTS} were searched.`
+        );
+      }
+    }
+
+    return { identity, accounts, notes };
   }
 
   /**
