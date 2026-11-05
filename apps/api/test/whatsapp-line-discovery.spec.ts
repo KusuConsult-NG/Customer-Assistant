@@ -216,10 +216,20 @@ describe('WhatsApp line discovery and handshake', () => {
     });
 
     it('does not accept an INACTIVE line\'s token', async () => {
-      setEnv('WHATSAPP_VERIFY_TOKEN', undefined);
+      // The env var is SET on purpose. With it unset, deactivating the only
+      // row in a clean database leaves no candidate at all, so the answer is
+      // the 500 for "nothing configured" rather than the 403 for "that token
+      // is not accepted" — two different behaviours, and the assertion would
+      // pass or fail on whether another suite happened to leave a row behind.
+      // CI is clean and the dev database is not, which is exactly how this
+      // passed locally and failed there.
+      setEnv('WHATSAPP_VERIFY_TOKEN', 'env_verify_value');
       const row = await storeLine({ verify: 'retired_line_value' });
       await prisma.whatsAppConfig.update({ where: { id: row.id }, data: { isActive: false } });
+
       expect((await handshake('retired_line_value')).status).toBe(403);
+      // And the deactivation did not break what still works.
+      expect((await handshake('env_verify_value')).status).toBe(200);
     });
 
     /**
