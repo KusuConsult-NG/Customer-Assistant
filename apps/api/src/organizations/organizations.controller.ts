@@ -1,5 +1,5 @@
 import { Controller, Get, Patch, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
-import { UpdateWhatsAppConfigDto } from './organizations.dto';
+import { UpdateWhatsAppConfigDto, RegisterCloudApiNumberDto } from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -130,6 +130,21 @@ export class OrganizationsController {
    * Asks Meta to deliver this agency's messages here. Two subscriptions, both
    * attempted, and the outcome READ BACK rather than inferred from a 200.
    */
+  /**
+   * Moves a verified number out of sandbox onto Cloud API. There is no button
+   * for this anywhere in Meta's own UI — their docs say it can only be done
+   * through the API — which is why a verified number can sit unusable with
+   * nothing offering to finish it.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Post('whatsapp-config/register-number')
+  async registerNumberForCloudApi(
+    @Req() req: { user: AuthUser },
+    @Body() body: RegisterCloudApiNumberDto
+  ) {
+    return this.orgsService.registerNumberForCloudApi(req.user.organizationId, body);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Post('whatsapp-config/subscribe')
   async subscribeWhatsAppWebhooks(@Req() req: { user: AuthUser }) {

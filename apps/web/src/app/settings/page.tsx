@@ -506,6 +506,44 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [loadingReadiness, setLoadingReadiness] = useState(false);
 
+  // Moving a number out of sandbox. There is no button for this in Meta's own
+  // UI — their docs say registration is API-only — so a VERIFIED number can
+  // sit at platformType NOT_APPLICABLE with nothing offering to finish it.
+  const [registerPin, setRegisterPin] = useState('');
+  const [registeringId, setRegisteringId] = useState<string | null>(null);
+  const [registerResult, setRegisterResult] = useState<any | null>(null);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+
+  const registerForCloudApi = async (phoneNumberId: string) => {
+    setRegisterError(null);
+    setRegisterResult(null);
+    if (!/^[0-9]{6}$/.test(registerPin.trim())) {
+      setRegisterError('Enter the 6-digit two-step PIN first.');
+      return;
+    }
+    setRegisteringId(phoneNumberId);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/register-number`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ phoneNumberId, pin: registerPin.trim() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Meta allows 10 attempts per number per 72 hours, so a refusal is
+        // shown rather than retried.
+        setRegisterError(body?.message || `Registration failed (HTTP ${res.status}).`);
+        return;
+      }
+      setRegisterResult(body);
+      await loadLines();
+    } catch (err: any) {
+      setRegisterError(err?.message || 'Could not reach the API.');
+    } finally {
+      setRegisteringId(null);
+    }
+  };
+
   const [subscribing, setSubscribing] = useState(false);
   const [subscribeResult, setSubscribeResult] = useState<any | null>(null);
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
@@ -775,13 +813,29 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
                         added by hand in Meta, so it proves the stack works and
                         is never a number to publish. Saying so here is cheaper
                         than finding out after it is announced. */}
+                    {n.platformType && n.platformType !== 'CLOUD_API' && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Not on Cloud API ({n.platformType}) — verified, but the platform cannot send or
+                        receive on it until it is registered.
+                      </p>
+                    )}
                     {n.isMetaTestNumber && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         Meta test number — only reaches recipients you add in Meta. Not for publishing.
                       </p>
                     )}
                   </div>
-                  {n.isConnectedHere ? (
+                  {n.platformType && n.platformType !== 'CLOUD_API' ? (
+                    <button
+                      type="button"
+                      onClick={() => registerForCloudApi(n.phoneNumberId)}
+                      disabled={registeringId === n.phoneNumberId}
+                      title="Registers this number for Cloud API. Meta offers no way to do this in their own UI."
+                      className="px-3 py-1.5 text-xs rounded-lg bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all font-semibold whitespace-nowrap disabled:opacity-50"
+                    >
+                      {registeringId === n.phoneNumberId ? 'Registering…' : 'Register for Cloud API'}
+                    </button>
+                  ) : n.isConnectedHere ? (
                     <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                       Connected here
                     </span>
@@ -800,6 +854,39 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
                   )}
                 </div>
               ))}
+              <div className="p-3 space-y-2">
+                <label className={labelCls}>Two-step PIN (6 digits), for registering a number</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={registerPin}
+                  onChange={e => setRegisterPin(e.target.value.replace(/[^0-9]/g, ''))}
+                  className={inputCls}
+                  placeholder="000000"
+                />
+                {/* Meta reuses this one field for two meanings, and getting it
+                    wrong spends one of ten attempts allowed per 72 hours. */}
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  If the number already has two-step verification this must be the existing PIN.
+                  Otherwise it becomes the number&apos;s PIN. Meta allows 10 attempts per number
+                  per 72 hours.
+                </p>
+                {registerError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{registerError}</p>
+                )}
+                {registerResult && (
+                  <div className="text-xs space-y-1">
+                    <p className={registerResult.registered ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}>
+                      {registerResult.registered
+                        ? `${registerResult.displayPhoneNumber ?? registerResult.phoneNumberId} is on CLOUD_API.`
+                        : 'Not registered.'}
+                    </p>
+                    <p className="text-slate-500 dark:text-slate-400">{registerResult.requestDetail}</p>
+                    <p className="font-medium">{registerResult.nextStep}</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

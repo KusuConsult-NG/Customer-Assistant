@@ -702,4 +702,136 @@ describe('WhatsApp line discovery and handshake', () => {
       expect((await subscribe(agentToken)).status).toBe(403);
     });
   });
+  /**
+   * Moving a verified number OUT OF SANDBOX, which has no button anywhere.
+   *
+   * Meta's documentation is explicit that a business phone number can be
+   * registered for Cloud API only through the API — not WhatsApp Manager, not
+   * the App Dashboard. So a number can be verified, display-name approved,
+   * sitting in the account, and still unusable, with nothing in any Meta
+   * screen offering to finish it. It reads as `platform_type:
+   * NOT_APPLICABLE`, which looks like a property of the number rather than a
+   * step nobody has taken.
+   */
+  describe('registering a number for Cloud API', () => {
+    const NG = '1342529695620296';
+
+    const graph = (opts: { before?: string; post?: any; after?: any } = {}) => {
+      globalThis.fetch = (async (input: any, init?: any) => {
+        const url = String(input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/register')) {
+          if (opts.post === 'refused') {
+            return new Response(
+              JSON.stringify({ error: { message: 'Two-step verification PIN mismatch' } }),
+              { status: 400 }
+            );
+          }
+          if (opts.post === 'unreachable') throw new Error('ECONNRESET');
+          // The PIN travels in the BODY, never the URL — a URL ends up in logs.
+          expect(url).not.toContain('123456');
+          expect(JSON.parse(String(init?.body))).toEqual({ messaging_product: 'whatsapp', pin: '123456' });
+          return new Response(JSON.stringify({ success: true }), { status: 200 });
+        }
+        if (url.includes(NG) && method === 'GET') {
+          const seq = opts.after === undefined ? 'CLOUD_API' : opts.after;
+          if (seq === 'unreachable_after' && (globalThis as any).__seenBefore) throw new Error('ECONNRESET');
+          (globalThis as any).__seenBefore = true;
+          const platform = (globalThis as any).__afterCall
+            ? seq
+            : (opts.before ?? 'NOT_APPLICABLE');
+          (globalThis as any).__afterCall = true;
+          return new Response(
+            JSON.stringify({
+              display_phone_number: '+234 708 107 8679',
+              verified_name: 'Plateau Customer Care',
+              code_verification_status: 'VERIFIED',
+              platform_type: platform === 'unreachable_after' ? 'NOT_APPLICABLE' : platform,
+            }),
+            { status: 200 }
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+      (globalThis as any).__afterCall = false;
+      (globalThis as any).__seenBefore = false;
+    };
+
+    const register = (body: any, token = ownerToken) =>
+      request(app.getHttpServer())
+        .post('/api/organizations/whatsapp-config/register-number')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+
+    it('registers the number and confirms from platform_type READ BACK', async () => {
+      await storeLine();
+      graph();
+      const res = await register({ phoneNumberId: NG, pin: '123456' });
+      expect(res.status).toBe(201);
+      expect(res.body.accepted).toBe(true);
+      expect(res.body.platformType).toBe('CLOUD_API');
+      expect(res.body.registered).toBe(true);
+      expect(res.body.wasAlreadyRegistered).toBe(false);
+      expect(res.body.nextStep).toMatch(/CLOUD_API/);
+    });
+
+    it('does NOT report registered when Meta still says NOT_APPLICABLE', async () => {
+      await storeLine();
+      graph({ after: 'NOT_APPLICABLE' });
+      const res = await register({ phoneNumberId: NG, pin: '123456' });
+      // The request answered 200 and the number is still not on Cloud API.
+      expect(res.body.accepted).toBe(true);
+      expect(res.body.registered).toBe(false);
+      expect(res.body.nextStep).toMatch(/still reports platform_type/i);
+      // And it warns rather than inviting a retry loop into a 10-per-72h cap.
+      expect(res.body.nextStep).toMatch(/10 registration attempts/i);
+    });
+
+    it('quotes Meta when the PIN is wrong', async () => {
+      await storeLine();
+      // A refused registration leaves the number where it was — the fixture
+      // must say so, or the test asserts a contradiction.
+      graph({ post: 'refused', after: 'NOT_APPLICABLE' });
+      const res = await register({ phoneNumberId: NG, pin: '123456' });
+      expect(res.body.accepted).toBe(false);
+      expect(res.body.requestDetail).toContain('Two-step verification PIN mismatch');
+      expect(res.body.registered).toBe(false);
+    });
+
+    it('refuses a malformed PIN before spending one of the ten attempts', async () => {
+      await storeLine();
+      let hitRegister = false;
+      globalThis.fetch = (async (input: any) => {
+        if (String(input).includes('/register')) hitRegister = true;
+        return new Response('{}', { status: 200 });
+      }) as any;
+      for (const pin of ['12345', '1234567', 'abcdef', '']) {
+        expect((await register({ phoneNumberId: NG, pin })).status).toBe(400);
+      }
+      expect(hitRegister).toBe(false);
+    });
+
+    it('says when the number was ALREADY on Cloud API', async () => {
+      await storeLine();
+      graph({ before: 'CLOUD_API' });
+      const res = await register({ phoneNumberId: NG, pin: '123456' });
+      expect(res.body.wasAlreadyRegistered).toBe(true);
+      expect(res.body.nextStep).toMatch(/already on cloud api/i);
+    });
+
+    it('never returns the PIN or the token', async () => {
+      await storeLine();
+      graph();
+      const raw = JSON.stringify((await register({ phoneNumberId: NG, pin: '123456' })).body);
+      expect(raw).not.toContain('123456');
+      expect(raw).not.toContain(META);
+      expect(raw).not.toContain('v1.');
+    });
+
+    it('is OWNER/ADMIN only', async () => {
+      await storeLine();
+      graph();
+      expect((await register({ phoneNumberId: NG, pin: '123456' }, agentToken)).status).toBe(403);
+    });
+  });
 });

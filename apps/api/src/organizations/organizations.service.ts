@@ -141,13 +141,18 @@ function whatsAppWebhookUrl(): string {
  */
 async function metaPost(
   url: string,
-  accessToken: string
+  accessToken: string,
+  json?: Record<string, unknown>
 ): Promise<{ reached: boolean; ok: boolean; body: any; error?: string }> {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: AbortSignal.timeout(15_000),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(json ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(json ? { body: JSON.stringify(json) } : {}),
+      signal: AbortSignal.timeout(20_000),
     });
     const body: any = await res.json().catch(() => null);
     if (!res.ok) {
@@ -1001,6 +1006,119 @@ export class OrganizationsService {
           : after.ok
             ? 'Meta still reports no app subscribed to this account. The steps above say why.'
             : 'The subscription could not be read back, so whether it took is unknown — not confirmed.',
+    };
+  }
+
+  /**
+   * Move a verified number OUT OF SANDBOX by registering it for Cloud API.
+   *
+   * This is the step with no button anywhere. Meta's own documentation is
+   * explicit that a business phone number can be registered ONLY through the
+   * API — not through WhatsApp Manager and not through the App Dashboard — so
+   * a number can be verified, display-name approved, sitting in the account,
+   * and still unusable, with nothing in any Meta screen offering to finish
+   * it. It reads as `platformType: NOT_APPLICABLE`, which looks like a
+   * property of the number rather than a step nobody has taken.
+   *
+   * That is exactly the position of this deployment's real Nigerian line
+   * while the sandbox `+1 555` number is the only one the platform can use.
+   *
+   * ── The PIN ─────────────────────────────────────────────────────────────
+   *
+   * Meta reuses one field for two meanings. If the number ALREADY has
+   * two-step verification, the pin must MATCH the existing one or the call is
+   * refused. If it does not, whatever is sent BECOMES the number's two-step
+   * PIN from then on. So it is never defaulted or generated here: a guessed
+   * value either fails or silently sets a credential the operator does not
+   * know.
+   *
+   * ── Why it is not retried ───────────────────────────────────────────────
+   *
+   * Meta limits this endpoint to 10 requests per business number in a rolling
+   * 72-hour window. A retry loop on a wrong PIN would burn a day's budget and
+   * leave the number unregisterable until the window moved, so one attempt is
+   * made and the refusal is reported verbatim.
+   */
+  async registerNumberForCloudApi(
+    organizationId: string,
+    args: { phoneNumberId: string; pin: string }
+  ) {
+    const pin = args.pin?.trim() ?? '';
+    if (!/^[0-9]{6}$/.test(pin)) {
+      throw new BadRequestException(
+        'The PIN must be exactly 6 digits. If this number already has two-step verification, ' +
+        'it must be the existing PIN; otherwise it becomes the number\'s two-step PIN.'
+      );
+    }
+    const phoneNumberId = args.phoneNumberId?.trim();
+    if (!phoneNumberId) throw new BadRequestException('phoneNumberId is required.');
+
+    const row = await prisma.whatsAppConfig.findFirst({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'This agency has no WhatsApp line stored, so there is no credential to register with.'
+      );
+    }
+    const config = withWhatsAppCredentials(row)!;
+    if (!config.accessToken) {
+      throw new BadRequestException('The stored line has no access token, so Meta cannot be asked.');
+    }
+
+    // Read BEFORE, so "already registered" is distinguishable from "we did it".
+    const before = await metaGet(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}` +
+      '?fields=display_phone_number,verified_name,code_verification_status,platform_type',
+      config.accessToken
+    );
+    if (before.reached && !before.ok) {
+      throw new BadRequestException(`Meta refused to read that number: ${before.error}`);
+    }
+    const wasAlready = before.ok && before.body?.platform_type === 'CLOUD_API';
+
+    const res = await metaPost(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}/register`,
+      config.accessToken,
+      { messaging_product: 'whatsapp', pin }
+    );
+
+    // ACT, THEN ANNOUNCE. `platform_type` read back from Meta is the outcome;
+    // the request returning 200 is not. Reporting the request as the result is
+    // the fabrication this codebase exists to keep out.
+    const after = await metaGet(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(phoneNumberId)}` +
+      '?fields=display_phone_number,verified_name,code_verification_status,platform_type',
+      config.accessToken
+    );
+
+    const platformType = after.ok ? (after.body?.platform_type ?? null) : null;
+    const registered = platformType === 'CLOUD_API';
+
+    return {
+      phoneNumberId,
+      displayPhoneNumber: after.ok ? (after.body?.display_phone_number ?? null) : null,
+      verifiedName: after.ok ? (after.body?.verified_name ?? null) : null,
+      codeVerificationStatus: after.ok ? (after.body?.code_verification_status ?? null) : null,
+      // `null` means the read-back failed — NOT that it is unregistered.
+      platformType,
+      wasAlreadyRegistered: wasAlready,
+      accepted: res.ok,
+      requestDetail: res.ok
+        ? 'Meta accepted the registration request.'
+        : res.reached
+          ? `Meta refused it — ${res.error}`
+          : `Could not reach Meta — ${res.error}`,
+      ...(after.ok ? {} : { verificationError: after.error }),
+      registered,
+      nextStep: registered
+        ? wasAlready
+          ? 'This number was already on Cloud API. Point the line at it and subscribe the webhooks.'
+          : 'Meta now reports this number on CLOUD_API. Point the line at it, subscribe the webhooks, and any WhatsApp user can message it.'
+        : after.ok
+          ? `Meta still reports platform_type ${platformType ?? 'unknown'}, so the number is not on Cloud API. The request detail above says why. Meta allows 10 registration attempts per number per 72 hours, so check the PIN before trying again.`
+          : 'The result could not be read back, so whether the number is now on Cloud API is unknown — not confirmed.',
     };
   }
 

@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 /**
  * Organization request DTOs.
@@ -84,4 +84,29 @@ export class UpdateWhatsAppConfigDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+/**
+ * Registering a verified number for Cloud API.
+ *
+ * A real class, for the same reason as the rest of this file: an inline type
+ * is erased and validates nothing, and this endpoint spends one of only ten
+ * attempts Meta allows per number per 72 hours. A malformed PIN must be
+ * refused here rather than burning one of them.
+ */
+export class RegisterCloudApiNumberDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  phoneNumberId!: string;
+
+  /**
+   * Exactly 6 digits. Meta reuses this field for two meanings: it must MATCH
+   * an existing two-step PIN, or it BECOMES the number's two-step PIN. Never
+   * defaulted or generated — a guessed value either fails or silently sets a
+   * credential the operator does not know.
+   */
+  @IsString()
+  @Matches(/^[0-9]{6}$/, { message: 'pin must be exactly 6 digits' })
+  pin!: string;
 }
