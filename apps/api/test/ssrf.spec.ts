@@ -109,17 +109,74 @@ describe('Web crawler SSRF defence', () => {
     it('passes the guard and proceeds to fetch a public host', async () => {
       // The guard must let this through; the fetch stub then rejects, proving we got
       // past validation rather than being blocked by it.
+      // `arrayBuffer`, not `text`: the crawler reads BYTES so a PDF reaches
+      // the parser intact instead of being decoded as UTF-8 and indexed as
+      // if its binary were prose.
+      const html = '<html><body>' + 'Public content. '.repeat(20) + '</body></html>';
       global.fetch = jest.fn(async () => ({
         status: 200,
         ok: true,
         headers: new Map([['content-type', 'text/html']]) as any,
-        text: async () => '<html><body>' + 'Public content. '.repeat(20) + '</body></html>',
+        arrayBuffer: async () => Buffer.from(html, 'utf-8'),
+        text: async () => html,
       })) as any;
 
       // Reaches the DB layer, which is unavailable in this suite — so anything other
       // than a BadRequestException means the SSRF guard allowed the request.
       await expect(crawl('https://example.com/')).rejects.not.toBeInstanceOf(BadRequestException);
       expect(global.fetch).toHaveBeenCalled();
+    });
+  });
+
+  describe('redirects are followed, and re-checked on every hop', () => {
+    it('refuses a public URL that redirects to a private address', async () => {
+      // Redirects used to be refused outright, which was safe and made a
+      // government site that redirects /mda to /mda/ unindexable. Following
+      // them is only safe because the guard runs again on the destination —
+      // this is the test that keeps it that way.
+      mockLookup.mockImplementation(async (host: string) =>
+        host === 'evil.example'
+          ? [{ address: '93.184.216.34', family: 4 }]
+          : [{ address: '169.254.169.254', family: 4 }]
+      );
+      global.fetch = jest.fn(async () => ({
+        status: 302,
+        ok: false,
+        headers: new Map([['location', 'http://metadata.internal/latest/meta-data/']]) as any,
+        arrayBuffer: async () => Buffer.from(''),
+        text: async () => '',
+      })) as any;
+
+      await expect(crawl('https://evil.example/')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('follows a redirect to another public address', async () => {
+      mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+      const html = '<html><body>' + 'Final page content. '.repeat(20) + '</body></html>';
+      let call = 0;
+      global.fetch = jest.fn(async () => {
+        call += 1;
+        if (call === 1) {
+          return {
+            status: 301,
+            ok: false,
+            headers: new Map([['location', 'https://example.com/mda/']]) as any,
+            arrayBuffer: async () => Buffer.from(''),
+            text: async () => '',
+          };
+        }
+        return {
+          status: 200,
+          ok: true,
+          headers: new Map([['content-type', 'text/html']]) as any,
+          arrayBuffer: async () => Buffer.from(html, 'utf-8'),
+          text: async () => html,
+        };
+      }) as any;
+
+      // Past the guard and past the redirect — it fails later, at the DB.
+      await expect(crawl('https://example.com/mda')).rejects.not.toBeInstanceOf(BadRequestException);
+      expect(call).toBeGreaterThan(1);
     });
   });
 });
