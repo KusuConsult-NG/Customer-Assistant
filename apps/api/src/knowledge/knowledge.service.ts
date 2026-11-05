@@ -676,15 +676,35 @@ export class KnowledgeService {
       );
     });
 
-    const queue: string[] = [first.finalUrl];
+    // `https://host` and `https://host/` are the same page, and a sitemap
+    // and the page's own links routinely spell a URL both ways. Comparing
+    // the raw strings indexed it twice, which is two documents saying the
+    // same thing and two chunks competing in every search.
+    const seen = new Set<string>();
+    const queue: string[] = [];
+    const enqueue = (raw: string) => {
+      let key = raw;
+      try {
+        const u = new URL(raw);
+        u.hash = '';
+        if (u.pathname === '') u.pathname = '/';
+        // A trailing slash is not a different page.
+        key = u.toString().replace(/\/+$/, '') || u.origin;
+      } catch {
+        return;
+      }
+      if (seen.has(key)) return;
+      seen.add(key);
+      queue.push(raw);
+    };
+
+    enqueue(first.finalUrl);
     if (maxPages > 1) {
       const origin = new URL(first.finalUrl).origin;
-      for (const u of await this.sitemapUrls(origin, maxPages * 2)) {
-        if (!queue.includes(u)) queue.push(u);
-      }
+      for (const u of await this.sitemapUrls(origin, maxPages * 2)) enqueue(u);
       if (queue.length < maxPages && /html/i.test(first.contentType)) {
         for (const u of this.sameOriginLinks(first.buffer.toString('utf-8'), first.finalUrl, maxPages * 2)) {
-          if (!queue.includes(u)) queue.push(u);
+          enqueue(u);
         }
       }
     }
