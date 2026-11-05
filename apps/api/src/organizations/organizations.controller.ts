@@ -1,12 +1,10 @@
-import { Controller, Get, Patch, Post, Delete, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { UpdateWhatsAppConfigDto } from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
-
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Query } from '@nestjs/common';
 
 /**
  * Who is making the change, for the audit record.
@@ -136,8 +134,23 @@ export class OrganizationsController {
 
   @Roles('OWNER', 'ADMIN')
   @Get('whatsapp-config/numbers')
-  async listMetaPhoneNumbers(@Req() req: { user: AuthUser }) {
-    return this.orgsService.listMetaPhoneNumbers(req.user.organizationId);
+  async listMetaPhoneNumbers(
+    @Req() req: { user: AuthUser },
+    /**
+     * A wider search, for when the numbers are not on the account we hold a
+     * credential for. One Meta business portfolio can own several WhatsApp
+     * Business Accounts — a sandbox one from a quickstart and the real one
+     * added later — and a number on the second is invisible from the first.
+     * `businessId` looks in one portfolio directly; `discover` walks the
+     * credential's own. Off by default: several rate-limited Graph calls.
+     */
+    @Query('discover') discover?: string,
+    @Query('businessId') businessId?: string
+  ) {
+    return this.orgsService.listMetaPhoneNumbers(req.user.organizationId, {
+      discover: discover === '1' || discover === 'true',
+      businessId: businessId?.trim() || undefined,
+    });
   }
 
   @Roles('OWNER', 'ADMIN')

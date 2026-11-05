@@ -431,4 +431,129 @@ describe('WhatsApp line discovery and handshake', () => {
       expect((await readiness(agentToken)).status).toBe(403);
     });
   });
+  /**
+   * The numbers are not always on the account we hold a credential for.
+   *
+   * A WhatsApp Business Account is not the business. One Meta portfolio can
+   * own several WABAs — a sandbox one from a quickstart and the real one added
+   * later — and a number added to the second is invisible from the first. The
+   * operator then sees "no numbers" on a verified business and reasonably
+   * concludes the verification did not take.
+   */
+  describe('discovering accounts across a business portfolio', () => {
+    const graph = (routes: Record<string, any>) => {
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        for (const [match, value] of Object.entries(routes)) {
+          if (url.includes(match)) {
+            if (value === 'refused') {
+              return new Response(JSON.stringify({ error: { message: 'requires business_management' } }), { status: 403 });
+            }
+            return new Response(JSON.stringify(value), { status: 200 });
+          }
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }) as any;
+    };
+
+    const numbersWith = (q: string) =>
+      request(app.getHttpServer())
+        .get(`/api/organizations/whatsapp-config/numbers?${q}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    it('finds a number on a DIFFERENT account in the named portfolio', async () => {
+      await storeLine();
+      graph({
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        '/61596283615722/owned_whatsapp_business_accounts': {
+          data: [{ id: WABA, name: 'Sandbox' }, { id: '999', name: 'CustomerCare' }],
+        },
+        [`/${WABA}/phone_numbers`]: {
+          data: [{ id: '1319842031202307', display_phone_number: '+1 555-671-9884', verified_name: 'Test Number' }],
+        },
+        '/999/phone_numbers': {
+          data: [{
+            id: '777', display_phone_number: '+234 803 000 1111',
+            verified_name: 'Plaschema', code_verification_status: 'VERIFIED',
+          }],
+        },
+      });
+
+      const res = await numbersWith('businessId=61596283615722');
+      expect(res.status).toBe(200);
+
+      const other = res.body.discovered.accounts.find((a: any) => a.whatsappBusinessId === '999');
+      expect(other.whatsappBusinessName).toBe('CustomerCare');
+      expect(other.numbers[0].phoneNumberId).toBe('777');
+      expect(other.numbers[0].codeVerificationStatus).toBe('VERIFIED');
+      expect(other.numbers[0].isConnectedHere).toBe(false);
+      expect(other.numbers[0].isMetaTestNumber).toBe(false);
+
+      // And the account we DO hold is still marked, so the two are comparable.
+      const ours = res.body.discovered.accounts.find((a: any) => a.whatsappBusinessId === WABA);
+      expect(ours.numbers[0].isConnectedHere).toBe(true);
+    });
+
+    it('does not run the wider search unless asked', async () => {
+      await storeLine();
+      graph({ [`/${WABA}/phone_numbers`]: { data: [] } });
+      const res = await numbersWith('');
+      // Several rate-limited Graph calls for a question the common case does
+      // not ask.
+      expect(res.body.discovered).toBeUndefined();
+    });
+
+    it('says it could not list businesses, rather than that there are none', async () => {
+      await storeLine();
+      graph({
+        '/me/businesses': 'refused',
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        [`/${WABA}/phone_numbers`]: { data: [] },
+      });
+      const res = await numbersWith('discover=1');
+      expect(res.body.discovered.accounts).toEqual([]);
+      expect(res.body.discovered.notes.join(' ')).toMatch(/business_management/);
+      expect(res.body.discovered.notes.join(' ')).toMatch(/not the same as there being none/i);
+    });
+
+    it('reports a number list it could not read as NULL, not as empty', async () => {
+      await storeLine();
+      graph({
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        '/me/businesses': { data: [{ id: 'b1', name: 'CustomerCare' }] },
+        '/b1/owned_whatsapp_business_accounts': { data: [{ id: '999', name: 'Real' }] },
+        '/999/phone_numbers': 'refused',
+      });
+      const res = await numbersWith('discover=1');
+      const acct = res.body.discovered.accounts[0];
+      // An account whose numbers could not be read and an account with no
+      // numbers are different answers.
+      expect(acct.numbers).toBeNull();
+      expect(acct.numbersError).toMatch(/business_management/);
+    });
+
+    it('asks both the owned and the shared edge', async () => {
+      await storeLine();
+      const seen: string[] = [];
+      globalThis.fetch = (async (input: any) => {
+        seen.push(String(input));
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }) as any;
+      await numbersWith('businessId=61596283615722');
+      expect(seen.some((u) => u.includes('owned_whatsapp_business_accounts'))).toBe(true);
+      // A line can sit on either, so a failure on one must not hide the other.
+      expect(seen.some((u) => u.includes('client_whatsapp_business_accounts'))).toBe(true);
+    });
+
+    it('returns no credential value', async () => {
+      await storeLine();
+      graph({
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        '/me/businesses': { data: [{ id: 'b1' }] },
+      });
+      const raw = JSON.stringify((await numbersWith('discover=1')).body);
+      expect(raw).not.toContain(META);
+      expect(raw).not.toContain('v1.');
+    });
+  });
 });
