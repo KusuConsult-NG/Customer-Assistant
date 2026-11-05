@@ -122,6 +122,48 @@ export interface Actor {
 const TELEPHONY_ROW_ORDER = [{ isDefault: 'desc' as const }, { createdAt: 'asc' as const }];
 const WHATSAPP_ROW_ORDER = [{ isActive: 'desc' as const }, { createdAt: 'asc' as const }];
 
+/**
+ * The webhook URL Meta must be delivering to.
+ *
+ * Built from the same `API_BASE_URL`/`API_URL` fallback the rest of the
+ * platform uses (telephony historically read API_URL), so the URL reported is
+ * the URL served rather than a second guess at it.
+ */
+function whatsAppWebhookUrl(): string {
+  const base = (process.env.API_BASE_URL || process.env.API_URL || '').replace(/\/+$/, '');
+  return `${base}/api/whatsapp/webhook`;
+}
+
+/**
+ * One read-only Graph call, with "could not reach" kept distinct from
+ * "answered and refused". Collapsing the two is what makes a readiness report
+ * claim something works when it was never asked.
+ */
+async function metaGet(
+  url: string,
+  accessToken: string
+): Promise<{ reached: boolean; ok: boolean; body: any; error?: string }> {
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body: any = await res.json().catch(() => null);
+    if (!res.ok) {
+      return {
+        reached: true,
+        ok: false,
+        body,
+        // Meta's own words. "It did not work" sends an operator to the wrong system.
+        error: body?.error?.message ?? `HTTP ${res.status}`,
+      };
+    }
+    return { reached: true, ok: true, body };
+  } catch (err: any) {
+    return { reached: false, ok: false, body: null, error: err?.message ?? String(err) };
+  }
+}
+
 @Injectable()
 export class OrganizationsService {
   /**
@@ -638,6 +680,188 @@ export class OrganizationsService {
           typeof n?.display_phone_number === 'string' &&
           /^\+1\s*555/.test(n.display_phone_number),
       })),
+    };
+  }
+
+  /**
+   * Will a citizen's WhatsApp message actually REACH us?
+   *
+   * Everything else about this channel reports what WE hold. Nothing asked
+   * Meta whether it will deliver anything — and the ways it silently will not
+   * are the ways that look exactly like a fault in this platform:
+   *
+   *  - **No app subscribed to the business account.** The line is stored, the
+   *    token is valid, every screen is green, and Meta sends nothing. Each
+   *    message a citizen writes is dropped before it reaches us, and the only
+   *    symptom is silence.
+   *  - **The number's webhook override points somewhere else.** A line moved
+   *    between apps or providers keeps the old override, so deliveries go to
+   *    whoever had it before.
+   *  - **`WHATSAPP_APP_SECRET` unset.** The POST route cannot verify a
+   *    signature and answers 500, deliberately, so Meta retries the same
+   *    message indefinitely and nothing is ever processed.
+   *
+   * Same three states as the voice report, and for the same reason: `blocked`
+   * means a message cannot arrive, `degraded` means reduced service or we
+   * could not check — unknown stays unknown, because treating "could not
+   * check" as "works" is how the voice report got it wrong — and `ready` only
+   * when Meta itself confirms.
+   */
+  async whatsAppReadiness(organizationId: string) {
+    const rows = await prisma.whatsAppConfig.findMany({
+      where: { organizationId },
+      orderBy: WHATSAPP_ROW_ORDER,
+    });
+
+    const blocked: string[] = [];
+    const degraded: string[] = [];
+    const ok: string[] = [];
+
+    if (rows.length === 0) {
+      return {
+        state: 'blocked' as const,
+        blocked: ['This agency has no WhatsApp line stored, so no message can be routed to it.'],
+        degraded: [],
+        ok: [],
+        webhookUrl: whatsAppWebhookUrl(),
+        lines: [],
+        nextStep: 'Store a line at Settings → WhatsApp.',
+      };
+    }
+
+    // The URL Meta must be sending to. Printed from the same expression the
+    // route is served on, so what is shown is what will be compared — the
+    // voice report earned that rule by printing a URL it had built differently.
+    const expectedWebhook = whatsAppWebhookUrl();
+
+    if (!process.env.WHATSAPP_APP_SECRET?.trim()) {
+      blocked.push(
+        'WHATSAPP_APP_SECRET is not set, so the webhook cannot verify Meta\'s signature and ' +
+        'answers 500 on every delivery. Meta then retries the same message forever and nothing ' +
+        'is processed.'
+      );
+    } else {
+      ok.push('WHATSAPP_APP_SECRET is set, so deliveries can be verified.');
+    }
+
+    const lines: any[] = [];
+    for (const row of rows) {
+      const config = withWhatsAppCredentials(row)!;
+      const label = row.displayPhoneNumber || row.phoneNumberId;
+      const line: any = {
+        phoneNumberId: row.phoneNumberId,
+        displayPhoneNumber: row.displayPhoneNumber,
+        isActive: row.isActive,
+        tokenAccepted: null as boolean | null,
+        subscribedApps: null as string[] | null,
+        numberWebhook: null as string | null,
+      };
+
+      if (!config.accessToken) {
+        blocked.push(`${label}: no stored access token, so Meta cannot be asked or answered.`);
+        lines.push(line);
+        continue;
+      }
+
+      // 1. Does Meta still accept the token, and where does this number send?
+      const number = await metaGet(
+        `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}` +
+        `?fields=display_phone_number,verified_name,webhook_configuration`,
+        config.accessToken
+      );
+      if (number.reached && number.ok) {
+        line.tokenAccepted = true;
+        ok.push(`${label}: Meta accepted the stored token.`);
+
+        const override = number.body?.webhook_configuration?.application ?? null;
+        line.numberWebhook = override;
+        if (override && override.replace(/\/+$/, '') !== expectedWebhook.replace(/\/+$/, '')) {
+          blocked.push(
+            `${label}: this number's webhook points at ${override}, not ${expectedWebhook}, ` +
+            'so its messages are delivered somewhere else.'
+          );
+        }
+        // No override is NORMAL — the app-level webhook applies — so its
+        // absence is not reported as a problem.
+
+        if (/^\+1\s*555/.test(number.body?.display_phone_number ?? '')) {
+          degraded.push(
+            `${label}: a Meta test number. It only exchanges messages with recipients added by ` +
+            'hand in Meta → WhatsApp → API Setup, so it proves the stack and cannot serve the public.'
+          );
+        }
+      } else if (number.reached) {
+        line.tokenAccepted = false;
+        blocked.push(`${label}: Meta refused the stored token — ${number.error}`);
+        lines.push(line);
+        continue;
+      } else {
+        degraded.push(`${label}: could not reach Meta to check the token — ${number.error}`);
+        lines.push(line);
+        continue;
+      }
+
+      // 2. Is ANY app subscribed to this business account's webhooks? With
+      //    none, Meta delivers nothing and there is no other symptom.
+      if (!config.whatsappBusinessId) {
+        degraded.push(
+          `${label}: no WhatsApp business ID stored, so whether any app is subscribed to its ` +
+          'webhooks could not be checked.'
+        );
+      } else {
+        const subs = await metaGet(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(config.whatsappBusinessId)}/subscribed_apps`,
+          config.accessToken
+        );
+        if (subs.reached && subs.ok) {
+          const apps: string[] = (Array.isArray(subs.body?.data) ? subs.body.data : [])
+            .map((d: any) => d?.whatsapp_business_api_data?.name || d?.whatsapp_business_api_data?.id)
+            .filter(Boolean);
+          line.subscribedApps = apps;
+          if (apps.length === 0) {
+            blocked.push(
+              `${label}: no app is subscribed to this business account's webhooks, so Meta ` +
+              'delivers nothing. Subscribe the app at Meta → your app → WhatsApp → Configuration.'
+            );
+          } else {
+            ok.push(`${label}: Meta is delivering to a subscribed app (${apps.join(', ')}).`);
+          }
+        } else if (subs.reached) {
+          // A token without whatsapp_business_management cannot read this, and
+          // that does not mean nothing is subscribed.
+          degraded.push(
+            `${label}: could not read the webhook subscriptions — ${subs.error}. ` +
+            'That is not the same as nothing being subscribed.'
+          );
+        } else {
+          degraded.push(`${label}: could not reach Meta for the webhook subscriptions — ${subs.error}`);
+        }
+      }
+
+      if (!row.isActive) {
+        degraded.push(`${label}: stored but marked inactive, so it is not used for sending.`);
+      }
+
+      lines.push(line);
+    }
+
+    const state = blocked.length > 0 ? ('blocked' as const)
+      : degraded.length > 0 ? ('degraded' as const)
+      : ('ready' as const);
+
+    return {
+      state,
+      blocked,
+      degraded,
+      ok,
+      webhookUrl: expectedWebhook,
+      lines,
+      nextStep:
+        state === 'blocked'
+          ? 'A citizen\'s message cannot arrive until the blocked items are resolved.'
+          : state === 'degraded'
+            ? 'A message can arrive. The degraded items are reduced service, or checks that could not be made.'
+            : 'Meta confirms it will deliver to this platform. Send a message to the line to test it end to end.',
     };
   }
 

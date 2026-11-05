@@ -124,6 +124,16 @@ export class OrganizationsController {
    * stored Meta credential. Returns no credential value — only what Meta says
    * about the numbers on the account.
    */
+  /**
+   * Whether a citizen's message can actually arrive — asked of Meta, not
+   * inferred from what we hold. Read-only, OWNER/ADMIN, no credential value.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Get('whatsapp-config/readiness')
+  async whatsAppReadiness(@Req() req: { user: AuthUser }) {
+    return this.orgsService.whatsAppReadiness(req.user.organizationId);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Get('whatsapp-config/numbers')
   async listMetaPhoneNumbers(@Req() req: { user: AuthUser }) {

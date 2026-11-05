@@ -500,6 +500,34 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   const [linesError, setLinesError] = useState<string | null>(null);
   const [loadingLines, setLoadingLines] = useState(false);
 
+  // Whether a citizen's message can arrive at all. `null` is "not asked",
+  // never "fine".
+  const [readiness, setReadiness] = useState<any | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [loadingReadiness, setLoadingReadiness] = useState(false);
+
+  const checkReadiness = async () => {
+    setLoadingReadiness(true);
+    setReadinessError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/readiness`, {
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setReadiness(null);
+        setReadinessError(body?.message || `Could not run the check (HTTP ${res.status}).`);
+        return;
+      }
+      setReadiness(body);
+    } catch (err: any) {
+      setReadiness(null);
+      setReadinessError(err?.message || 'Could not reach the API.');
+    } finally {
+      setLoadingReadiness(false);
+    }
+  };
+
   const webhookUrl = `${API_URL}/api/whatsapp/webhook`;
 
   /**
@@ -566,6 +594,60 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   return (
     <form onSubmit={save} className="space-y-5">
       <Section title="WhatsApp Cloud API" description="Connect your Meta Business WhatsApp number">
+        {/* Can a citizen's message actually arrive? Asked of Meta, because
+            every other signal on this screen describes what WE hold. */}
+        <div className="p-4 rounded-xl bg-slate-500/[0.06] border border-slate-200 dark:border-slate-500/20">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs font-semibold flex-1">Can a citizen's message reach this agency?</p>
+            <button
+              type="button"
+              onClick={checkReadiness}
+              disabled={loadingReadiness}
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
+            >
+              {loadingReadiness ? 'Asking Meta…' : 'Run check'}
+            </button>
+          </div>
+
+          {readinessError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">{readinessError}</p>
+          )}
+
+          {readiness && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs font-semibold">
+                {readiness.state === 'ready' && (
+                  <span className="text-emerald-700 dark:text-emerald-300">
+                    Ready — Meta confirms it will deliver here.
+                  </span>
+                )}
+                {readiness.state === 'degraded' && (
+                  <span className="text-amber-700 dark:text-amber-300">
+                    Degraded — a message can arrive, with caveats.
+                  </span>
+                )}
+                {readiness.state === 'blocked' && (
+                  <span className="text-red-700 dark:text-red-300">
+                    Blocked — a message cannot arrive.
+                  </span>
+                )}
+              </p>
+              {/* Blocked first and never mixed in with warnings: conflating
+                  the two buries the real blocker. */}
+              {readiness.blocked?.map((m: string, i: number) => (
+                <p key={`b${i}`} className="text-xs text-red-600 dark:text-red-400">• {m}</p>
+              ))}
+              {readiness.degraded?.map((m: string, i: number) => (
+                <p key={`d${i}`} className="text-xs text-amber-600 dark:text-amber-400">• {m}</p>
+              ))}
+              {readiness.ok?.map((m: string, i: number) => (
+                <p key={`o${i}`} className="text-xs text-slate-500 dark:text-slate-400">• {m}</p>
+              ))}
+              <p className="text-xs font-medium pt-1">{readiness.nextStep}</p>
+            </div>
+          )}
+        </div>
+
         <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
           <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">📌 Webhook URL — paste this in Meta Developer Portal → WhatsApp → Configuration</p>
           <div className="flex items-center gap-2 mt-2">
