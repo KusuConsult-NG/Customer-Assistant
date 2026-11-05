@@ -275,4 +275,160 @@ describe('WhatsApp line discovery and handshake', () => {
       }
     });
   });
+  /**
+   * Whether a citizen's message can ARRIVE, which nothing asked before.
+   *
+   * A line can be stored, its token valid and every screen green while Meta
+   * delivers nothing — because no app is subscribed to the business account's
+   * webhooks, or because the number's override still points at whoever held it
+   * before. Both are silent, and both look exactly like a fault here.
+   */
+  describe('readiness: will Meta actually deliver', () => {
+    const WEBHOOK = 'https://api.example.test/api/whatsapp/webhook';
+
+    beforeEach(() => {
+      setEnv('API_BASE_URL', 'https://api.example.test');
+      setEnv('WHATSAPP_APP_SECRET', 'app_secret_value');
+    });
+
+    /** `number` and `subs` each: 'ok' | 'refused' | 'unreachable' | an object. */
+    const metaSays = (opts: { number?: any; subs?: any } = {}) => {
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        const answer = (kind: any, happy: any) => {
+          if (kind === 'refused') {
+            return new Response(JSON.stringify({ error: { message: 'Error validating access token' } }), { status: 401 });
+          }
+          if (kind === 'unreachable') throw new Error('ECONNRESET');
+          return new Response(JSON.stringify(kind === undefined || kind === 'ok' ? happy : kind), { status: 200 });
+        };
+        if (url.includes('/subscribed_apps')) {
+          return answer(opts.subs, { data: [{ whatsapp_business_api_data: { id: '1', name: 'Plateau Care' } }] });
+        }
+        if (url.includes('graph.facebook.com')) {
+          return answer(opts.number, {
+            display_phone_number: '+234 803 000 1111',
+            verified_name: 'Plaschema',
+            webhook_configuration: { application: WEBHOOK },
+          });
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+    };
+
+    const readiness = (token = ownerToken) =>
+      request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/readiness')
+        .set('Authorization', `Bearer ${token}`);
+
+    it('is READY only when Meta confirms both the token and a subscribed app', async () => {
+      await storeLine();
+      metaSays();
+      const res = await readiness();
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe('ready');
+      expect(res.body.blocked).toEqual([]);
+      expect(res.body.ok.join(' ')).toContain('Plateau Care');
+      expect(res.body.webhookUrl).toBe(WEBHOOK);
+    });
+
+    it('is BLOCKED when no app is subscribed, which has no other symptom', async () => {
+      await storeLine();
+      metaSays({ subs: { data: [] } });
+      const res = await readiness();
+      expect(res.body.state).toBe('blocked');
+      expect(res.body.blocked.join(' ')).toMatch(/no app is subscribed/i);
+      expect(res.body.nextStep).toMatch(/cannot arrive/i);
+    });
+
+    it("is BLOCKED when the number's webhook points elsewhere", async () => {
+      await storeLine();
+      metaSays({
+        number: {
+          display_phone_number: '+234 803 000 1111',
+          webhook_configuration: { application: 'https://someone-else.example/hook' },
+        },
+      });
+      const res = await readiness();
+      expect(res.body.state).toBe('blocked');
+      expect(res.body.blocked.join(' ')).toContain('someone-else.example');
+    });
+
+    it('does not complain when the number carries NO override, which is normal', async () => {
+      await storeLine();
+      metaSays({ number: { display_phone_number: '+234 803 000 1111' } });
+      const res = await readiness();
+      expect(res.body.state).toBe('ready');
+    });
+
+    it('is BLOCKED without WHATSAPP_APP_SECRET, because Meta then retries forever', async () => {
+      setEnv('WHATSAPP_APP_SECRET', undefined);
+      await storeLine();
+      metaSays();
+      const res = await readiness();
+      expect(res.body.state).toBe('blocked');
+      expect(res.body.blocked.join(' ')).toContain('WHATSAPP_APP_SECRET');
+    });
+
+    it('calls a Meta test number DEGRADED, not ready', async () => {
+      await storeLine();
+      metaSays({
+        number: {
+          display_phone_number: '+1 555-671-9884',
+          webhook_configuration: { application: WEBHOOK },
+        },
+      });
+      const res = await readiness();
+      expect(res.body.state).toBe('degraded');
+      expect(res.body.degraded.join(' ')).toMatch(/cannot serve the public/i);
+    });
+
+    it('is DEGRADED, not ready, when Meta could not be asked', async () => {
+      await storeLine();
+      metaSays({ number: 'unreachable' });
+      const res = await readiness();
+      // Unknown stays unknown. Treating "could not check" as "works" is how
+      // the voice report once said a call would be answered.
+      expect(res.body.state).toBe('degraded');
+      expect(res.body.degraded.join(' ')).toMatch(/could not reach meta/i);
+    });
+
+    it('is BLOCKED when Meta refuses the token', async () => {
+      await storeLine();
+      metaSays({ number: 'refused' });
+      const res = await readiness();
+      expect(res.body.state).toBe('blocked');
+      expect(res.body.blocked.join(' ')).toContain('Error validating access token');
+    });
+
+    it('does not read a refused SUBSCRIPTION read as nothing subscribed', async () => {
+      await storeLine();
+      metaSays({ subs: 'refused' });
+      const res = await readiness();
+      // A token without whatsapp_business_management cannot read this, and
+      // that is not the same as no app being subscribed.
+      expect(res.body.state).toBe('degraded');
+      expect(res.body.degraded.join(' ')).toMatch(/not the same as nothing being subscribed/i);
+    });
+
+    it('is BLOCKED with no line at all, and says what to do', async () => {
+      const res = await readiness();
+      expect(res.body.state).toBe('blocked');
+      expect(res.body.nextStep).toMatch(/store a line/i);
+    });
+
+    it('returns no credential value', async () => {
+      await storeLine();
+      metaSays();
+      const raw = JSON.stringify((await readiness()).body);
+      expect(raw).not.toContain(META);
+      expect(raw).not.toContain('v1.');
+    });
+
+    it('is OWNER/ADMIN only', async () => {
+      await storeLine();
+      metaSays();
+      expect((await readiness(agentToken)).status).toBe(403);
+    });
+  });
 });
