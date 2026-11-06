@@ -89,6 +89,23 @@ const FROM = (() => {
   return i >= 0 ? ARGV[i + 1] : null;
 })();
 
+/**
+ * Host, port and database name — never the user and never the password.
+ *
+ * This line is read in terminals, pasted into chats and screenshotted, which
+ * is exactly how a production password ends up somewhere it cannot be taken
+ * back from.
+ */
+function describeTarget() {
+  const raw = process.env.DIRECT_URL || process.env.DATABASE_URL || '';
+  try {
+    const u = new URL(raw);
+    return `${u.hostname}${u.port ? ':' + u.port : ''}${u.pathname}`;
+  } catch {
+    return '(could not parse the connection URL)';
+  }
+}
+
 function chunkText(text, chunkSize = CHUNK_SIZE_CHARS) {
   const overlap = Math.floor(chunkSize * 0.1);
   const chunks = [];
@@ -268,6 +285,8 @@ async function fetchAll() {
 
   const prisma = new PrismaClient();
   try {
+    const target = describeTarget();
+
     const org = await prisma.organization.findFirst({
       where: { slug: SLUG },
       select: { id: true, name: true, slug: true },
@@ -275,13 +294,31 @@ async function fetchAll() {
     if (!org) {
       const some = await prisma.organization.findMany({ select: { slug: true, name: true }, take: 25 });
       console.error(
-        `No organization with slug "${SLUG}".\n\nAgencies on this database:\n` +
+        `No organization with slug "${SLUG}".\n\n` +
+          `Database: ${target}\n` +
+          `  Check this is the one you mean before seeding. Twenty leftover \`e2e-*\`\n` +
+          `  organizations is the signature of a test database, not a live one.\n\n` +
+          `Agencies on this database:\n` +
           some.map((o) => `  ${o.slug}  (${o.name})`).join('\n')
       );
       process.exit(1);
     }
 
+    // SAY WHICH DATABASE, before writing a word to it.
+    //
+    // The agency slug alone does not tell you that. A developer ran
+    // `whoami` against a local database carrying twenty leftover `e2e-*`
+    // organizations and a `plaschema` org, and nothing in the output said it
+    // was not production — so the next step would have loaded 41 MDAs
+    // somewhere no citizen will ever read them, and the WhatsApp line would
+    // have been just as empty afterwards with no error anywhere to explain it.
+    //
+    // Host, port and database name only. Never the user and never the
+    // password: this line is read in terminals, pasted into chats and
+    // screenshotted, which is how a production password ends up somewhere it
+    // cannot be taken back from.
     console.log(`${APPLY ? 'APPLY' : 'REPORT ONLY'} — agency "${org.name}" (${org.slug})`);
+    console.log(`  database: ${target}`);
     console.log(`  source: ${FROM ? `snapshot ${FROM}` : API}\n`);
 
     const all = await fetchAll();
