@@ -673,7 +673,7 @@ export class WhatsappService {
     });
 
     this.webhookDispatcher
-      .dispatch(organizationId, 'call.completed', {
+      .dispatch(organizationId, 'call.ended', {
         callSid: callId,
         channel: 'WHATSAPP',
         status,

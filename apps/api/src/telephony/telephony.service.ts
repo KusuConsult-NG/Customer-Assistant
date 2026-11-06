@@ -777,7 +777,7 @@ export class TelephonyService {
     });
 
     if (status === CallStatus.COMPLETED) {
-      this.webhookDispatcher.dispatch(callLog.organizationId, 'call.completed', {
+      this.webhookDispatcher.dispatch(callLog.organizationId, 'call.ended', {
         callSid,
         durationSeconds: duration,
       }).catch(() => {});

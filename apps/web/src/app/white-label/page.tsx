@@ -1,6 +1,16 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
 import { API_URL, apiFetch } from '@/lib/api';
+// The ONE list, shared with the dispatcher that sends these.
+//
+// This screen used to carry its own copy, and it had drifted: it offered
+// `call.ended` while the API dispatched `call.completed`, so a tenant ticked
+// Call Ended, saw it saved, and never received one. It offered
+// `appointment.booked` and `handover.requested`, which nothing dispatches at
+// all, and it did not offer `contact.created`, which is dispatched — leaving
+// that one receivable only by a tenant holding `'*'`, which this screen cannot
+// set.
+import { WEBHOOK_EVENTS, canonicalWebhookEvent, isWebhookEventEnabled } from '@ace/shared-types';
 import { copyToClipboard } from '@/lib/clipboard';
 import { RoleNotice, useScreenAccess } from '@/components/RoleNotice';
 import {
@@ -11,16 +21,6 @@ import {
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all placeholder-gray-600";
 const labelCls = "text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block uppercase tracking-wider";
-
-const WEBHOOK_EVENTS = [
-  { key: 'call.started', label: 'Call Started', desc: 'Fired when a voice call begins' },
-  { key: 'call.ended', label: 'Call Ended', desc: 'Fired when a voice call concludes' },
-  { key: 'message.received', label: 'Message Received', desc: 'New WhatsApp or webchat message' },
-  { key: 'lead.captured', label: 'Lead Captured', desc: 'AI creates a new lead from a conversation' },
-  { key: 'appointment.booked', label: 'Appointment Booked', desc: 'Customer books a slot via AI' },
-  { key: 'ticket.created', label: 'Support Ticket Created', desc: 'Escalation ticket opened' },
-  { key: 'handover.requested', label: 'Human Handover', desc: 'AI passes conversation to human agent' },
-];
 
 /**
  * Whether a brand colour can carry text, and a note saying so when it cannot.
@@ -151,10 +151,29 @@ export default function WhiteLabelPage() {
     finally { setSaving(false); }
   };
 
+  /**
+   * Toggling writes the CANONICAL key and drops every alias of it.
+   *
+   * A row can already hold `call.completed` from before the two lists were
+   * reconciled. Without the filter, un-ticking Call Ended would remove
+   * `call.ended` and leave `call.completed` behind — still a live subscription,
+   * on a switch the operator had just turned off.
+   *
+   * A row holding `'*'` is converted to the explicit set on the first toggle.
+   * `'*'` cannot express "everything except this one", so without the
+   * conversion the switch would read as on, filter nothing, leave `'*'` in
+   * place and do nothing at all — a control that moves and changes no
+   * subscription. `'*'` is not something this screen can set, so the
+   * conversion only ever narrows what was already agreed.
+   */
   const toggleEvent = (key: string) => {
-    setEnabledEvents(prev =>
-      prev.includes(key) ? prev.filter(e => e !== key) : [...prev, key]
-    );
+    setEnabledEvents(prev => {
+      const explicit = prev.includes('*')
+        ? WEBHOOK_EVENTS.filter(e => e.delivered).map(e => e.key)
+        : prev;
+      const others = explicit.filter(e => canonicalWebhookEvent(e) !== canonicalWebhookEvent(key));
+      return isWebhookEventEnabled(explicit, key) ? others : [...others, key];
+    });
   };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,19 +339,42 @@ export default function WhiteLabelPage() {
 
                 <div>
                   <label className={labelCls}>Event Subscriptions</label>
+                  {enabledEvents.includes('*') && (
+                    // Otherwise every switch simply reads as on, and an
+                    // operator cannot tell a wildcard subscription from having
+                    // ticked each box.
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                      This agency is subscribed to <code>*</code> — every event, including ones added later.
+                      Changing any switch below replaces that with the explicit list.
+                    </p>
+                  )}
                   <div className="space-y-2">
                     {WEBHOOK_EVENTS.map(ev => (
-                      <div key={ev.key} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all">
+                      <div key={ev.key} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${ev.delivered ? 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60' : 'bg-slate-50 dark:bg-slate-900/40 border-dashed border-slate-300 dark:border-slate-700'}`}>
                         <div>
                           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{ev.label}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{ev.desc}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{ev.description}</p>
+                          <code className="text-[11px] text-slate-500 dark:text-slate-400">{ev.key}</code>
+                          {!ev.delivered && (
+                            // An event nobody sends must not be offered as a
+                            // subscription: ticked, it waits forever, and an
+                            // operator cannot tell "never happened" from
+                            // "never implemented".
+                            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                              Not sent yet — the platform does not emit this event, so there is nothing to subscribe to.
+                            </p>
+                          )}
                         </div>
-                        <button type="button" onClick={() => toggleEvent(ev.key)} className="flex-shrink-0">
-                          {enabledEvents.includes(ev.key)
-                            ? <ToggleRight className="w-8 h-8 text-blue-700 dark:text-blue-400" />
-                            : <ToggleLeft className="w-8 h-8 text-slate-500 dark:text-slate-400" />
-                          }
-                        </button>
+                        {ev.delivered ? (
+                          <button type="button" onClick={() => toggleEvent(ev.key)} className="flex-shrink-0">
+                            {isWebhookEventEnabled(enabledEvents, ev.key)
+                              ? <ToggleRight className="w-8 h-8 text-blue-700 dark:text-blue-400" />
+                              : <ToggleLeft className="w-8 h-8 text-slate-500 dark:text-slate-400" />
+                            }
+                          </button>
+                        ) : (
+                          <Lock className="w-5 h-5 flex-shrink-0 text-slate-400 dark:text-slate-500" />
+                        )}
                       </div>
                     ))}
                   </div>
