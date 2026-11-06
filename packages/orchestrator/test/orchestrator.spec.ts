@@ -841,4 +841,83 @@ describe('ConversationOrchestrator', () => {
       expect(terms.every((t) => t.length >= 4)).toBe(true);
     });
   });
+
+  describe('Which agency a question actually reaches', () => {
+    /**
+     * The keyword fallback runs on every deployment without QDRANT_URL, so it
+     * is the live retrieval path, and it had no relevance ranking: an OR across
+     * keywords, `take: topK`, ordered by chunkIndex. With one document that is
+     * invisible. With the State's 41 MDAs loaded it was wrong most of the time
+     * — "I would like to know what JMDB's activities are" returned the Office
+     * of the Secretary to the Government, whose long description happens to
+     * contain "activities".
+     *
+     * Feeding the model another agency's text is worse than feeding it none:
+     * it does not decline, it answers confidently about the wrong agency.
+     */
+    const { QdrantRAGService } = require('../src/index');
+
+    const chunk = (id: string, title: string, content: string, chunkIndex = 0) => ({
+      id,
+      documentId: `doc-${id}`,
+      chunkIndex,
+      content,
+      document: { title },
+    });
+
+    /** First findMany is the exact-phrase pass; the second is the keyword pass. */
+    const search = async (query: string, candidates: any[]) => {
+      delete process.env.OPENAI_API_KEY;
+      mockPrisma.documentChunk.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(candidates);
+      const svc = new QdrantRAGService();
+      return svc.searchKnowledgeBase('org-1', query, 3);
+    };
+
+    it('puts the agency the citizen NAMED first, not whichever chunk matched one word', async () => {
+      const hits = await search("I would like to know what JMDB's activities are", [
+        // The decoy: a long description that happens to contain "activities".
+        chunk('decoy', 'OSGS — Office of the Secretary to the Government of the State',
+          'Coordinates the activities of all ministries and departments of the State.'),
+        // The right answer: the acronym is in the TITLE.
+        chunk('right', 'JMDB — The Jos Metropolitan Development Board (JMDB)',
+          'Responsible for planning and development of Jos city. Through its activities it generates revenue.'),
+      ]);
+
+      expect(hits.length).toBeGreaterThan(0);
+      expect(hits[0].chunkId).toBe('right');
+      // And the score shape the caller filters on (>= 0.5) is preserved.
+      expect(hits[0].score).toBeGreaterThanOrEqual(0.5);
+    });
+
+    it('rejects a chunk that matched one GENERIC word', async () => {
+      // "how much does a passport cost" reduces to passport + cost, and an
+      // energy corporation came back on the strength of "cost" alone.
+      const hits = await search('how much does a passport cost', [
+        chunk('energy', 'PSEC — Plateau State Energy Corporation',
+          'Develops power projects to reduce the cost of electricity in the State.'),
+      ]);
+      expect(hits).toHaveLength(0);
+    });
+
+    it('keeps a chunk that matched one SPECIFIC word, because that is the question', async () => {
+      // A first version of the threshold demanded two keywords and lost this:
+      // drainage really is the Jos Metropolitan Development Board's remit.
+      const hits = await search('I want to report a broken drainage', [
+        chunk('jmdb', 'JMDB — The Jos Metropolitan Development Board (JMDB)',
+          'Handles construction and maintenance of urban roads and drainage systems.'),
+      ]);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].chunkId).toBe('jmdb');
+    });
+
+    it('asks the database for the title too, and over-fetches so it has something to rank', async () => {
+      await search('where is the internal revenue service', []);
+      const keywordPass = mockPrisma.documentChunk.findMany.mock.calls[1][0];
+      // Ranking is meaningless over exactly topK rows.
+      expect(keywordPass.take).toBeGreaterThan(3);
+      expect(keywordPass.include).toEqual({ document: { select: { title: true } } });
+    });
+  });
 });

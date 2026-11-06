@@ -38,7 +38,26 @@ export class AppController {
    */
   @Get('api/health')
   health() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      // WHICH BUILD is serving. Liveness without it answers "something is up"
+      // and leaves "is my fix live?" unanswerable from outside — which is not
+      // an idle question here: `autoDeploy: true` means a merge and a running
+      // service drift apart for as long as a build takes, and more than one
+      // afternoon has gone on reading behaviour to guess whether a deploy had
+      // landed. Render sets RENDER_GIT_COMMIT; the fallbacks cover other hosts.
+      //
+      // Safe to expose: it identifies a commit of the code, not anything about
+      // the data, the tenants or the credentials, and the repository is the
+      // user's own. Nothing is invented — unset reads 'unknown' rather than
+      // claiming a version this process cannot know.
+      commit:
+        process.env.RENDER_GIT_COMMIT ||
+        process.env.GIT_COMMIT_SHA ||
+        process.env.SOURCE_VERSION ||
+        'unknown',
+    };
   }
 
   /**

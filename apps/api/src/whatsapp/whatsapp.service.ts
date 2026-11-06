@@ -696,7 +696,31 @@ export class WhatsappService {
     };
     const outcome = { status, durationSeconds, summary, startedAt, endedAt };
 
-    await prisma.callLog.upsert({
+    // The record is attempted FIRST and is allowed to FAIL.
+    //
+    // Writing it first is deliberate: it is the durable record, so it goes in
+    // before anything that depends on a provider round trip. But awaiting it
+    // bare meant any failure here aborted `processCallEvent` entirely, and
+    // everything below — the thread note and the message telling the citizen
+    // why their call was not answered — never ran.
+    //
+    // That is not hypothetical. `provider: 'WHATSAPP_CLOUD'` is an enum value
+    // added in 4c3bbcf and deployed ahead of the database having it; with the
+    // value absent PostgreSQL rejects this upsert, and a citizen who phoned the
+    // agency got complete silence from the very commit written to stop that.
+    // The enum gap is closed in two other places now (a preDeployCommand and a
+    // boot check), but the ORDERING was the reason one failed write cost the
+    // citizen their reply, and that is worth fixing on its own: any future
+    // failure here — a pool timeout, a constraint, a replica hiccup — would
+    // have done the same.
+    //
+    // So: log it at error level with the reason, and carry on to the reply. A
+    // missing CallLog row is a lost record, which is bad. A citizen who asked
+    // for help and heard nothing back is worse, and it is the one thing this
+    // handler exists to prevent.
+    let recorded = true;
+    try {
+      await prisma.callLog.upsert({
       where: { callSid: callId },
       create: { callSid: callId, organizationId, provider: 'WHATSAPP_CLOUD', ...identity, ...outcome },
       // ONLY a `terminate` may write the outcome.
@@ -713,9 +737,22 @@ export class WhatsappService {
       // `organizationId` is never updated. Nothing should be able to move a
       // call log between agencies, whatever arrives carrying an id we hold.
       update: terminated ? { ...identity, ...outcome } : identity,
-    });
+      });
+    } catch (err: any) {
+      recorded = false;
+      log.error('whatsapp_call_log_write_failed', err as Error, {
+        correlationId,
+        organizationId,
+        callId,
+        event,
+        note:
+          'The call is NOT recorded. Continuing so the citizen still receives a reply — ' +
+          'a lost record is recoverable, a citizen who heard nothing is not.',
+      });
+    }
 
     log.info('whatsapp_call_recorded', {
+      recorded,
       correlationId,
       organizationId,
       callId,

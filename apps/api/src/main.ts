@@ -12,7 +12,7 @@ import { WebSocketServer } from 'ws';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { validateEnvironment } from './config/env.validation';
-import { assertDatabaseGuarantees } from './config/db-readiness';
+import { assertDatabaseGuarantees, assertDeclaredEnumsPresent } from './config/db-readiness';
 import { RedisSocketIoAdapter } from './config/socket-redis-adapter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
@@ -33,6 +33,15 @@ async function bootstrap() {
   // that will not boot is recoverable, and one that boots without the
   // constraint is discovered by two citizens arriving for the same slot.
   await assertDatabaseGuarantees();
+
+  // ── 1c. And the drift that no health check can see ─────────────────────────
+  // A column the database lacks breaks reads at once. An enum VALUE it lacks
+  // breaks only the statement that writes it, so the deployment looks healthy
+  // while one path silently fails — which is how a citizen's WhatsApp call got
+  // recorded nowhere and answered with nothing. The preDeployCommand in
+  // render.yaml adds these before boot; this is the backstop for deploy paths
+  // that hook does not cover.
+  await assertDeclaredEnumsPresent();
 
   // ── 2. Create NestJS app with rawBody enabled ──────────────────────────────
   // rawBody: true is REQUIRED for:

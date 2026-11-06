@@ -160,6 +160,14 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in TwiML stream URLs and agent tool callbacks)' },
   { key: 'WEB_BASE_URL', required: false, description: 'Public dashboard URL (used in emailed links; defaults to localhost)' },
   {
+    key: 'ALLOW_MISSING_ENUM_VALUES',
+    required: false,
+    description:
+      'Set to 1 to boot WITHOUT checking that the database has every enum value the client declares. ' +
+      'A write of a missing value fails at that statement and nothing after it runs, while every other ' +
+      'request succeeds \u2014 the failure is invisible to health checks',
+  },
+  {
     key: 'ALLOW_MISSING_BOOKING_CONSTRAINT',
     required: false,
     description:

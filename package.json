@@ -36,7 +36,9 @@
     "models:drop-dead": "node scripts/drop-dead-models.js",
     "user:password": "node scripts/set-user-password.js",
     "agencies:seed": "node scripts/seed-agencies.js",
-    "catalogue:seed": "node scripts/seed-service-catalogue.js"
+    "catalogue:seed": "node scripts/seed-service-catalogue.js",
+    "db:sync-enums": "node scripts/sync-enum-values.js",
+    "mdas:seed": "node scripts/seed-plateau-mdas.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",
