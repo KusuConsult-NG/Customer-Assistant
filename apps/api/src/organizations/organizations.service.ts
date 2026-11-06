@@ -1176,18 +1176,44 @@ export class OrganizationsService {
    * limit of 2,000 is required, which a newly registered number does not
    * start with. So Meta's own words are reported verbatim.
    */
-  async setWhatsAppCalling(organizationId: string, enabled: boolean) {
-    const row = await prisma.whatsAppConfig.findFirst({
-      where: { organizationId },
-      orderBy: WHATSAPP_ROW_ORDER,
-    });
+  /**
+   * The WhatsApp line a calling request means, by id when the screen names one.
+   *
+   * `updateWhatsAppConfig` already works this way, and the calling pair did
+   * not — they both took `findFirst` ordered by `isActive desc, createdAt asc`
+   * and acted on whichever row that returned. On an agency holding one line
+   * that is the same row either way. On an agency holding two it is the OLDER
+   * one, whatever the operator has on screen.
+   *
+   * That is not theoretical: enabling calling on a newly added Meta test
+   * number asked Meta about the agency's original Nigerian number instead, and
+   * the refusal came back naming a number the operator had not touched. It is
+   * the same defect CLAUDE.md records for the settings save paths, which were
+   * fixed and left these two behind.
+   *
+   * An id belonging to another agency is a 404 rather than a fallthrough to
+   * the default row: silently acting on a different line is how this started.
+   */
+  private async whatsAppLineFor(organizationId: string, configId?: string) {
+    const row = configId
+      ? await prisma.whatsAppConfig.findFirst({ where: { id: configId, organizationId } })
+      : await prisma.whatsAppConfig.findFirst({ where: { organizationId }, orderBy: WHATSAPP_ROW_ORDER });
     if (!row) {
-      throw new NotFoundException('This agency has no WhatsApp line stored, so there is nothing to enable calling on.');
+      throw new NotFoundException(
+        configId
+          ? 'That WhatsApp line no longer exists for this agency.'
+          : 'This agency has no WhatsApp line stored.'
+      );
     }
     const config = withWhatsAppCredentials(row)!;
     if (!config.accessToken) {
       throw new BadRequestException('The stored line has no access token, so Meta cannot be asked.');
     }
+    return { row, config };
+  }
+
+  async setWhatsAppCalling(organizationId: string, enabled: boolean, configId?: string) {
+    const { row, config } = await this.whatsAppLineFor(organizationId, configId);
 
     const settingsUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`;
 
@@ -1227,16 +1253,8 @@ export class OrganizationsService {
   }
 
   /** What Meta currently reports for this line's calling setting. Read-only. */
-  async getWhatsAppCalling(organizationId: string) {
-    const row = await prisma.whatsAppConfig.findFirst({
-      where: { organizationId },
-      orderBy: WHATSAPP_ROW_ORDER,
-    });
-    if (!row) throw new NotFoundException('This agency has no WhatsApp line stored.');
-    const config = withWhatsAppCredentials(row)!;
-    if (!config.accessToken) {
-      throw new BadRequestException('The stored line has no access token, so Meta cannot be asked.');
-    }
+  async getWhatsAppCalling(organizationId: string, configId?: string) {
+    const { row, config } = await this.whatsAppLineFor(organizationId, configId);
 
     const res = await metaGet(
       `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`,

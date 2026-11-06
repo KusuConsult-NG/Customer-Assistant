@@ -553,7 +553,14 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   const loadCalling = async () => {
     setCallingError(null);
     try {
-      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/calling`, { headers: authHeaders });
+      // Name the line explicitly rather than letting two independent queries
+      // happen to order the same way. They do today, and that is not a
+      // guarantee: an agency can hold several WhatsApp lines, and the one this
+      // tab renders is the one the toggle must act on.
+      const res = await apiFetch(
+        `${API_URL}/api/organizations/whatsapp-config/calling${wa?.id ? `?configId=${encodeURIComponent(wa.id)}` : ''}`,
+        { headers: authHeaders }
+      );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { setCalling(null); setCallingError(body?.message || `HTTP ${res.status}`); return; }
       setCalling(body);
@@ -568,7 +575,9 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
     setCallingError(null);
     try {
       const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/calling`, {
-        method: 'POST', headers: authHeaders, body: JSON.stringify({ enabled }),
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ enabled, ...(wa?.id ? { configId: wa.id } : {}) }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { setCallingError(body?.message || `HTTP ${res.status}`); return; }
