@@ -920,4 +920,103 @@ describe('ConversationOrchestrator', () => {
       expect(keywordPass.include).toEqual({ document: { select: { title: true } } });
     });
   });
+
+  describe('Naming an agency by its acronym, and saying whose text it is', () => {
+    const { QdrantRAGService } = require('../src/index');
+
+    const chunk = (id: string, title: string, content: string, chunkIndex = 0) => ({
+      id, documentId: `doc-${id}`, chunkIndex, content, document: { title },
+    });
+
+    const searchWith = async (query: string, exact: any[], candidates: any[]) => {
+      delete process.env.OPENAI_API_KEY;
+      mockPrisma.documentChunk.findMany.mockReset();
+      // Mirror the real call sequence. A query under 5 characters SKIPS the
+      // exact-phrase pass, so the keyword pass is then the FIRST findMany —
+      // queueing two values made it receive the exact-phrase one, and both
+      // acronym tests failed on a harness fault while the same queries
+      // succeeded against a real database.
+      if (query.trim().length < 5) {
+        mockPrisma.documentChunk.findMany.mockResolvedValueOnce(candidates);
+      } else {
+        mockPrisma.documentChunk.findMany
+          .mockResolvedValueOnce(exact)
+          .mockResolvedValueOnce(candidates);
+      }
+      return new QdrantRAGService().searchKnowledgeBase('org-1', query, 3);
+    };
+
+    it('reaches the agency for a three-letter acronym, which the length filter used to drop', async () => {
+      // "MOH" is shorter than the >= 4 keyword rule, so before this it was not
+      // a keyword at all and the question retrieved nothing on its own terms.
+      const hits = await searchWith('MOH', [], [
+        chunk('moh', 'MOH — Plateau State Ministry of Health (MOH)', 'Oversees health policy in the State.'),
+      ]);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].chunkId).toBe('moh');
+    });
+
+    it('does not substring-match a short query across the whole corpus', async () => {
+      // `contains` has no word boundary, so "MOH" matched `Murtala Mohammed
+      // Way` in another agency's ADDRESS and returned the wrong body entirely.
+      await searchWith('MOH', [], []);
+      const calls = mockPrisma.documentChunk.findMany.mock.calls;
+      // The exact-phrase pass must not have run at all for a 3-character query.
+      expect(calls).toHaveLength(1);
+      const where = JSON.stringify(calls[0][0]);
+      expect(where).not.toContain('"contains":"MOH"');
+    });
+
+    it('treats a message that is only an acronym as naming an agency, capitals and all', async () => {
+      const hits = await searchWith('JMDB', [], [
+        chunk('jmdb', 'JMDB — The Jos Metropolitan Development Board (JMDB)', 'Plans and develops Jos city.'),
+      ]);
+      expect(hits).toHaveLength(1);
+    });
+
+    it('reads no acronyms from a SENTENCE SHOUTED IN CAPITALS, where case says nothing', async () => {
+      // Otherwise every word becomes "specific" and the threshold stops
+      // filtering anything for everyone who writes in caps.
+      const hits = await searchWith('HOW MUCH DOES A PASSPORT COST', [], [
+        chunk('energy', 'PSEC — Plateau State Energy Corporation',
+          'Develops power projects to reduce the cost of electricity.'),
+      ]);
+      expect(hits).toHaveLength(0);
+    });
+
+    it('tells the model WHICH document each excerpt came from', async () => {
+      // Chunking cuts at 1800 characters regardless of structure, so an
+      // excerpt from the middle of an entry often names nobody. Unattributed,
+      // a paragraph of offices and phone numbers gets attached to whichever
+      // agency the citizen asked about.
+      process.env.OPENAI_API_KEY = 'sk-test-key';
+      const realFetch = globalThis.fetch;
+      const sent: string[] = [];
+      try {
+        mockPrisma.documentChunk.findMany.mockReset();
+        mockPrisma.documentChunk.findMany.mockResolvedValue([
+          chunk('c1', 'JMDB — The Jos Metropolitan Development Board (JMDB)',
+            'Office: Joseph Gomwalk Secretariat, Jos. Email: admin@example.gov.ng'),
+        ]);
+        globalThis.fetch = (async (_u: any, init: any) => {
+          const body = JSON.parse(String(init.body));
+          for (const m of body.messages ?? []) if (m.role === 'user') sent.push(String(m.content));
+          return new Response(
+            JSON.stringify({ choices: [{ message: { content: '{"intent":"NONE","confidence":0.9}' } }] }),
+            { status: 200 }
+          );
+        }) as any;
+
+        await orchestrator.processIncomingMessage(baseContext(), 'where is the JMDB office');
+
+        const withContext = sent.find((c) => c.includes('knowledge base')) ?? '';
+        expect(withContext).toContain('Joseph Gomwalk Secretariat');
+        // The attribution is the point: the excerpt alone names no agency.
+        expect(withContext).toMatch(/From "JMDB — The Jos Metropolitan Development Board/);
+      } finally {
+        globalThis.fetch = realFetch;
+        delete process.env.OPENAI_API_KEY;
+      }
+    });
+  });
 });
