@@ -55,6 +55,7 @@ import { ConversationOrchestrator } from '../src/index';
 import { advanceFlow, beginFlow, type FlowState } from '../src/flows';
 import { BOOKING_FLOW, SLOTS_KEY, SERVICE_KEY, chosenSlot, type BookableSlot } from '../src/booking-flow';
 import { ChannelType } from '@ace/shared-types';
+import { bookedAppointmentId } from '@ace/shared-types';
 
 const F = BOOKING_FLOW;
 const CONV = 'conv_book_1';
@@ -187,6 +188,30 @@ describe('through the orchestrator', () => {
     expect(res.replyText).toContain(firstOffered!);
     // And the flow is cleared, so the next message is not read as another pick.
     expect(flowState).toBeNull();
+  });
+
+  /**
+   * The signal the Nest layer dispatches `appointment.booked` from.
+   *
+   * The orchestrator writes the booking itself rather than through
+   * SchedulingService, so this entry in the result is the ONLY thing telling
+   * the WhatsApp service and the voice handler that a citizen was booked in.
+   * Nothing pinned it before, so changing the tool name or dropping `booked`
+   * would have stopped the webhook firing on the channel serving every citizen
+   * — silently, because the booking itself would still be written and the
+   * citizen still told.
+   */
+  it('reports the booking in a shape the webhook layer can read', async () => {
+    await orchestrator.processIncomingMessage(ctx(), 'book an appointment');
+    const res = await orchestrator.processIncomingMessage(ctx(), '1');
+
+    const booked = res.toolCallsExecuted?.find((c: any) => c.toolName === 'book_appointment');
+    expect(booked).toBeDefined();
+    expect(booked!.result.booked).toBe(true);
+    expect(typeof booked!.result.bookingId).toBe('string');
+    expect(booked!.result.bookingId).toBeTruthy();
+    // Read through the shared helper, which is what the channel handlers call.
+    expect(bookedAppointmentId(res as any)).toBe(booked!.result.bookingId);
   });
 
   it('records that the customer chose the time, not us', async () => {

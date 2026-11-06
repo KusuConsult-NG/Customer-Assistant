@@ -5,6 +5,7 @@ import {
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 
 /**
  * Booking-conflict detection lives in `@ace/database`, not here.
@@ -32,7 +33,8 @@ const BOOKING_LOCK_TIMEOUT_MS = 20_000;
 export class SchedulingService {
   constructor(
     private reminderService: AppointmentReminderService,
-    private workflows: WorkflowTriggerService
+    private workflows: WorkflowTriggerService,
+    private webhookDispatcher: WebhookDispatcherService
   ) {}
 
   // ─── Bookings: Read ──────────────────────────────────────────────────────────
@@ -269,6 +271,13 @@ export class SchedulingService {
         ? { id: booking.contact.id, fullName: booking.contact.fullName, phoneNumber: booking.contact.phoneNumber, email: booking.contact.email }
         : undefined,
     });
+
+    // The tenant's own system hears about it too. A workflow trigger fires
+    // inside this deployment; `appointment.booked` is how an agency's existing
+    // diary, queue or SMS system learns of an appointment it has to honour.
+    // Fire-and-forget on purpose: the booking is written and the citizen has
+    // been told, so a webhook problem must not surface as a failed booking.
+    this.webhookDispatcher.appointmentBooked(organizationId, booking.id).catch(() => {});
 
     return booking;
   }

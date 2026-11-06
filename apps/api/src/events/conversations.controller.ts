@@ -20,6 +20,7 @@ import { AgentConsoleGateway } from './agent-console.gateway';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AceLogger } from '../config/logger';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 
 const log = new AceLogger('ConversationsController');
 
@@ -58,7 +59,8 @@ const MESSAGE_PAGE_SIZE = 200;
 export class ConversationsController {
   constructor(
     private readonly whatsappService: WhatsappService,
-    private readonly gateway: AgentConsoleGateway
+    private readonly gateway: AgentConsoleGateway,
+    private readonly webhookDispatcher: WebhookDispatcherService
   ) {}
 
   /**
@@ -198,6 +200,14 @@ export class ConversationsController {
       },
     });
 
+    // Replying IS a takeover. Only the transition is the event — this write
+    // sets the flag on every message, and a webhook per message is noise.
+    if (!conv.isHumanHandoffActive) {
+      this.webhookDispatcher
+        .handoverRequested(req.user.organizationId, conv.id, 'OFFICER')
+        .catch(() => {});
+    }
+
     this.gateway.notifyNewMessage(req.user.organizationId, { conversationId: conv.id, message });
 
     if (conv.channel !== 'WEBCHAT') {
@@ -238,6 +248,16 @@ export class ConversationsController {
     });
 
     this.gateway.notifyHandoffChanged(req.user.organizationId, updated);
+
+    // Only a handover being REQUESTED is an event. Releasing one back to the
+    // assistant has no name in the catalogue, and inventing a payload that said
+    // "requested" for a release would be worse than sending nothing.
+    if (body.handoff && !conv.isHumanHandoffActive) {
+      this.webhookDispatcher
+        .handoverRequested(req.user.organizationId, conv.id, 'OFFICER')
+        .catch(() => {});
+    }
+
     return updated;
   }
 

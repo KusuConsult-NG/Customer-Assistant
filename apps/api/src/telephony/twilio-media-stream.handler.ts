@@ -65,7 +65,8 @@ import { AceLogger, generateCorrelationId } from '../config/logger';
 import { VoiceAiService } from './voice-ai.service';
 import { CallBroadcastService } from './call-broadcast.service';
 import { ConversationOrchestrator } from '@ace/orchestrator';
-import { ChannelType, MessageSender } from '@ace/shared-types';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
+import { ChannelType, MessageSender, bookedAppointmentId } from '@ace/shared-types';
 import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, createTicketWithUniqueNumber } from '@ace/database';
 
 // Early-audio buffer cap: 250 frames × 20 ms = 5 seconds maximum
@@ -126,6 +127,7 @@ export class TwilioMediaStreamHandler {
   constructor(
     private readonly voiceAiService: VoiceAiService,
     private readonly broadcast:      CallBroadcastService,
+    private readonly webhookDispatcher: WebhookDispatcherService,
   ) {}
 
   // ─── Public entry point ─────────────────────────────────────────────────
@@ -500,6 +502,25 @@ export class TwilioMediaStreamHandler {
         },
         text,
       );
+
+      // ── An appointment booked over the phone ────────────────────────────
+      //
+      // The orchestrator writes it directly, so this result is the only thing
+      // that says a caller was booked in. Dispatched before the handoff block
+      // below, which returns early — a booking and a handoff cannot both come
+      // back from one turn today, and ordering it this way means a later flow
+      // that did both would still report the appointment.
+      //
+      // `handover.requested` is deliberately NOT dispatched on this channel: a
+      // voice handoff redirects the live call at the carrier and there is no
+      // `Conversation` row to name, so there is nothing the event could
+      // identify. The transfer's own outcome is recorded on the CallLog.
+      const bookedId = bookedAppointmentId(result);
+      if (bookedId) {
+        this.webhookDispatcher
+          .appointmentBooked(session.organizationId, bookedId)
+          .catch(() => {});
+      }
 
       // ── Human handoff on a live call ────────────────────────────────────
       //

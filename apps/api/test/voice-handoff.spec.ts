@@ -24,6 +24,15 @@ describe('Voice handoff to a human', () => {
   let broadcastEvents: Array<{ event: string; payload: any }>;
   let spoken: string[];
   let twilioRequests: Array<{ url: string; twiml: string }>;
+  /**
+   * Webhooks the handler asked for.
+   *
+   * Voice deliberately dispatches NO `handover.requested`: that handoff
+   * redirects the live call at the carrier and VOICE has no `Conversation` row,
+   * so the event would have nothing to name. `appointment.booked` IS dispatched
+   * from this handler, which is why it holds a dispatcher at all.
+   */
+  let webhookCalls: Array<{ method: string; args: any[] }>;
   let orgId: string;
   const realFetch = global.fetch;
 
@@ -47,6 +56,7 @@ describe('Voice handoff to a human', () => {
     broadcastEvents = [];
     spoken = [];
     twilioRequests = [];
+    webhookCalls = [];
 
     voiceAi = new VoiceAiService();
     // Capture what the caller would hear instead of calling ElevenLabs.
@@ -58,7 +68,19 @@ describe('Voice handoff to a human', () => {
       emit: (callSid: string, event: string, payload: any) =>
         broadcastEvents.push({ event, payload }),
     };
-    handler = new TwilioMediaStreamHandler(voiceAi, broadcast);
+    const webhooks: any = {
+      appointmentBooked: async (...args: any[]) => {
+        webhookCalls.push({ method: 'appointmentBooked', args });
+      },
+      handoverRequested: async (...args: any[]) => {
+        webhookCalls.push({ method: 'handoverRequested', args });
+      },
+      dispatch: async (...args: any[]) => {
+        webhookCalls.push({ method: 'dispatch', args });
+      },
+    };
+
+    handler = new TwilioMediaStreamHandler(voiceAi, broadcast, webhooks);
   });
 
   function stubTwilio(status: number) {
@@ -177,6 +199,20 @@ describe('Voice handoff to a human', () => {
       expect(after!.status).toBe('COMPLETED');
       expect(after!.transcript).toContain('I need a new bin');
     });
+  });
+
+  it('announces no handover webhook, because voice has no conversation to name', async () => {
+    stubTwilio(200);
+    const session = makeSession();
+
+    await runHandoff(session);
+
+    // The transfer is real — it is the CallLog and the TwiML that record it.
+    expect(twilioRequests).toHaveLength(1);
+    // But `handover.requested` carries a conversationId, and VOICE has no
+    // `Conversation` row: the media-stream handler passes the callSid as the
+    // conversation id. A delivery here would name a thread that does not exist.
+    expect(webhookCalls.filter((c) => c.method === 'handoverRequested')).toEqual([]);
   });
 
   it('transfers the live call to the forwarding number', async () => {
