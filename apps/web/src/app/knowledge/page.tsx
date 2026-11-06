@@ -186,33 +186,103 @@ export default function KnowledgePage() {
       reader.onerror = reject;
     });
 
+  /**
+   * Upload one or MANY documents, and say what happened to each.
+   *
+   * Two defects here, both found loading the State's 41 MDAs:
+   *
+   * 1. It took `files[0]`. A knowledge base therefore had to go in one file
+   *    per click, which for a 41-agency directory is 41 interactions — so the
+   *    realistic alternative was one giant file, and that costs retrieval
+   *    quality: the document TITLE is where an agency's acronym lives, and
+   *    merging 41 agencies into one document leaves one title, so a citizen
+   *    asking about "JMDB" can no longer reach the Jos Metropolitan
+   *    Development Board by name.
+   *
+   * 2. A failure was DISCARDED. `catch (err) { console.error(err) }` — and
+   *    `handleResponse` throws with the server's own message, so the reason
+   *    existed and was thrown away. A refused upload (a VIEWER who lacks the
+   *    role, a type the API rejects, Supabase Storage misconfigured) looked
+   *    identical to a successful one: no toast, and the list simply did not
+   *    grow. That is the failure CLAUDE.md's first invariant names — a
+   *    mutation whose failure is invisible.
+   *
+   * Sequential rather than parallel on purpose: each upload is a Supabase
+   * Storage write plus an indexing job, and forty at once is a burst that the
+   * free tier answers with rate limits, which would look like random files
+   * failing for no reason.
+   */
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
     setUploading(true);
     setUploadProgress(0);
+
+    // Declared outside the try so a throw in toBase64 cannot leak a timer
+    // that keeps ticking against an unmounted progress bar.
+    let progressInterval: ReturnType<typeof setInterval> | undefined;
+    const failures: Array<{ name: string; reason: string }> = [];
+    let uploaded = 0;
+
     try {
-      const progressInterval = setInterval(() => {
-        setUploadProgress(p => Math.min(p + 20, 90));
-      }, 150);
+      for (const [index, file] of files.entries()) {
+        // Real progress across the batch, not a fake crawl to 90%.
+        const floor = Math.round((index / files.length) * 100);
+        const ceiling = Math.round(((index + 1) / files.length) * 100);
+        setUploadProgress(floor);
+        progressInterval = setInterval(() => {
+          setUploadProgress(p => Math.min(p + 2, Math.max(floor, ceiling - 2)));
+        }, 150);
 
-      const base64 = await toBase64(file);
-      await api.knowledge.uploadDocument({
-        title: file.name.replace(/\.[^/.]+$/, ''),
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type || 'application/octet-stream',
-        fileBufferBase64: base64,
-      });
+        try {
+          const base64 = await toBase64(file);
+          await api.knowledge.uploadDocument({
+            // The filename becomes the title, which is why the files this is
+            // given are named "<ACRONYM> — <Full name>".
+            title: file.name.replace(/\.[^/.]+$/, ''),
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type || 'application/octet-stream',
+            fileBufferBase64: base64,
+          });
+          uploaded++;
+        } catch (err: any) {
+          failures.push({ name: file.name, reason: err?.message || 'the server gave no reason' });
+        } finally {
+          clearInterval(progressInterval);
+          progressInterval = undefined;
+          setUploadProgress(ceiling);
+        }
+      }
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
       await fetchDocs();
+
+      // Say what happened, including when only some of it worked. An error
+      // toast has no timeout, so a partial failure stays on screen.
+      if (failures.length && uploaded) {
+        toast.error(
+          `${uploaded} of ${files.length} uploaded. ${failures.length} failed: ` +
+            failures.map(f => `${f.name} — ${f.reason}`).join('; ')
+        );
+      } else if (failures.length) {
+        toast.error(
+          failures.length === 1
+            ? `${failures[0].name} was not uploaded: ${failures[0].reason}`
+            : `None of the ${files.length} files uploaded. ` +
+              failures.map(f => `${f.name} — ${f.reason}`).join('; ')
+        );
+      } else {
+        toast.success(
+          files.length === 1
+            ? `"${files[0].name.replace(/\.[^/.]+$/, '')}" uploaded. Indexing may take a minute.`
+            : `${files.length} documents uploaded. Indexing may take a minute.`
+        );
+      }
+
       setTimeout(() => setUploadProgress(0), 800);
-    } catch (err) {
-      console.error(err);
-      setUploadProgress(0);
     } finally {
+      if (progressInterval) clearInterval(progressInterval);
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -515,6 +585,7 @@ export default function KnowledgePage() {
             type="file"
             ref={fileInputRef}
             onChange={handleFileUpload}
+            multiple
             accept=".pdf,.txt,.md,.docx,.csv,.json"
             className="hidden"
           />
@@ -525,7 +596,7 @@ export default function KnowledgePage() {
             style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            Upload Policy Doc
+            Upload Policy Docs
           </button>
         </div>
       </div>

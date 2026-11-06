@@ -58,6 +58,21 @@ export interface QdrantSearchResult {
   documentId: string;
   content: string;
   score: number;
+  /**
+   * The document this chunk came from, when the search knows it.
+   *
+   * It is shown to the model alongside the chunk, and that is not cosmetic.
+   * Chunking is blind to structure — 1800 characters with a 10% overlap — so a
+   * chunk taken from the middle of an agency's description frequently contains
+   * none of its names. Handing the model "Office: Joseph Gomwalk Secretariat,
+   * Jos. Email: ..." with nothing saying whose office it is invites it to
+   * attach those details to whichever agency the citizen asked about, which is
+   * how a citizen gets sent to the wrong ministry with a straight face.
+   *
+   * Optional because the Qdrant path does not currently carry it in its
+   * payload; absent, the context is exactly what it was before.
+   */
+  title?: string;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -663,22 +678,86 @@ export class QdrantRAGService {
       // got zero context and was asked to rephrase a question they had already
       // asked correctly. Titling a document "JMDB — Jos Metropolitan Development
       // Board" now makes both forms reach it.
-      let docChunks = await prisma.documentChunk.findMany({
-        where: {
-          organizationId,
-          OR: [
-            { content: { contains: query, mode: 'insensitive' } },
-            { document: { title: { contains: query, mode: 'insensitive' } } },
-          ],
-        },
-        take: topK,
-        orderBy: { chunkIndex: 'asc' },
-      });
+      //
+      // SKIPPED for a very short query, because `contains` is a substring
+      // match with no word boundary. "MOH" returned the Internal Revenue
+      // Service, on the strength of `Murtala Mohammed Way` in somebody's
+      // address — the three letters really were in that chunk. Three or four
+      // characters are exactly the length of an agency's acronym, so the
+      // keyword pass below, which ranks a title match above a body match,
+      // is the right one to answer them.
+      let docChunks =
+        query.trim().length < 5
+          ? []
+          : await prisma.documentChunk.findMany({
+              where: {
+                organizationId,
+                OR: [
+                  { content: { contains: query, mode: 'insensitive' } },
+                  { document: { title: { contains: query, mode: 'insensitive' } } },
+                ],
+              },
+              take: topK,
+              orderBy: { chunkIndex: 'asc' },
+            });
 
       // Fallback: if no exact phrase match, search for meaningful keywords (≥4 chars)
       // using OR — any chunk containing at least one keyword is a candidate.
       if (docChunks.length === 0) {
-        const stopWords = new Set(['what', 'does', 'how', 'much', 'the', 'for', 'and', 'that', 'this', 'with', 'have', 'will', 'are', 'can', 'from', 'your', 'which', 'about', 'into', 'than', 'more', 'also']);
+        // Which words in the citizen's message are AGENCY SHORT NAMES.
+        //
+        // Somebody typing "JMDB" or "PSIRS" is naming a body, and that is the
+        // most specific thing they can say — but it is four letters, so the
+        // length-based specificity rule below rejected it and "what does JMDB
+        // do" retrieved nothing. Two or more capitals in one token is the
+        // signal: it catches JMDB, PSIRS, PLASCHEMA and the mixed-case "MoE",
+        // while "Ministry" has one capital and is judged on length as before.
+        //
+        // Case only carries meaning when the writer used both, so a message
+        // typed ENTIRELY IN CAPITALS yields no acronyms rather than treating
+        // every word as one — which would make the specificity rule vacuous
+        // for anyone who writes in caps, and WhatsApp has plenty of them. Such
+        // a message falls back to the length rule, so it may retrieve nothing
+        // and get asked a narrowing question. That is the honest outcome.
+        // A message that is nothing BUT an acronym has no mixed case to read,
+        // and needs none: "MOH" cannot be confused with a sentence shouted in
+        // capitals. The guard below therefore only applies to multi-word
+        // messages, which is the only place the ambiguity exists.
+        const wordCount = (query.match(/[A-Za-z0-9&]{2,}/g) ?? []).length;
+        const caseIsMeaningful =
+          (/[a-z]/.test(query) && /[A-Z]/.test(query)) || (wordCount === 1 && /[A-Z]/.test(query));
+        const acronyms = new Set<string>(
+          caseIsMeaningful
+            ? (query.match(/[A-Za-z0-9&]{2,10}/g) ?? [])
+                .filter((tok) => (tok.match(/[A-Z]/g) ?? []).length >= 2)
+                .map((tok) => tok.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                .filter(Boolean)
+            : []
+        );
+
+        // Conversational filler is not a keyword.
+        //
+        // "I would like to know what JMDB's activities are" yielded `would`,
+        // `like`, `know`, `jmdb` and `activities`, and the first three say
+        // nothing about which agency is wanted — they are how a person asks
+        // politely. Left in, they contribute to the ranking exactly as much as
+        // the agency's own name does, so an entry matching three pleasantries
+        // can outrank the entry the citizen named.
+        //
+        // (Worth recording, because it nearly sent me after a bug that did not
+        // exist: the verbose JMDB question APPEARED to return the Local
+        // Government Service Commission, which was my diagnostic reading the
+        // first heading in a chunk. Chunks cut every 1800 characters without
+        // regard to structure, so that chunk began inside JMDB's entry —
+        // "Through its activities, JMDB has played a key role in revenue
+        // generation" — and only reached LGSC's heading later. The retrieval
+        // was correct. This list stands on its own merits, not on that.)
+        const stopWords = new Set([
+          'what', 'does', 'how', 'much', 'the', 'for', 'and', 'that', 'this', 'with', 'have',
+          'will', 'are', 'can', 'from', 'your', 'which', 'about', 'into', 'than', 'more', 'also',
+          'would', 'like', 'know', 'want', 'need', 'tell', 'please', 'could', 'should', 'kindly',
+          'where', 'when', 'there', 'here', 'been', 'just', 'give', 'show', 'make', 'they', 'them',
+        ]);
         const keywords = query
           .toLowerCase()
           // Punctuation becomes a SPACE, not nothing. Deleting it welded words
@@ -691,7 +770,11 @@ export class QdrantRAGService {
           // `passport`.
           .replace(/[^a-z0-9\s]/g, ' ')
           .split(/\s+/)
-          .filter((w) => w.length >= 4 && !stopWords.has(w));
+          // An ACRONYM survives the length filter. "MoE", "MOH" and "TSC" are
+          // three letters, so the >= 4 rule dropped them before anything could
+          // match them, and a citizen naming an agency by its short name
+          // retrieved nothing at all.
+          .filter((w) => (w.length >= 4 || acronyms.has(w)) && !stopWords.has(w));
 
         if (keywords.length > 0) {
           // RANKED, not just matched.
@@ -734,19 +817,24 @@ export class QdrantRAGService {
             let titleHits = 0;
             let bodyHits = 0;
             let longestMatch = 0;
+            let acronymHit = false;
             for (const kw of keywords) {
               const hit = title.includes(kw) ? 'title' : body.includes(kw) ? 'body' : null;
               if (!hit) continue;
               if (hit === 'title') titleHits++;
               else bodyHits++;
               longestMatch = Math.max(longestMatch, kw.length);
+              if (acronyms.has(kw)) acronymHit = true;
             }
             return {
               chunk,
               titleHits,
               longestMatch,
+              acronymHit,
               matched: titleHits + bodyHits,
-              rank: titleHits * 3 + bodyHits,
+              // An acronym outranks an ordinary body word: naming the agency is
+              // a stronger signal than mentioning one of its topics.
+              rank: titleHits * 3 + bodyHits + (acronymHit ? 2 : 0),
             };
           });
 
@@ -769,7 +857,7 @@ export class QdrantRAGService {
           // Returning nothing remains honest: the caller handles an empty
           // result by asking one narrowing question rather than guessing.
           docChunks = scored
-            .filter((s) => s.titleHits > 0 || s.matched >= 2 || s.longestMatch >= 7)
+            .filter((s) => s.titleHits > 0 || s.matched >= 2 || s.longestMatch >= 7 || s.acronymHit)
             .sort((a, b) => b.rank - a.rank || a.chunk.chunkIndex - b.chunk.chunkIndex)
             .slice(0, topK)
             .map((s) => s.chunk);
@@ -778,6 +866,7 @@ export class QdrantRAGService {
 
       return docChunks.map((chunk: any, idx: number) => ({
         chunkId: chunk.id,
+        title: chunk.document?.title ?? undefined,
         documentId: chunk.documentId,
         content: chunk.content,
         score: 0.6 - idx * 0.05, // Degraded score to signal fallback mode
@@ -1508,7 +1597,12 @@ export class ConversationOrchestrator {
     // away its third hit every time, for no reason.
     const kbContextText = searchResults
       .filter((r) => r.score >= 0.5)
-      .map((r) => r.content)
+      // Name the SOURCE of each excerpt. Chunking cuts at 1800 characters
+      // regardless of structure, so an excerpt from the middle of an entry
+      // often names nobody — and an unattributed paragraph of offices and
+      // phone numbers is one the model will cheerfully attach to whichever
+      // agency was asked about.
+      .map((r) => (r.title ? `From "${r.title}":\n${r.content}` : r.content))
       .join('\n---\n');
 
     // ── 12. Persona & GPT-4o response synthesis ──────────────────────────────
