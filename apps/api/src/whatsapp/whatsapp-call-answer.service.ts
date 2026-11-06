@@ -43,6 +43,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { AceLogger } from '../config/logger';
+import { WhatsAppCallMediaService } from './whatsapp-call-media.service';
 
 const log = new AceLogger('WhatsAppCallAnswer');
 
@@ -55,6 +56,10 @@ export interface CallOffer {
   phoneNumberId: string;
   /** The SDP offer Meta sent. */
   sdp: string;
+  /** Whose call this is, and who is calling — the media bridge needs both to
+   * run the conversation against the right tenant and contact. */
+  organizationId: string;
+  citizenNumber: string;
 }
 
 export type AnswerOutcome =
@@ -70,6 +75,8 @@ export interface CallAnswerReadiness {
 
 @Injectable()
 export class WhatsAppCallAnswerService {
+  constructor(private readonly media?: WhatsAppCallMediaService) {}
+
   /**
    * Is answering switched on AND actually possible?
    *
@@ -149,6 +156,11 @@ export class WhatsAppCallAnswerService {
       if ('error' in negotiated) {
         return { answered: false, reason: negotiated.error, blocked: false };
       }
+      // From here the connection is LIVE and this method owns it: every exit
+      // below either hands it to the media bridge or closes it. A returned
+      // `answered: false` with a peer connection still open would leak a
+      // WebRTC session and its sockets per declined call.
+      const live = (negotiated as any).pc;
 
       // A RELAY candidate, not merely any candidate.
       //
@@ -166,6 +178,7 @@ export class WhatsAppCallAnswerService {
       // perfectly healthy relay, and the decline reads identically to a broken
       // TURN server. The test that pins a real relay candidate is what caught it.
       if (!/a=candidate:[^\r\n]*\btyp relay\b/.test(negotiated.sdp)) {
+        await this.close(live);
         return {
           answered: false,
           reason:
@@ -178,8 +191,30 @@ export class WhatsAppCallAnswerService {
 
       const sent = await this.sendAnswerToMeta(offer, negotiated.sdp, accessToken);
       if (!sent.ok) {
+        await this.close(live);
         return { answered: false, reason: sent.error, blocked: false };
       }
+
+      // Audio only exists if this runs. Without it Meta has been told the call
+      // is accepted and the caller hears nothing at all — so a missing media
+      // service is reported as a failure, not shrugged off.
+      if (!this.media || !live) {
+        await this.close(live);
+        return {
+          answered: false,
+          reason:
+            'The call was negotiated but no media bridge was available to carry audio, so it was not accepted ' +
+            'as answered. This is a wiring fault, not a configuration one.',
+          blocked: false,
+        };
+      }
+      await this.media.attach({
+        pc: live,
+        organizationId: offer.organizationId,
+        callId: offer.callId,
+        citizenNumber: offer.citizenNumber,
+        correlationId,
+      });
 
       log.info('whatsapp_call_answered', {
         correlationId,
@@ -212,7 +247,7 @@ export class WhatsAppCallAnswerService {
   protected async negotiate(
     offerSdp: string,
     turn: { urls: string; username: string; credential: string }
-  ): Promise<{ sdp: string } | { error: string }> {
+  ): Promise<{ sdp: string; pc?: any } | { error: string }> {
     let pc: any;
     try {
       // Required lazily so the WebRTC stack is not constructed in every
@@ -238,9 +273,14 @@ export class WhatsAppCallAnswerService {
       await this.awaitGathering(pc);
 
       const sdp: string = pc.localDescription?.sdp ?? '';
-      await this.close(pc);
-      if (!sdp) return { error: 'The WebRTC stack produced no answer to send.' };
-      return { sdp };
+      if (!sdp) {
+        await this.close(pc);
+        return { error: 'The WebRTC stack produced no answer to send.' };
+      }
+      // Deliberately NOT closed: the caller needs this connection to carry
+      // audio, and closing it here is what made the first version of this
+      // negotiate an answer nobody could speak over.
+      return { sdp, pc };
     } catch (err: any) {
       await this.close(pc);
       return {

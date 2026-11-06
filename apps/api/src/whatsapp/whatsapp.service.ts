@@ -636,7 +636,13 @@ export class WhatsappService {
     const answerable = !terminated && event === 'connect' && !businessInitiated;
     const answer = answerable
       ? await this.callAnswer.answer(
-          { callId, phoneNumberId, sdp: String(call?.session?.sdp ?? '') },
+          {
+            callId,
+            phoneNumberId,
+            sdp: String(call?.session?.sdp ?? ''),
+            organizationId,
+            citizenNumber: citizenCanonical,
+          },
           config.accessToken ?? '',
           correlationId
         )

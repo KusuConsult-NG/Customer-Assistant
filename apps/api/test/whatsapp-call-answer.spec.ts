@@ -51,7 +51,24 @@ describe('Answering a WhatsApp call', () => {
     '',
   ].join('\r\n');
 
-  const CALL = { callId: 'wacid.TEST123', phoneNumberId: 'pn_test', sdp: OFFER };
+  const CALL = {
+    callId: 'wacid.TEST123',
+    phoneNumberId: 'pn_test',
+    sdp: OFFER,
+    organizationId: 'org_test',
+    citizenNumber: '+2348012345678',
+  };
+
+  /** Records what the media bridge was asked to carry. */
+  let attached: any[];
+  const fakeMedia: any = {
+    attach: async (p: any) => {
+      attached.push(p);
+      return { stop: async () => {} };
+    },
+  };
+  /** Stands in for the live werift connection the bridge would receive. */
+  const fakePc = { __live: true, close: async () => {} };
 
   const turnOn = () => {
     setEnv('WHATSAPP_CALL_ANSWER', '1');
@@ -66,10 +83,13 @@ describe('Answering a WhatsApp call', () => {
    * relay allocated", and Meta's refusals would be untested.
    */
   class StubbedNegotiation extends WhatsAppCallAnswerService {
-    constructor(private readonly result: { sdp: string } | { error: string }) {
-      super();
+    constructor(
+      private readonly result: { sdp: string; pc?: any } | { error: string },
+      media: any = fakeMedia
+    ) {
+      super(media);
     }
-    protected async negotiate(): Promise<{ sdp: string } | { error: string }> {
+    protected async negotiate(): Promise<{ sdp: string; pc?: any } | { error: string }> {
       return this.result;
     }
   }
@@ -97,6 +117,7 @@ describe('Answering a WhatsApp call', () => {
 
   beforeEach(() => {
     posted = [];
+    attached = [];
     globalThis.fetch = (async (input: any, init?: any) => {
       posted.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
       return new Response('{}', { status: 200 });
@@ -118,7 +139,7 @@ describe('Answering a WhatsApp call', () => {
       setEnv('TURN_USERNAME', 'u');
       setEnv('TURN_CREDENTIAL', 'p');
 
-      const r = new WhatsAppCallAnswerService().readiness();
+      const r = new WhatsAppCallAnswerService(fakeMedia).readiness();
       expect(r.enabled).toBe(false);
       expect(r.blocked.join(' ')).toMatch(/WHATSAPP_CALL_ANSWER/);
     });
@@ -129,7 +150,7 @@ describe('Answering a WhatsApp call', () => {
       setEnv('TURN_USERNAME', undefined);
       setEnv('TURN_CREDENTIAL', undefined);
 
-      const r = new WhatsAppCallAnswerService().readiness();
+      const r = new WhatsAppCallAnswerService(fakeMedia).readiness();
       // The flag alone must not switch this on. WebRTC media is UDP and this
       // deployment has no inbound UDP, so answering without a relay produces a
       // connected call with no audio.
@@ -146,12 +167,12 @@ describe('Answering a WhatsApp call', () => {
 
       // A relay URL with no credential fails the allocation at call time,
       // which reads as a media bug rather than a missing secret.
-      expect(new WhatsAppCallAnswerService().readiness().enabled).toBe(false);
+      expect(new WhatsAppCallAnswerService(fakeMedia).readiness().enabled).toBe(false);
     });
 
     it('is ON with both, and says the path is unproven', () => {
       turnOn();
-      const r = new WhatsAppCallAnswerService().readiness();
+      const r = new WhatsAppCallAnswerService(fakeMedia).readiness();
       expect(r.enabled).toBe(true);
       expect(r.blocked).toEqual([]);
       // No real call has gone through this. The report must not imply it has.
@@ -162,7 +183,7 @@ describe('Answering a WhatsApp call', () => {
   describe('declining, so the message fallback still runs', () => {
     it('does not touch Meta when answering is switched off', async () => {
       setEnv('WHATSAPP_CALL_ANSWER', undefined);
-      const out = await new WhatsAppCallAnswerService().answer(CALL, 'TOKEN', 'cid');
+      const out = await new WhatsAppCallAnswerService(fakeMedia).answer(CALL, 'TOKEN', 'cid');
 
       expect(out.answered).toBe(false);
       expect(out).toHaveProperty('blocked', true);
@@ -173,7 +194,7 @@ describe('Answering a WhatsApp call', () => {
 
     it('declines when the connect event carried no offer', async () => {
       turnOn();
-      const out = await new WhatsAppCallAnswerService().answer({ ...CALL, sdp: '' }, 'TOKEN', 'cid');
+      const out = await new WhatsAppCallAnswerService(fakeMedia).answer({ ...CALL, sdp: '' }, 'TOKEN', 'cid');
 
       expect(out.answered).toBe(false);
       expect(out).toHaveProperty('blocked', false);
@@ -217,7 +238,7 @@ describe('Answering a WhatsApp call', () => {
           status: 400,
         })) as any;
 
-      const out = await new StubbedNegotiation({ sdp: withRelay }).answer(CALL, 'TOKEN', 'cid');
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
       expect(out.answered).toBe(false);
       if (!out.answered) {
         expect(out.reason).toMatch(/Meta refused the answer \(HTTP 400\)/);
@@ -231,7 +252,7 @@ describe('Answering a WhatsApp call', () => {
         throw new Error('ECONNRESET');
       }) as any;
 
-      const out = await new StubbedNegotiation({ sdp: withRelay }).answer(CALL, 'TOKEN', 'cid');
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
       expect(out.answered).toBe(false);
       // "Could not reach" and "refused" send an operator to different places.
       if (!out.answered) expect(out.reason).toMatch(/Could not reach Meta/i);
@@ -241,7 +262,7 @@ describe('Answering a WhatsApp call', () => {
   describe('accepting the call', () => {
     it('sends Meta an accept carrying the SDP answer', async () => {
       turnOn();
-      const out = await new StubbedNegotiation({ sdp: withRelay }).answer(CALL, 'TOKEN', 'cid');
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
 
       expect(out.answered).toBe(true);
       expect(posted).toHaveLength(1);
@@ -254,9 +275,56 @@ describe('Answering a WhatsApp call', () => {
       });
     });
 
+    it('hands the live connection to the media bridge', async () => {
+      turnOn();
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+
+      expect(out.answered).toBe(true);
+      // Audio only exists if this happened, and it must get the tenant and the
+      // caller — the orchestrator runs against both.
+      expect(attached).toHaveLength(1);
+      expect(attached[0].pc).toBe(fakePc);
+      expect(attached[0].organizationId).toBe('org_test');
+      expect(attached[0].citizenNumber).toBe('+2348012345678');
+      expect(attached[0].callId).toBe('wacid.TEST123');
+    });
+
+    it('does NOT report answered when no media bridge is wired', async () => {
+      turnOn();
+      // Meta would already have been told to accept, so claiming success here
+      // leaves a connected call with nobody speaking. That is a wiring fault
+      // and it is reported as a failure rather than shrugged off.
+      // `null`, not `undefined`: a default parameter still applies to
+      // undefined, so passing that would quietly hand it the working fake and
+      // the test would assert nothing.
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, null).answer(
+        CALL,
+        'TOKEN',
+        'cid'
+      );
+      expect(out.answered).toBe(false);
+      if (!out.answered) expect(out.reason).toMatch(/no media bridge/i);
+    });
+
+    it('closes the connection on every path that does not answer', async () => {
+      turnOn();
+      let closed = 0;
+      const pc = { close: async () => { closed++; } };
+
+      // Relay missing.
+      await new StubbedNegotiation({ sdp: hostOnly, pc }).answer(CALL, 'TOKEN', 'cid');
+      expect(closed).toBe(1);
+
+      // Meta refuses.
+      globalThis.fetch = (async () => new Response('nope', { status: 400 })) as any;
+      await new StubbedNegotiation({ sdp: withRelay, pc }).answer(CALL, 'TOKEN', 'cid');
+      // A declined call must not leak a live WebRTC session and its sockets.
+      expect(closed).toBe(2);
+    });
+
     it('terminates best-effort without throwing', async () => {
       turnOn();
-      const svc = new WhatsAppCallAnswerService();
+      const svc = new WhatsAppCallAnswerService(fakeMedia);
       await expect(svc.terminate({ callId: 'wacid.X', phoneNumberId: 'pn_test' }, 'TOKEN')).resolves.toBe(true);
       expect(posted[0].body).toMatchObject({ call_id: 'wacid.X', action: 'terminate' });
 
@@ -276,7 +344,7 @@ describe('Answering a WhatsApp call', () => {
   describe('the SDP answer a real stack produces', () => {
     it("answers Meta's Opus offer with a usable answer", async () => {
       turnOn();
-      const svc = new WhatsAppCallAnswerService();
+      const svc = new WhatsAppCallAnswerService(fakeMedia);
       const negotiated = await (svc as any).negotiate(OFFER, {
         urls: 'turn:relay.example.test:3478',
         username: 'u',
@@ -296,7 +364,7 @@ describe('Answering a WhatsApp call', () => {
 
     it('gathers no relay in a sandbox, which is exactly why answering declines here', async () => {
       turnOn();
-      const svc = new WhatsAppCallAnswerService();
+      const svc = new WhatsAppCallAnswerService(fakeMedia);
       const negotiated: any = await (svc as any).negotiate(OFFER, {
         urls: 'turn:relay.example.test:3478',
         username: 'u',
