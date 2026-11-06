@@ -430,6 +430,77 @@ describe('WhatsApp line discovery and handshake', () => {
       metaSays();
       expect((await readiness(agentToken)).status).toBe(403);
     });
+    describe('and will it ANSWER a call, not just receive a message', () => {
+      /**
+       * Calling is a separate capability from messaging, and this report said
+       * nothing about it. An operator could switch calling on at Meta, see it
+       * come back ENABLED, and have every call go unanswered because
+       * WHATSAPP_CALL_ANSWER was unset or no TURN relay existed — with the
+       * screen showing nothing wrong anywhere.
+       */
+      beforeEach(() => {
+        setEnv('WHATSAPP_CALL_ANSWER', undefined);
+        setEnv('TURN_PROVIDER', undefined);
+        setEnv('TURN_URL', undefined);
+        setEnv('TURN_USERNAME', undefined);
+        setEnv('TURN_CREDENTIAL', undefined);
+      });
+
+      it('says plainly that calls are answered by message, and what voice would take', async () => {
+        await storeLine();
+        metaSays();
+        const res = await readiness();
+        // Not a fault: it is the documented default, and the citizen does get
+        // a reply. So it must not read as broken.
+        expect(res.body.state).toBe('ready');
+        const said = res.body.ok.join(' ');
+        expect(said).toMatch(/recorded and answered with a message, not in voice/i);
+        expect(said).toContain('WHATSAPP_CALL_ANSWER=1');
+        expect(said).toMatch(/TURN_PROVIDER=twilio|TURN_URL/);
+      });
+
+      it('is BLOCKED when answering is switched on with no relay to carry the audio', async () => {
+        await storeLine();
+        metaSays();
+        setEnv('WHATSAPP_CALL_ANSWER', '1');
+        const res = await readiness();
+        // The dangerous combination: the operator believes calls are answered.
+        // Answering without a relay consumes the call, has it reported
+        // completed, and skips the message fallback.
+        expect(res.body.state).toBe('blocked');
+        expect(res.body.blocked.join(' ')).toMatch(/switched ON but cannot work/i);
+        expect(res.body.blocked.join(' ')).toMatch(/No TURN relay is configured/i);
+      });
+
+      it('names the gap when TURN_PROVIDER is twilio but the account credentials are absent', async () => {
+        await storeLine();
+        metaSays();
+        setEnv('WHATSAPP_CALL_ANSWER', '1');
+        setEnv('TURN_PROVIDER', 'twilio');
+        setEnv('TWILIO_ACCOUNT_SID', undefined);
+        setEnv('TWILIO_AUTH_TOKEN', undefined);
+        const res = await readiness();
+        expect(res.body.state).toBe('blocked');
+        expect(res.body.blocked.join(' ')).toMatch(/TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are not both set/i);
+      });
+
+      it('reports it ready with a static relay, and still does not claim a call has worked', async () => {
+        await storeLine();
+        metaSays();
+        setEnv('WHATSAPP_CALL_ANSWER', '1');
+        setEnv('TURN_URL', 'turn:relay.example.test:3478');
+        setEnv('TURN_USERNAME', 'relay-user');
+        setEnv('TURN_CREDENTIAL', 'relay-secret');
+        const res = await readiness();
+        expect(res.body.state).toBe('ready');
+        const said = res.body.ok.join(' ');
+        expect(said).toMatch(/will be answered/i);
+        // The honest caveat has to survive: nothing has proven this path.
+        expect(said).toMatch(/No real call has proven this path yet/i);
+        // And no credential value may appear in a readiness report.
+        expect(JSON.stringify(res.body)).not.toContain('relay-secret');
+      });
+    });
   });
   /**
    * The numbers are not always on the account we hold a credential for.

@@ -546,8 +546,19 @@ describe('the authentication lifecycle', () => {
 
       // Citizen-service framing is present, and names the agency.
       expect(persona).toMatch(/information officer/i);
-      expect(persona).toMatch(/members of the public/i);
+      // The channels a citizen actually arrives on, rather than a generic
+      // "users" — this is what keeps the framing concrete.
+      expect(persona).toMatch(/WhatsApp or by phone/i);
       expect(persona).toContain(`Persona Test Agency ${suffix}`);
+
+      // Conversational, not bureaucratic. Instructed explicitly, because a
+      // model left to its own devices answers a citizen like a circular.
+      expect(persona).toMatch(/like a helpful person, not a form/i);
+      expect(persona).toMatch(/contractions/i);
+      // And deliberately NOT funny: a State line is asked about death
+      // certificates and land disputes, and the guardrails constrain honesty
+      // but say nothing about tone, so nothing would restrain a jokey persona.
+      expect(persona).not.toMatch(/\b(joke|humou?r|funny|witty|banter)\b/i);
 
       // The honesty rule is in the DEFAULT, not only in code the tenant
       // cannot see — a persona is the one string a tenant can overwrite.
