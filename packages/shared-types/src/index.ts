@@ -269,3 +269,143 @@ export interface AuthUser {
    */
   isPlatformAdmin: boolean;
 }
+
+// ── Outbound webhook events ─────────────────────────────────────────────────
+//
+// The ONE list of what this platform POSTs to a tenant's webhook URL, shared
+// by the dispatcher that sends them and the screen that offers them.
+//
+// It is here, and shared, because the two drifted. The dashboard offered
+// "Call Ended" (`call.ended`) while the API dispatched `call.completed`, and
+// `WebhookDispatcherService` filters on an exact string match against the
+// tenant's `enabledWebhookEvents` — so a tenant ticked Call Ended, saw it
+// saved, and never received one. Nothing failed and nothing logged: the
+// dispatch returned at the filter. Meanwhile `contact.created` was dispatched
+// and offered nowhere, so it could only be received by a tenant who had
+// `'*'` stored, which the dashboard cannot set.
+//
+// A list duplicated in two apps is a list that drifts again, so both import
+// this one and `webhook-events.spec.ts` checks it against what the API
+// actually dispatches.
+
+export interface WebhookEventDefinition {
+  /** The canonical `event` value in the body and the `X-ACE-Event` header. */
+  key: string;
+  label: string;
+  description: string;
+  /**
+   * Names this event has been dispatched or stored under before.
+   *
+   * The write path for `enabledWebhookEvents` validates nothing, so any string
+   * a tenant ever sent is still in their row. Renaming the dispatch alone would
+   * therefore have silently switched off the subscription of every tenant
+   * holding the old name — the same failure in the opposite direction. The
+   * dispatcher matches a stored alias to its canonical event, so both spellings
+   * keep working and nobody has to re-tick anything.
+   */
+  aliases?: string[];
+  /**
+   * Whether the platform actually sends this event today.
+   *
+   * `false` is not a placeholder to be filled in later by the UI: it is what
+   * stops the screen offering a subscription that can never fire. An operator
+   * who ticks an event and waits for it has no way to tell "never happened"
+   * from "never implemented", and this platform does not advertise what it
+   * cannot do.
+   */
+  delivered: boolean;
+}
+
+export const WEBHOOK_EVENTS: WebhookEventDefinition[] = [
+  {
+    key: 'call.started',
+    label: 'Call Started',
+    description: 'A voice call begins',
+    delivered: true,
+  },
+  {
+    key: 'call.ended',
+    label: 'Call Ended',
+    description: 'A voice or WhatsApp call concludes, with its final status',
+    // Dispatched as `call.completed` until the two lists were reconciled.
+    aliases: ['call.completed'],
+    delivered: true,
+  },
+  {
+    key: 'message.received',
+    label: 'Message Received',
+    description: 'A citizen sends a WhatsApp message',
+    delivered: true,
+  },
+  {
+    key: 'contact.created',
+    label: 'Contact Created',
+    description: 'A new citizen record is created',
+    delivered: true,
+  },
+  {
+    key: 'lead.captured',
+    label: 'Lead Captured',
+    description: 'A new lead is recorded from a conversation',
+    delivered: true,
+  },
+  {
+    key: 'ticket.created',
+    label: 'Support Ticket Created',
+    description: 'An escalation ticket is opened',
+    delivered: true,
+  },
+  {
+    key: 'appointment.booked',
+    label: 'Appointment Booked',
+    description: 'A citizen books a slot',
+    // Offered by the dashboard and dispatched by nothing. Scheduling fires the
+    // BOOKING_CONFIRMED workflow trigger and no webhook beside it, so this
+    // subscription has never been able to deliver. Marked undeliverable rather
+    // than deleted: the key is in tenants' stored rows, and the honest state of
+    // it is "not sent yet", not "no such event".
+    delivered: false,
+  },
+  {
+    key: 'handover.requested',
+    label: 'Human Handover',
+    description: 'A conversation is handed to a person',
+    // Same: the handoff route notifies the console gateway and dispatches no
+    // webhook.
+    delivered: false,
+  },
+];
+
+/**
+ * Every alias, mapped to the canonical key it stands for.
+ *
+ * Null-prototype, because the names looked up in it are tenant-supplied: the
+ * write path for `enabledWebhookEvents` validates nothing, so a row can hold
+ * `constructor` or `__proto__`. On an ordinary object those resolve to
+ * INHERITED values — `canonicalWebhookEvent('constructor')` would hand back the
+ * `Object` function instead of the string it was given.
+ */
+export const WEBHOOK_EVENT_ALIASES: Record<string, string> = Object.assign(
+  Object.create(null) as Record<string, string>,
+  Object.fromEntries(
+    WEBHOOK_EVENTS.flatMap((event) => (event.aliases ?? []).map((alias) => [alias, event.key]))
+  )
+);
+
+/** The canonical name for an event, whatever spelling it arrived in. */
+export function canonicalWebhookEvent(name: string): string {
+  return WEBHOOK_EVENT_ALIASES[name] ?? name;
+}
+
+/**
+ * Is a tenant subscribed to this event?
+ *
+ * Compared on canonical names in BOTH directions, so a row holding
+ * `call.completed` and a dispatch of `call.ended` are the same subscription.
+ * `'*'` keeps meaning everything, including events added after it was stored.
+ */
+export function isWebhookEventEnabled(enabled: string[], eventType: string): boolean {
+  if (enabled.includes('*')) return true;
+  const wanted = canonicalWebhookEvent(eventType);
+  return enabled.some((stored) => canonicalWebhookEvent(stored) === wanted);
+}

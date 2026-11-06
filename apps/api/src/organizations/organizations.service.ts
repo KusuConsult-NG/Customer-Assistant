@@ -947,7 +947,7 @@ export class OrganizationsService {
     const verifyToken = (process.env.WHATSAPP_VERIFY_TOKEN?.trim() || config.webhookVerifyToken || '').trim();
     if (!appId || !appSecret) {
       steps.push({
-        step: 'Register the callback URL and the `messages` field',
+        step: 'Register the callback URL and the `messages` and `calls` fields',
         ok: false,
         detail:
           'Needs ' + [!appId && 'META_APP_ID', !appSecret && 'WHATSAPP_APP_SECRET'].filter(Boolean).join(' and ') +
@@ -956,29 +956,63 @@ export class OrganizationsService {
       });
     } else if (!verifyToken) {
       steps.push({
-        step: 'Register the callback URL and the `messages` field',
+        step: 'Register the callback URL and the `messages` and `calls` fields',
         ok: false,
         detail:
           'No verify token available. Meta calls the callback URL back with it before accepting the ' +
           'registration, so there is nothing for the handshake to match.',
       });
     } else {
-      const fields = await metaPost(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(appId)}/subscriptions` +
-        `?object=whatsapp_business_account&callback_url=${encodeURIComponent(callbackUrl)}` +
-        `&verify_token=${encodeURIComponent(verifyToken)}&fields=messages`,
-        // The APP access token. Never logged, never returned.
-        `${appId}|${appSecret}`
-      );
-      steps.push({
-        step: 'Register the callback URL and the `messages` field',
-        ok: fields.ok,
-        detail: fields.ok
-          ? `Meta accepted ${callbackUrl} for the \`messages\` field.`
-          : fields.reached
-            ? `Meta refused it — ${fields.error}`
-            : `Could not reach Meta — ${fields.error}`,
-      });
+      // `calls` as well as `messages`, so a citizen phoning the agency from
+      // inside WhatsApp is delivered at all. Calling can be switched on for a
+      // line (see setWhatsAppCalling) while this subscription covers only
+      // `messages`, and the result is the worst of both: Meta rings the
+      // business, nothing is ever delivered, and no log anywhere records that
+      // somebody tried.
+      //
+      // Asked for TOGETHER, then SEPARATELY on a refusal. One `subscriptions`
+      // call carries both field names, so an app that may not subscribe to
+      // `calls` — the permission is not granted to every app — would have had
+      // its `messages` subscription refused along with it, breaking the one
+      // channel that was working in order to add one that was not. The retry
+      // keeps `messages` whatever Meta thinks of `calls`, and the gap is
+      // reported rather than hidden.
+      const subscribe = (fields: string) =>
+        metaPost(
+          `https://graph.facebook.com/v21.0/${encodeURIComponent(appId)}/subscriptions` +
+          `?object=whatsapp_business_account&callback_url=${encodeURIComponent(callbackUrl)}` +
+          `&verify_token=${encodeURIComponent(verifyToken)}&fields=${encodeURIComponent(fields)}`,
+          // The APP access token. Never logged, never returned.
+          `${appId}|${appSecret}`
+        );
+
+      const both = await subscribe('messages,calls');
+      if (both.ok) {
+        steps.push({
+          step: 'Register the callback URL and the `messages` and `calls` fields',
+          ok: true,
+          detail: `Meta accepted ${callbackUrl} for the \`messages\` and \`calls\` fields.`,
+        });
+      } else {
+        const messagesOnly = await subscribe('messages');
+        steps.push({
+          step: 'Register the callback URL and the `messages` field',
+          ok: messagesOnly.ok,
+          detail: messagesOnly.ok
+            ? `Meta accepted ${callbackUrl} for the \`messages\` field.`
+            : messagesOnly.reached
+              ? `Meta refused it — ${messagesOnly.error}`
+              : `Could not reach Meta — ${messagesOnly.error}`,
+        });
+        steps.push({
+          step: 'Register the `calls` field (a citizen phoning from inside WhatsApp)',
+          ok: false,
+          detail:
+            (both.reached ? `Meta refused it — ${both.error}` : `Could not reach Meta — ${both.error}`) +
+            ' Messaging is unaffected. Until this is accepted, a WhatsApp call to this line is never ' +
+            'delivered here, so turning calling on would ring the business and reach nobody.',
+        });
+      }
     }
 
     // What is TRUE now, read back rather than inferred from the calls above.

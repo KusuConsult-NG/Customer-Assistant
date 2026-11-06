@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { prisma } from '@ace/database';
 import { assertPublicHttpUrl } from '../common/url-safety';
+import { isWebhookEventEnabled } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('WebhookDispatcher');
@@ -11,7 +12,15 @@ export class WebhookDispatcherService {
   async dispatch(organizationId: string, eventType: string, payload: Record<string, any>) {
     const org = await prisma.organization.findUnique({ where: { id: organizationId } });
     if (!org?.webhookUrl) return;
-    if (!org.enabledWebhookEvents.includes(eventType) && !org.enabledWebhookEvents.includes('*')) return;
+    // Matched on CANONICAL names, not on the exact string.
+    //
+    // An exact match is what silently unsubscribed everyone: the dashboard
+    // offered `call.ended`, the API dispatched `call.completed`, and a tenant
+    // who ticked the box simply never received a call event. `isWebhookEventEnabled`
+    // resolves both sides through the alias table in @ace/shared-types, so the
+    // old and new spellings are one subscription and no tenant has to re-tick
+    // anything after a rename.
+    if (!isWebhookEventEnabled(org.enabledWebhookEvents, eventType)) return;
 
     // Refuse to sign with a fallback secret.
     //

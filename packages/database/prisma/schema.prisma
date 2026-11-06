@@ -128,6 +128,15 @@ enum TelephonyProviderType {
   /// A generic SIP trunk from any carrier — the option that removes the
   /// Twilio dependency for voice entirely.
   SIP_TRUNK
+  /// A call placed inside WhatsApp, carried by Meta's Cloud API.
+  ///
+  /// Not a carrier and not configurable as one: it is deliberately absent from
+  /// `TELEPHONY_PROVIDERS`, so it cannot be chosen on the voice settings form.
+  /// It exists so a `CallLog` for a WhatsApp call does not have to claim a
+  /// carrier that never saw it — `provider` defaults to TWILIO, and recording
+  /// a Meta call as a Twilio one sends whoever investigates it to the wrong
+  /// console.
+  WHATSAPP_CLOUD
 }
 
 enum BookingStatus {

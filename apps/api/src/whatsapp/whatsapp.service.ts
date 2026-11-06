@@ -39,6 +39,23 @@ function resolveWhatsAppClient(config: {
 }
 
 /**
+ * Meta timestamps on a call event are unix SECONDS, and arrive as strings as
+ * often as numbers.
+ *
+ * Returns null rather than an Invalid Date or an epoch date for anything
+ * unparseable: `new Date(undefined)` is Invalid and Prisma rejects it, while
+ * `new Date(0)` would file a call in 1970 and quietly fall outside every
+ * window the dashboard asks about. The caller falls back to "now", which is
+ * accurate to within the webhook's own delivery latency.
+ */
+function unixSecondsToDate(value: unknown): Date | null {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const date = new Date(seconds * 1000);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
  * Does this handshake token match anything this deployment will accept?
  *
  * ── Why the row, and not only the env var ───────────────────────────────────
@@ -141,6 +158,20 @@ export class WhatsappService {
           recipientId: statusReceipt.recipient_id,
           messageId: statusReceipt.id,
         });
+        return;
+      }
+
+      // ── A citizen rang the agency from inside WhatsApp ───────────────────
+      //
+      // Handled BEFORE the `!message` drop below, because `calls` is a
+      // different webhook field: a call event carries no `messages` array, so
+      // it fell straight into that branch and was discarded as an empty
+      // payload. Somebody who needed help got nothing, and the only trace was
+      // one debug line saying there was no message in a payload that was never
+      // supposed to contain one.
+      const callEvent = change?.calls?.[0];
+      if (callEvent) {
+        await this.processCallEvent(change, callEvent, correlationId);
         return;
       }
 
@@ -462,6 +493,309 @@ export class WhatsappService {
 
     } catch (err: any) {
       log.error('whatsapp_webhook_unhandled_error', err, { correlationId });
+    }
+  }
+
+  /**
+   * A citizen rang the agency from inside WhatsApp.
+   *
+   * ── Why this exists at all ──────────────────────────────────────────────
+   *
+   * WhatsApp calling is a real capability of a business line and it is switched
+   * on from this platform (Settings → WhatsApp, `setWhatsAppCalling`). What was
+   * missing was the other half: Meta delivers call activity on the `calls`
+   * webhook field, this handler only ever read `messages` and `statuses`, and a
+   * `calls` delivery therefore fell into the "no message in payload" branch and
+   * was dropped at debug level. A citizen tried to reach the agency, nothing
+   * answered, and nothing anywhere recorded that it had happened.
+   *
+   * ── What this does NOT do ───────────────────────────────────────────────
+   *
+   * It does not answer the call, and it must not read as though it does.
+   * Answering one means terminating WebRTC media — an SDP exchange over
+   * `connect` / `pre_accept` / `accept` — which exists nowhere in this
+   * codebase. So the honest outcome for an inbound WhatsApp call is that it
+   * went unanswered, and the useful thing left to do is to record it where
+   * staff will see it and to tell the citizen what to do instead.
+   *
+   * Three properties are deliberate:
+   *
+   *  - **The AI is NOT handed off.** Setting `isHumanHandoffActive` would stop
+   *    the orchestrator answering this citizen's next WhatsApp message, so a
+   *    missed call at an agency with nobody at the console would cost them the
+   *    one channel that does work. The call lands in the thread and bumps it to
+   *    the top of the console instead.
+   *  - **The reply is attempted and its real outcome recorded.** Meta only
+   *    accepts free-form text inside the 24-hour service window; outside it a
+   *    business-initiated message needs an approved template, and this platform
+   *    has no path to configure one (see `missedCallTemplateName`, which is
+   *    settable only in the database). Rather than guess which side of the
+   *    window a call falls on, the send is attempted and a refusal is written
+   *    into the thread in Meta's own words — so staff reading it know whether
+   *    the citizen was actually told anything.
+   *  - **Redelivery and the two-event sequence are the same case.** One call
+   *    produces a `connect` and then a `terminate` with the same id, and Meta
+   *    retries both. The call log upsert absorbs that (and lets `terminate`
+   *    refine the status from Meta's own report), while the deterministic
+   *    `externalId` on the thread note is what makes the citizen receive one
+   *    explanation rather than one per event.
+   */
+  private async processCallEvent(change: any, call: any, correlationId: string): Promise<void> {
+    const phoneNumberId: string | undefined = change?.metadata?.phone_number_id;
+    const callId: string | undefined = typeof call?.id === 'string' ? call.id : undefined;
+    const event = String(call?.event ?? '').toLowerCase();
+
+    if (!callId || !phoneNumberId) {
+      // Nothing to key a record on, and no tenant to key it to. Log what did
+      // arrive rather than a bare failure: the field names are the only thing
+      // that identifies which Meta payload shape this was.
+      log.warn('whatsapp_call_unusable_payload', {
+        correlationId,
+        hasCallId: Boolean(callId),
+        hasPhoneNumberId: Boolean(phoneNumberId),
+        callKeys: Object.keys(call ?? {}).join(','),
+      });
+      return;
+    }
+
+    // Same tenant rule as an inbound message: phoneNumberId is the only tenant
+    // identifier Meta sends, it must match exactly, and there is deliberately
+    // no "fall back to any active config" branch — that files one agency's
+    // caller under another agency's CRM.
+    const config = withWhatsAppCredentials(
+      await prisma.whatsAppConfig.findFirst({ where: { phoneNumberId, isActive: true } })
+    );
+    if (!config) {
+      log.warn('whatsapp_call_no_config_found', {
+        correlationId,
+        phoneNumberId,
+        event,
+        hint: 'Add this phoneNumberId under Settings → WhatsApp Integration for the owning organization.',
+      });
+      return;
+    }
+    const organizationId = config.organizationId;
+
+    const businessInitiated = String(call?.direction ?? '').toUpperCase() === 'BUSINESS_INITIATED';
+    const citizenNumber = String((businessInitiated ? call?.to : call?.from) ?? '').trim();
+    const agencyNumber =
+      String((businessInitiated ? call?.from : call?.to) ?? '').trim() ||
+      String(change?.metadata?.display_phone_number ?? '').trim();
+
+    if (!citizenNumber) {
+      log.warn('whatsapp_call_no_citizen_number', { correlationId, organizationId, callId, event });
+      return;
+    }
+
+    // Meta sends a wa_id — E.164 with no leading plus — and the platform stores
+    // the canonical form everywhere else. Unnormalised, this call log would
+    // carry `2348012345678` for a citizen whose contact, bookings and tickets
+    // all say `+2348012345678`, so the one screen an officer checks after a
+    // missed call would show a number that matches nothing they can search for.
+    // The wire keeps Meta's form: WhatsApp identifies users without the plus.
+    const citizenCanonical = normalizePhoneNumber(citizenNumber);
+    const agencyCanonical = agencyNumber ? normalizePhoneNumber(agencyNumber) : '';
+    const citizenWaId = citizenNumber.replace(/^\+/, '');
+
+    // Meta reports the outcome on `terminate`; a `connect` we never answered is
+    // already known to be unanswered, so it is recorded as such rather than
+    // left RINGING forever by a `terminate` that may not arrive. Where Meta
+    // does state a status it wins — it is the authority on what happened on its
+    // own network, and our assumption is the thing that could be wrong.
+    const terminated = event === 'terminate';
+    const reportedStatus = String(call?.status ?? '').trim().toUpperCase();
+    const status: 'COMPLETED' | 'FAILED' | 'NO_ANSWER' =
+      terminated && reportedStatus === 'COMPLETED'
+        ? 'COMPLETED'
+        : terminated && reportedStatus === 'FAILED'
+          ? 'FAILED'
+          : 'NO_ANSWER';
+
+    const startedAt = unixSecondsToDate(call?.start_time) ?? unixSecondsToDate(call?.timestamp) ?? new Date();
+    const endedAt = terminated ? (unixSecondsToDate(call?.end_time) ?? new Date()) : null;
+    const rawDuration = Number(call?.duration);
+    const durationSeconds = Number.isFinite(rawDuration) && rawDuration > 0 ? Math.floor(rawDuration) : 0;
+
+    const summary =
+      status === 'COMPLETED'
+        ? `WhatsApp call that Meta reports as COMPLETED${durationSeconds ? ` after ${durationSeconds}s` : ''}.`
+        : `${businessInitiated ? 'Outbound' : 'Inbound'} WhatsApp call, NOT answered — this platform has no path ` +
+          `that answers a WhatsApp call, so the \`${event || 'call'}\` event was recorded and the call left ` +
+          `unanswered.${reportedStatus ? ` Meta reported ${reportedStatus}.` : ''}`;
+
+    const contact = await ensureContactForPhone(
+      prisma,
+      organizationId,
+      citizenNumber,
+      change?.contacts?.[0]?.profile?.name
+    );
+
+    // The call log first, and keyed on Meta's own call id: it is the record that
+    // matters, so it is written before anything that can fail on a provider
+    // round trip. `telephonyConfigId` stays null because no carrier was
+    // involved — that is the whole point of a WhatsApp call.
+    const identity = {
+      contactId: contact?.id ?? null,
+      fromNumber: businessInitiated ? agencyCanonical || citizenCanonical : citizenCanonical,
+      toNumber: businessInitiated ? citizenCanonical : agencyCanonical || citizenCanonical,
+      direction: businessInitiated ? ('OUTBOUND' as const) : ('INBOUND' as const),
+    };
+    const outcome = { status, durationSeconds, summary, startedAt, endedAt };
+
+    await prisma.callLog.upsert({
+      where: { callSid: callId },
+      create: { callSid: callId, organizationId, provider: 'WHATSAPP_CLOUD', ...identity, ...outcome },
+      // ONLY a `terminate` may write the outcome.
+      //
+      // One call produces two events with the same id and Meta retries both, so
+      // they can arrive out of order. With the outcome written on every event, a
+      // `connect` redelivered after the `terminate` put the row back to
+      // NO_ANSWER with a null `endedAt` — the call history would show a call
+      // still ringing, long after Meta had said how it ended. The identity
+      // fields are safe to rewrite either way, and `contactId` deliberately is:
+      // a retry after a failed first contact write is what finally links the
+      // caller, exactly as on the carrier path.
+      //
+      // `organizationId` is never updated. Nothing should be able to move a
+      // call log between agencies, whatever arrives carrying an id we hold.
+      update: terminated ? { ...identity, ...outcome } : identity,
+    });
+
+    log.info('whatsapp_call_recorded', {
+      correlationId,
+      organizationId,
+      callId,
+      event,
+      status,
+      direction: identity.direction,
+      citizenNumber: citizenCanonical.slice(-4),
+      matchedContact: Boolean(contact),
+    });
+
+    this.webhookDispatcher
+      .dispatch(organizationId, 'call.ended', {
+        callSid: callId,
+        channel: 'WHATSAPP',
+        status,
+        direction: identity.direction,
+        durationSeconds,
+        contactPhone: citizenCanonical,
+        answered: false,
+      })
+      .catch((err) => log.error('webhook_dispatch_failed', err, { correlationId }));
+
+    this.workflows.emitAsync(organizationId, 'CALL_ENDED', {
+      callSid: callId,
+      channel: 'WHATSAPP',
+      status,
+      direction: identity.direction,
+      durationSeconds,
+      fromNumber: identity.fromNumber,
+      contactId: contact?.id ?? undefined,
+      contact: { phoneNumber: citizenCanonical },
+    });
+
+    // A withheld or unusable number has no citizen to put in a thread or to
+    // write back to. The call log above is still the honest record of it.
+    if (!contact) return;
+
+    const conversation = await this.upsertConversation(organizationId, contact.id, correlationId);
+
+    const note =
+      status === 'COMPLETED'
+        ? `Citizen called on WhatsApp. Meta reports the call as completed${durationSeconds ? ` after ${durationSeconds}s` : ''}.`
+        : 'Citizen tried to call on WhatsApp and was not answered — this platform cannot answer WhatsApp calls.';
+
+    // CLAIM, then send. The unique externalId is what makes this idempotent
+    // across Meta's redelivery and across the connect/terminate pair, and it
+    // has to be the claim rather than a check: two deliveries can be in flight
+    // at once and both would pass a check-then-write.
+    let claimed: { id: string };
+    try {
+      claimed = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          sender: MessageSender.SYSTEM,
+          content: note,
+          externalId: `${callId}:whatsapp-call`,
+          metadata: { whatsappCallId: callId, callEvent: event, status, answered: false },
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        log.info('whatsapp_call_duplicate_delivery_ignored', {
+          correlationId,
+          organizationId,
+          callId,
+          event,
+          note: 'This call was already noted in the thread; not writing to the citizen twice.',
+        });
+        return;
+      }
+      throw err;
+    }
+
+    await prisma.conversation
+      .update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } })
+      .catch(() => {});
+
+    // Nothing is promised that this platform cannot do. No phone number is
+    // offered either: `voice-readiness` exists precisely because an agency's
+    // carrier line can be misconfigured in four ways that all answer and go
+    // nowhere, and sending a citizen to a number this handler has not verified
+    // would be inventing a route out. The AI is still answering this thread,
+    // which is the one thing known to work.
+    const replyText =
+      'Sorry — we could not take your WhatsApp call. This service cannot answer WhatsApp calls yet. ' +
+      'Please send your question here as a message and we will help you.';
+
+    if (status === 'COMPLETED') return;
+
+    try {
+      const client = resolveWhatsAppClient(config);
+      await client.sendTextMessage(citizenWaId, replyText);
+      // Written only once the send has actually succeeded, so the thread never
+      // shows the citizen an explanation they did not receive.
+      await prisma.message
+        .create({
+          data: {
+            conversationId: conversation.id,
+            sender: MessageSender.AI,
+            content: replyText,
+            externalId: `${callId}:whatsapp-call-reply`,
+            metadata: { whatsappCallId: callId, reason: 'unanswered_whatsapp_call' },
+          },
+        })
+        .catch(() => {});
+      log.info('whatsapp_call_reply_sent', {
+        correlationId,
+        organizationId,
+        callId,
+        conversationId: conversation.id,
+      });
+    } catch (sendErr: any) {
+      const reason = String(sendErr?.message ?? 'unknown error').slice(0, 300);
+      // Staff must be able to tell "handled" from "nobody has contacted this
+      // person". Outside Meta's 24-hour service window this is the expected
+      // outcome, and the refusal is recorded in Meta's words rather than
+      // paraphrased into something that reads like a platform fault.
+      await prisma.message
+        .update({
+          where: { id: claimed.id },
+          data: {
+            content:
+              `${note} The explanation could NOT be delivered (${reason}), so this citizen has not been ` +
+              'contacted. Meta only accepts a free-form message inside the 24-hour service window; outside ' +
+              'it an approved template is required.',
+          },
+        })
+        .catch(() => {});
+      log.warn('whatsapp_call_reply_failed', {
+        correlationId,
+        organizationId,
+        callId,
+        error: reason,
+      });
     }
   }
 
