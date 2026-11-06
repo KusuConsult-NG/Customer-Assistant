@@ -35,7 +35,20 @@ export class VoiceAiService {
    *   language — read from org settings if available, fallback to 'en'.
    *     Deepgram nova-2 supports 30+ languages with the same mulaw encoding.
    */
-  async createDeepgramWsForOrg(organizationId: string): Promise<WebSocket | null> {
+  /**
+   * @param audio The wire format being fed in. Defaults to Twilio's mulaw/8000
+   *   so every existing caller is unchanged — WhatsApp calls pass
+   *   linear16/48000 instead, because Opus is decoded to PCM before it gets
+   *   here rather than passed through. Deepgram's `encoding` parameter is for
+   *   RAW headerless audio, which is what both of those are.
+   */
+  async createDeepgramWsForOrg(
+    organizationId: string,
+    audio: { encoding: string; sampleRate: number; channels?: number } = {
+      encoding: 'mulaw',
+      sampleRate: 8000,
+    }
+  ): Promise<WebSocket | null> {
     const apiKey = process.env.DEEPGRAM_API_KEY;
     if (!apiKey) {
       this.logger.warn('DEEPGRAM_API_KEY not set — STT unavailable', {});
@@ -59,9 +72,9 @@ export class VoiceAiService {
       punctuate:    'true',
       smart_format: 'true',
       vad_events:   'true',
-      encoding:     'mulaw',   // ← matches Twilio's mulaw output, zero transcode
-      sample_rate:  '8000',
-      channels:     '1',
+      encoding:     audio.encoding,
+      sample_rate:  String(audio.sampleRate),
+      channels:     String(audio.channels ?? 1),
     });
 
     try {
@@ -123,6 +136,79 @@ export class VoiceAiService {
    * failure that matters here (an ElevenLabs key that does not authenticate) produced
    * a call where the caller sat in complete silence with nothing to recover it.
    */
+  /**
+   * TTS as raw PCM, for a channel that is not Twilio.
+   *
+   * `streamTTSToTwilio` asks ElevenLabs for `ulaw_8000` and writes it straight
+   * onto a Twilio socket — correct there, useless for WhatsApp, whose media is
+   * Opus at 48 kHz. This asks for `pcm_24000` instead and hands back the bytes,
+   * leaving the caller to resample and encode.
+   *
+   * 24 kHz and not something closer to 48: ElevenLabs offers pcm_16000,
+   * pcm_22050, pcm_24000 and pcm_44100 and NOT pcm_48000, so a resample is
+   * unavoidable. 24 → 48 is an exact factor of two, which is a sample-doubling
+   * loop with no filter design, no fractional accumulator and no drift. 44.1 →
+   * 48 is 160/147, which needs a real resampler to avoid artefacts, and a
+   * wrong one is heard as a robotic voice rather than as an error.
+   *
+   * Returns null rather than throwing, and says in the log that the caller
+   * heard nothing — the same contract `streamTTSToTwilio` keeps, because a
+   * silent caller must never read as success.
+   */
+  async fetchTtsPcm24k(text: string, language = 'en', signal?: AbortSignal): Promise<Buffer | null> {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
+
+    if (!apiKey) {
+      this.logger.error(
+        'tts_unavailable',
+        new Error('ELEVENLABS_API_KEY is not set — the caller will hear silence.')
+      );
+      return null;
+    }
+    if (signal?.aborted) return null;
+
+    const modelId = language === 'en' ? ENGLISH_ONLY_MODEL : MULTILINGUAL_MODEL;
+
+    try {
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_24000`,
+        {
+          method: 'POST',
+          headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            model_id: modelId,
+            voice_settings: { stability: 0.4, similarity_boost: 0.8, speed: 1.05 },
+          }),
+          signal,
+        }
+      );
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => response.statusText);
+        this.logger.error(
+          `tts_pcm_failed_http_${response.status}`,
+          new Error(
+            `ElevenLabs returned ${response.status}: ${errBody.slice(0, 300)}. The caller heard nothing.`
+          )
+        );
+        return null;
+      }
+
+      const audio = Buffer.from(await response.arrayBuffer());
+      if (audio.length === 0) {
+        this.logger.error('tts_pcm_empty', new Error('ElevenLabs returned no audio; the caller heard nothing.'));
+        return null;
+      }
+      return audio;
+    } catch (err: any) {
+      if (signal?.aborted) return null;
+      this.logger.error('tts_pcm_unreachable', err instanceof Error ? err : new Error(String(err)));
+      return null;
+    }
+  }
+
   async streamTTSToTwilio(
     text:      string,
     streamSid: string,

@@ -127,6 +127,36 @@ export const ENV_SPECS: EnvSpec[] = [
       'reset can be delivered — those endpoints still answer 200, so the failure is silent. ' +
       'Recover an account with: npm run user:password -- <email> --apply',
   },
+  {
+    key: 'WHATSAPP_CALL_ANSWER',
+    required: false,
+    // Optional and OFF by default, and the cost of switching it on wrongly is
+    // worse than the cost of leaving it off — which is the opposite of most
+    // optional vars here, so say so.
+    description:
+      'Set to 1 to ANSWER inbound WhatsApp calls instead of recording them and replying by message. ' +
+      'Needs TURN_URL/TURN_USERNAME/TURN_CREDENTIAL too: without a relay the service refuses to answer, ' +
+      'because an answered call with no media route consumes the citizen and suppresses the message ' +
+      'fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
+  },
+  {
+    key: 'TURN_URL',
+    required: false,
+    description:
+      'TURN relay for WhatsApp call media (e.g. turn:relay.example.com:3478). WebRTC media is UDP and this ' +
+      'deployment exposes no inbound UDP, so media must relay through TURN. Useless without TURN_USERNAME ' +
+      'and TURN_CREDENTIAL.',
+  },
+  {
+    key: 'TURN_PROVIDER',
+    required: false,
+    description:
+      "Set to 'twilio' to mint ephemeral TURN credentials from the deployment's Twilio account (Network " +
+      'Traversal Service) instead of running your own relay. Needs TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN, ' +
+      'and makes TURN_URL/TURN_USERNAME/TURN_CREDENTIAL unnecessary.',
+  },
+  { key: 'TURN_USERNAME', required: false, description: 'TURN username. Required with TURN_URL, useless without it.' },
+  { key: 'TURN_CREDENTIAL', required: false, description: 'TURN credential. Required with TURN_URL, useless without it.' },
   { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in TwiML stream URLs and agent tool callbacks)' },
   { key: 'WEB_BASE_URL', required: false, description: 'Public dashboard URL (used in emailed links; defaults to localhost)' },
   {

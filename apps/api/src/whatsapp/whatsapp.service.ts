@@ -8,6 +8,7 @@ import { ChannelType, MessageSender, bookedAppointmentId } from '@ace/shared-typ
 import { AceLogger } from '../config/logger';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { WhatsAppCallAnswerService } from './whatsapp-call-answer.service';
 
 const log = new AceLogger('WhatsappService');
 
@@ -126,7 +127,8 @@ export class WhatsappService {
   constructor(
     private webhookDispatcher: WebhookDispatcherService,
     private workflows: WorkflowTriggerService,
-    private onboarding: OnboardingService
+    private onboarding: OnboardingService,
+    private callAnswer: WhatsAppCallAnswerService
   ) {}
 
   /**
@@ -620,12 +622,44 @@ export class WhatsappService {
     // own network, and our assumption is the thing that could be wrong.
     const terminated = event === 'terminate';
     const reportedStatus = String(call?.status ?? '').trim().toUpperCase();
-    const status: 'COMPLETED' | 'FAILED' | 'NO_ANSWER' =
+
+    // ── Try to ANSWER it, when that is switched on and possible ───────────
+    //
+    // Off by default, and `WhatsAppCallAnswerService` refuses to enable itself
+    // without a TURN relay — an answered call with no media route consumes the
+    // citizen's call and suppresses the message fallback below, which is worse
+    // than not answering. `blocked` distinguishes "switched off" from "tried
+    // and failed" so the thread note can say which.
+    //
+    // Only an inbound `connect` is answerable: a `terminate` is already over,
+    // and an outbound call is one we placed.
+    const answerable = !terminated && event === 'connect' && !businessInitiated;
+    const answer = answerable
+      ? await this.callAnswer.answer(
+          {
+            callId,
+            phoneNumberId,
+            sdp: String(call?.session?.sdp ?? ''),
+            organizationId,
+            citizenNumber: citizenCanonical,
+          },
+          config.accessToken ?? '',
+          correlationId
+        )
+      : null;
+
+    const status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS' | 'NO_ANSWER' =
       terminated && reportedStatus === 'COMPLETED'
         ? 'COMPLETED'
         : terminated && reportedStatus === 'FAILED'
           ? 'FAILED'
-          : 'NO_ANSWER';
+          : answer?.answered
+            ? // Meta accepted the answer, so the call IS connected at the
+              // carrier. Whether the caller can hear anything depends on the
+              // media bridge, which no real call has proven — the summary says
+              // so rather than the status overclaiming.
+              'IN_PROGRESS'
+            : 'NO_ANSWER';
 
     const startedAt = unixSecondsToDate(call?.start_time) ?? unixSecondsToDate(call?.timestamp) ?? new Date();
     const endedAt = terminated ? (unixSecondsToDate(call?.end_time) ?? new Date()) : null;
@@ -635,9 +669,13 @@ export class WhatsappService {
     const summary =
       status === 'COMPLETED'
         ? `WhatsApp call that Meta reports as COMPLETED${durationSeconds ? ` after ${durationSeconds}s` : ''}.`
-        : `${businessInitiated ? 'Outbound' : 'Inbound'} WhatsApp call, NOT answered — this platform has no path ` +
-          `that answers a WhatsApp call, so the \`${event || 'call'}\` event was recorded and the call left ` +
-          `unanswered.${reportedStatus ? ` Meta reported ${reportedStatus}.` : ''}`;
+        : status === 'IN_PROGRESS'
+          ? 'Inbound WhatsApp call ANSWERED — Meta accepted the SDP answer. Whether the caller heard anything ' +
+            'depends on the media bridge, which no real call has yet proven.'
+          : `${businessInitiated ? 'Outbound' : 'Inbound'} WhatsApp call, NOT answered — ` +
+            `${answer && !answer.answered && !answer.blocked ? `answering was attempted and failed: ${answer.reason} ` : 'answering this platform is not configured for. '}` +
+            `The \`${event || 'call'}\` event was recorded and the call left ` +
+            `unanswered.${reportedStatus ? ` Meta reported ${reportedStatus}.` : ''}`;
 
     const contact = await ensureContactForPhone(
       prisma,
@@ -720,7 +758,11 @@ export class WhatsappService {
     const note =
       status === 'COMPLETED'
         ? `Citizen called on WhatsApp. Meta reports the call as completed${durationSeconds ? ` after ${durationSeconds}s` : ''}.`
-        : 'Citizen tried to call on WhatsApp and was not answered — this platform cannot answer WhatsApp calls.';
+        : status === 'IN_PROGRESS'
+          ? 'Citizen called on WhatsApp and the call was ANSWERED. Audio depends on the media bridge, which no real ' +
+            'call has proven — if they report hearing nothing, that is where to look.'
+          : 'Citizen tried to call on WhatsApp and was not answered' +
+            `${answer && !answer.answered && !answer.blocked ? ` (answering failed: ${answer.reason})` : ' — this platform is not configured to answer WhatsApp calls'}.`;
 
     // CLAIM, then send. The unique externalId is what makes this idempotent
     // across Meta's redelivery and across the connect/terminate pair, and it
@@ -765,7 +807,9 @@ export class WhatsappService {
       'Sorry — we could not take your WhatsApp call. This service cannot answer WhatsApp calls yet. ' +
       'Please send your question here as a message and we will help you.';
 
-    if (status === 'COMPLETED') return;
+    // A completed call needs no apology, and an ANSWERED one must not get a
+    // message saying we could not take it — the citizen is on the line.
+    if (status === 'COMPLETED' || status === 'IN_PROGRESS') return;
 
     try {
       const client = resolveWhatsAppClient(config);

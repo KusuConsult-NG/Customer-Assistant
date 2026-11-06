@@ -316,11 +316,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'I ran into a technical problem completing that automatically. Let me connect you with a team member who can help right away.',
     capabilities:
       "Here's what I can do for you at {org}:\n\n" +
+      '• Answer questions about {org} — what it does, its services and how to reach it\n' +
       '• Book, check, move or cancel an appointment\n' +
-      '• Share our payment details when you want to pay\n' +
-      '• File a complaint or report a problem\n' +
-      '• Raise a refund request\n' +
-      '• Answer questions about our services\n\n' +
+      '• File a complaint or report a problem\n\n' +
+      'Just ask in your own words — you do not have to pick from this list.\n\n' +
       'And any time you\'d rather talk to a person, just say *"speak to an agent"*.',
     language_menu:
       'Which language would you like me to use? Reply with a number:\n\n' +
@@ -446,11 +445,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Something spoil small as I dey try do am automatic. Make I connect you to team member wey go help you sharp-sharp.',
     capabilities:
       'See wetin I fit do for you for {org}:\n\n' +
+      '• Answer question about {org} — wetin dem dey do, dem services, and how to reach dem\n' +
       '• Book appointment, check am, move am or cancel am\n' +
-      '• Show you how you go pay\n' +
-      '• Take your complaint or report problem\n' +
-      '• Raise refund request\n' +
-      '• Answer question about our services\n\n' +
+      '• Take your complaint or report problem\n\n' +
+      'Just ask for your own words — you no need pick from this list.\n\n' +
       'Anytime you want person, just talk *"speak to an agent"*.',
     language_menu:
       'Which language you want make I take talk? Reply with number:\n\n' +
@@ -578,11 +576,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'An sami matsala yayin da nake yin haka kai tsaye. Bari in hada ka da ma’aikaci da zai taimaka nan take.',
     capabilities:
       'Ga abin da zan iya yi maka a {org}:\n\n' +
+      '• Amsa tambayoyi game da {org} da ayyukanmu\n' +
       '• Yin alkawari, duba shi, canza shi ko soke shi\n' +
-      '• Ba ka bayanin yadda za ka biya\n' +
-      '• Daukar korafi ko rahoton matsala\n' +
-      '• Neman mayar da kudi\n' +
-      '• Amsa tambayoyi game da ayyukanmu\n\n' +
+      '• Daukar korafi ko rahoton matsala\n\n' +
+      'Ka yi tambaya da kalmominka — ba sai ka zaɓa daga wannan jerin ba.\n\n' +
       'Duk lokacin da kake son mutum, ka ce *"speak to an agent"*.',
     language_menu:
       'Wane harshe kake so in yi amfani da shi? Ka amsa da lamba:\n\n' +
@@ -708,11 +705,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Enwere nsogbu mgbe m na-eme ya ozugbo. Ka m jikọọ gị na onye ọrụ ga-enyere gị aka ozugbo.',
     capabilities:
       'Ihe m nwere ike imere gị na {org}:\n\n' +
+      '• Ịza ajụjụ gbasara {org} na ọrụ anyị\n' +
       '• Idebe oge, ilele ya, ịgbanwe ya ma ọ bụ kagbuo ya\n' +
-      '• Igosi gị otu ị ga-esi kwụọ ụgwọ\n' +
-      '• Ịnara mkpesa ma ọ bụ nsogbu\n' +
-      '• Ịrịọ nkwụghachi ego\n' +
-      '• Ịza ajụjụ gbasara ọrụ anyị\n\n' +
+      '• Ịnara mkpesa ma ọ bụ nsogbu\n\n' +
+      'Jụọ ajụjụ n\'okwu gị — ị gaghị ahọrọ naanị site na ndepụta a.\n\n' +
       'Mgbe ọ bụla ị chọrọ mmadụ, kwuo *"speak to an agent"*.',
     language_menu:
       'Kedu asụsụ ị chọrọ ka m jiri? Zaghachi na nọmba:\n\n' +
@@ -838,11 +834,10 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Ìṣòro kékeré wáyé bí mo ṣe ń gbìyànjú rẹ̀ fúnra mi. Jẹ́ kí n so ọ́ pọ̀ mọ́ òṣìṣẹ́ tí yóò ràn ọ́ lọ́wọ́ lẹ́sẹ̀kẹsẹ̀.',
     capabilities:
       'Ohun tí mo lè ṣe fún ọ ní {org}:\n\n' +
+      '• Dáhùn ìbéèrè nípa {org} àti iṣẹ́ wa\n' +
       '• Ṣe ìpàdé, ṣàyẹ̀wò rẹ̀, yí i padà tàbí fagi lé e\n' +
-      '• Fi bí o ṣe lè sanwó hàn ọ́\n' +
-      '• Gba ẹ̀sùn tàbí ìròyìn ìṣòro\n' +
-      '• Bèèrè kí wọ́n dá owó padà\n' +
-      '• Dáhùn ìbéèrè nípa iṣẹ́ wa\n\n' +
+      '• Gba ẹ̀sùn tàbí ìròyìn ìṣòro\n\n' +
+      'Bèèrè ní ọ̀rọ̀ tìrẹ — o kò gbọdọ̀ yan nínú àkójọ yìí nìkan.\n\n' +
       'Nígbàkúgbà tí o bá fẹ́ ènìyàn, sọ *"speak to an agent"*.',
     language_menu:
       'Èdè wo ni o fẹ́ kí n lò? Fi nọ́mbà dáhùn:\n\n' +

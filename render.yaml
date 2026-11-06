@@ -96,6 +96,40 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # ── Answering inbound WhatsApp calls ───────────────────────────────
+      #
+      # OFF unless WHATSAPP_CALL_ANSWER is 1. Left blank on purpose: without
+      # these four the platform records a WhatsApp call and replies to the
+      # citizen by message, which works today. Setting the flag WITHOUT a
+      # working TURN relay is worse than leaving it off — the service refuses
+      # to answer in that case, because an answered call with no media route
+      # consumes the caller, reports completed at the carrier and suppresses
+      # the message fallback.
+      #
+      # WebRTC media is UDP and a Render web service exposes one HTTP port with
+      # no inbound UDP, so media CANNOT reach this pod directly. It has to
+      # relay through TURN, reached outbound. That is a real dependency with
+      # real per-minute bandwidth cost, not a nicety.
+      #
+      # NO REAL CALL HAS EVER BEEN ANSWERED BY THIS CODE. The signalling is
+      # unit-tested and the SDP answer comes from a real WebRTC stack, but the
+      # media bridge is unproven. Treat the first call as the test, and expect
+      # to debug it.
+      - key: WHATSAPP_CALL_ANSWER
+        sync: false
+      # Either run your own relay (TURN_URL + TURN_USERNAME + TURN_CREDENTIAL),
+      # or set TURN_PROVIDER=twilio to mint ephemeral credentials from the
+      # Twilio account this deployment already holds. The Twilio route needs no
+      # server of your own; the static route keeps media on infrastructure you
+      # control, which is the stronger position for citizen calls.
+      - key: TURN_PROVIDER
+        sync: false
+      - key: TURN_URL
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
       # Optional overrides for the model endpoint. Set LLM_BASE_URL to run
       # against an OpenAI-compatible gateway or a self-hosted model; the rest
       # pick the chat and embedding models. All four fall back to the defaults

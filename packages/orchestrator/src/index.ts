@@ -783,6 +783,16 @@ export function buildSynthesisSystemPrompt(input: {
   basePrompt: string;
   lang: Language;
   channel?: ChannelType | string;
+  /**
+   * Did the knowledge base return anything for this message?
+   *
+   * When it did not, the model is holding nothing but the citizen's sentence
+   * and whatever it happens to remember about Plateau State — and what it
+   * remembers is not this agency's record. The rule below turns that case from
+   * "answer anyway" into "ask one question", which is the difference between a
+   * confident wrong answer and a conversation.
+   */
+  hasKnowledge?: boolean;
 }): string {
   const { basePrompt, lang } = input;
   const onACall = input.channel === ChannelType.VOICE;
@@ -803,12 +813,34 @@ export function buildSynthesisSystemPrompt(input: {
           `Hausa, Igbo and Yoruba; if the customer mixes languages, follow their most recent message.` +
           (lang !== 'en' ? ` This customer has been writing in ${LANGUAGE_NAMES[lang]}.` : '');
 
+  // Nothing came back from the knowledge base for this message.
+  //
+  // A citizen asked what an agency's activities were and was answered from a
+  // menu. Routing that question here instead only helps if what happens next
+  // is honest: with no retrieved context the model must NOT fill the gap from
+  // training data — it does not know this State's offices, fees, documents or
+  // opening hours, and a confident invention about government is worse than
+  // any admission. ASKING is the useful move, because the usual reason a
+  // question misses the knowledge base is that it is broader than anything
+  // filed: "JMDB" matches nothing, "what does the Jos Metropolitan
+  // Development Board do about land applications" matches plenty.
+  const unknownRule = input.hasKnowledge
+    ? ''
+    : `- NOTHING in our records matched this message, so you do not have the answer. Do NOT answer it ` +
+      `from your own knowledge: you do not know this agency's services, fees, offices, documents or ` +
+      `hours, and a confident wrong answer about government costs the citizen a wasted journey. ` +
+      `Instead, say briefly that you want to make sure you give them the right information, and ask ` +
+      `ONE specific question that would narrow it down — which service, which office or town, or what ` +
+      `they are trying to get done. If they have already been asked once and it still does not match, ` +
+      `stop asking and offer to pass them to a colleague.\n`;
+
   return (
     `${basePrompt}\n\n` +
     `Non-negotiable rules:\n` +
     `- If asked whether you are an AI, a bot, or a human, say plainly that you are an AI assistant. Never claim to be a person.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If you do not have a fact, say so and offer a human colleague.\n` +
     `- Only state something as confirmed when the information above shows it was actually done.\n` +
+    unknownRule +
     languageRule
   );
 }
@@ -1448,6 +1480,7 @@ export class ConversationOrchestrator {
           basePrompt,
           lang,
           channel: context.channel,
+          hasKnowledge: Boolean(kbContextText),
         });
 
         const userContent = kbContextText
@@ -2839,19 +2872,40 @@ export class ConversationOrchestrator {
       `Reply with ONLY a JSON object: {"intent": string, "confidence": number 0-1, "serviceName": string|null}\n` +
       `intent must be exactly one of:\n` +
       `BOOK_APPOINTMENT - wants a NEW appointment, consultation, registration or enrollment\n` +
-      `MANAGE_RESERVATION - wants a NEW table or room reservation\n` +
+
       `CHECK_BOOKING_STATUS - asks about an EXISTING booking or reservation\n` +
       `RESCHEDULE_BOOKING - wants to MOVE an existing booking\n` +
       `CANCEL_BOOKING - wants to CANCEL an existing booking\n` +
       `PROVIDE_PAYMENT_GUIDANCE - asks how or where to pay\n` +
       `REQUEST_REFUND - wants money back\n` +
-      `REQUEST_QUOTATION - asks the price or cost of a service\n` +
+
       `CREATE_TICKET - complains or reports a problem\n` +
+      // MANAGE_RESERVATION and REQUEST_QUOTATION are deliberately NOT offered
+      // either, for the same reason as CAPABILITIES above. This platform is a
+      // State information hub: no agency takes table or room reservations, and
+      // "what does a birth certificate cost?" is a question whose answer lives
+      // in the knowledge base — routing it to REQUEST_QUOTATION builds a quote
+      // out of CRM `Deal` rows at stage CLOSED_WON, which is sales history and
+      // not a government fee. Both keep their keyword triggers, so an explicit
+      // request still works where an agency genuinely offers it; only the
+      // model's guessing is removed.
+
       `REQUEST_SELFIE - asks about sending their photo or identity picture\n` +
       `HUMAN_HANDOFF - wants to talk to a human being\n` +
       `AI_DISCLOSURE - asks whether they are talking to an AI, robot or human\n` +
-      `CAPABILITIES - asks what the assistant can do\n` +
-      `NONE - anything else: greetings, questions about the business, general conversation\n` +
+      // CAPABILITIES is deliberately NOT offered to the classifier.
+      //
+      // A citizen asked "I would like to know what JMDB's activities are" and
+      // got the capability menu: the model read "activities" as "what do you
+      // do", and a real question about a government agency was answered with a
+      // list of things the assistant can do. Anything phrased as a question
+      // about the organisation has to reach RAG, which is what NONE routes to.
+      //
+      // The explicit phrasings ("what can you do", "show me the menu") are
+      // matched by keyword before this classifier ever runs, so nothing is
+      // lost by removing it here — only the guessing.
+      `NONE - anything else: greetings, questions about the agency, its services, its ` +
+      `activities or the State, and general conversation\n` +
       `serviceName: the specific service they want, translated to English — or null.\n` +
       `Use NONE whenever you are not sure. Confidence reflects the MESSAGE's clarity, not your optimism.`;
 
@@ -2929,15 +2983,6 @@ export class ConversationOrchestrator {
               org: await this.getOrganizationName(context.organizationId),
             }),
             intentDetected: 'AI_DISCLOSURE',
-            confidenceScore: confidence,
-            shouldHandoff: false,
-          };
-        case 'CAPABILITIES':
-          return {
-            replyText: t(lang, 'capabilities', {
-              org: await this.getOrganizationName(context.organizationId),
-            }),
-            intentDetected: 'CAPABILITIES',
             confidenceScore: confidence,
             shouldHandoff: false,
           };
