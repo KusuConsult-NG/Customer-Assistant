@@ -651,11 +651,25 @@ export class QdrantRAGService {
     topK: number
   ): Promise<QdrantSearchResult[]> {
     try {
-      // First try exact phrase match
+      // First try exact phrase match. The document TITLE is searched as well as
+      // the chunk body, because an agency's ACRONYM usually lives only in the
+      // title.
+      //
+      // This is the citizen's question from the live line: "I would like to know
+      // what JMDB's activities are" found nothing, while "what does the Jos
+      // Metropolitan Development Board do" found the same chunk immediately —
+      // the body spells the name out and never contains "JMDB". Keyword search
+      // cannot connect the two, so a citizen using the agency's own short name
+      // got zero context and was asked to rephrase a question they had already
+      // asked correctly. Titling a document "JMDB — Jos Metropolitan Development
+      // Board" now makes both forms reach it.
       let docChunks = await prisma.documentChunk.findMany({
         where: {
           organizationId,
-          content: { contains: query, mode: 'insensitive' },
+          OR: [
+            { content: { contains: query, mode: 'insensitive' } },
+            { document: { title: { contains: query, mode: 'insensitive' } } },
+          ],
         },
         take: topK,
         orderBy: { chunkIndex: 'asc' },
@@ -667,7 +681,15 @@ export class QdrantRAGService {
         const stopWords = new Set(['what', 'does', 'how', 'much', 'the', 'for', 'and', 'that', 'this', 'with', 'have', 'will', 'are', 'can', 'from', 'your', 'which', 'about', 'into', 'than', 'more', 'also']);
         const keywords = query
           .toLowerCase()
-          .replace(/[^a-z0-9\s]/g, '')
+          // Punctuation becomes a SPACE, not nothing. Deleting it welded words
+          // together: the citizen's own sentence, "I would like to know what
+          // JMDB's activities are", became the keyword `jmdbs`, which matches
+          // neither the acronym in a title nor the name in a body, so a
+          // correctly-asked question retrieved nothing at all. Splitting gives
+          // `jmdb` + `s`, and the length filter below drops the `s`. Hyphens
+          // gain the same way: `e-passport` was `epassport` and is now
+          // `passport`.
+          .replace(/[^a-z0-9\s]/g, ' ')
           .split(/\s+/)
           .filter((w) => w.length >= 4 && !stopWords.has(w));
 
@@ -675,7 +697,10 @@ export class QdrantRAGService {
           docChunks = await prisma.documentChunk.findMany({
             where: {
               organizationId,
-              OR: keywords.map((kw) => ({ content: { contains: kw, mode: 'insensitive' } })),
+              OR: keywords.flatMap((kw) => [
+                { content: { contains: kw, mode: 'insensitive' } },
+                { document: { title: { contains: kw, mode: 'insensitive' } } },
+              ]),
             },
             take: topK,
             orderBy: { chunkIndex: 'asc' },

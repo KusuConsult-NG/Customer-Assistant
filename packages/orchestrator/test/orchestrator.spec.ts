@@ -791,4 +791,54 @@ describe('ConversationOrchestrator', () => {
       expect(result.replyText).toBe('Hello from Apex Care!');
     });
   });
+
+  describe('Finding the agency a citizen names in their own words', () => {
+    /**
+     * The keyword fallback is what runs whenever Qdrant is unconfigured or
+     * unreachable, which is every deployment without QDRANT_URL. Two defects in
+     * it meant the live line retrieved NOTHING for the question in the
+     * screenshot that started this work.
+     */
+    const whereOf = async (message: string) => {
+      mockPrisma.documentChunk.findMany.mockResolvedValue([]);
+      mockPrisma.documentChunk.findMany.mockClear();
+      await orchestrator.processIncomingMessage(baseContext(), message);
+      // The keyword pass is the LAST documentChunk query: the exact-phrase pass
+      // runs first and only misses lead to it.
+      const calls = mockPrisma.documentChunk.findMany.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      return calls[calls.length - 1][0];
+    };
+
+    const orTerms = (where: any): string[] =>
+      (where?.where?.OR ?? where?.OR ?? []).map((c: any) =>
+        c.content?.contains ?? c.document?.title?.contains
+      ).filter(Boolean);
+
+    it("splits a possessive instead of welding it into a word that matches nothing", async () => {
+      const where = await whereOf("I would like to know what JMDB's activities are");
+      const terms = orTerms(where);
+
+      // The defect: `replace(/[^a-z0-9\s]/g, '')` turned `jmdb's` into `jmdbs`,
+      // which matches neither an acronym in a title nor a name in a body.
+      expect(terms).toContain('jmdb');
+      expect(terms).not.toContain('jmdbs');
+    });
+
+    it('searches the document TITLE as well as the body, where acronyms live', async () => {
+      const where = await whereOf('tell me about JMDB please');
+      const clauses = (where?.where?.OR ?? where?.OR ?? []) as any[];
+
+      // An agency's short name is usually only in the title, so a body-only
+      // search cannot connect "JMDB" to "Jos Metropolitan Development Board".
+      expect(clauses.some((c) => c.document?.title?.contains)).toBe(true);
+      expect(clauses.some((c) => c.content?.contains)).toBe(true);
+    });
+
+    it('still drops one- and two-letter fragments the split produces', async () => {
+      const terms = orTerms(await whereOf("what is JMDB's role"));
+      expect(terms).not.toContain('s');
+      expect(terms.every((t) => t.length >= 4)).toBe(true);
+    });
+  });
 });
