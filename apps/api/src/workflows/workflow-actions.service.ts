@@ -6,6 +6,7 @@ import { AceLogger } from '../config/logger';
 import { assertPublicHttpUrl } from '../common/url-safety';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { ActionType, WorkflowNode, interpolate } from './workflow.types';
+import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 
 const log = new AceLogger('WorkflowActions');
 
@@ -31,7 +32,10 @@ export interface ActionResult {
  */
 @Injectable()
 export class WorkflowActionsService {
-  constructor(private readonly onboarding: OnboardingService) {}
+  constructor(
+    private readonly onboarding: OnboardingService,
+    private readonly webhookDispatcher: WebhookDispatcherService
+  ) {}
 
   async execute(node: WorkflowNode, ctx: ActionContext): Promise<ActionResult> {
     const config = interpolate(node.config ?? {}, ctx.payload);
@@ -235,6 +239,17 @@ export class WorkflowActionsService {
       where: { id: conversation.id },
       data: { isHumanHandoffActive: handoff, ...(handoff ? {} : { assignedUserId: null, handoffReason: null }) },
     });
+
+    // An automation handing a thread to a person is a handover like any other,
+    // and the one most likely to surprise the agency — nobody clicked anything.
+    // Only the transition, and only when activating: SET_HANDOFF can also
+    // release one, which is not this event.
+    if (handoff && !conversation.isHumanHandoffActive) {
+      this.webhookDispatcher
+        .handoverRequested(ctx.organizationId, conversation.id, 'WORKFLOW')
+        .catch(() => {});
+    }
+
     return { output: { conversationId: conversation.id, isHumanHandoffActive: handoff } };
   }
 

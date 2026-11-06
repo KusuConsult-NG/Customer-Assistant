@@ -122,6 +122,152 @@ describe('Outbound webhook events', () => {
     });
   });
 
+  /**
+   * The two events that go out through a HELPER rather than a bare `dispatch`.
+   *
+   * `appointmentBooked` and `handoverRequested` build their payload inside
+   * `WebhookDispatcherService` so that every firing site shares one definition.
+   * That puts their `dispatch(...)` call inside the dispatcher's own file, which
+   * means the scan above finds the event whether or not a single piece of domain
+   * code ever calls the helper — the dispatcher would be dispatching to itself.
+   * These tests are what close that hole: the helper has to be reached from the
+   * paths that actually book an appointment or hand a thread over.
+   */
+  describe('the helper-dispatched events are reached from domain code', () => {
+    const HELPERS: Record<string, string> = {
+      'appointment.booked': 'appointmentBooked',
+      'handover.requested': 'handoverRequested',
+    };
+
+    /** Files outside `webhooks/` that call this helper. */
+    const callersOf = (helper: string) => {
+      const callers: string[] = [];
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir)) {
+          const full = join(dir, entry);
+          if (statSync(full).isDirectory()) {
+            walk(full);
+            continue;
+          }
+          if (!entry.endsWith('.ts')) continue;
+          const rel = full.slice(API_SRC.length + 1);
+          if (rel.startsWith('webhooks/')) continue;
+          if (readFileSync(full, 'utf8').includes(`${helper}(`)) callers.push(rel);
+        }
+      };
+      walk(API_SRC);
+      return callers.sort();
+    };
+
+    it('routes exactly the events it dispatches internally through a known helper', () => {
+      // A third helper added without an entry here would reintroduce the hole.
+      const internal = [...dispatchedEvents.entries()]
+        .filter(([, files]) => files.every((f) => f.startsWith('webhooks/')))
+        .map(([key]) => key)
+        .sort();
+      expect(internal).toEqual(Object.keys(HELPERS).sort());
+    });
+
+    it('calls every helper from somewhere that is not the dispatcher', () => {
+      for (const [event, helper] of Object.entries(HELPERS)) {
+        expect(callersOf(helper).length).toBeGreaterThan(0);
+        expect(WEBHOOK_EVENTS.find((e) => e.key === event)!.delivered).toBe(true);
+      }
+    });
+
+    it('dispatches appointment.booked from BOTH booking writers', () => {
+      const callers = callersOf('appointmentBooked');
+      // Two different code paths create a booking: the service the dashboard
+      // and the hosted agent use, and the orchestrator's own write, whose result
+      // each channel handler reads. Covering only the service is how this event
+      // fires for staff bookings and silently not for citizens.
+      expect(callers).toContain('scheduling/scheduling.service.ts');
+      expect(callers).toContain('whatsapp/whatsapp.service.ts');
+      expect(callers).toContain('telephony/twilio-media-stream.handler.ts');
+    });
+
+    it('dispatches handover.requested from every write that activates a handoff', () => {
+      const callers = callersOf('handoverRequested');
+      expect(callers).toContain('events/conversations.controller.ts');
+      expect(callers).toContain('whatsapp/whatsapp.service.ts');
+      expect(callers).toContain('workflows/workflow-actions.service.ts');
+    });
+
+    /**
+     * The check that catches a SIXTH handoff site added later.
+     *
+     * Any file that turns `isHumanHandoffActive` on has to dispatch, or the
+     * automated handover it performs tells nobody — which is the gap this event
+     * was added to close.
+     */
+    it('leaves no handoff-activating file without a dispatch', () => {
+      /**
+       * Does this `isHumanHandoffActive:` set the flag, or merely ask about it?
+       *
+       * The first version of this check matched the assignment anywhere and
+       * reported `analytics.service.ts`, `analytics-insights.service.ts` and
+       * `platform.service.ts` — all three of which read it in a `where` clause
+       * to COUNT handed-over conversations. A checker that invents violations
+       * trains you to ignore it, so the sentinel nearest before the match
+       * decides: only `data:` is a write. `emit(` is listed because the console
+       * gateway broadcasts the flag in a socket payload and persists nothing,
+       * which is a claim its own comment makes and this encodes.
+       */
+      const isActivatingWrite = (source: string): boolean => {
+        const SENTINEL = /\b(data|where|select|include)\s*:|\bemit\(/g;
+        for (const hit of source.matchAll(/isHumanHandoffActive:\s*(true|handoff|body\.handoff)\b/g)) {
+          const before = source.slice(0, hit.index);
+          const sentinels = [...before.matchAll(SENTINEL)];
+          const nearest = sentinels[sentinels.length - 1];
+          if (nearest && /^data\s*:/.test(nearest[0])) return true;
+        }
+        return false;
+      };
+
+      const offenders: string[] = [];
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir)) {
+          const full = join(dir, entry);
+          if (statSync(full).isDirectory()) {
+            walk(full);
+            continue;
+          }
+          if (!entry.endsWith('.ts')) continue;
+          const rel = full.slice(API_SRC.length + 1);
+          const source = readFileSync(full, 'utf8');
+          if (!isActivatingWrite(source)) continue;
+          if (!source.includes('handoverRequested(')) offenders.push(rel);
+        }
+      };
+      walk(API_SRC);
+      // A sixth handoff site added later, with no dispatch, lands here — which
+      // is the regression this event exists to prevent.
+      expect(offenders).toEqual([]);
+    });
+
+    it('recognises the real handoff writers, so the check above is not vacuous', () => {
+      // If the write/read discrimination above drifted to matching nothing,
+      // `offenders` would be empty for the wrong reason and a missing dispatch
+      // would pass. These three files really do activate a handoff.
+      const activating = (rel: string) => {
+        const source = readFileSync(join(API_SRC, rel), 'utf8');
+        const SENTINEL = /\b(data|where|select|include)\s*:|\bemit\(/g;
+        return [...source.matchAll(/isHumanHandoffActive:\s*(true|handoff|body\.handoff)\b/g)].some(
+          (hit) => {
+            const sentinels = [...source.slice(0, hit.index).matchAll(SENTINEL)];
+            const nearest = sentinels[sentinels.length - 1];
+            return Boolean(nearest && /^data\s*:/.test(nearest[0]));
+          }
+        );
+      };
+      expect(activating('events/conversations.controller.ts')).toBe(true);
+      expect(activating('whatsapp/whatsapp.service.ts')).toBe(true);
+      expect(activating('workflows/workflow-actions.service.ts')).toBe(true);
+      // And a pure reader is not mistaken for one.
+      expect(activating('analytics/analytics.service.ts')).toBe(false);
+    });
+  });
+
   describe('a stored subscription is matched on canonical names', () => {
     it('matches the old spelling to the new event', () => {
       // The write path for enabledWebhookEvents validates nothing, so a row can

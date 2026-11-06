@@ -4,7 +4,7 @@ import { prisma, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVaria
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { ConversationOrchestrator } from '@ace/orchestrator';
-import { ChannelType, MessageSender } from '@ace/shared-types';
+import { ChannelType, MessageSender, bookedAppointmentId } from '@ace/shared-types';
 import { AceLogger } from '../config/logger';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
@@ -439,6 +439,22 @@ export class WhatsappService {
           organizationId,
           handoffReason: orchResult.handoffReason,
         });
+
+        // The assistant deciding it cannot help is the handover that most needs
+        // somebody told, and step 5 above returns early when a handoff is
+        // already active — so reaching here IS the false→true transition.
+        this.webhookDispatcher
+          .handoverRequested(organizationId, conversation.id, 'ASSISTANT')
+          .catch(() => {});
+      }
+
+      // An appointment the assistant just wrote. The orchestrator creates it
+      // directly rather than through SchedulingService, so this result is the
+      // only thing that says a citizen was booked in on the channel that serves
+      // every citizen today.
+      const bookedId = bookedAppointmentId(orchResult);
+      if (bookedId) {
+        this.webhookDispatcher.appointmentBooked(organizationId, bookedId).catch(() => {});
       }
 
       // ── 9. Send AI reply via WhatsApp Cloud API ───────────────────────────────
@@ -977,10 +993,22 @@ export class WhatsappService {
       },
     });
 
+    const wasHandedOff = conversation.isHumanHandoffActive;
+
     await prisma.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date(), isHumanHandoffActive: true, assignedUserId: agentUserId },
     });
+
+    // An officer replying IS a takeover, and this write sets the flag whether or
+    // not it was already set. Only the transition is the event: otherwise their
+    // fourth message to a thread they already hold delivers a fourth webhook,
+    // which is what teaches a receiver to ignore the one that mattered.
+    if (!wasHandedOff) {
+      this.webhookDispatcher
+        .handoverRequested(conversation.organizationId, conversationId, 'OFFICER')
+        .catch(() => {});
+    }
 
     return msg;
   }

@@ -220,6 +220,39 @@ export interface OrchestrationResult {
   toolCallsExecuted?: Array<{ toolName: string; result: any }>;
 }
 
+/**
+ * The booking an orchestration created, if it created one.
+ *
+ * The orchestrator writes a booking through its own `prisma.booking.create`,
+ * not through `SchedulingService`, so the only thing telling the Nest layer a
+ * citizen was just booked in is this entry in `toolCallsExecuted`. Both channel
+ * handlers that run the orchestrator — the WhatsApp service and the voice
+ * media-stream handler — read it to dispatch `appointment.booked`, and they
+ * read it through here so the two cannot disagree about what counts as booked.
+ *
+ * Narrow on all three of the tool name, `booked` and a string `bookingId`,
+ * because `result` is typed `any` and a near-miss here books a webhook for
+ * something that is not an appointment:
+ *
+ *  - The RESERVATION flow also reports `booked: true`, under `manage_reservation`
+ *    and with a `reservationId` rather than a `bookingId`. A reservation is not
+ *    an appointment and `appointment.booked` must not fire for one, so the tool
+ *    name is what separates them and the id check is the second line.
+ *  - A slot taken between the offer and the reply returns the booking flow's
+ *    next question and no `book_appointment` entry at all, so it is excluded by
+ *    carrying nothing rather than by `booked` being false.
+ */
+export function bookedAppointmentId(result: OrchestrationResult | null | undefined): string | null {
+  for (const call of result?.toolCallsExecuted ?? []) {
+    if (call?.toolName !== 'book_appointment') continue;
+    const outcome = call.result as { booked?: unknown; bookingId?: unknown } | undefined;
+    if (outcome?.booked === true && typeof outcome.bookingId === 'string' && outcome.bookingId) {
+      return outcome.bookingId;
+    }
+  }
+  return null;
+}
+
 // CRM Interfaces
 export interface CustomerDTO {
   id: string;
@@ -358,21 +391,25 @@ export const WEBHOOK_EVENTS: WebhookEventDefinition[] = [
   {
     key: 'appointment.booked',
     label: 'Appointment Booked',
-    description: 'A citizen books a slot',
-    // Offered by the dashboard and dispatched by nothing. Scheduling fires the
-    // BOOKING_CONFIRMED workflow trigger and no webhook beside it, so this
-    // subscription has never been able to deliver. Marked undeliverable rather
-    // than deleted: the key is in tenants' stored rows, and the honest state of
-    // it is "not sent yet", not "no such event".
-    delivered: false,
+    description: 'A citizen books a slot, from any channel',
+    // Dispatched from `WebhookDispatcherService.appointmentBooked`, which every
+    // booking path calls with an id so the payload has one definition. Two
+    // different writers create a booking — `SchedulingService.createBooking`
+    // and the orchestrator's own `prisma.booking.create` — so a single dispatch
+    // in the service would have covered staff bookings and silently skipped the
+    // channel serving every citizen today.
+    delivered: true,
   },
   {
     key: 'handover.requested',
     label: 'Human Handover',
-    description: 'A conversation is handed to a person',
-    // Same: the handoff route notifies the console gateway and dispatches no
-    // webhook.
-    delivered: false,
+    description: 'A conversation is handed to a person, by an officer or by the assistant',
+    // Dispatched from `WebhookDispatcherService.handoverRequested` on the
+    // false→true TRANSITION only, by all five writes that activate a handoff:
+    // an officer replying (one site per channel), the toggle route, the
+    // orchestrator returning shouldHandoff, and the SET_HANDOFF workflow
+    // action. Releasing a handoff is not this event and has no name here.
+    delivered: true,
   },
 ];
 
