@@ -80,6 +80,72 @@ export interface CallAnswerReadiness {
   detail: string;
 }
 
+/**
+ * Whether this deployment can answer a WhatsApp call, and what is stopping it.
+ *
+ * A module-level function rather than only a method, because the WhatsApp
+ * SETTINGS screen needs the same answer and reaching it through Nest DI would
+ * wire the organizations module to the whatsapp one for two environment
+ * variables. It reads `process.env` and nothing else, so there is nothing to
+ * inject.
+ *
+ * The gap this closes: `whatsAppReadiness` reported the app secret, the stored
+ * lines and the webhook URL, and said nothing about ANSWERING. So an operator
+ * could switch calling on at Meta, see it come back ENABLED, and still have
+ * every call go unanswered because this flag was unset or no relay existed —
+ * with the screen showing nothing wrong. A surface that reports a capability
+ * the deployment does not have is the first invariant's exact failure.
+ */
+export function callAnswerReadiness(): CallAnswerReadiness {
+  const optedIn = process.env.WHATSAPP_CALL_ANSWER === '1';
+  const blocked: string[] = [];
+
+  if (!optedIn) {
+    blocked.push(
+      'WHATSAPP_CALL_ANSWER is not 1, so inbound WhatsApp calls are recorded and replied to by message rather than answered.'
+    );
+  }
+
+  const mode = callAnswerRelayMode();
+  if (mode === 'none') {
+    blocked.push(
+      'No TURN relay is configured. Set TURN_URL/TURN_USERNAME/TURN_CREDENTIAL for your own relay (coturn), or ' +
+        'TURN_PROVIDER=twilio to mint ephemeral credentials from the deployment\'s Twilio account. WebRTC media ' +
+        'is UDP and this deployment has no inbound UDP, so without a relay an answered call carries no audio — ' +
+        'which is worse than not answering, because the caller is consumed and the message fallback never runs.'
+    );
+  }
+  if (mode === 'twilio-incomplete') {
+    blocked.push(
+      'TURN_PROVIDER is twilio but TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are not both set, so no relay ' +
+        'credential can be minted.'
+    );
+  }
+
+  const enabled = optedIn && (mode === 'static' || mode === 'twilio');
+  return {
+    enabled,
+    blocked,
+    detail: enabled
+      ? `Inbound WhatsApp calls will be answered, relaying through ${
+          mode === 'twilio' ? "Twilio's Network Traversal Service" : 'the configured TURN server'
+        }. No real call has proven this path yet — treat the first one as the test.`
+      : blocked.join(' '),
+  };
+}
+
+/** Which relay this deployment is set up for, and whether it is complete. */
+export function callAnswerRelayMode(): 'static' | 'twilio' | 'twilio-incomplete' | 'none' {
+  if (process.env.TURN_PROVIDER?.trim().toLowerCase() === 'twilio') {
+    return process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim()
+      ? 'twilio'
+      : 'twilio-incomplete';
+  }
+  return process.env.TURN_URL?.trim() && process.env.TURN_USERNAME?.trim() && process.env.TURN_CREDENTIAL?.trim()
+    ? 'static'
+    : 'none';
+}
+
 @Injectable()
 export class WhatsAppCallAnswerService {
   constructor(private readonly media?: WhatsAppCallMediaService) {}
@@ -91,55 +157,18 @@ export class WhatsAppCallAnswerService {
    * codebase: the flag says somebody intended this, TURN says the media can
    * reach us, and only both of them mean a caller will hear anything.
    */
+  /**
+   * Delegates: one implementation, shared with the settings screen. A second
+   * copy of this logic is a second thing that can silently stop agreeing with
+   * what the operator is shown.
+   */
   readiness(): CallAnswerReadiness {
-    const optedIn = process.env.WHATSAPP_CALL_ANSWER === '1';
-    const blocked: string[] = [];
-
-    if (!optedIn) {
-      blocked.push(
-        'WHATSAPP_CALL_ANSWER is not 1, so inbound WhatsApp calls are recorded and replied to by message rather than answered.'
-      );
-    }
-
-    const mode = this.relayMode();
-    if (mode === 'none') {
-      blocked.push(
-        'No TURN relay is configured. Set TURN_URL/TURN_USERNAME/TURN_CREDENTIAL for your own relay (coturn), or ' +
-          'TURN_PROVIDER=twilio to mint ephemeral credentials from the deployment\'s Twilio account. WebRTC media ' +
-          'is UDP and this deployment has no inbound UDP, so without a relay an answered call carries no audio — ' +
-          'which is worse than not answering, because the caller is consumed and the message fallback never runs.'
-      );
-    }
-    if (mode === 'twilio-incomplete') {
-      blocked.push(
-        'TURN_PROVIDER is twilio but TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are not both set, so no relay ' +
-          'credential can be minted.'
-      );
-    }
-
-    const enabled = optedIn && (mode === 'static' || mode === 'twilio');
-    return {
-      enabled,
-      blocked,
-      detail: enabled
-        ? `Inbound WhatsApp calls will be answered, relaying through ${
-            mode === 'twilio' ? "Twilio's Network Traversal Service" : 'the configured TURN server'
-          }. No real call has proven this path yet — treat the first one as the test.`
-        : blocked.join(' '),
-    };
+    return callAnswerReadiness();
   }
 
-  /** Which relay this deployment is set up for, and whether it is complete. */
+  /** Delegates to the shared implementation, for the same reason. */
   private relayMode(): 'static' | 'twilio' | 'twilio-incomplete' | 'none' {
-    if (process.env.TURN_PROVIDER?.trim().toLowerCase() === 'twilio') {
-      return process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim()
-        ? 'twilio'
-        : 'twilio-incomplete';
-    }
-    const urls = process.env.TURN_URL?.trim();
-    const username = process.env.TURN_USERNAME?.trim();
-    const credential = process.env.TURN_CREDENTIAL?.trim();
-    return urls && username && credential ? 'static' : 'none';
+    return callAnswerRelayMode();
   }
 
   /**

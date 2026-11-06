@@ -4,6 +4,7 @@ import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { sendTransactionalEmail } from '../common/mailer';
+import { callAnswerReadiness } from '../whatsapp/whatsapp-call-answer.service';
 
 /**
  * Replaces a secret with a non-reversible hint: whether it is set, and its last four
@@ -1421,6 +1422,38 @@ export class OrganizationsService {
       }
 
       lines.push(line);
+    }
+
+    // ── Can this deployment ANSWER a call, not merely receive messages? ─────
+    //
+    // Everything above is about a message arriving. Calling is a separate
+    // capability with separate requirements, and nothing here reported it — so
+    // an operator could switch calling on at Meta, see it come back ENABLED,
+    // and have every call go unanswered because WHATSAPP_CALL_ANSWER was unset
+    // or no TURN relay existed, with the screen showing nothing wrong.
+    //
+    // Not answering is the deliberate DEFAULT and is not a fault: the call is
+    // recorded and the citizen gets a message explaining it. So the default is
+    // reported as a fact under `ok`, naming what switching it on takes.
+    //
+    // The flag set WITHOUT a relay is different, and it is BLOCKED. That is
+    // the combination the answer path refuses outright, because answering with
+    // no relay consumes the call, has the carrier report it completed, and
+    // skips the message fallback — worse for the citizen than never answering.
+    const answering = callAnswerReadiness();
+    if (answering.enabled) {
+      ok.push(answering.detail);
+    } else if (process.env.WHATSAPP_CALL_ANSWER === '1') {
+      blocked.push(
+        `Answering inbound WhatsApp calls is switched ON but cannot work: ${answering.blocked.join(' ')}`
+      );
+    } else {
+      ok.push(
+        'Inbound WhatsApp calls are recorded and answered with a message, not in voice. To answer them in ' +
+          'voice, set WHATSAPP_CALL_ANSWER=1 and a TURN relay (TURN_URL/TURN_USERNAME/TURN_CREDENTIAL, or ' +
+          "TURN_PROVIDER=twilio to use the deployment's Twilio account). No real call has been carried over " +
+          'that path yet, on this deployment or any other.'
+      );
     }
 
     const state = blocked.length > 0 ? ('blocked' as const)
