@@ -124,6 +124,13 @@ function plain(html) {
     .replace(/<\s*li[^>]*>/gi, '- ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
+    // A LITERAL non-breaking space, not just the entity. Upstream carries them
+    // inside agency names ("Plateau Environmental Protection And Sanitation
+    // Agency\u00a0(PEPSA\u00a0)"), where they are invisible and behave like
+    // nothing else: a citizen typing an ordinary space does not match them, so
+    // the phrase they are in is unsearchable, and a filename carrying one is
+    // the only non-ASCII name in an otherwise plain set.
+    .replace(/\u00a0/g, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#x27;|&apos;/gi, "'")
@@ -157,8 +164,8 @@ function phoneProblem(raw) {
 }
 
 function documentFor(m, dropped) {
-  const name = String(m.name || '').trim();
-  const abbr = String(m.abbreviation || '').trim();
+  const name = String(m.name || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  const abbr = String(m.abbreviation || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   const about = m.about || {};
   const contact = m.contact || {};
   const director = m.director || {};
