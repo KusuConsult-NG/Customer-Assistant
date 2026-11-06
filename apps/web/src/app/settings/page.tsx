@@ -316,7 +316,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             value={aiPersonaPrompt}
             onChange={e => setAiPersonaPrompt(e.target.value)}
             className={inputCls}
-            placeholder="You are a helpful, professional customer service agent for [Company Name]. You answer questions about our products and services in a friendly, concise manner. You can book appointments, check availability, and handle common support queries..."
+            placeholder="You are the information officer for [Agency Name], answering questions from members of the public who reach the agency on WhatsApp or by phone. Help them with what this agency does, the services it offers, where to go and what to bring. Never invent a service, a fee, an office or an opening time — say you do not know and ask one question that would narrow it down..."
           />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">This is the instruction your AI agent follows in every conversation. Be specific about tone, capabilities, and boundaries.</p>
         </div>

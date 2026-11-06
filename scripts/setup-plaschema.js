@@ -174,9 +174,83 @@ const FAQS = [
   { q: 'How many healthcare facilities does PLASCHEMA have?', a: 'PLASCHEMA has over 400 accredited healthcare facilities across all 17 Local Government Areas of Plateau State, including hospitals, clinics, pharmacies, laboratories, and diagnostic centres.', cat: 'Facilities' },
 ];
 
+// -- Guard -------------------------------------------------------------------
+//
+// THIS SCRIPT IS OUT OF SCOPE AND DESTRUCTIVE. It is kept because the content
+// below is accurate PLASCHEMA material (the helpline number and both URLs check
+// out against plaschema.pl.gov.ng), not because it should be run here.
+//
+// The platform is now a Plateau State information hub whose tenants are MDAs.
+// Run unguarded, this script:
+//
+//   * renames whatever organization it finds to "PLASCHEMA" -- and it matches on
+//     `name: 'Kusu Consult'` and `slug: 'ace-demo'`, so on a live deployment it
+//     renames the real agency;
+//   * `deleteMany`s every FaqEntry that organization has;
+//   * overwrites `aiPersonaPrompt` with a health-insurance helpline persona,
+//     which the orchestrator feeds to the model on every citizen message.
+//
+// It had no `--apply`, no confirmation and no check on which database it was
+// pointed at, while every comparable script here (`platform:grant`,
+// `contacts:dedupe`, `catalogue:seed`, `models:drop-dead`, `secrets:encrypt`,
+// `user:password`) is report-first. CLAUDE.md records what the missing check
+// costs: probes once pointed at production left 358 test organizations and
+// ~13,900 contacts in the live CRM.
+//
+// So: report-only by default, `--apply` to write, and a non-local database is
+// refused outright unless `--i-am-pointing-at-a-shared-database` is also given.
+const ARGV = process.argv.slice(2);
+const APPLY = ARGV.includes('--apply');
+const ALLOW_REMOTE_DB = ARGV.includes('--i-am-pointing-at-a-shared-database');
+
+function dbIsLocal() {
+  const url = process.env.DATABASE_URL || process.env.DIRECT_URL || '';
+  return /@(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)[:\/]/.test(url);
+}
+
+function refuseUnlessSafe() {
+  if (!dbIsLocal() && !ALLOW_REMOTE_DB) {
+    console.error(
+      'Refusing to run: DATABASE_URL does not look local.\n\n' +
+      '    This script renames an organization, deletes all of its FAQs and\n' +
+      '    replaces its AI persona with a health-insurance one. The platform is\n' +
+      '    now a Plateau State information hub, so that is almost certainly not\n' +
+      '    what you want on a shared database.\n\n' +
+      '    If you genuinely mean to, re-run with\n' +
+      '      --apply --i-am-pointing-at-a-shared-database\n'
+    );
+    process.exit(1);
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
   console.log('🏥  PLASCHEMA Setup — Starting...\n');
+
+  refuseUnlessSafe();
+
+  if (!APPLY) {
+    const existing = await prisma.organization.findFirst({
+      where: { OR: [{ slug: 'ace-demo' }, { slug: 'plaschema' }, { name: 'Kusu Consult' }, { name: 'PLASCHEMA' }] },
+      select: { id: true, name: true, slug: true, _count: { select: { faqEntries: true } } },
+    });
+    console.log('REPORT ONLY -- nothing has been written. Re-run with --apply to write.\n');
+    if (!existing) {
+      console.log('  No matching organization. --apply would exit 1.');
+    } else {
+      console.log('  Organization   : "' + existing.name + '" (slug ' + existing.slug + ')');
+      console.log('  Would rename to: "PLASCHEMA" (slug plaschema)');
+      console.log('  Would DELETE   : ' + existing._count.faqEntries + ' FaqEntry row(s), replaced with ' + FAQS.length);
+      console.log('  Would overwrite: aiPersonaPrompt, welcomeMessage, timezone');
+      console.log('  Would load     : ' + fs.readdirSync(KB_DIR).filter(f => f.endsWith('.md')).length + ' knowledge document(s)');
+      console.log('');
+      console.log('  NOTE: this agency is served as a Plateau State information hub.');
+      console.log('        Overwriting its persona with a health-insurance one is how a');
+      console.log('        citizen asking about an MDA gets answered about premiums.');
+    }
+    return;
+  }
+
 
   // 1. Find the organization ──────────────────────────────────────────────────
   let org = await prisma.organization.findFirst({

@@ -19,6 +19,7 @@ import { randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { prisma } from '@ace/database';
 import { OrganizationsService } from '../src/organizations/organizations.service';
+import { AuthService } from '../src/auth/auth.service';
 import { createTestApp } from './support/create-test-app';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
@@ -486,6 +487,75 @@ describe('the authentication lifecycle', () => {
       ).rejects.toThrow(/already/i);
 
       expect(await prisma.user.count({ where: { organizationId: orgId, email: email.toLowerCase() } })).toBe(1);
+    });
+  });
+
+  describe('the persona a new agency starts with', () => {
+    /**
+     * This is the string the orchestrator hands the model as `basePrompt`
+     * (packages/orchestrator/src/index.ts), so it frames every answer a
+     * citizen reads before any tenant touches Settings.
+     *
+     * It used to read "You are the lead AI customer service representative
+     * for <name>, operating in Nigeria." On a platform whose tenants are
+     * ministries and whose users are citizens asking which office to walk
+     * into, that framing is how a question about an MDA gets answered like a
+     * support ticket. Nothing pinned it, so nothing would have objected.
+     *
+     * Registered through the service rather than the route because
+     * /api/auth/register is throttled 5/min per IP.
+     */
+    let createdOrgId: string | undefined;
+    let createdUserId: string | undefined;
+
+    afterAll(async () => {
+      if (createdUserId) await prisma.user.deleteMany({ where: { id: createdUserId } });
+      if (createdOrgId) {
+        await prisma.auditLog.deleteMany({ where: { organizationId: createdOrgId } });
+        await prisma.user.deleteMany({ where: { organizationId: createdOrgId } });
+        await prisma.organization.delete({ where: { id: createdOrgId } }).catch(() => undefined);
+      }
+    });
+
+    it('frames the assistant as a public information officer, and forbids inventing', async () => {
+      const auth = app.get(AuthService);
+      const suffix = randomBytes(5).toString('hex');
+
+      await auth.registerOrganization({
+        organizationName: `Persona Test Agency ${suffix}`,
+        email: `persona.${suffix}@lifecycle.test`,
+        password: PASSWORD,
+        fullName: 'Persona Officer',
+        industry: 'GOVERNMENT',
+        phone: '+2348000000000',
+      } as any);
+
+      const org = await prisma.organization.findFirst({
+        where: { name: `Persona Test Agency ${suffix}` },
+        select: { id: true, aiPersonaPrompt: true, welcomeMessage: true, users: { select: { id: true } } },
+      });
+      expect(org).toBeTruthy();
+      createdOrgId = org!.id;
+      createdUserId = org!.users[0]?.id;
+
+      const persona = org!.aiPersonaPrompt ?? '';
+
+      // The regression itself: commercial framing is gone.
+      expect(persona).not.toMatch(/customer service representative/i);
+      expect(persona).not.toMatch(/\bcustomers?\b/i);
+
+      // Citizen-service framing is present, and names the agency.
+      expect(persona).toMatch(/information officer/i);
+      expect(persona).toMatch(/members of the public/i);
+      expect(persona).toContain(`Persona Test Agency ${suffix}`);
+
+      // The honesty rule is in the DEFAULT, not only in code the tenant
+      // cannot see — a persona is the one string a tenant can overwrite.
+      expect(persona).toMatch(/never invent/i);
+      expect(persona).toMatch(/ask one\s+question|ask one question/i);
+
+      // And the greeting invites a question rather than offering a menu.
+      expect(org!.welcomeMessage ?? '').toMatch(/in your own words/i);
     });
   });
 });
