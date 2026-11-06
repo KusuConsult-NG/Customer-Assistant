@@ -42,6 +42,29 @@ services:
       npx prisma generate --schema=packages/database/prisma/schema.prisma &&
       npx turbo run build --filter=@ace/api...
     startCommand: node apps/api/dist/main.js
+    # Runs after the build and BEFORE the new version serves traffic, with the
+    # service's real DATABASE_URL — the build cannot do this, because it runs
+    # `prisma generate` against a dummy URL and never reaches the database.
+    #
+    # It adds enum VALUES that schema.prisma declares and the database lacks,
+    # and nothing else: no column, table or constraint is touched, and nothing
+    # is ever dropped. That is the gap `autoDeploy: true` leaves open. A new
+    # COLUMN breaks reads loudly and immediately, so it gets noticed. A new
+    # enum value breaks only the one statement that writes it, while every
+    # other request on the deployment succeeds.
+    #
+    # `WHATSAPP_CLOUD` is what that costs. Added to TelephonyProviderType and
+    # deployed, with `whatsapp.service.ts` writing it on every inbound WhatsApp
+    # call event: absent from the database, PostgreSQL rejects the upsert,
+    # processCallEvent throws, and the message explaining to the citizen why
+    # their call went unanswered never sends. Silence, from the commit written
+    # to stop exactly that.
+    #
+    # Deliberately NOT `prisma db push`: that reconciles the whole schema and
+    # can drop columns and tables, which is not something to run unattended
+    # against production. Schema changes beyond enum values still need
+    # `npm run db:push` run by a person before the deploy, as CLAUDE.md says.
+    preDeployCommand: node scripts/sync-enum-values.js --apply
     # The DEEP check. Render routes traffic by this, so it must mean "can
     # serve" and not merely "process is up" — a pod with no database
     # reporting healthy is a pod being handed requests it will fail.
