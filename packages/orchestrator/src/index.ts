@@ -694,7 +694,28 @@ export class QdrantRAGService {
           .filter((w) => w.length >= 4 && !stopWords.has(w));
 
         if (keywords.length > 0) {
-          docChunks = await prisma.documentChunk.findMany({
+          // RANKED, not just matched.
+          //
+          // This was an OR across keywords with `take: topK` ordered by
+          // chunkIndex — so it returned ANY chunk containing ANY keyword, in
+          // essentially arbitrary order, and called the first one the best
+          // match. With one document loaded that is invisible. With the
+          // State's 41 MDAs loaded it is wrong most of the time: "I would
+          // like to know what JMDB's activities are" returned the Office of
+          // the Secretary to the Government, because its long description
+          // happens to contain "activities"; "how do I reach the Ministry of
+          // Education" returned the same office; "where is the internal
+          // revenue service" returned Education.
+          //
+          // Feeding the model another agency's text is worse than feeding it
+          // nothing. It does not decline — it answers confidently about the
+          // wrong agency, which is the failure mode this whole path exists to
+          // avoid.
+          //
+          // So: over-fetch candidates, then rank by how MANY distinct keywords
+          // each chunk matches, counting a TITLE match for more because that
+          // is where an agency's name and acronym live.
+          const candidates = await prisma.documentChunk.findMany({
             where: {
               organizationId,
               OR: keywords.flatMap((kw) => [
@@ -702,9 +723,56 @@ export class QdrantRAGService {
                 { document: { title: { contains: kw, mode: 'insensitive' } } },
               ]),
             },
-            take: topK,
+            take: Math.max(topK * 10, 60),
             orderBy: { chunkIndex: 'asc' },
+            include: { document: { select: { title: true } } },
           });
+
+          const scored = candidates.map((chunk: any) => {
+            const title = String(chunk.document?.title ?? '').toLowerCase();
+            const body = String(chunk.content ?? '').toLowerCase();
+            let titleHits = 0;
+            let bodyHits = 0;
+            let longestMatch = 0;
+            for (const kw of keywords) {
+              const hit = title.includes(kw) ? 'title' : body.includes(kw) ? 'body' : null;
+              if (!hit) continue;
+              if (hit === 'title') titleHits++;
+              else bodyHits++;
+              longestMatch = Math.max(longestMatch, kw.length);
+            }
+            return {
+              chunk,
+              titleHits,
+              longestMatch,
+              matched: titleHits + bodyHits,
+              rank: titleHits * 3 + bodyHits,
+            };
+          });
+
+          // One incidental keyword in a long description is not a match — it is
+          // how an energy corporation came back for "how much does a passport
+          // cost", on the strength of "cost". But a single SPECIFIC word often
+          // is the whole question: "I want to report a broken drainage" matches
+          // the drainage systems in the Jos Metropolitan Development Board's
+          // remit on "drainage" alone, and rejecting that loses a correct
+          // answer. A first version of this threshold did exactly that.
+          //
+          // So accept a chunk when the citizen named the agency (a title hit),
+          // or two distinct keywords match, or a single matched keyword is long
+          // enough to be specific. Length is a PROXY for specificity, not a
+          // measure of it — the honest version is how rare the word is across
+          // this agency's corpus, which costs another query per search. Worth
+          // revisiting if the proxy starts admitting junk; at 7 it keeps
+          // "drainage" and "revenue" and drops "cost", "want" and "report".
+          //
+          // Returning nothing remains honest: the caller handles an empty
+          // result by asking one narrowing question rather than guessing.
+          docChunks = scored
+            .filter((s) => s.titleHits > 0 || s.matched >= 2 || s.longestMatch >= 7)
+            .sort((a, b) => b.rank - a.rank || a.chunk.chunkIndex - b.chunk.chunkIndex)
+            .slice(0, topK)
+            .map((s) => s.chunk);
         }
       }
 
