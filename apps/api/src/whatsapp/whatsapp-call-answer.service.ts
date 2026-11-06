@@ -62,6 +62,13 @@ export interface CallOffer {
   citizenNumber: string;
 }
 
+/** One relay, in the shape werift's `iceServers` takes. */
+export interface IceServer {
+  urls: string;
+  username: string;
+  credential: string;
+}
+
 export type AnswerOutcome =
   | { answered: true; detail: string }
   | { answered: false; reason: string; blocked: boolean };
@@ -94,34 +101,126 @@ export class WhatsAppCallAnswerService {
       );
     }
 
-    const turn = this.turnServer();
-    if (!turn) {
+    const mode = this.relayMode();
+    if (mode === 'none') {
       blocked.push(
-        'No TURN relay is configured (TURN_URL, TURN_USERNAME, TURN_CREDENTIAL). WebRTC media is UDP and this ' +
-          'deployment has no inbound UDP, so without a relay an answered call carries no audio — which is worse ' +
-          'than not answering, because the caller is consumed and the message fallback never runs.'
+        'No TURN relay is configured. Set TURN_URL/TURN_USERNAME/TURN_CREDENTIAL for your own relay (coturn), or ' +
+          'TURN_PROVIDER=twilio to mint ephemeral credentials from the deployment\'s Twilio account. WebRTC media ' +
+          'is UDP and this deployment has no inbound UDP, so without a relay an answered call carries no audio — ' +
+          'which is worse than not answering, because the caller is consumed and the message fallback never runs.'
+      );
+    }
+    if (mode === 'twilio-incomplete') {
+      blocked.push(
+        'TURN_PROVIDER is twilio but TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are not both set, so no relay ' +
+          'credential can be minted.'
       );
     }
 
-    const enabled = optedIn && Boolean(turn);
+    const enabled = optedIn && (mode === 'static' || mode === 'twilio');
     return {
       enabled,
       blocked,
       detail: enabled
-        ? 'Inbound WhatsApp calls will be answered. No real call has proven this path yet — treat the first one as the test.'
+        ? `Inbound WhatsApp calls will be answered, relaying through ${
+            mode === 'twilio' ? "Twilio's Network Traversal Service" : 'the configured TURN server'
+          }. No real call has proven this path yet — treat the first one as the test.`
         : blocked.join(' '),
     };
   }
 
-  /** The configured relay, or null when it is not fully specified. */
-  private turnServer(): { urls: string; username: string; credential: string } | null {
+  /** Which relay this deployment is set up for, and whether it is complete. */
+  private relayMode(): 'static' | 'twilio' | 'twilio-incomplete' | 'none' {
+    if (process.env.TURN_PROVIDER?.trim().toLowerCase() === 'twilio') {
+      return process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim()
+        ? 'twilio'
+        : 'twilio-incomplete';
+    }
     const urls = process.env.TURN_URL?.trim();
     const username = process.env.TURN_USERNAME?.trim();
     const credential = process.env.TURN_CREDENTIAL?.trim();
-    // All three or none: a relay URL without credentials fails the allocation
-    // at call time, which looks like a media bug rather than a missing secret.
-    if (!urls || !username || !credential) return null;
-    return { urls, username, credential };
+    return urls && username && credential ? 'static' : 'none';
+  }
+
+  /**
+   * Cached ephemeral credentials, so a relay is not minted per call.
+   *
+   * Twilio's tokens last up to 24 hours. Fetching one per call adds a round
+   * trip to the answer path, and Meta drops an unanswered call quickly — a
+   * slow answer is the same as none. Refreshed at 90% of the stated lifetime
+   * so a call never starts against a credential that expires mid-negotiation.
+   */
+  private cachedIce: { servers: IceServer[]; expiresAt: number } | null = null;
+
+  /**
+   * The relay(s) to offer ICE, or null when none is configured.
+   *
+   * Returns a LIST, not one server. Twilio hands back TURN over UDP 3478 and
+   * over TCP 443, and the second is what gets through a network that blocks
+   * UDP egress — exactly the restrictive conditions a citizen's phone may be
+   * on. Offering only the first would decline calls that would have connected.
+   */
+  private async iceServers(): Promise<IceServer[] | null> {
+    const mode = this.relayMode();
+
+    if (mode === 'static') {
+      return [
+        {
+          urls: process.env.TURN_URL!.trim(),
+          username: process.env.TURN_USERNAME!.trim(),
+          credential: process.env.TURN_CREDENTIAL!.trim(),
+        },
+      ];
+    }
+
+    if (mode !== 'twilio') return null;
+
+    if (this.cachedIce && this.cachedIce.expiresAt > Date.now()) return this.cachedIce.servers;
+
+    const sid = process.env.TWILIO_ACCOUNT_SID!.trim();
+    const token = process.env.TWILIO_AUTH_TOKEN!.trim();
+    try {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Tokens.json`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        log.error(
+          'turn_credential_refused',
+          new Error(`Twilio refused a Network Traversal token (HTTP ${res.status}): ${body.slice(0, 200)}`)
+        );
+        return null;
+      }
+      const payload: any = await res.json();
+      // Entries with no credential are bare STUN. STUN discovers a public
+      // address; it does not relay, and this deployment needs a relay because
+      // it has no inbound UDP. Keeping them would let ICE "succeed" with a
+      // srflx candidate that Meta still cannot reach.
+      const servers: IceServer[] = (Array.isArray(payload?.ice_servers) ? payload.ice_servers : [])
+        .filter((s: any) => s?.urls && s?.username && s?.credential)
+        .map((s: any) => ({ urls: String(s.urls), username: String(s.username), credential: String(s.credential) }));
+
+      if (servers.length === 0) {
+        log.error(
+          'turn_credential_empty',
+          new Error('Twilio returned a token carrying no TURN server, only STUN, so media could not be relayed.')
+        );
+        return null;
+      }
+
+      const ttl = Number(payload?.ttl);
+      const lifetime = Number.isFinite(ttl) && ttl > 0 ? ttl : 3600;
+      this.cachedIce = { servers, expiresAt: Date.now() + lifetime * 1000 * 0.9 };
+      return servers;
+    } catch (err: any) {
+      log.error('turn_credential_unreachable', err instanceof Error ? err : new Error(String(err)));
+      return null;
+    }
   }
 
   /**
@@ -152,7 +251,20 @@ export class WhatsAppCallAnswerService {
     }
 
     try {
-      const negotiated = await this.negotiate(offer.sdp, this.turnServer()!);
+      const ice = await this.iceServers();
+      if (!ice) {
+        // readiness() said a relay was configured, and minting one still
+        // failed — a credential problem, not a configuration one, so it is
+        // reported as an attempt that failed rather than as switched off.
+        return {
+          answered: false,
+          reason:
+            'The TURN relay credentials could not be obtained, so the call was not answered and the citizen ' +
+            'still gets a message. The cause is in the log line above this one.',
+          blocked: false,
+        };
+      }
+      const negotiated = await this.negotiate(offer.sdp, ice);
       if ('error' in negotiated) {
         return { answered: false, reason: negotiated.error, blocked: false };
       }
@@ -246,7 +358,7 @@ export class WhatsAppCallAnswerService {
    */
   protected async negotiate(
     offerSdp: string,
-    turn: { urls: string; username: string; credential: string }
+    iceServers: IceServer[]
   ): Promise<{ sdp: string; pc?: any } | { error: string }> {
     let pc: any;
     try {
@@ -261,7 +373,7 @@ export class WhatsAppCallAnswerService {
         // Meta asked for, and taking them from the remote description is what
         // keeps this from hard-coding a payload type Meta may change.
         codecs: { audio: [] },
-        iceServers: [{ urls: turn.urls, username: turn.username, credential: turn.credential }],
+        iceServers,
       });
       pc.addTransceiver('audio', { direction: 'sendrecv' });
 

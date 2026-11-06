@@ -147,6 +147,14 @@ export const ENV_SPECS: EnvSpec[] = [
       'deployment exposes no inbound UDP, so media must relay through TURN. Useless without TURN_USERNAME ' +
       'and TURN_CREDENTIAL.',
   },
+  {
+    key: 'TURN_PROVIDER',
+    required: false,
+    description:
+      "Set to 'twilio' to mint ephemeral TURN credentials from the deployment's Twilio account (Network " +
+      'Traversal Service) instead of running your own relay. Needs TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN, ' +
+      'and makes TURN_URL/TURN_USERNAME/TURN_CREDENTIAL unnecessary.',
+  },
   { key: 'TURN_USERNAME', required: false, description: 'TURN username. Required with TURN_URL, useless without it.' },
   { key: 'TURN_CREDENTIAL', required: false, description: 'TURN credential. Required with TURN_URL, useless without it.' },
   { key: 'API_BASE_URL', required: false, description: 'Public API base URL (used in TwiML stream URLs and agent tool callbacks)' },

@@ -180,6 +180,140 @@ describe('Answering a WhatsApp call', () => {
     });
   });
 
+  /**
+   * Minting a relay from Twilio's Network Traversal Service, so a deployment
+   * does not have to run coturn to switch this on. Ephemeral by design: the
+   * tokens expire, which is exactly why static env vars could not express them.
+   */
+  describe('ephemeral relay credentials', () => {
+    const NTS = {
+      username: 'ntsuser',
+      password: 'ntspass',
+      ttl: '86400',
+      ice_servers: [
+        // Bare STUN: no credential, and it cannot relay.
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        { urls: 'turn:global.turn.twilio.com:3478?transport=udp', username: 'ntsuser', credential: 'ntspass' },
+        { urls: 'turn:global.turn.twilio.com:443?transport=tcp', username: 'ntsuser', credential: 'ntspass' },
+      ],
+    };
+
+    const twilioMode = () => {
+      setEnv('WHATSAPP_CALL_ANSWER', '1');
+      setEnv('TURN_URL', undefined);
+      setEnv('TURN_USERNAME', undefined);
+      setEnv('TURN_CREDENTIAL', undefined);
+      setEnv('TURN_PROVIDER', 'twilio');
+      setEnv('TWILIO_ACCOUNT_SID', 'ACtest');
+      setEnv('TWILIO_AUTH_TOKEN', 'tok');
+    };
+
+    afterEach(() => setEnv('TURN_PROVIDER', undefined));
+
+    it('is enabled by TURN_PROVIDER alone, with no TURN_URL', () => {
+      twilioMode();
+      const r = new WhatsAppCallAnswerService(fakeMedia).readiness();
+      expect(r.enabled).toBe(true);
+      expect(r.detail).toMatch(/Network Traversal Service/);
+    });
+
+    it('is blocked when the Twilio account credentials are missing', () => {
+      twilioMode();
+      setEnv('TWILIO_AUTH_TOKEN', undefined);
+      const r = new WhatsAppCallAnswerService(fakeMedia).readiness();
+      expect(r.enabled).toBe(false);
+      expect(r.blocked.join(' ')).toMatch(/TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN/);
+    });
+
+    it('mints a token and offers every TURN url, dropping bare STUN', async () => {
+      twilioMode();
+      const seen: any[] = [];
+      globalThis.fetch = (async (input: any, init?: any) => {
+        const url = String(input);
+        if (url.includes('/Tokens.json')) {
+          seen.push({ url, auth: String((init?.headers ?? {}).Authorization ?? '') });
+          return new Response(JSON.stringify(NTS), { status: 200 });
+        }
+        posted.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        return new Response('{}', { status: 200 });
+      }) as any;
+
+      const svc = new WhatsAppCallAnswerService(fakeMedia);
+      const ice = await (svc as any).iceServers();
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0].url).toContain('/Accounts/ACtest/Tokens.json');
+      expect(seen[0].auth).toMatch(/^Basic /);
+      // Both TURN urls — the TCP/443 one is what gets through a network that
+      // blocks UDP egress, which is a phone on a restrictive mobile network.
+      expect(ice.map((s: any) => s.urls)).toEqual([
+        'turn:global.turn.twilio.com:3478?transport=udp',
+        'turn:global.turn.twilio.com:443?transport=tcp',
+      ]);
+      // STUN discovers an address; it does not relay. Keeping it would let ICE
+      // "succeed" with a srflx candidate Meta still cannot reach.
+      expect(ice.some((s: any) => String(s.urls).startsWith('stun:'))).toBe(false);
+    });
+
+    it('caches the token rather than minting one per call', async () => {
+      twilioMode();
+      let mints = 0;
+      globalThis.fetch = (async (input: any) => {
+        if (String(input).includes('/Tokens.json')) {
+          mints++;
+          return new Response(JSON.stringify(NTS), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+
+      const svc = new WhatsAppCallAnswerService(fakeMedia);
+      await (svc as any).iceServers();
+      await (svc as any).iceServers();
+      await (svc as any).iceServers();
+      // Meta drops an unanswered call quickly, so a round trip per call is
+      // latency on the one path that cannot afford it.
+      expect(mints).toBe(1);
+    });
+
+    it('declines rather than answering when Twilio refuses the token', async () => {
+      twilioMode();
+      globalThis.fetch = (async (input: any) => {
+        if (String(input).includes('/Tokens.json')) {
+          return new Response('{"message":"Authenticate"}', { status: 401 });
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+
+      const out = await new WhatsAppCallAnswerService(fakeMedia).answer(CALL, 'TOKEN', 'cid');
+      expect(out.answered).toBe(false);
+      if (!out.answered) {
+        // An attempt that failed, not "switched off" — the distinction the
+        // thread note shows staff.
+        expect(out.blocked).toBe(false);
+        expect(out.reason).toMatch(/could not be obtained/i);
+      }
+      expect(posted).toEqual([]);
+    });
+
+    it('declines when Twilio returns only STUN', async () => {
+      twilioMode();
+      globalThis.fetch = (async (input: any) => {
+        if (String(input).includes('/Tokens.json')) {
+          return new Response(
+            JSON.stringify({ ttl: '3600', ice_servers: [{ urls: 'stun:global.stun.twilio.com:3478' }] }),
+            { status: 200 }
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }) as any;
+
+      const out = await new WhatsAppCallAnswerService(fakeMedia).answer(CALL, 'TOKEN', 'cid');
+      // A token with no relay in it is not a relay, however healthy the 200.
+      expect(out.answered).toBe(false);
+      expect(posted).toEqual([]);
+    });
+  });
+
   describe('declining, so the message fallback still runs', () => {
     it('does not touch Meta when answering is switched off', async () => {
       setEnv('WHATSAPP_CALL_ANSWER', undefined);
@@ -345,11 +479,11 @@ describe('Answering a WhatsApp call', () => {
     it("answers Meta's Opus offer with a usable answer", async () => {
       turnOn();
       const svc = new WhatsAppCallAnswerService(fakeMedia);
-      const negotiated = await (svc as any).negotiate(OFFER, {
-        urls: 'turn:relay.example.test:3478',
-        username: 'u',
-        credential: 'p',
-      });
+      // A LIST, because Twilio hands back TURN over UDP 3478 and over TCP 443
+      // and the second is what gets through a network blocking UDP egress.
+      const negotiated = await (svc as any).negotiate(OFFER, [
+        { urls: 'turn:relay.example.test:3478', username: 'u', credential: 'p' },
+      ]);
 
       expect(negotiated).toHaveProperty('sdp');
       const sdp: string = (negotiated as any).sdp;
@@ -365,11 +499,9 @@ describe('Answering a WhatsApp call', () => {
     it('gathers no relay in a sandbox, which is exactly why answering declines here', async () => {
       turnOn();
       const svc = new WhatsAppCallAnswerService(fakeMedia);
-      const negotiated: any = await (svc as any).negotiate(OFFER, {
-        urls: 'turn:relay.example.test:3478',
-        username: 'u',
-        credential: 'p',
-      });
+      const negotiated: any = await (svc as any).negotiate(OFFER, [
+        { urls: 'turn:relay.example.test:3478', username: 'u', credential: 'p' },
+      ]);
 
       // No reachable relay exists for this test, so the answer carries no
       // `typ relay`. Pinning it documents why the end-to-end path is unproven

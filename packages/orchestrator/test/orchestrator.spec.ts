@@ -299,6 +299,103 @@ describe('ConversationOrchestrator', () => {
    * then answered with the booking's details and still cancelled nothing. Both
    * failures are pinned here.
    */
+  /**
+   * A question about the agency must reach the knowledge base.
+   *
+   * ── The reported failure ───────────────────────────────────────────────────
+   *
+   * A citizen on the live WhatsApp line asked:
+   *
+   *     "I would like to know what JMDB's activities are"
+   *
+   * and was answered with the capability menu — a list of things the assistant
+   * can do, in place of anything about the agency they asked about. The
+   * keyword list never matched that sentence; the LLM classifier returned
+   * CAPABILITIES, because "activities" reads like "what do you do".
+   *
+   * This platform is a State information hub, so a question about an MDA is
+   * the MAIN job, not the fallback. Three intents were removed from what the
+   * classifier may choose — CAPABILITIES, REQUEST_QUOTATION and
+   * MANAGE_RESERVATION — because each one intercepts a question whose answer
+   * belongs in the knowledge base. Their keyword triggers remain, so an
+   * explicit "what can you do" still works.
+   */
+  describe('A question about the agency is not hijacked by a menu', () => {
+    const realFetch = globalThis.fetch;
+    afterEach(() => {
+      globalThis.fetch = realFetch;
+      delete process.env.OPENAI_API_KEY;
+    });
+
+    it.each([
+      "I would like to know what JMDB's activities are",
+      'what are the activities of the ministry of health',
+      'what does PLASCHEMA do',
+      'tell me about the agency',
+    ])('does not answer %j with the capability menu', async (message) => {
+      const result = await orchestrator.processIncomingMessage(baseContext(), message);
+      expect(result.intentDetected).not.toBe('CAPABILITIES');
+      // The menu's own opening line, in any of the five languages' English.
+      expect(result.replyText).not.toMatch(/here'?s what i can do for you/i);
+    });
+
+    it('still answers an explicit "what can you do" with the menu', async () => {
+      // Removing the guesswork must not remove the feature.
+      const result = await orchestrator.processIncomingMessage(baseContext(), 'what can you do');
+      expect(result.intentDetected).toBe('CAPABILITIES');
+      expect(result.replyText).toMatch(/here'?s what i can do for you/i);
+    });
+
+    it('offers the model no intent that would intercept a question', async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key-for-prompt-inspection';
+      // EVERY system prompt, not the last one: classification runs first and
+      // then RAG synthesis runs, so capturing a single value inspects the
+      // wrong call and the assertions below would pass against anything.
+      const prompts: string[] = [];
+      globalThis.fetch = (async (_url: any, init: any) => {
+        const body = JSON.parse(String(init.body));
+        prompts.push(body.messages.find((m: any) => m.role === 'system')?.content ?? '');
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"intent":"NONE","confidence":0.9}' } }] }),
+          { status: 200 }
+        );
+      }) as any;
+
+      await orchestrator.processIncomingMessage(baseContext(), "what are JMDB's activities");
+
+      const systemPrompt = prompts.find((p) => p.includes('intent must be exactly one of')) ?? '';
+      expect(systemPrompt).toContain('intent must be exactly one of');
+      // Each of these answered a knowledge question with something else:
+      // CAPABILITIES with a menu, REQUEST_QUOTATION with a quote built from
+      // CRM deals at stage CLOSED_WON, MANAGE_RESERVATION with a table booking
+      // no government agency offers.
+      expect(systemPrompt).not.toContain('CAPABILITIES -');
+      expect(systemPrompt).not.toContain('REQUEST_QUOTATION -');
+      expect(systemPrompt).not.toContain('MANAGE_RESERVATION -');
+      // And the catch-all still names questions about the agency, so the model
+      // has somewhere correct to put them.
+      expect(systemPrompt).toMatch(/NONE - anything else[^\n]*agency/);
+    });
+
+    it('ignores a CAPABILITIES answer even if a model returns one', async () => {
+      process.env.OPENAI_API_KEY = 'sk-test-key-for-rogue-answer';
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"intent":"CAPABILITIES","confidence":0.95}' } }] }),
+          { status: 200 }
+        )) as any;
+
+      // Removing it from the prompt is not enough on its own: a cached, stale
+      // or differently-tuned model could still answer with it, so the branch
+      // that rendered the menu is gone too.
+      const result = await orchestrator.processIncomingMessage(
+        baseContext(),
+        "I would like to know what JMDB's activities are"
+      );
+      expect(result.replyText).not.toMatch(/here'?s what i can do for you/i);
+    });
+  });
+
   describe('Which booking intent a sentence reaches', () => {
     const intentOf = async (message: string) => {
       const result = await orchestrator.processIncomingMessage(baseContext(), message);

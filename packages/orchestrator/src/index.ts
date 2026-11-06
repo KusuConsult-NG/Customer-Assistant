@@ -2839,19 +2839,40 @@ export class ConversationOrchestrator {
       `Reply with ONLY a JSON object: {"intent": string, "confidence": number 0-1, "serviceName": string|null}\n` +
       `intent must be exactly one of:\n` +
       `BOOK_APPOINTMENT - wants a NEW appointment, consultation, registration or enrollment\n` +
-      `MANAGE_RESERVATION - wants a NEW table or room reservation\n` +
+
       `CHECK_BOOKING_STATUS - asks about an EXISTING booking or reservation\n` +
       `RESCHEDULE_BOOKING - wants to MOVE an existing booking\n` +
       `CANCEL_BOOKING - wants to CANCEL an existing booking\n` +
       `PROVIDE_PAYMENT_GUIDANCE - asks how or where to pay\n` +
       `REQUEST_REFUND - wants money back\n` +
-      `REQUEST_QUOTATION - asks the price or cost of a service\n` +
+
       `CREATE_TICKET - complains or reports a problem\n` +
+      // MANAGE_RESERVATION and REQUEST_QUOTATION are deliberately NOT offered
+      // either, for the same reason as CAPABILITIES above. This platform is a
+      // State information hub: no agency takes table or room reservations, and
+      // "what does a birth certificate cost?" is a question whose answer lives
+      // in the knowledge base — routing it to REQUEST_QUOTATION builds a quote
+      // out of CRM `Deal` rows at stage CLOSED_WON, which is sales history and
+      // not a government fee. Both keep their keyword triggers, so an explicit
+      // request still works where an agency genuinely offers it; only the
+      // model's guessing is removed.
+
       `REQUEST_SELFIE - asks about sending their photo or identity picture\n` +
       `HUMAN_HANDOFF - wants to talk to a human being\n` +
       `AI_DISCLOSURE - asks whether they are talking to an AI, robot or human\n` +
-      `CAPABILITIES - asks what the assistant can do\n` +
-      `NONE - anything else: greetings, questions about the business, general conversation\n` +
+      // CAPABILITIES is deliberately NOT offered to the classifier.
+      //
+      // A citizen asked "I would like to know what JMDB's activities are" and
+      // got the capability menu: the model read "activities" as "what do you
+      // do", and a real question about a government agency was answered with a
+      // list of things the assistant can do. Anything phrased as a question
+      // about the organisation has to reach RAG, which is what NONE routes to.
+      //
+      // The explicit phrasings ("what can you do", "show me the menu") are
+      // matched by keyword before this classifier ever runs, so nothing is
+      // lost by removing it here — only the guessing.
+      `NONE - anything else: greetings, questions about the agency, its services, its ` +
+      `activities or the State, and general conversation\n` +
       `serviceName: the specific service they want, translated to English — or null.\n` +
       `Use NONE whenever you are not sure. Confidence reflects the MESSAGE's clarity, not your optimism.`;
 
@@ -2929,15 +2950,6 @@ export class ConversationOrchestrator {
               org: await this.getOrganizationName(context.organizationId),
             }),
             intentDetected: 'AI_DISCLOSURE',
-            confidenceScore: confidence,
-            shouldHandoff: false,
-          };
-        case 'CAPABILITIES':
-          return {
-            replyText: t(lang, 'capabilities', {
-              org: await this.getOrganizationName(context.organizationId),
-            }),
-            intentDetected: 'CAPABILITIES',
             confidenceScore: confidence,
             shouldHandoff: false,
           };

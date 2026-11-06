@@ -46,10 +46,23 @@ const log = new AceLogger('ConversationClosing');
 export class ConversationClosingService implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
 
-  /** How long a citizen must be silent. Minutes, settable per deployment. */
+  /**
+   * How long a citizen must be silent. Minutes, settable per deployment.
+   *
+   * THIRTY, not five. At five a citizen was closed out six minutes after
+   * being shown a menu — before they had finished deciding what to ask. This
+   * is an information service about government, not a live chat queue: the
+   * question people are composing is often "which office do I go to and what
+   * do I bring", which takes longer than a few minutes to think about, and may
+   * involve going to find a document.
+   *
+   * Closing early is not neutral. It costs the thread's context, so the
+   * citizen's next message starts over, and it reads as being hung up on by
+   * their government.
+   */
   private get quietMinutes(): number {
     const raw = Number(process.env.CONVERSATION_CLOSING_MINUTES);
-    return Number.isFinite(raw) && raw >= 1 ? raw : 5;
+    return Number.isFinite(raw) && raw >= 1 ? raw : 30;
   }
 
   private get disabled(): boolean {

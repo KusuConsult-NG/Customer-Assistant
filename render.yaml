@@ -117,6 +117,13 @@ services:
       # to debug it.
       - key: WHATSAPP_CALL_ANSWER
         sync: false
+      # Either run your own relay (TURN_URL + TURN_USERNAME + TURN_CREDENTIAL),
+      # or set TURN_PROVIDER=twilio to mint ephemeral credentials from the
+      # Twilio account this deployment already holds. The Twilio route needs no
+      # server of your own; the static route keeps media on infrastructure you
+      # control, which is the stronger position for citizen calls.
+      - key: TURN_PROVIDER
+        sync: false
       - key: TURN_URL
         sync: false
       - key: TURN_USERNAME
