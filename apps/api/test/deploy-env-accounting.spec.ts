@@ -49,6 +49,10 @@ const DELIBERATELY_OMITTED: Record<string, string> = {
   ALLOW_MISSING_BOOKING_CONSTRAINT:
     'Deliberate opt-out for a deployment that takes no bookings. Declaring it ' +
     'in the manifest invites someone to set it to get past a failing boot.',
+  ALLOW_MISSING_ENUM_VALUES:
+    'Same reason as the booking constraint: it exists to be set knowingly, not ' +
+    'to be the obvious way past a boot that is refusing for a good reason. The ' +
+    'preDeployCommand adds the values, so a correct deploy never needs it.',
 };
 
 function declaredInRender(): Set<string> {

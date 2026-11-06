@@ -60,6 +60,30 @@ describe('health probes', () => {
       expect(res.body).toMatchObject({ status: 'ok' });
       expect(query).not.toHaveBeenCalled();
     });
+
+    it('says which build is serving, and does not invent one', async () => {
+      // `autoDeploy: true` means a merge and a running service drift apart for
+      // as long as a build takes, so "is my fix live?" has to be answerable
+      // from outside. Without this the only way to tell was to read behaviour
+      // and guess.
+      const realCommit = process.env.RENDER_GIT_COMMIT;
+      try {
+        process.env.RENDER_GIT_COMMIT = 'abc1234def5678';
+        const withCommit = await request(app.getHttpServer()).get('/api/health').expect(200);
+        expect(withCommit.body.commit).toBe('abc1234def5678');
+
+        // Unset must read 'unknown' rather than claim a version this process
+        // cannot know — the same rule as every other readiness surface here.
+        delete process.env.RENDER_GIT_COMMIT;
+        delete process.env.GIT_COMMIT_SHA;
+        delete process.env.SOURCE_VERSION;
+        const without = await request(app.getHttpServer()).get('/api/health').expect(200);
+        expect(without.body.commit).toBe('unknown');
+      } finally {
+        if (realCommit === undefined) delete process.env.RENDER_GIT_COMMIT;
+        else process.env.RENDER_GIT_COMMIT = realCommit;
+      }
+    });
   });
 
   describe('readiness — /api/health/ready', () => {

@@ -420,4 +420,48 @@ describe('WhatsApp call events', () => {
       expect(await logFor(callId)).toBeTruthy();
     });
   });
+
+  describe('the record fails and the citizen is still answered', () => {
+    /**
+     * The CallLog upsert is written first because it is the durable record, but
+     * it used to be awaited bare — so ANY failure there aborted the handler and
+     * the citizen got nothing.
+     *
+     * This is how `WHATSAPP_CLOUD` cost a citizen their reply. The enum value
+     * was deployed before the database had it, PostgreSQL rejected the upsert,
+     * and the message explaining the unanswered call never sent — from the
+     * commit written to stop exactly that. The enum gap is closed elsewhere
+     * (a preDeployCommand and a boot check); this pins the ORDERING, because
+     * a pool timeout or a constraint would have done the same thing.
+     */
+    it('still tells the citizen when the call log cannot be written', async () => {
+      const upsert = jest
+        .spyOn(prisma.callLog, 'upsert')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('invalid input value for enum "TelephonyProviderType": "WHATSAPP_CLOUD"'), {
+            code: 'P2010',
+          })
+        );
+
+      try {
+        const payload = callPayload();
+        await deliver(payload);
+        const callId = callIdOf(payload);
+
+        // The record really did fail.
+        expect(upsert).toHaveBeenCalled();
+        expect(await logFor(callId)).toBeNull();
+
+        // And the citizen was answered anyway — the whole point of the handler.
+        expect(sent).toHaveLength(1);
+        expect(sent[0].url).toContain(phoneNumberId);
+
+        // Including the thread note, so staff can see what happened.
+        const messages = await messagesFor(callId);
+        expect(messages.length).toBeGreaterThan(0);
+      } finally {
+        upsert.mockRestore();
+      }
+    });
+  });
 });

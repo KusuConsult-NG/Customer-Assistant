@@ -21,6 +21,25 @@ jest.mock('@ace/database', () => ({
   prisma: { $queryRawUnsafe: jest.fn() },
 }));
 
+// The enum check asks the GENERATED CLIENT what it declares, so the client is
+// what has to be controllable here. `var` is hoisted above jest.mock, and the
+// factory only runs when the code under test requires the module, by which
+// point the assignment has happened.
+// eslint-disable-next-line no-var, @typescript-eslint/no-explicit-any
+var clientEnums: Record<string, any> = {};
+jest.mock('@prisma/client', () => clientEnums);
+
+/**
+ * Mutates the mocked module IN PLACE. Jest caches what the factory returned on
+ * the first require, so rebinding `clientEnums` leaves the code under test
+ * holding the previous object — which is how two of these tests first passed
+ * against whatever the preceding test had set.
+ */
+function setClientEnums(next: Record<string, unknown>): void {
+  for (const k of Object.keys(clientEnums)) delete clientEnums[k];
+  Object.assign(clientEnums, next);
+}
+
 import { prisma } from '@ace/database';
 import { assertDatabaseGuarantees } from '../src/config/db-readiness';
 
@@ -136,5 +155,125 @@ describe('the booking-constraint boot check', () => {
     expect(warnings.join('\n')).toMatch(/NOT enforced/i);
     // It should not even have asked the database.
     expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe('the enum-value boot check', () => {
+  /**
+   * The drift no health check can see. A column the database lacks breaks
+   * reads at once; a VALUE it lacks breaks only the statement that writes it,
+   * so the pod stays green while one path fails. `WHATSAPP_CLOUD` did exactly
+   * that: PostgreSQL rejected the CallLog upsert, processCallEvent threw, and
+   * the reply explaining the unanswered call never sent.
+   *
+   * Stubbed on both sides, because what matters is the DECISION — refuse in
+   * production, warn elsewhere, never claim a check that did not run.
+   */
+  const realNodeEnv = process.env.NODE_ENV;
+  let exit: jest.SpyInstance;
+  let errorLog: jest.SpyInstance;
+  let warnLog: jest.SpyInstance;
+
+  class ExitCalled extends Error {
+    constructor(public code?: number) {
+      super(`process.exit(${code})`);
+    }
+  }
+
+  /** What the database holds, as pg_enum would report it. */
+  const live = (rows: Array<[string, string]>) =>
+    query.mockResolvedValue(rows.map(([type, label]) => ({ type, label })));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.ALLOW_MISSING_ENUM_VALUES;
+    setClientEnums({ TelephonyProviderType: { TWILIO: 'TWILIO', WHATSAPP_CLOUD: 'WHATSAPP_CLOUD' } });
+    exit = jest.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new ExitCalled(code);
+    }) as any);
+    errorLog = jest.spyOn(require('@nestjs/common').Logger.prototype, 'error').mockImplementation(() => {});
+    warnLog = jest.spyOn(require('@nestjs/common').Logger.prototype, 'warn').mockImplementation(() => {});
+    jest.spyOn(require('@nestjs/common').Logger.prototype, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (realNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = realNodeEnv;
+  });
+
+  const run = () => require('../src/config/db-readiness').assertDeclaredEnumsPresent();
+
+  it('starts when every declared value is in the database', async () => {
+    process.env.NODE_ENV = 'production';
+    live([['TelephonyProviderType', 'TWILIO'], ['TelephonyProviderType', 'WHATSAPP_CLOUD']]);
+    await expect(run()).resolves.toBeUndefined();
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('REFUSES to start in production when a value is missing, and names it', async () => {
+    process.env.NODE_ENV = 'production';
+    live([['TelephonyProviderType', 'TWILIO']]);
+    await expect(run()).rejects.toThrow(/process.exit\(1\)/);
+    const said = errorLog.mock.calls.flat().join(' ');
+    expect(said).toMatch(/TelephonyProviderType\.WHATSAPP_CLOUD/);
+    // The remedy has to be in the message: this is read in a deploy log by
+    // somebody who did not write the check.
+    expect(said).toMatch(/db:sync-enums/);
+  });
+
+  it('warns and continues outside production, so a dev database can lag', async () => {
+    process.env.NODE_ENV = 'development';
+    live([['TelephonyProviderType', 'TWILIO']]);
+    await expect(run()).resolves.toBeUndefined();
+    expect(exit).not.toHaveBeenCalled();
+    expect(warnLog.mock.calls.flat().join(' ')).toMatch(/TelephonyProviderType\.WHATSAPP_CLOUD/);
+  });
+
+  it('reports an absent TYPE and does not pretend it can create one', async () => {
+    process.env.NODE_ENV = 'production';
+    live([['SomeOtherEnum', 'X']]);
+    await expect(run()).rejects.toThrow(/process.exit\(1\)/);
+    const said = errorLog.mock.calls.flat().join(' ');
+    expect(said).toMatch(/absent entirely: TelephonyProviderType/);
+    expect(said).toMatch(/db:push/);
+  });
+
+  it('refuses rather than passing when it finds no enums to check', async () => {
+    // A filter that silently matches nothing makes every assertion vacuously
+    // true, which is the shape of a check that has stopped checking.
+    process.env.NODE_ENV = 'production';
+    setClientEnums({ SortOrder: { asc: 'asc', desc: 'desc' }, ContactScalarFieldEnum: { id: 'id' } });
+    live([['TelephonyProviderType', 'TWILIO']]);
+    await expect(run()).rejects.toThrow(/process.exit\(1\)/);
+    expect(errorLog.mock.calls.flat().join(' ')).toMatch(/no enums in the generated client/i);
+    // And it must not have claimed the database was fine.
+    expect(errorLog.mock.calls.flat().join(' ')).not.toMatch(/match the database/);
+  });
+
+  it('skips the check only when told to, out loud', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.ALLOW_MISSING_ENUM_VALUES = '1';
+    live([['TelephonyProviderType', 'TWILIO']]);
+    await expect(run()).resolves.toBeUndefined();
+    expect(exit).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+    expect(warnLog.mock.calls.flat().join(' ')).toMatch(/ALLOW_MISSING_ENUM_VALUES=1/);
+  });
+
+  it('does not treat Prisma\u2019s own generated enums as schema enums', async () => {
+    process.env.NODE_ENV = 'production';
+    setClientEnums({
+      TelephonyProviderType: { TWILIO: 'TWILIO' },
+      SortOrder: { asc: 'asc', desc: 'desc' },
+      QueryMode: { default: 'default', insensitive: 'insensitive' },
+      ModelName: { Contact: 'Contact' },
+      ContactScalarFieldEnum: { id: 'id', organizationId: 'organizationId' },
+    });
+    live([['TelephonyProviderType', 'TWILIO']]);
+    // Only TelephonyProviderType is a schema enum, and it matches — so a
+    // client whose internals are absent from pg_enum must still boot.
+    await expect(run()).resolves.toBeUndefined();
+    expect(exit).not.toHaveBeenCalled();
   });
 });
