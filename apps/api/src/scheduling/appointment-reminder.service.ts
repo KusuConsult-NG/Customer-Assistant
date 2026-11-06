@@ -93,16 +93,31 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       where: {
         startTime: { gte: start72h, lte: end72h },
         status: 'CONFIRMED',
-        NOT: { notes: { contains: '[REMINDED_72H]' } },
+        // NULL-SAFE, and it has to be spelled out.
+        //
+        // `NOT: { notes: { contains: marker } }` compiles to
+        // `NOT (notes LIKE '%marker%')`, which is NULL — not TRUE — when notes
+        // is NULL, so PostgreSQL drops the row. A booking is created with no
+        // notes, so EVERY ordinary booking was invisible to this query and no
+        // reminder was ever attempted for it. Only bookings that happened to
+        // carry a note ([PAID], a staff remark) were ever considered.
+        //
+        // `claimMarker` had it right in raw SQL — `COALESCE("notes", '') NOT
+        // LIKE …` — so the claim was null-safe while the select that feeds it
+        // was not.
+        OR: [{ notes: null }, { NOT: { notes: { contains: '[REMINDED_72H]' } } }],
       },
       include: { contact: true, organization: true },
     });
 
     for (const booking of bookings72h) {
-      if (!(await this.claimMarker(booking, '[REMINDED_72H]'))) continue;
-      if (booking.contact?.email) {
-        await this.sendBookingEmailReminder(booking, '3 days');
-      }
+      // The marker is given back when nothing was sent, which for a citizen
+      // with no email address is every time — and on this platform that is
+      // every citizen: contacts are created from a phone number on WhatsApp
+      // and voice, and nothing ever writes an email address for them.
+      await this.claimSendRelease(booking, '[REMINDED_72H]', () =>
+        this.sendBookingEmailReminder(booking, '3 days')
+      );
     }
 
     // ── 2. 48-Hour (2 Days) Email Reminders ───────────────────────────────────
@@ -113,16 +128,27 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       where: {
         startTime: { gte: start48h, lte: end48h },
         status: 'CONFIRMED',
-        NOT: { notes: { contains: '[REMINDED_48H]' } },
+        // NULL-SAFE, and it has to be spelled out.
+        //
+        // `NOT: { notes: { contains: marker } }` compiles to
+        // `NOT (notes LIKE '%marker%')`, which is NULL — not TRUE — when notes
+        // is NULL, so PostgreSQL drops the row. A booking is created with no
+        // notes, so EVERY ordinary booking was invisible to this query and no
+        // reminder was ever attempted for it. Only bookings that happened to
+        // carry a note ([PAID], a staff remark) were ever considered.
+        //
+        // `claimMarker` had it right in raw SQL — `COALESCE("notes", '') NOT
+        // LIKE …` — so the claim was null-safe while the select that feeds it
+        // was not.
+        OR: [{ notes: null }, { NOT: { notes: { contains: '[REMINDED_48H]' } } }],
       },
       include: { contact: true, organization: true },
     });
 
     for (const booking of bookings48h) {
-      if (!(await this.claimMarker(booking, '[REMINDED_48H]'))) continue;
-      if (booking.contact?.email) {
-        await this.sendBookingEmailReminder(booking, '2 days');
-      }
+      await this.claimSendRelease(booking, '[REMINDED_48H]', () =>
+        this.sendBookingEmailReminder(booking, '2 days')
+      );
     }
 
     // ── 3. 24-Hour (1 Day) Reminders: SMS conditional on payment & email ──────
@@ -133,7 +159,19 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       where: {
         startTime: { gte: start24h, lte: end24h },
         status: 'CONFIRMED',
-        NOT: { notes: { contains: '[REMINDED_24H]' } },
+        // NULL-SAFE, and it has to be spelled out.
+        //
+        // `NOT: { notes: { contains: marker } }` compiles to
+        // `NOT (notes LIKE '%marker%')`, which is NULL — not TRUE — when notes
+        // is NULL, so PostgreSQL drops the row. A booking is created with no
+        // notes, so EVERY ordinary booking was invisible to this query and no
+        // reminder was ever attempted for it. Only bookings that happened to
+        // carry a note ([PAID], a staff remark) were ever considered.
+        //
+        // `claimMarker` had it right in raw SQL — `COALESCE("notes", '') NOT
+        // LIKE …` — so the claim was null-safe while the select that feeds it
+        // was not.
+        OR: [{ notes: null }, { NOT: { notes: { contains: '[REMINDED_24H]' } } }],
       },
       include: { contact: true, organization: true },
     });
@@ -150,21 +188,32 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       // Rule: Send SMS 24h before IF:
       //  (a) Customer has NO email, OR
       //  (b) Customer HAS email AND HAS PAID
-      if (!hasEmail || isPaid) {
+      // "Emails went at 72h and 48h" is only a reason to stay quiet if they
+      // actually went. Now that a marker means a send SUCCEEDED, its absence
+      // is trustworthy evidence that one did not — so a citizen nobody has
+      // managed to reach gets the attempt, rather than a silence justified by
+      // reminders that were never delivered.
+      const emailedEarlier =
+        Boolean(booking.notes?.includes('[REMINDED_72H]')) ||
+        Boolean(booking.notes?.includes('[REMINDED_48H]'));
+
+      if (!hasEmail || isPaid || !emailedEarlier) {
         // Before the claim: see mayTextNow. Out of hours this is left for a
         // later sweep rather than claimed and dropped.
         if (!(await this.mayTextNow(booking.organizationId, now))) continue;
-        if (!(await this.claimMarker(booking, '[REMINDED_24H]'))) continue;
-
-        await this.sendSmsNotification(
-          booking.contact?.phoneNumber,
-          `Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is tomorrow! Date: ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+        await this.claimSendRelease(booking, '[REMINDED_24H]', () =>
+          this.sendSmsNotification(
+            booking.contact?.phoneNumber,
+            `Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is tomorrow! Date: ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+          )
         );
       } else {
+        // A deliberate decision NOT to send, taken because the earlier emails
+        // are on the record. Claimed so it is not re-decided every 5 minutes.
         if (!(await this.claimMarker(booking, '[REMINDED_24H]'))) continue;
         log.info('skipped_24h_sms_unpaid_customer', {
           bookingId: booking.id,
-          reason: 'Customer has email but has not paid — emails sent at 72h & 48h',
+          reason: 'Has email, an earlier email reminder was delivered, and the booking is unpaid',
         });
       }
     }
@@ -177,7 +226,19 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       where: {
         startTime: { gte: start6h, lte: end6h },
         status: 'CONFIRMED',
-        NOT: { notes: { contains: '[REMINDED_6H]' } },
+        // NULL-SAFE, and it has to be spelled out.
+        //
+        // `NOT: { notes: { contains: marker } }` compiles to
+        // `NOT (notes LIKE '%marker%')`, which is NULL — not TRUE — when notes
+        // is NULL, so PostgreSQL drops the row. A booking is created with no
+        // notes, so EVERY ordinary booking was invisible to this query and no
+        // reminder was ever attempted for it. Only bookings that happened to
+        // carry a note ([PAID], a staff remark) were ever considered.
+        //
+        // `claimMarker` had it right in raw SQL — `COALESCE("notes", '') NOT
+        // LIKE …` — so the claim was null-safe while the select that feeds it
+        // was not.
+        OR: [{ notes: null }, { NOT: { notes: { contains: '[REMINDED_6H]' } } }],
       },
       include: { contact: true, organization: true },
     });
@@ -187,7 +248,6 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       // land at 2am is worth less than the sleep it costs, and the citizen
       // already has the confirmation they were sent when they booked.
       if (!(await this.mayTextNow(booking.organizationId, now))) continue;
-      if (!(await this.claimMarker(booking, '[REMINDED_6H]'))) continue;
 
       const createdAt = new Date(booking.createdAt).getTime();
       const startTime = new Date(booking.startTime).getTime();
@@ -195,9 +255,11 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
 
       // Rule: Send 6-hour SMS reminder for short-notice bookings (< 24h notice)
       if (hoursBetweenCreationAndDue <= 24 || !booking.notes?.includes('[REMINDED_24H]')) {
-        await this.sendSmsNotification(
-          booking.contact?.phoneNumber,
-          `Urgent Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is in 6 hours (due at ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`
+        await this.claimSendRelease(booking, '[REMINDED_6H]', () =>
+          this.sendSmsNotification(
+            booking.contact?.phoneNumber,
+            `Urgent Reminder: Your appointment for ${booking.serviceName} at ${booking.organization.name} is in 6 hours (due at ${new Date(booking.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`
+          )
         );
       }
     }
@@ -228,15 +290,64 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
     }
   }
 
-  private async sendBookingEmailReminder(booking: any, timeUntil: string) {
+  /**
+   * Undo a claim whose send did not happen.
+   *
+   * The claim must stay BEFORE the send — it is an atomic `UPDATE ... WHERE
+   * notes NOT LIKE marker`, and only the caller whose update count is 1
+   * proceeds, which is what stops two pods reminding the same citizen twice.
+   * CLAUDE.md says to keep that ordering and it is right.
+   *
+   * What was missing is the other half. A claim that is never released turns
+   * "we tried and could not" into "we reminded them": the marker says
+   * REMINDED, nothing was sent, and the booking is excluded from every later
+   * pass. An officer reading it sees a citizen who was told. So a send that
+   * did not happen gives the marker back, and the next pass may try again.
+   */
+  private async releaseMarker(booking: { id: string }, marker: string): Promise<void> {
+    try {
+      await prisma.$executeRaw`
+        UPDATE "bookings"
+        SET "notes" = REPLACE(COALESCE("notes", ''), ${' ' + marker}, '')
+        WHERE "id" = ${booking.id}`;
+    } catch (err: any) {
+      // Logged, not thrown: the send already failed, and losing the release is
+      // a missed reminder rather than a false record of one.
+      log.error('reminder_release_failed', err, { bookingId: booking.id, marker });
+    }
+  }
+
+  /**
+   * Claim, send, and give the claim back if nothing went out.
+   *
+   * Every tier funnels through here so the claim/release pairing exists once.
+   */
+  private async claimSendRelease(
+    booking: { id: string },
+    marker: string,
+    send: () => Promise<boolean>
+  ): Promise<boolean> {
+    if (!(await this.claimMarker(booking, marker))) return false;
+    let delivered = false;
+    try {
+      delivered = await send();
+    } catch (err: any) {
+      log.error('reminder_send_threw', err, { bookingId: booking.id, marker });
+      delivered = false;
+    }
+    if (!delivered) await this.releaseMarker(booking, marker);
+    return delivered;
+  }
+
+  private async sendBookingEmailReminder(booking: any, timeUntil: string): Promise<boolean> {
     const email = booking.contact?.email;
-    if (!email) return;
+    if (!email) return false;
     if (!this.emailConfigured) {
       log.warn('booking_email_reminder_skipped', {
         bookingId: booking.id,
         reason: emailProviderProblem() ?? 'no email provider configured',
       });
-      return;
+      return false;
     }
 
     const dateStr = new Date(booking.startTime).toLocaleString('en-NG', {
@@ -272,6 +383,7 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       // record, and the citizen simply does not turn up.
       if (sent.ok) {
         log.info('booking_email_reminder_sent', { bookingId: booking.id, email, timeUntil });
+        return true;
       } else {
         log.warn('booking_email_reminder_not_sent', {
           bookingId: booking.id,
@@ -280,13 +392,15 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
           reason: sent.error,
         });
       }
+      return false;
     } catch (err: any) {
       log.error('booking_email_reminder_failed', err, { bookingId: booking.id });
+      return false;
     }
   }
 
-  private async sendSmsNotification(phoneNumber?: string, message?: string) {
-    if (!phoneNumber || !message) return;
+  private async sendSmsNotification(phoneNumber?: string, message?: string): Promise<boolean> {
+    if (!phoneNumber || !message) return false;
     // HONESTY: no SMS gateway is integrated yet — this used to log
     // 'sms_reminder_sent', which read as a delivered SMS in the logs.
     log.warn('sms_reminder_skipped_no_provider', {
@@ -294,6 +408,10 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
       reason: 'No SMS provider integrated — wire Twilio/Africa\'s Talking SMS here',
       intendedMessage: message.slice(0, 120),
     });
+    // FALSE, and the callers now act on it. While this is a stub every tier
+    // that depends on it releases its marker, so a booking stops recording
+    // reminders that no gateway exists to deliver.
+    return false;
   }
 
   /**
