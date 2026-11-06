@@ -783,6 +783,16 @@ export function buildSynthesisSystemPrompt(input: {
   basePrompt: string;
   lang: Language;
   channel?: ChannelType | string;
+  /**
+   * Did the knowledge base return anything for this message?
+   *
+   * When it did not, the model is holding nothing but the citizen's sentence
+   * and whatever it happens to remember about Plateau State — and what it
+   * remembers is not this agency's record. The rule below turns that case from
+   * "answer anyway" into "ask one question", which is the difference between a
+   * confident wrong answer and a conversation.
+   */
+  hasKnowledge?: boolean;
 }): string {
   const { basePrompt, lang } = input;
   const onACall = input.channel === ChannelType.VOICE;
@@ -803,12 +813,34 @@ export function buildSynthesisSystemPrompt(input: {
           `Hausa, Igbo and Yoruba; if the customer mixes languages, follow their most recent message.` +
           (lang !== 'en' ? ` This customer has been writing in ${LANGUAGE_NAMES[lang]}.` : '');
 
+  // Nothing came back from the knowledge base for this message.
+  //
+  // A citizen asked what an agency's activities were and was answered from a
+  // menu. Routing that question here instead only helps if what happens next
+  // is honest: with no retrieved context the model must NOT fill the gap from
+  // training data — it does not know this State's offices, fees, documents or
+  // opening hours, and a confident invention about government is worse than
+  // any admission. ASKING is the useful move, because the usual reason a
+  // question misses the knowledge base is that it is broader than anything
+  // filed: "JMDB" matches nothing, "what does the Jos Metropolitan
+  // Development Board do about land applications" matches plenty.
+  const unknownRule = input.hasKnowledge
+    ? ''
+    : `- NOTHING in our records matched this message, so you do not have the answer. Do NOT answer it ` +
+      `from your own knowledge: you do not know this agency's services, fees, offices, documents or ` +
+      `hours, and a confident wrong answer about government costs the citizen a wasted journey. ` +
+      `Instead, say briefly that you want to make sure you give them the right information, and ask ` +
+      `ONE specific question that would narrow it down — which service, which office or town, or what ` +
+      `they are trying to get done. If they have already been asked once and it still does not match, ` +
+      `stop asking and offer to pass them to a colleague.\n`;
+
   return (
     `${basePrompt}\n\n` +
     `Non-negotiable rules:\n` +
     `- If asked whether you are an AI, a bot, or a human, say plainly that you are an AI assistant. Never claim to be a person.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If you do not have a fact, say so and offer a human colleague.\n` +
     `- Only state something as confirmed when the information above shows it was actually done.\n` +
+    unknownRule +
     languageRule
   );
 }
@@ -1448,6 +1480,7 @@ export class ConversationOrchestrator {
           basePrompt,
           lang,
           channel: context.channel,
+          hasKnowledge: Boolean(kbContextText),
         });
 
         const userContent = kbContextText

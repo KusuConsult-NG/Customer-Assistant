@@ -320,6 +320,69 @@ describe('ConversationOrchestrator', () => {
    * belongs in the knowledge base. Their keyword triggers remain, so an
    * explicit "what can you do" still works.
    */
+  /**
+   * When it does not know, it ASKS.
+   *
+   * Routing a question to the knowledge base only helps when the knowledge
+   * base has something. When it has nothing the model is holding the citizen's
+   * sentence and whatever it remembers about Plateau State — which is not this
+   * agency's record. Answering from that is a confident wrong answer about
+   * government, which costs somebody a wasted journey to the wrong office.
+   *
+   * The usual reason a question misses is that it is broader than anything
+   * filed, so one narrowing question usually rescues it.
+   */
+  describe('An unknown question is asked about, not guessed at', () => {
+    const realFetch = globalThis.fetch;
+    afterEach(() => {
+      globalThis.fetch = realFetch;
+      delete process.env.OPENAI_API_KEY;
+    });
+
+    const promptFor = async (message: string, kbRows: any[]) => {
+      process.env.OPENAI_API_KEY = 'sk-test-key';
+      mockPrisma.documentChunk.findMany.mockResolvedValue(kbRows);
+      const prompts: string[] = [];
+      globalThis.fetch = (async (_url: any, init: any) => {
+        const body = JSON.parse(String(init.body));
+        prompts.push(body.messages.find((m: any) => m.role === 'system')?.content ?? '');
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"intent":"NONE","confidence":0.9}' } }] }),
+          { status: 200 }
+        );
+      }) as any;
+      await orchestrator.processIncomingMessage(baseContext(), message);
+      // The synthesis prompt, not the classifier's.
+      return prompts.find((p) => p.includes('Non-negotiable rules')) ?? '';
+    };
+
+    it('is told to ask one narrowing question when nothing matched', async () => {
+      const prompt = await promptFor("I would like to know what JMDB's activities are", []);
+      expect(prompt).toMatch(/NOTHING in our records matched/i);
+      expect(prompt).toMatch(/ask ONE specific question/i);
+      // The failure this prevents: answering a question about a government
+      // agency out of training data.
+      expect(prompt).toMatch(/Do NOT answer it from your own knowledge/i);
+    });
+
+    it('does not nag when the knowledge base DID match', async () => {
+      const prompt = await promptFor('what does the board do about land applications', [
+        { content: 'The board processes land applications at its Jos office.', documentId: 'd1', id: 'c1' },
+      ]);
+      // With real context the model should answer, not interrogate.
+      expect(prompt).not.toMatch(/NOTHING in our records matched/i);
+      expect(prompt).not.toMatch(/ask ONE specific question/i);
+    });
+
+    it('keeps the invention guardrails either way', async () => {
+      for (const rows of [[], [{ content: 'x', documentId: 'd1', id: 'c1' }]]) {
+        const prompt = await promptFor('what are the fees', rows as any);
+        expect(prompt).toMatch(/Never invent prices/i);
+        expect(prompt).toMatch(/you are an AI assistant/i);
+      }
+    });
+  });
+
   describe('A question about the agency is not hijacked by a menu', () => {
     const realFetch = globalThis.fetch;
     afterEach(() => {
