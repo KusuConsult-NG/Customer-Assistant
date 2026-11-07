@@ -124,6 +124,63 @@ const TELEPHONY_ROW_ORDER = [{ isDefault: 'desc' as const }, { createdAt: 'asc' 
 const WHATSAPP_ROW_ORDER = [{ isActive: 'desc' as const }, { createdAt: 'asc' as const }];
 
 /**
+ * The Graph API version the CALLING settings calls use.
+ *
+ * Separate, and configurable, because a Graph version is not just a URL
+ * segment — it decides which edges exist. The rest of this file calls v21.0
+ * (October 2024), which long predates the WhatsApp Calling API, and an edge
+ * that does not exist in the requested version is refused with Meta's single
+ * most misleading error:
+ *
+ *   Unsupported post request. Object with ID '<id>' does not exist, cannot be
+ *   loaded due to missing permissions, or does not support this operation.
+ *
+ * That one sentence covers three unrelated faults — a wrong id, a token
+ * without access, and an edge the version does not carry — and the first is
+ * the one everybody reads. An operator hunting a stale phone number id will
+ * never find it, because the id was right all along.
+ *
+ * Deliberately NOT applied to the other calls in this file. A newer version
+ * can change or drop fields, and bumping sixteen working calls to fix one
+ * broken one trades a known failure for an unknown set.
+ *
+ * `META_GRAPH_VERSION` overrides it, so a version can be tried without a
+ * deploy. Validated rather than interpolated raw: Graph treats an unparseable
+ * segment as part of the PATH, so a typo turns the request into a call on an
+ * object named "vXX" and comes back as "Unknown path components" — which
+ * reads like our URL is malformed rather than the version being wrong.
+ */
+export function metaGraphVersion(): string {
+  const configured = process.env.META_GRAPH_VERSION?.trim();
+  if (!configured) return 'v24.0';
+  return /^v\d+\.\d+$/.test(configured) ? configured : 'v24.0';
+}
+
+/**
+ * Meta's "does not exist, cannot be loaded due to missing permissions, or
+ * does not support this operation" names three faults and distinguishes none
+ * of them, so the quote alone sends an operator to the wrong place.
+ *
+ * Returns the reading, or null when Meta said something that speaks for
+ * itself. Never replaces Meta's words — it is added to them.
+ */
+export function interpretMetaRefusal(error: string | undefined, graphVersion: string): string | null {
+  if (!error) return null;
+  if (!/does not exist|cannot be loaded due to missing permissions|does not support this operation/i.test(error)) {
+    return null;
+  }
+  return (
+    `That one Meta message covers three different faults, and only the first is about the id. ` +
+    `(1) The Phone Number ID is wrong — compare it against "Show this account's lines". ` +
+    `(2) The stored token cannot see that number, which Meta reports as "does not exist" rather ` +
+    `than as a permission error — the token may belong to a different WhatsApp Business Account, ` +
+    `or lack whatsapp_business_management. ` +
+    `(3) Graph ${graphVersion} does not carry the calling settings edge for this number. Set ` +
+    `META_GRAPH_VERSION to a newer version and try again.`
+  );
+}
+
+/**
  * The webhook URL Meta must be delivering to.
  *
  * Built from the same `API_BASE_URL`/`API_URL` fallback the rest of the
@@ -1234,7 +1291,9 @@ export class OrganizationsService {
   async setWhatsAppCalling(organizationId: string, enabled: boolean, configId?: string) {
     const { row, config } = await this.whatsAppLineFor(organizationId, configId);
 
-    const settingsUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`;
+    const graphVersion = metaGraphVersion();
+    const settingsUrl =
+      `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(row.phoneNumberId)}/settings`;
 
     const res = await metaPost(settingsUrl, config.accessToken, {
       calling: { status: enabled ? 'ENABLED' : 'DISABLED' },
@@ -1250,11 +1309,16 @@ export class OrganizationsService {
       displayPhoneNumber: row.displayPhoneNumber,
       requested: enabled ? 'ENABLED' : 'DISABLED',
       accepted: res.ok,
+      // The version is reported because it is one of the three things that
+      // can cause the refusal below, and the only one invisible from Meta's
+      // own wording.
+      graphVersion,
       requestDetail: res.ok
         ? 'Meta accepted the request.'
         : res.reached
           ? `Meta refused it — ${res.error}`
           : `Could not reach Meta — ${res.error}`,
+      ...(res.ok ? {} : { refusalReading: interpretMetaRefusal(res.error, graphVersion) ?? undefined }),
       // `null` means the read-back failed, NOT that calling is off.
       callingStatus: status,
       ...(after.ok ? {} : { verificationError: after.error }),
@@ -1275,24 +1339,28 @@ export class OrganizationsService {
   async getWhatsAppCalling(organizationId: string, configId?: string) {
     const { row, config } = await this.whatsAppLineFor(organizationId, configId);
 
+    const graphVersion = metaGraphVersion();
     const res = await metaGet(
-      `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`,
+      `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(row.phoneNumberId)}/settings`,
       config.accessToken
     );
     if (!res.ok) {
       return {
         phoneNumberId: row.phoneNumberId,
         displayPhoneNumber: row.displayPhoneNumber,
+        graphVersion,
         callingStatus: null,
         enabled: false,
         // Could not ask is not the same as off.
         error: res.reached ? `Meta refused the read — ${res.error}` : `Could not reach Meta — ${res.error}`,
+        ...(res.reached ? { refusalReading: interpretMetaRefusal(res.error, graphVersion) ?? undefined } : {}),
       };
     }
     const status = res.body?.calling?.status ?? null;
     return {
       phoneNumberId: row.phoneNumberId,
       displayPhoneNumber: row.displayPhoneNumber,
+      graphVersion,
       callingStatus: status,
       enabled: status === 'ENABLED',
       settings: res.body?.calling ?? null,

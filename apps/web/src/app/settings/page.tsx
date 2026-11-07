@@ -791,6 +791,22 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
           {callingError && (
             <p className="mt-2 text-xs text-red-600 dark:text-red-400">{callingError}</p>
           )}
+          {/* Meta's "does not exist, cannot be loaded due to missing
+              permissions, or does not support this operation" names three
+              unrelated faults in one sentence, and the id is only the first.
+              Quoting it alone sends an operator hunting a phone number id
+              that was right all along. */}
+          {calling && !calling.enabled && (calling.refusalReading || calling.error) && (
+            <div className="mt-2 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              {calling.error && calling.error !== callingError && <p>{calling.error}</p>}
+              {calling.refusalReading && <p>{calling.refusalReading}</p>}
+              {calling.graphVersion && (
+                <p className="text-slate-500 dark:text-slate-400">
+                  Asked over Graph {calling.graphVersion}.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Can a citizen's message actually arrive? Asked of Meta, because

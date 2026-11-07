@@ -1287,4 +1287,125 @@ describe('WhatsApp line discovery and handshake', () => {
       expect((await setCalling({ enabled: true }, agentToken)).status).toBe(403);
     });
   });
+
+  /**
+   * The Graph API VERSION is a cause of failure, and it was invisible.
+   *
+   * Meta refuses an edge the requested version does not carry with its single
+   * most misleading error:
+   *
+   *   Unsupported post request. Object with ID '<id>' does not exist, cannot
+   *   be loaded due to missing permissions, or does not support this operation.
+   *
+   * Three unrelated faults, one sentence, and the id is the one everybody
+   * reads. The calling calls were pinned to v21.0 — October 2024, long before
+   * the WhatsApp Calling API existed — so an operator chasing a stale phone
+   * number id would never find it, because the id was right all along.
+   */
+  describe('the Graph version used for calling', () => {
+    const settingsCalls: string[] = [];
+    const graphSettings = (body: any, ok = true) => {
+      settingsCalls.length = 0;
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        if (url.includes('/settings')) {
+          settingsCalls.push(url);
+          return new Response(JSON.stringify(body), { status: ok ? 200 : 400 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }) as any;
+    };
+
+    const readCalling = () =>
+      request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    it('does NOT ask over v21.0, which predates the Calling API', async () => {
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings({ calling: { status: 'ENABLED' } });
+
+      const res = await readCalling();
+      expect(res.status).toBe(200);
+      expect(settingsCalls[0]).not.toContain('/v21.0/');
+      // And it says which version it used, because that is the one cause of
+      // the refusal invisible from Meta's own wording.
+      expect(res.body.graphVersion).toMatch(/^v\d+\.\d+$/);
+      expect(settingsCalls[0]).toContain(`/${res.body.graphVersion}/`);
+    });
+
+    it('uses META_GRAPH_VERSION, so a version can be tried without a deploy', async () => {
+      setEnv('META_GRAPH_VERSION', 'v27.0');
+      await storeLine();
+      graphSettings({ calling: { status: 'ENABLED' } });
+
+      const res = await readCalling();
+      expect(res.body.graphVersion).toBe('v27.0');
+      expect(settingsCalls[0]).toContain('/v27.0/');
+    });
+
+    it('ignores a malformed version rather than putting it in the path', async () => {
+      // Graph treats an unparseable segment as part of the PATH, so a typo
+      // becomes a call on an object named "v24" and comes back as "Unknown
+      // path components" — which reads as our URL being malformed rather than
+      // the version being wrong. Verified against the live Graph API: v99.0
+      // and vZZ both answer "Unknown path components", while v21.0 through
+      // v27.0 are parsed as versions and fail only on auth.
+      setEnv('META_GRAPH_VERSION', 'v24');
+      await storeLine();
+      graphSettings({ calling: { status: 'ENABLED' } });
+
+      const res = await readCalling();
+      expect(res.body.graphVersion).toMatch(/^v\d+\.\d+$/);
+      expect(settingsCalls[0]).not.toContain('/v24/');
+    });
+
+    it('reads Meta\'s three-fault refusal apart, instead of only quoting it', async () => {
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings(
+        {
+          error: {
+            message:
+              "Unsupported post request. Object with ID '1342529695620296' does not exist, cannot be " +
+              'loaded due to missing permissions, or does not support this operation.',
+          },
+        },
+        false
+      );
+
+      const res = await readCalling();
+      // Meta's words are still there, unedited.
+      expect(res.body.error).toContain('does not exist');
+      // And so is the reading, naming all three causes.
+      expect(res.body.refusalReading).toMatch(/Phone Number ID is wrong/i);
+      expect(res.body.refusalReading).toMatch(/cannot see that number/i);
+      expect(res.body.refusalReading).toMatch(/META_GRAPH_VERSION/);
+      expect(res.body.refusalReading).toContain(res.body.graphVersion);
+    });
+
+    it('adds no reading to a refusal that already speaks for itself', async () => {
+      // An expired token says so plainly. Appending three guesses to a clear
+      // answer is how a useful error becomes noise.
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings({ error: { message: 'Error validating access token: Session has expired.' } }, false);
+
+      const res = await readCalling();
+      expect(res.body.error).toContain('Session has expired');
+      expect(res.body.refusalReading).toBeUndefined();
+    });
+
+    it('still reports calling as UNKNOWN, not off, when Meta refuses', async () => {
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings({ error: { message: "Object with ID '1' does not exist" } }, false);
+
+      const res = await readCalling();
+      // Could not ask is not the same as off — the reading must not change that.
+      expect(res.body.callingStatus).toBeNull();
+      expect(res.body.enabled).toBe(false);
+    });
+  });
 });

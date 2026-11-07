@@ -142,6 +142,16 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'META_GRAPH_VERSION',
+    required: false,
+    description:
+      "Graph API version for the WhatsApp CALLING settings calls (e.g. v24.0; default v24.0). A Graph " +
+      'version decides which edges exist, and a version older than the Calling API refuses it with ' +
+      '"Object with ID … does not exist, cannot be loaded due to missing permissions, or does not ' +
+      'support this operation" — a sentence covering three unrelated faults, of which the id is only ' +
+      'one. Set this to try a newer version without a code change. Ignored unless it looks like vNN.N.',
+  },
+  {
     key: 'TURN_URL',
     required: false,
     description:
