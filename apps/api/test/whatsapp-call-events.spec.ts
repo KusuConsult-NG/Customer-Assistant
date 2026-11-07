@@ -464,4 +464,56 @@ describe('WhatsApp call events', () => {
       }
     });
   });
+
+  describe('two agencies claiming one line', () => {
+    /**
+     * `phoneNumberId` is indexed and deliberately NOT unique — one agency holds
+     * several lines. Nothing stops two DIFFERENT agencies holding the same one,
+     * which happens when a number moves between agencies and the old row stays,
+     * or when a test number is added to a second agency to try something out.
+     *
+     * `findFirst` answered the citizen as whichever row came back: that
+     * agency's persona and knowledge base, and its CRM receiving the citizen's
+     * name and number. The ElevenLabs post-call path already refuses this
+     * ambiguity rather than guessing; the message path, carrying far more
+     * traffic, was still guessing.
+     */
+    it('refuses to guess, rather than filing a citizen with the wrong agency', async () => {
+      const contested = `pn-contested-${randomBytes(4).toString('hex')}`;
+      const rival = await prisma.organization.create({
+        data: {
+          name: 'Rival Agency',
+          slug: `rival-${randomBytes(4).toString('hex')}`,
+          industry: 'GOVERNMENT',
+        },
+      });
+      const rows = [orgId, rival.id].map((organizationId) => ({
+        organizationId,
+        phoneNumberId: contested,
+        whatsappBusinessId: 'waba-contested',
+        displayPhoneNumber: '+1 555 342 8409',
+        accessToken: `EAA${'t'.repeat(60)}`,
+        webhookVerifyToken: 'verify-contested',
+        isActive: true,
+      }));
+      await prisma.whatsAppConfig.createMany({ data: rows });
+
+      try {
+        const before = await prisma.message.count();
+        // callPayload(over, meta) takes POSITIONAL arguments: the first patches the
+        // call object, the second the metadata. Passing { meta: ... } as the first
+        // set a field nothing reads and left the default phoneNumberId in place,
+        // so the delivery resolved to a single claimant and the test passed
+        // against unfixed code.
+        await deliver(callPayload({}, { phone_number_id: contested }));
+
+        // Nothing written, and nothing sent: an ambiguous line is dropped.
+        expect(await prisma.message.count()).toBe(before);
+        expect(sent).toHaveLength(0);
+      } finally {
+        await prisma.whatsAppConfig.deleteMany({ where: { phoneNumberId: contested } });
+        await prisma.organization.delete({ where: { id: rival.id } }).catch(() => undefined);
+      }
+    });
+  });
 });
