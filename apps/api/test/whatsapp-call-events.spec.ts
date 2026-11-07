@@ -472,13 +472,19 @@ describe('WhatsApp call events', () => {
      * which happens when a number moves between agencies and the old row stays,
      * or when a test number is added to a second agency to try something out.
      *
-     * `findFirst` answered the citizen as whichever row came back: that
-     * agency's persona and knowledge base, and its CRM receiving the citizen's
-     * name and number. The ElevenLabs post-call path already refuses this
-     * ambiguity rather than guessing; the message path, carrying far more
-     * traffic, was still guessing.
+     * `findFirst` recorded the call against whichever row came back, and
+     * "whichever" could change after any UPDATE.
+     *
+     * This path briefly REFUSED instead, and that was the wrong call. A
+     * refusal loses the only evidence that a citizen phoned the State: the
+     * call still happened, Meta still rang, and nothing here would ever show
+     * it. A `CallLog` under the wrong agency is wrong and fixable; a call that
+     * left no trace is neither visible nor recoverable.
+     *
+     * So the call is recorded against a STABLY chosen claimant and the contest
+     * is logged at error level.
      */
-    it('refuses to guess, rather than filing a citizen with the wrong agency', async () => {
+    it('records the call against a stably chosen agency, rather than dropping it', async () => {
       const contested = `pn-contested-${randomBytes(4).toString('hex')}`;
       const rival = await prisma.organization.create({
         data: {
@@ -487,7 +493,7 @@ describe('WhatsApp call events', () => {
           industry: 'GOVERNMENT',
         },
       });
-      const rows = [orgId, rival.id].map((organizationId) => ({
+      const line = (organizationId: string) => ({
         organizationId,
         phoneNumberId: contested,
         whatsappBusinessId: 'waba-contested',
@@ -495,22 +501,39 @@ describe('WhatsApp call events', () => {
         accessToken: `EAA${'t'.repeat(60)}`,
         webhookVerifyToken: 'verify-contested',
         isActive: true,
-      }));
-      await prisma.whatsAppConfig.createMany({ data: rows });
+      });
+      // Two sequential creates, not one `createMany`: the resolution order is
+      // `createdAt asc`, and rows written in a single createMany can share a
+      // timestamp to the microsecond, leaving `id` to decide — which is stable
+      // but not predictable from here. Sequential writes make the owner
+      // demonstrably first, so this asserts the ORDERING and not merely that
+      // some row won.
+      await prisma.whatsAppConfig.create({ data: line(orgId) });
+      await prisma.whatsAppConfig.create({ data: line(rival.id) });
 
       try {
-        const before = await prisma.message.count();
         // callPayload(over, meta) takes POSITIONAL arguments: the first patches the
         // call object, the second the metadata. Passing { meta: ... } as the first
         // set a field nothing reads and left the default phoneNumberId in place,
         // so the delivery resolved to a single claimant and the test passed
         // against unfixed code.
-        await deliver(callPayload({}, { phone_number_id: contested }));
+        const payload = callPayload({}, { phone_number_id: contested });
+        await deliver(payload);
 
-        // Nothing written, and nothing sent: an ambiguous line is dropped.
-        expect(await prisma.message.count()).toBe(before);
-        expect(sent).toHaveLength(0);
+        // THE CALL IS RECORDED. This is the assertion that fails if the
+        // refusal comes back.
+        const row = await logFor(callIdOf(payload));
+        expect(row).toBeTruthy();
+        expect(row!.organizationId).toBe(orgId);
+
+        // And a second call on the same contested line lands in the same
+        // place, which is what the unordered `findFirst` could not promise.
+        const second = callPayload({}, { phone_number_id: contested });
+        await deliver(second);
+        const secondRow = await logFor(callIdOf(second));
+        expect(secondRow!.organizationId).toBe(row!.organizationId);
       } finally {
+        await prisma.callLog.deleteMany({ where: { organizationId: rival.id } });
         await prisma.whatsAppConfig.deleteMany({ where: { phoneNumberId: contested } });
         await prisma.organization.delete({ where: { id: rival.id } }).catch(() => undefined);
       }

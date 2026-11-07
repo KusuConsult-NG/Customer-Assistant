@@ -135,9 +135,11 @@ export const ENV_SPECS: EnvSpec[] = [
     // optional vars here, so say so.
     description:
       'Set to 1 to ANSWER inbound WhatsApp calls instead of recording them and replying by message. ' +
-      'Needs TURN_URL/TURN_USERNAME/TURN_CREDENTIAL too: without a relay the service refuses to answer, ' +
-      'because an answered call with no media route consumes the citizen and suppresses the message ' +
-      'fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
+      'Needs a relay as well, and there are two ways to have one: TURN_PROVIDER=twilio reuses the ' +
+      "deployment's own TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN (nothing new to sign up for), or " +
+      'TURN_URL/TURN_USERNAME/TURN_CREDENTIAL point at your own relay. Without either the service ' +
+      'refuses to answer, because an answered call with no media route consumes the citizen and ' +
+      'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
     key: 'TURN_URL',
