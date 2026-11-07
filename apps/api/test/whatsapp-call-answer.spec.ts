@@ -375,7 +375,10 @@ describe('Answering a WhatsApp call', () => {
       const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
       expect(out.answered).toBe(false);
       if (!out.answered) {
-        expect(out.reason).toMatch(/Meta refused the answer \(HTTP 400\)/);
+        // Names WHICH action Meta refused. There are now two requests on the
+        // `/calls` edge — pre-accept and accept — and "the answer" would not
+        // say which of them came back 400.
+        expect(out.reason).toMatch(/Meta refused the accept \(HTTP 400\)/);
         expect(out.reason).toMatch(/Calling is not enabled for this number/);
       }
     });
@@ -394,19 +397,82 @@ describe('Answering a WhatsApp call', () => {
   });
 
   describe('accepting the call', () => {
+    /**
+     * PRE-ACCEPT, then ACCEPT.
+     *
+     * Meta documents pre-accept as optional but strongly recommended: it
+     * brings the media path up before the call is committed, and skipping it
+     * CLIPS the start of the audio. The cost is not a failure anything
+     * reports — every call simply begins with the agent's greeting missing
+     * its first syllables, which sounds like a broken product and has no
+     * error anywhere to explain it.
+     */
+    it('pre-accepts BEFORE accepting, so the first audio is not clipped', async () => {
+      turnOn();
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+
+      expect(out.answered).toBe(true);
+      expect(posted).toHaveLength(2);
+      expect(posted.map((p: any) => p.body.action)).toEqual(['pre_accept', 'accept']);
+      expect(posted[0].url).toContain('/pn_test/calls');
+      expect(posted[0].body).toMatchObject({
+        messaging_product: 'whatsapp',
+        call_id: 'wacid.TEST123',
+        action: 'pre_accept',
+        session: { sdp_type: 'answer', sdp: withRelay },
+      });
+    });
+
     it('sends Meta an accept carrying the SDP answer', async () => {
       turnOn();
       const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
 
       expect(out.answered).toBe(true);
-      expect(posted).toHaveLength(1);
-      expect(posted[0].url).toContain('/pn_test/calls');
-      expect(posted[0].body).toMatchObject({
+      const accept = posted.find((p: any) => p.body.action === 'accept');
+      expect(accept).toBeDefined();
+      expect(accept!.url).toContain('/pn_test/calls');
+      expect(accept!.body).toMatchObject({
         messaging_product: 'whatsapp',
         call_id: 'wacid.TEST123',
         action: 'accept',
         session: { sdp_type: 'answer', sdp: withRelay },
       });
+    });
+
+    it('sends the IDENTICAL SDP in both, because Meta rejects a mismatch', async () => {
+      // Meta has a dedicated error for "the SDP answer provided in accept does
+      // not match the SDP answer given in the Pre-Accept endpoint for the same
+      // call-id". Re-reading `localDescription` between the two requests is
+      // how that happens by accident: a peer connection can still gain
+      // candidates, so the second read is a DIFFERENT string.
+      turnOn();
+      await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+
+      expect(posted).toHaveLength(2);
+      expect(posted[0].body.session.sdp).toBe(posted[1].body.session.sdp);
+      // Byte-identical, not merely equivalent.
+      expect(JSON.stringify(posted[0].body.session)).toBe(JSON.stringify(posted[1].body.session));
+    });
+
+    it('still accepts when Meta REFUSES the pre-accept, because it is optional', async () => {
+      // Refusing a call because an optional optimisation was rejected turns a
+      // working call into no call at all.
+      turnOn();
+      let n = 0;
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: any, init?: any) => {
+        n += 1;
+        posted.push({ url: String(input), body: JSON.parse(String(init?.body ?? '{}')) });
+        if (n === 1) return new Response('{"error":{"message":"unsupported"}}', { status: 400 });
+        return new Response('{"success":true}', { status: 200 });
+      }) as any;
+      try {
+        const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+        expect(out.answered).toBe(true);
+        expect(posted.map((p: any) => p.body.action)).toEqual(['pre_accept', 'accept']);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
     });
 
     it('hands the live connection to the media bridge', async () => {

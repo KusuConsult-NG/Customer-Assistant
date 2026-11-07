@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { metaGraphVersion, metaGraphUrl, interpretMetaRefusal } from '../common/meta-graph';
 import { prisma, withWhatsAppCredentials, sealTelephonyCredentials, sealWhatsAppCredentials, decryptSecret, assertUsableServiceHours, assertUsableAgencyName, assertUsableOutboundHours, recordAudit, resolveAuditActors } from '@ace/database';
 import { SUPPORTED_LANGUAGES, type Language } from '@ace/orchestrator';
 import * as crypto from 'crypto';
@@ -122,6 +123,13 @@ export interface Actor {
  */
 const TELEPHONY_ROW_ORDER = [{ isDefault: 'desc' as const }, { createdAt: 'asc' as const }];
 const WHATSAPP_ROW_ORDER = [{ isActive: 'desc' as const }, { createdAt: 'asc' as const }];
+
+// The Graph version and Meta's three-fault refusal both live in
+// apps/api/src/common/meta-graph.ts, because the WhatsApp call-answer path
+// needs the same version and a second copy is a second thing that can drift
+// out of agreement about which Graph version this deployment speaks.
+export { metaGraphVersion, interpretMetaRefusal } from '../common/meta-graph';
+
 
 /**
  * The webhook URL Meta must be delivering to.
@@ -1234,7 +1242,8 @@ export class OrganizationsService {
   async setWhatsAppCalling(organizationId: string, enabled: boolean, configId?: string) {
     const { row, config } = await this.whatsAppLineFor(organizationId, configId);
 
-    const settingsUrl = `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`;
+    const graphVersion = metaGraphVersion();
+    const settingsUrl = metaGraphUrl(`${encodeURIComponent(row.phoneNumberId)}/settings`);
 
     const res = await metaPost(settingsUrl, config.accessToken, {
       calling: { status: enabled ? 'ENABLED' : 'DISABLED' },
@@ -1250,11 +1259,16 @@ export class OrganizationsService {
       displayPhoneNumber: row.displayPhoneNumber,
       requested: enabled ? 'ENABLED' : 'DISABLED',
       accepted: res.ok,
+      // The version is reported because it is one of the three things that
+      // can cause the refusal below, and the only one invisible from Meta's
+      // own wording.
+      graphVersion,
       requestDetail: res.ok
         ? 'Meta accepted the request.'
         : res.reached
           ? `Meta refused it — ${res.error}`
           : `Could not reach Meta — ${res.error}`,
+      ...(res.ok ? {} : { refusalReading: interpretMetaRefusal(res.error, graphVersion) ?? undefined }),
       // `null` means the read-back failed, NOT that calling is off.
       callingStatus: status,
       ...(after.ok ? {} : { verificationError: after.error }),
@@ -1275,24 +1289,25 @@ export class OrganizationsService {
   async getWhatsAppCalling(organizationId: string, configId?: string) {
     const { row, config } = await this.whatsAppLineFor(organizationId, configId);
 
-    const res = await metaGet(
-      `https://graph.facebook.com/v21.0/${encodeURIComponent(row.phoneNumberId)}/settings`,
-      config.accessToken
-    );
+    const graphVersion = metaGraphVersion();
+    const res = await metaGet(metaGraphUrl(`${encodeURIComponent(row.phoneNumberId)}/settings`), config.accessToken);
     if (!res.ok) {
       return {
         phoneNumberId: row.phoneNumberId,
         displayPhoneNumber: row.displayPhoneNumber,
+        graphVersion,
         callingStatus: null,
         enabled: false,
         // Could not ask is not the same as off.
         error: res.reached ? `Meta refused the read — ${res.error}` : `Could not reach Meta — ${res.error}`,
+        ...(res.reached ? { refusalReading: interpretMetaRefusal(res.error, graphVersion) ?? undefined } : {}),
       };
     }
     const status = res.body?.calling?.status ?? null;
     return {
       phoneNumberId: row.phoneNumberId,
       displayPhoneNumber: row.displayPhoneNumber,
+      graphVersion,
       callingStatus: status,
       enabled: status === 'ENABLED',
       settings: res.body?.calling ?? null,

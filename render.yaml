@@ -191,6 +191,26 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      # ── Graph API version for the CALLING settings calls ───────────────────
+      #
+      # A Graph version decides which EDGES exist, not just which fields. The
+      # rest of the WhatsApp code calls v21.0 (October 2024), which predates
+      # the Calling API — and Meta refuses a missing edge with its single most
+      # misleading error:
+      #
+      #   Unsupported post request. Object with ID '<id>' does not exist,
+      #   cannot be loaded due to missing permissions, or does not support
+      #   this operation.
+      #
+      # Three unrelated faults in one sentence, and the phone number id is the
+      # only one most people read — so an operator spends hours checking an id
+      # that was right all along. The calling calls therefore use their own
+      # version, defaulting to v24.0, and this exists so a newer one can be
+      # tried without a code change. Leave it blank for the default. Anything
+      # not shaped like vNN.N is ignored rather than put in the URL, because
+      # Graph reads an unparseable segment as part of the path.
+      - key: META_GRAPH_VERSION
+        sync: false
       # Render terminates TLS at its proxy; trust 1 hop so per-IP rate limiting
       # sees real client IPs instead of the proxy's (see main.ts).
       # A WhatsApp conversation that goes quiet is closed with a sign-off

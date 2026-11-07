@@ -42,13 +42,17 @@
  * simpler, so do not read "the code exists" as "voice works".
  */
 import { Injectable } from '@nestjs/common';
+import { metaGraphUrl } from '../common/meta-graph';
 import { AceLogger } from '../config/logger';
 import { WhatsAppCallMediaService } from './whatsapp-call-media.service';
 
 const log = new AceLogger('WhatsAppCallAnswer');
 
 /** Meta's Graph version, matching the rest of the WhatsApp paths. */
-const GRAPH_VERSION = 'v21.0';
+// The Graph version comes from the shared helper, NOT a local constant. This
+// file held `v21.0`, which predates the Calling API, so `POST /{id}/calls` —
+// the request that ACCEPTS the call — was being sent to a version that does
+// not carry that edge. See apps/api/src/common/meta-graph.ts.
 
 /** What `connect` carried, reduced to the parts we act on. */
 export interface CallOffer {
@@ -444,35 +448,79 @@ export class WhatsAppCallAnswerService {
     }
   }
 
-  /** POST the answer. Separated so the tests can drive Meta's refusals. */
-  private async sendAnswerToMeta(
+  /**
+   * One `action` on the `/calls` edge. Separated so the tests can drive
+   * Meta's refusals without a network.
+   */
+  private async callAction(
     offer: CallOffer,
-    answerSdp: string,
-    accessToken: string
+    accessToken: string,
+    body: Record<string, unknown>,
+    what: string
   ): Promise<{ ok: true } | { ok: false; error: string }> {
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(offer.phoneNumberId)}/calls`;
+    const url = metaGraphUrl(`${encodeURIComponent(offer.phoneNumberId)}/calls`);
     let res: Response;
     try {
       res = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          call_id: offer.callId,
-          action: 'accept',
-          session: { sdp_type: 'answer', sdp: answerSdp },
-        }),
+        body: JSON.stringify({ messaging_product: 'whatsapp', call_id: offer.callId, ...body }),
         signal: AbortSignal.timeout(5000),
       });
     } catch (err: any) {
-      return { ok: false, error: `Could not reach Meta to accept the call (${err?.message ?? 'network error'}).` };
+      return { ok: false, error: `Could not reach Meta to ${what} the call (${err?.message ?? 'network error'}).` };
     }
 
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
+      const text = await res.text().catch(() => '');
       // Meta's own words. "Check your configuration" is what somebody reads
       // instead of the actual cause.
-      return { ok: false, error: `Meta refused the answer (HTTP ${res.status}): ${body.slice(0, 300)}` };
+      return { ok: false, error: `Meta refused the ${what} (HTTP ${res.status}): ${text.slice(0, 300)}` };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * PRE-ACCEPT, then ACCEPT, with the IDENTICAL SDP.
+   *
+   * Meta documents pre-accept as optional but strongly recommended: it lets
+   * the media path come up before the call is committed, and skipping it
+   * clips the beginning of the audio — so the first thing a citizen hears,
+   * every single call, is the agent's greeting with its first syllables
+   * missing. That is not a failure anything reports; it just sounds broken.
+   *
+   * The SDP string must be IDENTICAL in both requests. Meta has a dedicated
+   * error for "the SDP answer provided in accept does not match the SDP
+   * answer given in the Pre-Accept endpoint for the same call-id", so the
+   * one string is built once and passed to both — never re-read from the
+   * peer connection, whose `localDescription` can still gain candidates.
+   *
+   * A FAILED pre-accept does not abort the call. It is optional, so refusing
+   * to accept a call because an optimisation was rejected would turn a
+   * working call into no call. It is logged with Meta's reason and the accept
+   * goes ahead.
+   */
+  private async sendAnswerToMeta(
+    offer: CallOffer,
+    answerSdp: string,
+    accessToken: string
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const session = { sdp_type: 'answer', sdp: answerSdp };
+
+    const pre = await this.callAction(offer, accessToken, { action: 'pre_accept', session }, 'pre-accept');
+    if (!pre.ok) {
+      log.warn('whatsapp_call_pre_accept_refused', {
+        callId: offer.callId,
+        reason: pre.error,
+        note:
+          'Pre-accept is optional, so the call is still being accepted. The cost is that the first ' +
+          'moment of audio may be clipped.',
+      });
+    }
+
+    const res = await this.callAction(offer, accessToken, { action: 'accept', session }, 'accept');
+    if (!res.ok) {
+      return res;
     }
     return { ok: true };
   }
@@ -486,7 +534,7 @@ export class WhatsAppCallAnswerService {
   async terminate(offer: Pick<CallOffer, 'callId' | 'phoneNumberId'>, accessToken: string): Promise<boolean> {
     try {
       const res = await fetch(
-        `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(offer.phoneNumberId)}/calls`,
+        metaGraphUrl(`${encodeURIComponent(offer.phoneNumberId)}/calls`),
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
