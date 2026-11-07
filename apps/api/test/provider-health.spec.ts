@@ -49,7 +49,9 @@ describe('provider health', () => {
    * Answers per host. The default is the happy path; `refuse` and `down` set
    * what one named provider does, so each test changes exactly one thing.
    */
-  const providersRespond = (opts: { refuse?: string; down?: string; buckets?: any } = {}) => {
+  const providersRespond = (
+    opts: { refuse?: string; down?: string; buckets?: any; models?: any; modelsStatus?: number } = {}
+  ) => {
     globalThis.fetch = (async (input: any, init?: any) => {
       const url = String(input);
       seen.push(url);
@@ -64,6 +66,24 @@ describe('provider health', () => {
             opts.buckets ?? [
               { name: 'knowledge-documents', public: false },
               { name: 'onboarding-selfies', public: false },
+            ]
+          ),
+          { status: 200 }
+        );
+      }
+      // ElevenLabs' model list. A valid key proves nothing about whether the
+      // model this platform asks for still exists, and a removed model makes
+      // every call silent while the credential check stays green.
+      if (url.includes('/v1/models')) {
+        if (opts.modelsStatus && opts.modelsStatus !== 200) {
+          return new Response('{"detail":"nope"}', { status: opts.modelsStatus });
+        }
+        return new Response(
+          JSON.stringify(
+            opts.models ?? [
+              { model_id: 'eleven_flash_v2' },
+              { model_id: 'eleven_flash_v2_5' },
+              { model_id: 'eleven_multilingual_v2' },
             ]
           ),
           { status: 200 }
@@ -247,6 +267,73 @@ describe('provider health', () => {
     expect(storage.state).toBe('failed');
     expect(storage.detail).toMatch(/onboarding-selfies/);
     expect(storage.detail).toMatch(/storage:buckets/);
+  });
+
+  /**
+   * A VALID KEY IS NOT A WORKING VOICE.
+   *
+   * The check asked `/v1/user` and stopped there. That proves the credential
+   * and nothing about the model id — and this platform hardcoded
+   * `eleven_turbo_v2`, which is deprecated, from a provider that has already
+   * removed models outright (Multilingual v1, Scribe v1, July 2026).
+   *
+   * On the day a model goes, a rejected TTS request returns no audio for a
+   * caller who is already connected. Every call on BOTH channels is silent at
+   * once, from a third party's release notes, with every screen green.
+   */
+  describe('the model this deployment asks for', () => {
+    it('is FAILED when ElevenLabs no longer offers it', async () => {
+      providersRespond({ models: [{ model_id: 'eleven_v4' }, { model_id: 'eleven_v4_turbo' }] });
+      const { body } = await get();
+      const el = find(body, 'elevenlabs');
+
+      expect(el.state).toBe('failed');
+      // Names the model, the consequence, and the way out.
+      expect(el.detail).toMatch(/eleven_flash_v2/);
+      expect(el.detail).toMatch(/every call would be silent/i);
+      expect(el.detail).toMatch(/ELEVENLABS_MODEL_EN/);
+      // And what it DOES offer, so the operator can pick one.
+      expect(el.detail).toMatch(/eleven_v4/);
+    });
+
+    it('is OK, and says so, when the models are there', async () => {
+      providersRespond();
+      const { body } = await get();
+      const el = find(body, 'elevenlabs');
+      expect(el.state).toBe('ok');
+      expect(el.detail).toMatch(/eleven_flash_v2/);
+    });
+
+    it('does not read "could not ask" as "the model is gone"', async () => {
+      // Treating unknown as broken would turn one provider's slow endpoint
+      // into a red voice stack, which is the mistake every other check in
+      // this file exists to avoid.
+      providersRespond({ modelsStatus: 500 });
+      const { body } = await get();
+      const el = find(body, 'elevenlabs');
+      expect(el.state).toBe('ok');
+      expect(el.detail).toMatch(/could not be read/i);
+      expect(el.detail).toMatch(/was not checked/i);
+    });
+
+    it('does not read an UNPARSEABLE list as every model missing', async () => {
+      // An empty accepted set is a parse failure, not a workspace with no
+      // models — and a check that reports everything missing because it
+      // misread a response is a check that gets switched off.
+      providersRespond({ models: { unexpected: 'shape' } });
+      const { body } = await get();
+      const el = find(body, 'elevenlabs');
+      expect(el.state).toBe('ok');
+      expect(el.detail).toMatch(/could not be understood/i);
+    });
+
+    it('never reports a credential value while doing any of this', async () => {
+      providersRespond({ models: [{ model_id: 'eleven_v4' }] });
+      const { body } = await get();
+      const raw = JSON.stringify(body);
+      expect(raw).not.toMatch(/el_tenant_key/);
+      expect(raw).not.toMatch(/v1\./);
+    });
   });
 
   it("checks the tenant's own ElevenLabs key when it has one", async () => {

@@ -142,6 +142,24 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'ELEVENLABS_MODEL_EN',
+    required: false,
+    description:
+      'ElevenLabs model id for ENGLISH speech (default eleven_flash_v2). Exists because a model id ' +
+      'ages out: the hardcoded eleven_turbo_v2 is deprecated, and ElevenLabs has removed models ' +
+      'outright before. On a removal every call on BOTH channels goes silent at once, because a ' +
+      'rejected TTS request returns no audio to a caller who is already connected. Set this to a ' +
+      'model the workspace offers; GET /api/diagnostics/providers lists them. Ignored unless it ' +
+      'looks like a model id.',
+  },
+  {
+    key: 'ELEVENLABS_MODEL_MULTILINGUAL',
+    required: false,
+    description:
+      'ElevenLabs model id for every NON-English language (default eleven_flash_v2_5). Same reason ' +
+      'as ELEVENLABS_MODEL_EN.',
+  },
+  {
     key: 'META_GRAPH_VERSION',
     required: false,
     description:

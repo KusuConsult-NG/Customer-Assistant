@@ -191,6 +191,25 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      # ── ElevenLabs model ids ───────────────────────────────────────────────
+      #
+      # Leave blank for the defaults (eleven_flash_v2 / eleven_flash_v2_5).
+      #
+      # These exist because a model id ages out. The platform had
+      # `eleven_turbo_v2` hardcoded and described as "confirmed"; it is
+      # deprecated, and ElevenLabs has removed models outright before
+      # (Multilingual v1 and Scribe v1, July 2026). On a removal EVERY call on
+      # both channels goes silent at the same moment — a rejected TTS request
+      # returns no audio to a caller who is already connected — from a third
+      # party's release notes, with a valid API key and a green credential
+      # check. So the fix must not need a code change and a build.
+      #
+      # GET /api/diagnostics/providers verifies the configured models against
+      # ElevenLabs' own list and names what it offers.
+      - key: ELEVENLABS_MODEL_EN
+        sync: false
+      - key: ELEVENLABS_MODEL_MULTILINGUAL
+        sync: false
       # ── Graph API version for the CALLING settings calls ───────────────────
       #
       # A Graph version decides which EDGES exist, not just which fields. The

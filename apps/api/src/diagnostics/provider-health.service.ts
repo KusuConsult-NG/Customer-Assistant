@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { configuredTtsModels } from '../telephony/tts-models';
 import { prisma, withTelephonyCredentials, withWhatsAppCredentials, decryptSecret } from '@ace/database';
 import { resolveEmailProvider, emailProviderProblem, verifyEmailProvider } from '../common/mailer';
 
@@ -63,6 +64,39 @@ async function probe(
     if (res.ok) return { ok: true, status: res.status };
     const body = await res.text().catch(() => '');
     return { ok: false, status: res.status, body: body.slice(0, 160) };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? String(err) };
+  }
+}
+
+/**
+ * Like `probe`, but it KEEPS the body on success.
+ *
+ * `probe` deliberately discards it — every other check only needs a provider's
+ * words when it refuses — and truncates error bodies to 160 characters. The
+ * model check needs the whole successful response, and silently got
+ * `undefined` instead: it reported "the model list could not be understood"
+ * on every run, so a removed model would still never have been detected. Its
+ * own test is what caught that.
+ *
+ * Separate rather than a flag on `probe`, so a change here cannot alter what
+ * the other six checks report.
+ */
+async function probeJson(
+  url: string,
+  init: RequestInit & { headers?: Record<string, string> }
+): Promise<{ ok: boolean; status?: number; json?: any; error?: string }> {
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) return { ok: false, status: res.status };
+    const text = await res.text().catch(() => '');
+    try {
+      return { ok: true, status: res.status, json: JSON.parse(text) };
+    } catch {
+      // Reached and answered, but not with JSON. Distinct from unreachable:
+      // one is a provider problem, the other a network one.
+      return { ok: true, status: res.status, json: undefined };
+    }
   } catch (err: any) {
     return { ok: false, error: err?.message ?? String(err) };
   }
@@ -161,17 +195,79 @@ export class ProviderHealthService {
       return { ...base, state: 'not_configured', detail: 'No ElevenLabs key, tenant or shared.' };
     }
 
-    const r = await probe(`${process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io'}/v1/user`, {
-      headers: { 'xi-api-key': key },
-    });
-    return {
-      ...base,
-      state: r.ok ? 'ok' : 'failed',
-      detail: r.ok
-        ? `ElevenLabs accepted ${whose}.`
-        : r.error
+    const root = process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io';
+    const r = await probe(`${root}/v1/user`, { headers: { 'xi-api-key': key } });
+    if (!r.ok) {
+      return {
+        ...base,
+        state: 'failed',
+        detail: r.error
           ? `Could not reach ElevenLabs: ${r.error}`
           : `ElevenLabs refused ${whose} (HTTP ${r.status}). ${r.body ?? ''}`,
+      };
+    }
+
+    // ── Does the MODEL we would ask for still exist? ──────────────────────
+    //
+    // A valid key proves nothing about the model id. This platform had
+    // `eleven_turbo_v2` hardcoded, which is deprecated — and ElevenLabs has
+    // already removed other models outright (Multilingual v1, Scribe v1, July
+    // 2026). The day a model goes, a valid key still passes the check above
+    // and every caller on both channels hears silence, because a rejected TTS
+    // request produces no audio for a caller who is already connected.
+    //
+    // "Could not ask" is NOT "the model is gone": an unreadable listing
+    // reports ok with the gap named, because treating unknown as broken here
+    // would turn one provider's slow endpoint into a red voice stack.
+    const models = configuredTtsModels();
+    const m = await probeJson(`${root}/v1/models`, { headers: { 'xi-api-key': key } });
+    if (!m.ok) {
+      return {
+        ...base,
+        state: 'ok',
+        detail:
+          `ElevenLabs accepted ${whose}. The model list could not be read, so whether ` +
+          `${models.join(' and ')} still exist was not checked.`,
+      };
+    }
+
+    // ElevenLabs returns a bare array; accept `{models: [...]}` too rather
+    // than depending on which one it is this month.
+    const rows = Array.isArray(m.json) ? m.json : Array.isArray(m.json?.models) ? m.json.models : null;
+    const available: string[] | null = rows
+      ? rows.map((row: any) => String(row?.model_id ?? '')).filter(Boolean)
+      : null;
+
+    // An EMPTY list is a parse failure, not a workspace with no models. A
+    // check that reports every model missing because it misread the response
+    // is a check that gets switched off.
+    if (!available || available.length === 0) {
+      return {
+        ...base,
+        state: 'ok',
+        detail:
+          `ElevenLabs accepted ${whose}. Its model list could not be understood, so whether ` +
+          `${models.join(' and ')} still exist was not checked.`,
+      };
+    }
+
+    const missing = models.filter((id) => !available!.includes(id));
+    if (missing.length > 0) {
+      return {
+        ...base,
+        state: 'failed',
+        detail:
+          `ElevenLabs accepted ${whose}, but ${missing.join(' and ')} ` +
+          `${missing.length === 1 ? 'is' : 'are'} not in its model list — so every call would be ` +
+          `silent. Set ELEVENLABS_MODEL_EN / ELEVENLABS_MODEL_MULTILINGUAL to a model it offers. ` +
+          `It currently offers: ${available.slice(0, 12).join(', ')}.`,
+      };
+    }
+
+    return {
+      ...base,
+      state: 'ok',
+      detail: `ElevenLabs accepted ${whose}, and offers ${models.join(' and ')}.`,
     };
   }
 

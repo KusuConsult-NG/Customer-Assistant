@@ -1,21 +1,22 @@
 import { Injectable } from '@nestjs/common';
+import { ttsModelFor } from './tts-models';
 import { AceLogger } from '../config/logger';
 import { prisma } from '@ace/database';
 import { chatCompletionsUrl, llmConfig } from '@ace/orchestrator';
 import WebSocket from 'ws';
 
-// ─── ElevenLabs model constants ──────────────────────────────────────────────
-// eleven_turbo_v2   — confirmed, lowest latency (~400ms TTFB), English-optimised
-// eleven_turbo_v2_5 — released late 2024; supports more languages but ~50ms slower
-// eleven_multilingual_v2 — highest quality, highest latency (~700ms TTFB)
+// ─── ElevenLabs model selection ──────────────────────────────────────────────
 //
-// We use turbo_v2 as the primary. If the org's language config requires
-// multilingual support, we upgrade to turbo_v2_5 automatically.
-const MODEL_TURBO_V2          = 'eleven_turbo_v2';
-const MODEL_TURBO_V2_5        = 'eleven_turbo_v2_5';
-const MODEL_MULTILINGUAL_V2   = 'eleven_multilingual_v2';
-const ENGLISH_ONLY_MODEL      = MODEL_TURBO_V2;
-const MULTILINGUAL_MODEL      = MODEL_TURBO_V2_5;
+// The ids used to live here as `eleven_turbo_v2` / `eleven_turbo_v2_5`, with a
+// comment calling the first "confirmed". Both are now DEPRECATED, and
+// ElevenLabs has already REMOVED other models (Multilingual v1, Scribe v1, in
+// July 2026). On a removal every call on both channels goes silent at once,
+// because a rejected TTS request produces no audio for a caller who is already
+// connected.
+//
+// So they come from `tts-models.ts`: supported Flash models by default (also
+// lower latency), overridable by env, and verified against ElevenLabs'
+// `/v1/models` by the provider health check.
 
 @Injectable()
 export class VoiceAiService {
@@ -168,7 +169,7 @@ export class VoiceAiService {
     }
     if (signal?.aborted) return null;
 
-    const modelId = language === 'en' ? ENGLISH_ONLY_MODEL : MULTILINGUAL_MODEL;
+    const modelId = ttsModelFor(language);
 
     try {
       const response = await fetch(
@@ -229,7 +230,7 @@ export class VoiceAiService {
     if (twilioWs.readyState !== WebSocket.OPEN) return false;
     if (signal?.aborted) return false;
 
-    const modelId = language === 'en' ? ENGLISH_ONLY_MODEL : MULTILINGUAL_MODEL;
+    const modelId = ttsModelFor(language);
 
     try {
       const response = await fetch(
@@ -340,7 +341,7 @@ export class VoiceAiService {
     const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
     if (!apiKey) return null;
 
-    const modelId = language === 'en' ? ENGLISH_ONLY_MODEL : MULTILINGUAL_MODEL;
+    const modelId = ttsModelFor(language);
 
     try {
       const res = await fetch(
