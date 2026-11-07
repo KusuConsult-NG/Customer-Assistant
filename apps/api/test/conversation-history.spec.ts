@@ -203,15 +203,26 @@ describe('Conversation history returns the last N messages', () => {
   describe('two agencies claiming one phoneNumberId', () => {
     /**
      * `phoneNumberId` is indexed and deliberately NOT unique, because one
-     * agency holds several lines. Nothing stopped two DIFFERENT agencies
-     * holding the same one, and `findFirst` then answered the citizen as
-     * whichever row the database returned — that agency's persona, its
-     * knowledge base, and its CRM receiving the citizen's name and number.
+     * agency holds several lines. Nothing stops two DIFFERENT agencies holding
+     * the same one, and `findFirst` then answered the citizen as whichever row
+     * the database returned — that agency's persona, its knowledge base, and
+     * its CRM receiving the citizen's name and number. Worse, "whichever row"
+     * could change after any UPDATE, so a citizen's own thread changed hands
+     * part-way through a conversation.
      *
-     * The ElevenLabs post-call path already refused this ambiguity rather than
-     * guessing. The message path, carrying far more traffic, did not.
+     * This path briefly REFUSED instead, and that was the wrong call. A
+     * refusal on a contested line means a citizen who messages the State's
+     * number receives nothing at all: no reply, no ticket, no record that they
+     * tried, and no way to tell a silent platform from a wrong number. It took
+     * a live line down. Being answered by the wrong agency is wrong, visible
+     * and recoverable; silence is none of those.
+     *
+     * So the contest is logged at error level with both organization ids, and
+     * the citizen is answered by a STABLY chosen one. These tests pin the two
+     * things that matter: somebody answers, and it is the same somebody every
+     * time.
      */
-    it('answers nobody rather than answering as the wrong agency', async () => {
+    it('answers the citizen, from a stably chosen agency, rather than going silent', async () => {
       // Its own line id, so the test is self-contained: both agencies are
       // given THIS number and nothing else in the suite shares it.
       const phoneNumberId = `pn-contested-${randomBytes(4).toString('hex')}`;
@@ -253,8 +264,8 @@ describe('Conversation history returns the last N messages', () => {
         },
       };
 
-      try {
-        await service.processIncomingWebhook(
+      const deliver = () =>
+        service.processIncomingWebhook(
           {
             entry: [
               {
@@ -280,9 +291,24 @@ describe('Conversation history returns the last N messages', () => {
           'ambiguous-line-test'
         );
 
-        // The orchestrator never ran, so no agency answered as itself and no
-        // citizen record was filed against a coin flip.
-        expect(captured).toHaveLength(0);
+      try {
+        await deliver();
+
+        // THE CITIZEN IS ANSWERED. This is the assertion that fails if the
+        // refusal comes back: the orchestrator ran, so somebody replied.
+        expect(captured).toHaveLength(1);
+
+        // And by the agency whose row was created first — the owner here, not
+        // the rival added afterwards.
+        expect(captured[0].organizationId).toBe(orgId);
+
+        // Stability is the real property. `findFirst` with no ordering could
+        // hand the same number to a different agency between two messages, so
+        // one citizen's conversation split across two CRMs. A second delivery
+        // must reach the same place.
+        await deliver();
+        expect(captured).toHaveLength(2);
+        expect(captured[1].organizationId).toBe(captured[0].organizationId);
       } finally {
         await prisma.whatsAppConfig.deleteMany({ where: { phoneNumberId } });
         await prisma.organization.delete({ where: { id: rival.id } }).catch(() => undefined);

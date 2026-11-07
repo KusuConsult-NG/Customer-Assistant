@@ -742,6 +742,93 @@ describe('WhatsApp line discovery and handshake', () => {
       expect(raw).not.toContain(META);
       expect(raw).not.toContain('v1.');
     });
+
+    /**
+     * The wider search was UNREACHABLE from the case it exists for.
+     *
+     * It is there because a number may not be on the account whose id is
+     * stored on the line. The likeliest reason for that is the stored id
+     * being wrong — pointing at an account the credential cannot see, which
+     * is what Meta answers with "Object with ID '…' does not exist".
+     *
+     * And the primary listing threw on exactly that, before discovery ran. So
+     * the operator asked "which accounts can this credential see?" and was
+     * told instead that one account had refused — the dead end the wider
+     * search was written to replace.
+     *
+     * Discovery does not use the stored business id at all; it walks the
+     * credential's own portfolios. There was never a reason it could not
+     * answer here.
+     */
+    it('still searches every account when the id saved on the line refuses', async () => {
+      await storeLine();
+      graph({
+        // The saved WABA refuses — the real symptom of a wrong stored id.
+        [`/${WABA}/phone_numbers`]: 'refused',
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        '/me/businesses': { data: [{ id: 'b1', name: 'CustomerCare' }] },
+        '/b1/owned_whatsapp_business_accounts': { data: [{ id: '999', name: 'Real' }] },
+        '/999/phone_numbers': {
+          data: [{ id: '777', display_phone_number: '+234 708 107 8679', verified_name: 'Plateau' }],
+        },
+      });
+
+      const res = await numbersWith('discover=1');
+
+      // Not a 400. The question was answerable.
+      expect(res.status).toBe(200);
+
+      // And the answer is there: the number is on another account.
+      const found = res.body.discovered.accounts.find((a: any) => a.whatsappBusinessId === '999');
+      expect(found.numbers[0].phoneNumberId).toBe('777');
+      expect(found.numbers[0].displayPhoneNumber).toBe('+234 708 107 8679');
+    });
+
+    it('says the saved account refused, so an empty list is not read as an empty account', async () => {
+      // `numbers: []` here means NOTHING WAS READ. Without `primaryError` the
+      // screen would render "this business account holds no phone numbers",
+      // which is a claim about the account that nothing established.
+      await storeLine();
+      graph({
+        [`/${WABA}/phone_numbers`]: 'refused',
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        '/me/businesses': { data: [] },
+      });
+
+      const res = await numbersWith('discover=1');
+      expect(res.status).toBe(200);
+      expect(res.body.numbers).toEqual([]);
+      expect(res.body.primaryError).toMatch(/business_management/);
+    });
+
+    it('still refuses outright when there is nothing else to try, and names the retry', async () => {
+      // With no wider search asked for, a refused listing is the whole answer
+      // and must stay an error — 200 with an empty list would report an
+      // account that holds nothing.
+      await storeLine();
+      graph({ [`/${WABA}/phone_numbers`]: 'refused' });
+
+      const res = await numbersWith('');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/business_management/);
+      // The way out, in the message, rather than left to be discovered.
+      expect(res.body.message).toMatch(/discover=1/);
+      expect(res.body.primaryError).toBeUndefined();
+    });
+
+    it('does not claim a primary error when the saved account answered', async () => {
+      await storeLine();
+      graph({
+        [`/${WABA}/phone_numbers`]: { data: [{ id: '1319842031202307', display_phone_number: '+1 555-671-9884' }] },
+        '/me?fields=id,name': { id: '122', name: 'Employee' },
+        '/me/businesses': { data: [] },
+      });
+
+      const res = await numbersWith('discover=1');
+      expect(res.status).toBe(200);
+      expect(res.body.primaryError).toBeUndefined();
+      expect(res.body.numbers).toHaveLength(1);
+    });
   });
   /**
    * Asking Meta to deliver here, which is the step that was invisible.

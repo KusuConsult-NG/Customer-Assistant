@@ -715,11 +715,25 @@ export class OrganizationsService {
     }
 
     const body: any = await res.json().catch(() => null);
-    if (!res.ok) {
-      // Meta's own words. An expired token and a business ID belonging to
-      // another account read identically as "it did not work" otherwise.
-      const message = body?.error?.message ?? `HTTP ${res.status}`;
-      throw new BadRequestException(`Meta refused to list this account's numbers: ${message}`);
+    // Meta's own words. An expired token and a business ID belonging to
+    // another account read identically as "it did not work" otherwise.
+    const primaryError = res.ok ? null : (body?.error?.message ?? `HTTP ${res.status}`);
+
+    // A failed primary listing is only fatal when there is nothing else to
+    // try. The WIDER SEARCH below does not use the stored
+    // `whatsappBusinessId` — it walks the credential's own businesses — so it
+    // can still answer when that stored id is the thing that is wrong.
+    //
+    // And that is the LIKELIEST reason to need it. The stored business id
+    // pointing at an account the token cannot see is exactly the case the
+    // wider search was written for, and throwing here made it unreachable
+    // from the one situation it was for: the operator asked which accounts
+    // the credential can see and was told, instead, that one account refused.
+    if (primaryError && !opts.discover && !opts.businessId) {
+      throw new BadRequestException(
+        `Meta refused to list this account's numbers: ${primaryError}. ` +
+        'Retry with discover=1 to search every account this credential can see.'
+      );
     }
 
     const numbers: any[] = Array.isArray(body?.data) ? body.data : [];
@@ -744,6 +758,11 @@ export class OrganizationsService {
     return {
       whatsappBusinessId: businessId,
       connectedPhoneNumberId: row.phoneNumberId,
+      // Present only when the stored account refused. `numbers` is then an
+      // empty list because nothing was read from it — NOT because it holds
+      // none — and this is what stops the screen rendering that as an empty
+      // account.
+      ...(primaryError ? { primaryError } : {}),
       ...(discovered ? { discovered } : {}),
       numbers: numbers.map((n) => ({
         phoneNumberId: n?.id ?? null,

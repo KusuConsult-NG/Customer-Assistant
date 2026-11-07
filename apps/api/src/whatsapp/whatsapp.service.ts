@@ -251,27 +251,42 @@ export class WhatsappService {
       // withWhatsAppCredentials on every read: the access token is encrypted
       // at rest, and Meta rejects a `v1.…` ciphertext as an invalid token —
       // which reads as an expired Meta credential, not a decryption bug.
-      // findMany, not findFirst, and the reason is already written down one
-      // module over.
+      // findMany, not findFirst, because `phoneNumberId` is indexed and
+      // deliberately NOT unique — one agency holds several lines, and nothing
+      // stops two DIFFERENT agencies holding the same one. A number moved
+      // between agencies leaves the old row behind; a test number gets added
+      // to a second agency to try something out.
       //
-      // `phoneNumberId` is indexed and deliberately NOT unique, because one
-      // agency holds several lines. Nothing stops two DIFFERENT agencies
-      // holding the same one — which is what happens when a number moves
-      // between agencies and the old row is left behind, or when a test number
-      // is added to a second agency to try something out.
+      // When that happens this path ANSWERS, from the first row in a fixed
+      // order, and logs the contest at error level. It used to refuse and
+      // return — and that refusal is a worse failure than the one it was
+      // guarding against, on a live citizen line. Refusing means a citizen
+      // who messages the State's number gets NOTHING: no reply, no ticket, no
+      // record that they tried, and no way for them to tell a silent platform
+      // from a wrong number. Answering as the wrong agency is visible, and
+      // recoverable — the citizen is told something, a human can see the
+      // thread and move it. Silence is neither.
       //
-      // `findFirst` then answers the citizen as whichever agency the database
-      // happened to return: its persona, its knowledge base, and its CRM
-      // receiving the citizen's name and phone number. On a platform where
-      // every ministry is a tenant, that is one agency's citizen filed into
-      // another agency's records.
+      // The ordering is `createdAt asc, id asc`: the agency that connected
+      // the line FIRST answers, and `id` is the tiebreaker because two rows
+      // written in one `createMany` can share a timestamp to the microsecond.
+      // Which row wins matters far less than that the SAME row wins every
+      // time. Unordered, Postgres may return a different row after any UPDATE
+      // — so the same number answered as a different agency between two
+      // messages, and the citizen's own thread changed hands mid-conversation.
+      // The original `findFirst` had exactly that property. (`WhatsAppConfig`
+      // has no `isDefault`; that column is on `TelephonyConfig` only.)
       //
-      // The ElevenLabs post-call path already refuses this exact ambiguity
-      // rather than guessing — "a coin flip that files a stranger's transcript
-      // — and the caller's phone number — into someone else's CRM". The
-      // message path, which carries far more traffic, was still guessing.
+      // The log line is the fix, not the refusal: it names both organizations
+      // and how to resolve the contest, so whoever reads it can delete the
+      // row that should not exist. This is a judgement about WHICH failure to
+      // take, and it goes the other way from the ElevenLabs post-call path,
+      // which does refuse. That path is reconciling a FINISHED call after the
+      // fact, where nobody is waiting and dropping it costs a record. This
+      // one has a citizen on the other end mid-conversation.
       const claimants = await prisma.whatsAppConfig.findMany({
         where: { phoneNumberId, isActive: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         take: 2,
       });
       if (claimants.length > 1) {
@@ -282,13 +297,13 @@ export class WhatsappService {
             correlationId,
             phoneNumberId,
             organizationIds: claimants.map((c) => c.organizationId),
+            answeringAs: claimants[0]?.organizationId,
             hint:
-              'Two agencies hold this line. Remove it from the one that should not have it at ' +
-              'Settings → WhatsApp. Until then messages to it are refused rather than filed ' +
-              'against whichever row the database returned first.',
+              'Two agencies hold this line, so the citizen is being answered by the first of ' +
+              'them and filed into its CRM. Remove the line from the agency that should not ' +
+              'have it at Settings → WhatsApp.',
           }
         );
-        return;
       }
       const config = withWhatsAppCredentials(claimants[0] ?? null);
 
@@ -619,10 +634,19 @@ export class WhatsappService {
     // that is deliberately not unique does the very thing it warns about as
     // soon as TWO agencies hold the same phoneNumberId — which happens when a
     // number moves between agencies and the old row stays, or when a test
-    // number is added to a second agency. Then "the first row" decides whose
-    // CRM receives the caller, and it is a coin flip.
+    // number is added to a second agency.
+    //
+    // So this takes two rows in a FIXED order and records the call against the
+    // first, logging the contest at error level. It does not refuse. A refusal
+    // here loses the only record that a citizen phoned the State at all: the
+    // call still happened, Meta still rang, and nothing on this platform would
+    // ever show it. A `CallLog` filed under the wrong agency is wrong and
+    // fixable; a call that left no trace is neither visible nor recoverable.
+    // The ordering matches the inbound message path, so a citizen who calls
+    // and then messages reaches the same agency.
     const claimants = await prisma.whatsAppConfig.findMany({
       where: { phoneNumberId, isActive: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: 2,
     });
     if (claimants.length > 1) {
@@ -634,13 +658,13 @@ export class WhatsappService {
           phoneNumberId,
           event,
           organizationIds: claimants.map((c) => c.organizationId),
+          recordingAgainst: claimants[0]?.organizationId,
           hint:
-            'Two agencies hold this line. Remove it from the one that should not have it at ' +
-            'Settings → WhatsApp. Until then calls to it are refused rather than recorded ' +
-            'against whichever row came back first.',
+            'Two agencies hold this line, so the call is being recorded against the first of ' +
+            'them. Remove the line from the agency that should not have it at ' +
+            'Settings → WhatsApp.',
         }
       );
-      return;
     }
     const config = withWhatsAppCredentials(claimants[0] ?? null);
     if (!config) {

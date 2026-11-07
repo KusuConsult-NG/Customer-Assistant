@@ -500,6 +500,22 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   const [linesError, setLinesError] = useState<string | null>(null);
   const [loadingLines, setLoadingLines] = useState(false);
 
+  // The WIDER SEARCH: every WhatsApp account this credential can see, not
+  // just the one whose id is stored on the line.
+  //
+  // A WhatsApp Business Account is not the business. One Meta portfolio can
+  // own several — a sandbox one from a quickstart and the real one added
+  // later — and a number on the second is invisible from the first. So "this
+  // account holds no numbers" and "the id you saved points somewhere else"
+  // look identical, and the first reads as a verification that did not take.
+  //
+  // `discoveredError` is kept apart from `linesError` so a failed wider
+  // search does not erase a primary listing that worked.
+  const [discovered, setDiscovered] = useState<any | null>(null);
+  const [discoveredError, setDiscoveredError] = useState<string | null>(null);
+  const [searchingAll, setSearchingAll] = useState(false);
+  const [primaryError, setPrimaryError] = useState<string | null>(null);
+
   // Whether a citizen's message can arrive at all. `null` is "not asked",
   // never "fine".
   const [readiness, setReadiness] = useState<any | null>(null);
@@ -655,26 +671,47 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
    * So ask Meta, with the credential already stored server-side. The operator
    * never handles the token to find out which line is theirs.
    */
-  const loadLines = async () => {
-    setLoadingLines(true);
-    setLinesError(null);
+  const loadLines = async (opts: { discover?: boolean } = {}) => {
+    const wide = !!opts.discover;
+    if (wide) {
+      setSearchingAll(true);
+      setDiscoveredError(null);
+    } else {
+      setLoadingLines(true);
+      setLinesError(null);
+    }
     try {
-      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/numbers`, {
-        headers: authHeaders,
-      });
+      const res = await apiFetch(
+        `${API_URL}/api/organizations/whatsapp-config/numbers${wide ? '?discover=1' : ''}`,
+        { headers: authHeaders }
+      );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         // A failed load must not render as an account with no numbers on it.
-        setLines(null);
-        setLinesError(body?.message || `Could not ask Meta (HTTP ${res.status}).`);
+        if (wide) {
+          setDiscoveredError(body?.message || `Could not ask Meta (HTTP ${res.status}).`);
+        } else {
+          setLines(null);
+          setLinesError(body?.message || `Could not ask Meta (HTTP ${res.status}).`);
+        }
         return;
       }
+      // The stored account can refuse while the wider search still answers,
+      // so `numbers` may be empty for want of a reading rather than for want
+      // of numbers. `primaryError` is what tells the two apart.
+      setPrimaryError(body?.primaryError ?? null);
       setLines(Array.isArray(body.numbers) ? body.numbers : []);
+      if (wide) setDiscovered(body?.discovered ?? null);
     } catch (err: any) {
-      setLines(null);
-      setLinesError(err?.message || 'Could not reach the API.');
+      if (wide) {
+        setDiscoveredError(err?.message || 'Could not reach the API.');
+      } else {
+        setLines(null);
+        setLinesError(err?.message || 'Could not reach the API.');
+      }
     } finally {
-      setLoadingLines(false);
+      if (wide) setSearchingAll(false);
+      else setLoadingLines(false);
     }
   };
 
@@ -855,12 +892,29 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
-              onClick={loadLines}
+              onClick={() => loadLines()}
               disabled={loadingLines || !wa.phoneNumberId}
               title={wa.phoneNumberId ? '' : 'Save a line first — Meta is asked with the stored credential.'}
               className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
             >
               {loadingLines ? 'Asking Meta…' : "Show this account's lines"}
+            </button>
+            {/* The wider search. Separate button, because it is several
+                rate-limited Graph calls and the common case does not need
+                them — and because it answers a different question: not "what
+                is on this account" but "where is my number at all". */}
+            <button
+              type="button"
+              onClick={() => loadLines({ discover: true })}
+              disabled={searchingAll || !wa.phoneNumberId}
+              title={
+                wa.phoneNumberId
+                  ? "Searches every WhatsApp account this credential can see, not just the one saved on this line."
+                  : 'Save a line first — Meta is asked with the stored credential.'
+              }
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold disabled:opacity-50"
+            >
+              {searchingAll ? 'Searching every account…' : 'Find my number anywhere'}
             </button>
             {!wa.phoneNumberId && (
               <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -873,7 +927,19 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
             <p className="mt-2 text-xs text-red-600 dark:text-red-400">{linesError}</p>
           )}
 
-          {lines && lines.length === 0 && (
+          {/* The saved account refused, so `numbers` is empty for want of a
+              reading — not for want of numbers. Rendering the empty state
+              here would say this account holds none, which is a claim nothing
+              has established. */}
+          {primaryError && (
+            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              The WhatsApp account saved on this line ({wa.whatsappBusinessId || 'no id stored'}) refused:{' '}
+              {primaryError}. Nothing was read from it, so it may still hold numbers. The search below
+              does not use that id.
+            </p>
+          )}
+
+          {lines && lines.length === 0 && !primaryError && (
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               Meta answered, and this business account holds no phone numbers.
             </p>
@@ -971,6 +1037,119 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {discoveredError && (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">{discoveredError}</p>
+          )}
+
+          {discovered && (
+            <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-500/20 p-3 space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Every account this credential can see
+                </p>
+                {discovered.identity && (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Credential belongs to {discovered.identity.name || '(unnamed)'}{' '}
+                    <span className="font-mono">{discovered.identity.id}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* `numbers: null` means NOT READ. An account whose numbers
+                  could not be listed must not render as an account with none,
+                  which is the whole reason the API distinguishes them. */}
+              {Array.isArray(discovered.accounts) && discovered.accounts.length > 0 ? (
+                discovered.accounts.map((acct: any) => (
+                  <div key={`${acct.businessId}-${acct.whatsappBusinessId}`} className="rounded-lg bg-slate-50 dark:bg-slate-500/10 p-3">
+                    <p className="text-sm font-semibold">
+                      {acct.whatsappBusinessName || '(unnamed account)'}{' '}
+                      <span className="font-normal text-xs text-slate-500 dark:text-slate-400">
+                        {acct.relation} · {acct.businessName || acct.businessId}
+                      </span>
+                    </p>
+                    <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                      WABA {acct.whatsappBusinessId}
+                    </p>
+                    {acct.numbers === null ? (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        Could not read this account&apos;s numbers — {acct.numbersError}. It may still
+                        hold some.
+                      </p>
+                    ) : acct.numbers.length === 0 ? (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">No numbers on it.</p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {acct.numbers.map((n: any) => (
+                          <div key={n.phoneNumberId} className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm truncate">
+                                {n.displayPhoneNumber || '(no number)'}{' '}
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {n.verifiedName || ''}
+                                </span>
+                              </p>
+                              <p className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate">
+                                {n.phoneNumberId}
+                              </p>
+                              {n.platformType && n.platformType !== 'CLOUD_API' && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                  Not on Cloud API ({n.platformType}) — cannot send or receive until
+                                  registered.
+                                </p>
+                              )}
+                              {n.isMetaTestNumber && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                  Meta test number — only reaches recipients you add in Meta.
+                                </p>
+                              )}
+                            </div>
+                            {n.isConnectedHere ? (
+                              <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                                Connected here
+                              </span>
+                            ) : (
+                              // Fills BOTH ids: switching accounts needs the
+                              // WABA id too, and leaving the old one saved is
+                              // how a line ends up pointing at a number on an
+                              // account the stored id cannot see.
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPhoneNumberId(n.phoneNumberId || '');
+                                  setWhatsappBusinessId(acct.whatsappBusinessId || '');
+                                  if (n.displayPhoneNumber) setDisplayPhoneNumber(n.displayPhoneNumber);
+                                  showToast('Phone Number ID and WABA ID filled — press Save to switch.');
+                                }}
+                                className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold whitespace-nowrap"
+                              >
+                                Use this line
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No WhatsApp accounts came back for this credential. The notes below say why.
+                </p>
+              )}
+
+              {/* Why the search may be incomplete. A truncated fan-out or a
+                  token without business_management returns part of the
+                  picture, and saying nothing presents it as all of it. */}
+              {Array.isArray(discovered.notes) && discovered.notes.length > 0 && (
+                <ul className="text-xs text-slate-500 dark:text-slate-400 list-disc pl-4 space-y-1">
+                  {discovered.notes.map((note: string, i: number) => (
+                    <li key={i}>{note}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>
