@@ -199,4 +199,94 @@ describe('Conversation history returns the last N messages', () => {
       void conversation;
     });
   });
+
+  describe('two agencies claiming one phoneNumberId', () => {
+    /**
+     * `phoneNumberId` is indexed and deliberately NOT unique, because one
+     * agency holds several lines. Nothing stopped two DIFFERENT agencies
+     * holding the same one, and `findFirst` then answered the citizen as
+     * whichever row the database returned — that agency's persona, its
+     * knowledge base, and its CRM receiving the citizen's name and number.
+     *
+     * The ElevenLabs post-call path already refused this ambiguity rather than
+     * guessing. The message path, carrying far more traffic, did not.
+     */
+    it('answers nobody rather than answering as the wrong agency', async () => {
+      // Its own line id, so the test is self-contained: both agencies are
+      // given THIS number and nothing else in the suite shares it.
+      const phoneNumberId = `pn-contested-${randomBytes(4).toString('hex')}`;
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId,
+          whatsappBusinessId: 'waba_owner',
+          accessToken: 'legacy-plaintext-token',
+          displayPhoneNumber: '+2348000000003',
+          webhookVerifyToken: 'verify',
+        },
+      });
+
+      const rival = await prisma.organization.create({
+        data: {
+          name: 'Rival Agency',
+          slug: `rival-${randomBytes(4).toString('hex')}`,
+          industry: 'GOVERNMENT',
+        },
+      });
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: rival.id,
+          phoneNumberId,
+          whatsappBusinessId: 'waba_rival',
+          accessToken: 'legacy-plaintext-token',
+          displayPhoneNumber: '+2348000000002',
+          webhookVerifyToken: 'verify',
+        },
+      });
+
+      const service = app.get(WhatsappService);
+      const captured: any[] = [];
+      (service as any).orchestrator = {
+        processIncomingMessage: async (context: any) => {
+          captured.push(context);
+          return { replyText: '', confidenceScore: 1, shouldHandoff: false };
+        },
+      };
+
+      try {
+        await service.processIncomingWebhook(
+          {
+            entry: [
+              {
+                changes: [
+                  {
+                    value: {
+                      metadata: { phone_number_id: phoneNumberId },
+                      messages: [
+                        {
+                          from: '2348031112222',
+                          id: `wamid.${randomBytes(6).toString('hex')}`,
+                          type: 'text',
+                          text: { body: 'who owns this line?' },
+                          timestamp: String(Math.floor(Date.now() / 1000)),
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          'ambiguous-line-test'
+        );
+
+        // The orchestrator never ran, so no agency answered as itself and no
+        // citizen record was filed against a coin flip.
+        expect(captured).toHaveLength(0);
+      } finally {
+        await prisma.whatsAppConfig.deleteMany({ where: { phoneNumberId } });
+        await prisma.organization.delete({ where: { id: rival.id } }).catch(() => undefined);
+      }
+    });
+  });
 });

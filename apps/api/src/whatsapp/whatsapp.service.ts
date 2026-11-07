@@ -251,11 +251,46 @@ export class WhatsappService {
       // withWhatsAppCredentials on every read: the access token is encrypted
       // at rest, and Meta rejects a `v1.…` ciphertext as an invalid token —
       // which reads as an expired Meta credential, not a decryption bug.
-      const config = withWhatsAppCredentials(
-        await prisma.whatsAppConfig.findFirst({
-          where: { phoneNumberId, isActive: true },
-        })
-      );
+      // findMany, not findFirst, and the reason is already written down one
+      // module over.
+      //
+      // `phoneNumberId` is indexed and deliberately NOT unique, because one
+      // agency holds several lines. Nothing stops two DIFFERENT agencies
+      // holding the same one — which is what happens when a number moves
+      // between agencies and the old row is left behind, or when a test number
+      // is added to a second agency to try something out.
+      //
+      // `findFirst` then answers the citizen as whichever agency the database
+      // happened to return: its persona, its knowledge base, and its CRM
+      // receiving the citizen's name and phone number. On a platform where
+      // every ministry is a tenant, that is one agency's citizen filed into
+      // another agency's records.
+      //
+      // The ElevenLabs post-call path already refuses this exact ambiguity
+      // rather than guessing — "a coin flip that files a stranger's transcript
+      // — and the caller's phone number — into someone else's CRM". The
+      // message path, which carries far more traffic, was still guessing.
+      const claimants = await prisma.whatsAppConfig.findMany({
+        where: { phoneNumberId, isActive: true },
+        take: 2,
+      });
+      if (claimants.length > 1) {
+        log.error(
+          'whatsapp_ambiguous_phone_number_id',
+          new Error('More than one agency claims this phoneNumberId'),
+          {
+            correlationId,
+            phoneNumberId,
+            organizationIds: claimants.map((c) => c.organizationId),
+            hint:
+              'Two agencies hold this line. Remove it from the one that should not have it at ' +
+              'Settings → WhatsApp. Until then messages to it are refused rather than filed ' +
+              'against whichever row the database returned first.',
+          }
+        );
+        return;
+      }
+      const config = withWhatsAppCredentials(claimants[0] ?? null);
 
       if (!config) {
         log.warn('whatsapp_no_config_found', {
@@ -580,9 +615,34 @@ export class WhatsappService {
     // identifier Meta sends, it must match exactly, and there is deliberately
     // no "fall back to any active config" branch — that files one agency's
     // caller under another agency's CRM.
-    const config = withWhatsAppCredentials(
-      await prisma.whatsAppConfig.findFirst({ where: { phoneNumberId, isActive: true } })
-    );
+    // ...and that comment guarded one half of it. `findFirst` on a column
+    // that is deliberately not unique does the very thing it warns about as
+    // soon as TWO agencies hold the same phoneNumberId — which happens when a
+    // number moves between agencies and the old row stays, or when a test
+    // number is added to a second agency. Then "the first row" decides whose
+    // CRM receives the caller, and it is a coin flip.
+    const claimants = await prisma.whatsAppConfig.findMany({
+      where: { phoneNumberId, isActive: true },
+      take: 2,
+    });
+    if (claimants.length > 1) {
+      log.error(
+        'whatsapp_call_ambiguous_phone_number_id',
+        new Error('More than one agency claims this phoneNumberId'),
+        {
+          correlationId,
+          phoneNumberId,
+          event,
+          organizationIds: claimants.map((c) => c.organizationId),
+          hint:
+            'Two agencies hold this line. Remove it from the one that should not have it at ' +
+            'Settings → WhatsApp. Until then calls to it are refused rather than recorded ' +
+            'against whichever row came back first.',
+        }
+      );
+      return;
+    }
+    const config = withWhatsAppCredentials(claimants[0] ?? null);
     if (!config) {
       log.warn('whatsapp_call_no_config_found', {
         correlationId,
