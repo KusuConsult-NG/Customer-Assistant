@@ -511,6 +511,122 @@ describe('WhatsApp line discovery and handshake', () => {
    * operator then sees "no numbers" on a verified business and reasonably
    * concludes the verification did not take.
    */
+  describe('calling, on an agency holding more than one line', () => {
+    /**
+     * `updateWhatsAppConfig` takes an optional line id and acts on the row the
+     * screen rendered. The calling pair did not: both took `findFirst` ordered
+     * by `isActive desc, createdAt asc` and acted on whatever came back.
+     *
+     * On one line that is the same row either way. On two it is the OLDER one,
+     * whatever the operator has on screen — so enabling calling on a newly
+     * added Meta test number asked Meta about the agency's original Nigerian
+     * number, and the refusal named a number the operator had not touched.
+     */
+    let oldLineId: string;
+    let newLineId: string;
+    const asked: string[] = [];
+
+    beforeEach(async () => {
+      asked.length = 0;
+      await prisma.whatsAppConfig.deleteMany({ where: { organizationId: orgId } });
+      const old = await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: 'pn-old-nigerian',
+          whatsappBusinessId: WABA,
+          displayPhoneNumber: '+234 708 107 8679',
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: encryptSecret('verify-old'),
+          isActive: true,
+          createdAt: new Date(Date.now() - 86400000),
+        },
+      });
+      const fresh = await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: 'pn-new-test-number',
+          whatsappBusinessId: WABA,
+          displayPhoneNumber: '+1 555 342 8409',
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: encryptSecret('verify-new'),
+          isActive: true,
+        },
+      });
+      oldLineId = old.id;
+      newLineId = fresh.id;
+
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        asked.push(url);
+        return new Response(JSON.stringify({ calling: { status: 'ENABLED' } }), { status: 200 });
+      }) as any;
+    });
+
+    afterEach(async () => {
+      await prisma.whatsAppConfig.deleteMany({ where: { organizationId: orgId } });
+    });
+
+    it('asks Meta about the line the caller NAMED, not the oldest one', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/organizations/whatsapp-config/calling?configId=${newLineId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+
+      expect(res.body.phoneNumberId).toBe('pn-new-test-number');
+      expect(asked.join(' ')).toContain('pn-new-test-number');
+      expect(asked.join(' ')).not.toContain('pn-old-nigerian');
+    });
+
+    it('ENABLES calling on the named line, not the oldest one', async () => {
+      await request(app.getHttpServer())
+        .post('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ enabled: true, configId: newLineId })
+        .expect(201);
+
+      expect(asked.join(' ')).toContain('pn-new-test-number');
+      expect(asked.join(' ')).not.toContain('pn-old-nigerian');
+    });
+
+    it('still falls back to the first line when none is named', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      // Unchanged behaviour for an agency holding a single line.
+      expect(res.body.phoneNumberId).toBe('pn-old-nigerian');
+    });
+
+    it("refuses another agency's line id rather than silently using the default", async () => {
+      const other = await prisma.organization.create({
+        data: { name: 'Other', slug: `other-${randomBytes(4).toString('hex')}`, industry: 'GOVERNMENT' },
+      });
+      const stranger = await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: other.id,
+          phoneNumberId: 'pn-stranger',
+          whatsappBusinessId: WABA,
+          displayPhoneNumber: '+1 555 000 0000',
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: encryptSecret('verify-x'),
+          isActive: true,
+        },
+      });
+      try {
+        await request(app.getHttpServer())
+          .get(`/api/organizations/whatsapp-config/calling?configId=${stranger.id}`)
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .expect(404);
+        // And it must not have reached Meta about anybody.
+        expect(asked.join(' ')).not.toContain('pn-stranger');
+        expect(asked).toHaveLength(0);
+      } finally {
+        await prisma.whatsAppConfig.deleteMany({ where: { organizationId: other.id } });
+        await prisma.organization.delete({ where: { id: other.id } }).catch(() => undefined);
+      }
+    });
+  });
+
   describe('discovering accounts across a business portfolio', () => {
     const graph = (routes: Record<string, any>) => {
       globalThis.fetch = (async (input: any) => {

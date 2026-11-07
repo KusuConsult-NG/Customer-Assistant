@@ -143,17 +143,27 @@ export class OrganizationsController {
    */
   @Roles('OWNER', 'ADMIN')
   @Get('whatsapp-config/calling')
-  async getWhatsAppCalling(@Req() req: { user: AuthUser }) {
-    return this.orgsService.getWhatsAppCalling(req.user.organizationId);
+  async getWhatsAppCalling(
+    @Req() req: { user: AuthUser },
+    // Which line. Omitted, it reads the one the settings screen renders first,
+    // which is correct for an agency holding a single line and wrong for one
+    // holding two.
+    @Query('configId') configId?: string
+  ) {
+    return this.orgsService.getWhatsAppCalling(req.user.organizationId, configId);
   }
 
   @Roles('OWNER', 'ADMIN')
   @Post('whatsapp-config/calling')
   async setWhatsAppCalling(
     @Req() req: { user: AuthUser },
-    @Body() body: { enabled?: boolean }
+    @Body() body: { enabled?: boolean; configId?: string }
   ) {
-    return this.orgsService.setWhatsAppCalling(req.user.organizationId, body?.enabled !== false);
+    return this.orgsService.setWhatsAppCalling(
+      req.user.organizationId,
+      body?.enabled !== false,
+      body?.configId
+    );
   }
 
   @Roles('OWNER', 'ADMIN')
