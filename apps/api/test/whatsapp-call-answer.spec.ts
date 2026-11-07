@@ -475,6 +475,101 @@ describe('Answering a WhatsApp call', () => {
       }
     });
 
+    /**
+     * SOMETHING HAS TO HOLD THE SESSION.
+     *
+     * `attach()` returns a session with `stop()`, and the call site discarded
+     * it: `await this.media.attach({…})`. So `stop()` was unreachable, and a
+     * Deepgram WebSocket plus two Opus codecs stayed open per answered call
+     * for the life of the process.
+     *
+     * Mutation-testing is what found this gap in the tests, not in the code —
+     * discarding the session again left all 44 tests in these two suites
+     * passing.
+     */
+    describe('holding and releasing the call', () => {
+      it('holds the session, so it can be released later', async () => {
+        turnOn();
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc });
+        expect(svc.liveCallCount()).toBe(0);
+
+        const out = await svc.answer(CALL, 'TOKEN', 'cid');
+        expect(out.answered).toBe(true);
+        expect(svc.liveCallCount()).toBe(1);
+      });
+
+      it('stops the media bridge when the call is released', async () => {
+        turnOn();
+        let stopped = 0;
+        const media = {
+          attach: async (p: any) => {
+            attached.push(p);
+            return { stop: async () => { stopped += 1; } };
+          },
+        };
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, media);
+
+        await svc.answer(CALL, 'TOKEN', 'cid');
+        expect(stopped).toBe(0);
+
+        expect(await svc.release(CALL.callId, 'test')).toBe(true);
+        expect(stopped).toBe(1);
+        expect(svc.liveCallCount()).toBe(0);
+      });
+
+      it('releases only once, however many things claim the call ended', async () => {
+        // The `terminate` webhook and the connection state both fire, and
+        // either can arrive first or alone.
+        turnOn();
+        let stopped = 0;
+        const media = {
+          attach: async () => ({ stop: async () => { stopped += 1; } }),
+        };
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, media);
+        await svc.answer(CALL, 'TOKEN', 'cid');
+
+        expect(await svc.release(CALL.callId, 'webhook')).toBe(true);
+        expect(await svc.release(CALL.callId, 'connection closed')).toBe(false);
+        expect(stopped).toBe(1);
+      });
+
+      it('reports nothing to release for a call it never answered', async () => {
+        // A `terminate` for a call this pod did not answer is normal: calls
+        // are answered by whichever pod got the `connect`. It must not throw
+        // and must not claim to have released anything.
+        turnOn();
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc });
+        expect(await svc.release('wacid.NEVER_SEEN', 'webhook')).toBe(false);
+      });
+
+      it('does not hold a session for a call it DECLINED', async () => {
+        // A declined call closed its connection already. Holding a session
+        // for it would leak the very thing the registry exists to release.
+        turnOn();
+        const noRelay = withRelay.replace(/typ relay/g, 'typ host');
+        const svc = new StubbedNegotiation({ sdp: noRelay, pc: fakePc });
+
+        const out = await svc.answer(CALL, 'TOKEN', 'cid');
+        expect(out.answered).toBe(false);
+        expect(svc.liveCallCount()).toBe(0);
+      });
+
+      it('survives a media bridge whose stop() throws', async () => {
+        // Release runs on a live call path that never throws, and the thing
+        // it is cleaning up is by definition already in a bad state.
+        turnOn();
+        const media = {
+          attach: async () => ({ stop: async () => { throw new Error('socket already gone'); } }),
+        };
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, media);
+        await svc.answer(CALL, 'TOKEN', 'cid');
+
+        await expect(svc.release(CALL.callId, 'test')).resolves.toBe(true);
+        // And the call is still forgotten, rather than stuck in the map for ever.
+        expect(svc.liveCallCount()).toBe(0);
+      });
+    });
+
     it('hands the live connection to the media bridge', async () => {
       turnOn();
       const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');

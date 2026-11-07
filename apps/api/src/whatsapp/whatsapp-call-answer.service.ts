@@ -44,7 +44,7 @@
 import { Injectable } from '@nestjs/common';
 import { metaGraphUrl } from '../common/meta-graph';
 import { AceLogger } from '../config/logger';
-import { WhatsAppCallMediaService } from './whatsapp-call-media.service';
+import { WhatsAppCallMediaService, CallMediaSession } from './whatsapp-call-media.service';
 
 const log = new AceLogger('WhatsAppCallAnswer');
 
@@ -353,13 +353,31 @@ export class WhatsAppCallAnswerService {
           blocked: false,
         };
       }
-      await this.media.attach({
+      // HOLD the session. Its return value used to be discarded, which made
+      // `stop()` unreachable: every answered call left a Deepgram WebSocket
+      // and two Opus codecs open for the life of the process.
+      const session = await this.media.attach({
         pc: live,
         organizationId: offer.organizationId,
         callId: offer.callId,
         citizenNumber: offer.citizenNumber,
         correlationId,
       });
+      this.sessions.set(offer.callId, { session, pc: live });
+
+      // A call can end without a `terminate` webhook — Meta may not send one,
+      // or it may not arrive. The connection state is the other half, so the
+      // resources go on whichever comes first. `release` is idempotent, so
+      // both firing is harmless.
+      try {
+        live.connectionStateChange?.subscribe?.((state: string) => {
+          if (state === 'closed' || state === 'failed' || state === 'disconnected') {
+            void this.release(offer.callId, `connection ${state}`);
+          }
+        });
+      } catch {
+        /* a stack without this event still releases on the terminate webhook */
+      }
 
       log.info('whatsapp_call_answered', {
         correlationId,
@@ -379,6 +397,47 @@ export class WhatsAppCallAnswerService {
         blocked: false,
       };
     }
+  }
+
+  /**
+   * Live media sessions, by Meta's call id.
+   *
+   * Something has to hold these. Each answered call owns a Deepgram
+   * WebSocket, two Opus codecs and a peer connection, and `attach()`'s
+   * session was previously dropped on the floor — so nothing could release
+   * any of it, and nothing did. A service that answers calls all day grew one
+   * leaked socket and two leaked codecs per call until it was restarted.
+   *
+   * Keyed on the call id because that is what the `terminate` webhook
+   * carries; there is no other handle shared between the two events.
+   */
+  private readonly sessions = new Map<string, { session: CallMediaSession; pc: any }>();
+
+  /**
+   * Release a call's media. Idempotent, and never throws.
+   *
+   * Called from the `terminate` webhook and from the connection state
+   * changing, because a call can end without either one arriving — and
+   * holding resources for a call that is over is the failure this exists to
+   * prevent, not something to be fastidious about doing exactly once.
+   */
+  async release(callId: string, why: string): Promise<boolean> {
+    const held = this.sessions.get(callId);
+    if (!held) return false;
+    this.sessions.delete(callId);
+    try {
+      await held.session.stop();
+    } catch (err: any) {
+      log.warn('whatsapp_call_media_stop_failed', { callId, error: String(err?.message ?? err) });
+    }
+    await this.close(held.pc);
+    log.info('whatsapp_call_released', { callId, why });
+    return true;
+  }
+
+  /** How many calls this process currently holds media for. */
+  liveCallCount(): number {
+    return this.sessions.size;
   }
 
   /**

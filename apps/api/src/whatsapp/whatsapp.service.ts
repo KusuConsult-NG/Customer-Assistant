@@ -707,6 +707,20 @@ export class WhatsappService {
     const terminated = event === 'terminate';
     const reportedStatus = String(call?.status ?? '').trim().toUpperCase();
 
+    // ── The call is over: let go of its media ────────────────────────────
+    //
+    // An answered call holds a Deepgram WebSocket, two Opus codecs and a peer
+    // connection. Nothing released them, because nothing held them — so a
+    // service answering calls all day accumulated one socket and two codecs
+    // per call until it was restarted.
+    //
+    // Before anything else in this branch, because every path below it can
+    // return: writing the CallLog must not be what decides whether the
+    // resources are freed.
+    if (terminated) {
+      await this.callAnswer.release(callId, `Meta reported ${reportedStatus || 'terminate'}`);
+    }
+
     // ── Try to ANSWER it, when that is switched on and possible ───────────
     //
     // Off by default, and `WhatsAppCallAnswerService` refuses to enable itself
