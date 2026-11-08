@@ -201,6 +201,10 @@ services:
       # TWILIO_API_KEY_SID is NOT the Account SID and NOT the Auth Token. It
       # is a separate credential pair created in the Twilio console, and its
       # secret is shown once.
+      # Leave blank: the AI answers inbound calls, which is the intended
+      # shape. Set to 1 only if officers should be rung BEFORE the AI.
+      - key: TWILIO_RING_OFFICERS_FIRST
+        sync: false
       - key: TWILIO_API_KEY_SID
         sync: false
       - key: TWILIO_API_KEY_SECRET

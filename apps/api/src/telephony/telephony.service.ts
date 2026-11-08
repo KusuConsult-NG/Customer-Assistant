@@ -477,7 +477,18 @@ export class TelephonyService {
     // `action` route returns this very same AI TwiML when nobody picks up, so
     // a declined call and an unanswered one both end where the call would
     // have begun.
-    if (providerType === TelephonyProviderType.TWILIO && this.browserCalling.readiness().enabled) {
+    //
+    // `ringsOfficersFirst()` is OFF by default. The Twilio credentials are
+    // what lets an officer place a CALLBACK from the dashboard, and setting
+    // them for that must not silently change who answers the agency's main
+    // line. The intended shape is AI-first: the assistant answers, takes the
+    // citizen's details, answers what it can and promises a callback for
+    // what it cannot.
+    if (
+      providerType === TelephonyProviderType.TWILIO &&
+      this.browserCalling.ringsOfficersFirst() &&
+      this.browserCalling.readiness().enabled
+    ) {
       const identities = await this.browserCalling.answeringIdentities(organizationId);
       if (identities.length > 0) {
         const resumeParams = new URLSearchParams({

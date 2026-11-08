@@ -142,6 +142,16 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'TWILIO_RING_OFFICERS_FIRST',
+    required: false,
+    description:
+      'Set to 1 to ring signed-in officers in the dashboard BEFORE the AI answers an inbound call. ' +
+      'OFF by default: the Twilio browser credentials exist so an officer can place a CALLBACK from ' +
+      'the dashboard, and setting them for that must not silently change who answers the agency\'s ' +
+      'main line. With it off, the AI answers, takes the citizen\'s name, address and reason, and ' +
+      'promises a callback for anything it cannot resolve.',
+  },
+  {
     key: 'TWILIO_API_KEY_SID',
     required: false,
     description:
