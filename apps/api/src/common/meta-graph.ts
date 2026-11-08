@@ -76,6 +76,50 @@ export function metaGraphUrl(path: string): string {
  */
 export function interpretMetaRefusal(error: string | undefined, graphVersion: string): string | null {
   if (!error) return null;
+
+  // ── "Calling APIs cannot be enabled for this phone number" ───────────────
+  //
+  // A DIFFERENT refusal, and it means something far more specific than the
+  // three-fault message below — so it must be read first, or it gets the
+  // generic "your id might be wrong" answer and sends somebody back to
+  // checking an id that is fine.
+  //
+  // This is Meta refusing the number itself, not the request. Seen as error
+  // 2593145 from Meta Business Manager's own mutation
+  // (`useSetWhatsappBusinessPhoneNumberCallingConfigMutation`) and documented
+  // as 138015 on the Graph API. Nothing in this codebase can cause it or fix
+  // it, and two eligibility rules are known to produce it:
+  //
+  //  1. THE MESSAGING LIMIT. Meta's call-settings documentation requires the
+  //     number's daily limit to be 2,000 unique recipients or above. New
+  //     business portfolios start at 250. It is raised by completing Meta's
+  //     scaling path — business verification and sustained use — and CANNOT
+  //     be bought, so there is no purchase that unblocks this.
+  //
+  //  2. THE COUNTRY. Meta's Cloud API calling documentation lists Nigeria
+  //     among the countries where BUSINESS-INITIATED calling is unavailable.
+  //     Whether user-initiated (a citizen calling in) is also excluded is not
+  //     something this codebase can establish, and secondary sources
+  //     disagree — so it is named as a question for Meta rather than stated
+  //     as fact. It matters enormously here: if inbound is excluded too, no
+  //     amount of code makes WhatsApp voice calling work for this deployment.
+  if (/calling\s+apis?\s+cannot\s+be\s+enabled|\b2593145\b|\b138015\b/i.test(error)) {
+    return (
+      'Meta is refusing the NUMBER, not the request — nothing in this platform causes this and no ' +
+      'change here fixes it. Two eligibility rules are known to produce it. ' +
+      "(1) MESSAGING LIMIT: Meta requires this number's daily limit to be 2,000 unique recipients " +
+      'or above before calling can be switched on. New portfolios start at 250. It is raised by ' +
+      "completing Meta's scaling path — business verification and sustained use — and cannot be " +
+      'purchased, so no plan or payment unblocks it. Check the limit on the number in WhatsApp ' +
+      'Manager. ' +
+      '(2) COUNTRY: Meta lists Nigeria among the countries where BUSINESS-INITIATED calling is ' +
+      'unavailable. Whether calls FROM citizens are also excluded is not documented clearly enough ' +
+      'to state here — ask Meta support, quoting this error, because if inbound is excluded for ' +
+      'Nigeria then WhatsApp voice calling cannot work for this deployment at all and the phone ' +
+      'line is the route to use.'
+    );
+  }
+
   if (!/does not exist|cannot be loaded due to missing permissions|does not support this operation/i.test(error)) {
     return null;
   }

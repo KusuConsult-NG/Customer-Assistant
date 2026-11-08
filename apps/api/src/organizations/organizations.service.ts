@@ -1285,6 +1285,60 @@ export class OrganizationsService {
     };
   }
 
+  /**
+   * The number's daily messaging limit, which is what decides whether calling
+   * can be switched on at all.
+   *
+   * Meta refuses `calling: ENABLED` with "Calling APIs cannot be enabled for
+   * this phone number" when the limit is below 2,000 — error 2593145 from
+   * Business Manager's own mutation, 138015 on the Graph API. Nothing in this
+   * platform causes that and nothing here fixes it, so the least useful thing
+   * to do is quote Meta and stop: the operator is left to find the rule
+   * somewhere in Meta's documentation.
+   *
+   * A SEPARATE request on purpose. `messaging_limit_tier` is deprecated in
+   * favour of `whatsapp_business_manager_messaging_limit`, and Graph rejects
+   * the WHOLE request when it is asked for a field a version does not carry —
+   * so folding this into the numbers listing would turn a working 200 into a
+   * 400 and blank the settings screen to report a tier. Both field names are
+   * tried, newest first.
+   *
+   * Returns null for "could not read", never a guess. An unknown limit must
+   * not be reported as a low one: that would tell an agency its number is
+   * ineligible when the real cause might be the country rule.
+   */
+  private async messagingLimitFor(phoneNumberId: string, accessToken: string): Promise<string | null> {
+    for (const field of ['whatsapp_business_manager_messaging_limit', 'messaging_limit_tier']) {
+      const res = await metaGet(
+        metaGraphUrl(`${encodeURIComponent(phoneNumberId)}?fields=${field}`),
+        accessToken
+      );
+      if (!res.ok) continue;
+      const value = res.body?.[field];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return null;
+  }
+
+  /**
+   * Does this tier meet Meta's threshold for calling?
+   *
+   * `true` / `false` / `null` for unknown, and the null matters: "could not
+   * read the tier" is not "the tier is too low".
+   */
+  private callingTierMet(tier: string | null): boolean | null {
+    if (!tier) return null;
+    // UNLIMITED carries no digits and obviously clears the threshold. Without
+    // this it parsed as "unknown", so the highest tier there is would have
+    // been reported as "whether calling can be enabled is unknown".
+    if (/unlimited/i.test(tier)) return true;
+    const digits = tier.match(/(\d+)\s*K?/i);
+    if (!digits) return null;
+    const raw = Number(digits[1]);
+    const scaled = /k/i.test(tier) ? raw * 1000 : raw;
+    return Number.isFinite(scaled) ? scaled >= 2000 : null;
+  }
+
   /** What Meta currently reports for this line's calling setting. Read-only. */
   async getWhatsAppCalling(organizationId: string, configId?: string) {
     const { row, config } = await this.whatsAppLineFor(organizationId, configId);
@@ -1304,6 +1358,8 @@ export class OrganizationsService {
       };
     }
     const status = res.body?.calling?.status ?? null;
+    const messagingLimit = await this.messagingLimitFor(row.phoneNumberId, config.accessToken);
+    const tierMet = this.callingTierMet(messagingLimit);
     return {
       phoneNumberId: row.phoneNumberId,
       displayPhoneNumber: row.displayPhoneNumber,
@@ -1311,6 +1367,18 @@ export class OrganizationsService {
       callingStatus: status,
       enabled: status === 'ENABLED',
       settings: res.body?.calling ?? null,
+      // Meta will not let calling be switched on below 2,000 unique
+      // recipients a day. Saying so BEFORE the operator presses the toggle is
+      // the difference between an answer and a dead end.
+      messagingLimit,
+      callingEligibility:
+        tierMet === null
+          ? "Meta did not report this number's messaging limit, so whether calling can be enabled is unknown."
+          : tierMet
+            ? `Messaging limit ${messagingLimit} meets Meta's threshold of 2,000 for calling.`
+            : `Messaging limit ${messagingLimit} is BELOW Meta's threshold of 2,000, so Meta will refuse to ` +
+              'enable calling. The limit rises by completing business verification and sustained use — it ' +
+              'cannot be bought.',
     };
   }
 

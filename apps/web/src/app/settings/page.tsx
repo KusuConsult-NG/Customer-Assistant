@@ -796,6 +796,21 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
               unrelated faults in one sentence, and the id is only the first.
               Quoting it alone sends an operator hunting a phone number id
               that was right all along. */}
+          {/* Whether Meta will ALLOW calling on this number, before the
+              operator presses the toggle and gets a refusal that names
+              neither the rule nor the number's current tier. */}
+          {calling?.callingEligibility && !calling.enabled && (
+            <p
+              className={`mt-2 text-xs ${
+                /BELOW/.test(calling.callingEligibility)
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {calling.callingEligibility}
+            </p>
+          )}
+
           {calling && !calling.enabled && (calling.refusalReading || calling.error) && (
             <div className="mt-2 text-xs text-slate-600 dark:text-slate-300 space-y-1">
               {calling.error && calling.error !== callingError && <p>{calling.error}</p>}

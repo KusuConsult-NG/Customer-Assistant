@@ -1302,6 +1302,112 @@ describe('WhatsApp line discovery and handshake', () => {
    * the WhatsApp Calling API existed — so an operator chasing a stale phone
    * number id would never find it, because the id was right all along.
    */
+  /**
+   * The messaging limit is what decides whether calling can be switched on,
+   * and the operator could not see it.
+   *
+   * Meta refuses `calling: ENABLED` below 2,000 unique recipients a day, with
+   * a message that names neither the rule nor the number's current tier. So
+   * the screen said "Meta refused it" and the operator had no way to know
+   * what to change — or that the thing to change cannot be bought.
+   */
+  describe('whether Meta will allow calling at all', () => {
+    const graphWith = (settings: any, limitField: string | null, limitValue?: string) => {
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        if (url.includes('/settings')) return new Response(JSON.stringify(settings), { status: 200 });
+        if (limitField && url.includes(limitField)) {
+          return new Response(JSON.stringify({ [limitField]: limitValue }), { status: 200 });
+        }
+        // Any field we did not stub is refused, exactly as Graph refuses a
+        // field a version does not carry.
+        if (url.includes('fields=')) return new Response('{"error":{"message":"nonexisting field"}}', { status: 400 });
+        return new Response('{}', { status: 200 });
+      }) as any;
+    };
+
+    const readCalling = () =>
+      request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    it('reports a tier BELOW the threshold as the reason calling is refused', async () => {
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_250');
+
+      const res = await readCalling();
+      expect(res.body.messagingLimit).toBe('TIER_250');
+      expect(res.body.callingEligibility).toMatch(/BELOW/);
+      expect(res.body.callingEligibility).toMatch(/2,000/);
+      // And that no payment fixes it, which is the first thing anyone asks.
+      expect(res.body.callingEligibility).toMatch(/cannot be bought/i);
+    });
+
+    it('reports a tier that MEETS the threshold', async () => {
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_2K');
+
+      const res = await readCalling();
+      expect(res.body.callingEligibility).toMatch(/meets/i);
+      expect(res.body.callingEligibility).not.toMatch(/BELOW/);
+    });
+
+    it('treats UNLIMITED as meeting it, rather than as unparseable', async () => {
+      // It carries no digits, so a digits-only reading reported the HIGHEST
+      // tier there is as "unknown".
+      await storeLine();
+      graphWith({ calling: { status: 'ENABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_UNLIMITED');
+
+      const res = await readCalling();
+      expect(res.body.callingEligibility).toMatch(/meets/i);
+    });
+
+    it('falls back to the DEPRECATED field name when the new one is refused', async () => {
+      // `messaging_limit_tier` is deprecated in favour of
+      // `whatsapp_business_manager_messaging_limit`, and which one a given
+      // Graph version carries is not something to guess at.
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'messaging_limit_tier', 'TIER_250');
+
+      const res = await readCalling();
+      expect(res.body.messagingLimit).toBe('TIER_250');
+      expect(res.body.callingEligibility).toMatch(/BELOW/);
+    });
+
+    it('says UNKNOWN, not ineligible, when Meta reports no limit', async () => {
+      // Reporting an unknown tier as a low one would tell an agency its
+      // number is ineligible when the real cause might be the country rule —
+      // and send it chasing a verification it may already have.
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, null);
+
+      const res = await readCalling();
+      expect(res.body.messagingLimit).toBeNull();
+      expect(res.body.callingEligibility).toMatch(/unknown/i);
+      expect(res.body.callingEligibility).not.toMatch(/BELOW/);
+    });
+
+    it('does not let the limit lookup break the calling read', async () => {
+      // A separate request on purpose: folding the field into the settings
+      // read would turn a working 200 into a 400 and blank the screen.
+      await storeLine();
+      graphWith({ calling: { status: 'ENABLED' } }, null);
+
+      const res = await readCalling();
+      expect(res.status).toBe(200);
+      expect(res.body.callingStatus).toBe('ENABLED');
+      expect(res.body.enabled).toBe(true);
+    });
+
+    it('returns no credential value', async () => {
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_250');
+      const raw = JSON.stringify((await readCalling()).body);
+      expect(raw).not.toContain(META);
+      expect(raw).not.toContain('v1.');
+    });
+  });
+
   describe('the Graph version used for calling', () => {
     const settingsCalls: string[] = [];
     const graphSettings = (body: any, ok = true) => {

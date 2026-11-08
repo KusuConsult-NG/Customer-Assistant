@@ -166,3 +166,75 @@ describe('Meta Graph API version', () => {
     });
   });
 });
+
+/**
+ * "Calling APIs cannot be enabled for this phone number."
+ *
+ * ── Why this needs its own reading ──────────────────────────────────────────
+ *
+ * Reported from Meta Business Manager's OWN toggle as error 2593145
+ * (`useSetWhatsappBusinessPhoneNumberCallingConfigMutation`), and documented
+ * as 138015 on the Graph API. It is Meta refusing the NUMBER, not the
+ * request — nothing in this codebase causes it and nothing here fixes it.
+ *
+ * Two eligibility rules are known to produce it, and neither is guessable
+ * from the message:
+ *
+ *  1. The number's daily messaging limit must be 2,000 unique recipients or
+ *     above. New portfolios start at 250, and the limit rises by completing
+ *     Meta's scaling path — it CANNOT be bought, so no payment unblocks it.
+ *  2. Meta lists Nigeria among the countries where BUSINESS-INITIATED calling
+ *     is unavailable. Whether user-initiated is also excluded could not be
+ *     established here, and it decides whether this deployment can support
+ *     WhatsApp voice calling at all.
+ *
+ * Without this branch the message fell through to the generic three-fault
+ * reading, which says "your Phone Number ID might be wrong" — sending
+ * somebody back to re-checking an id that is fine. That had already happened
+ * once in this project.
+ */
+describe('a number Meta will not enable calling on', () => {
+  const META_BUSINESS_MANAGER_ERROR =
+    'GraphQL operation responded with error 2593145: Calling APIs cannot be enabled for this phone ' +
+    'number. (Operation: useSetWhatsappBusinessPhoneNumberCallingConfigMutation)';
+
+  it('is read as an ELIGIBILITY refusal, not as a wrong id', () => {
+    const reading = interpretMetaRefusal(META_BUSINESS_MANAGER_ERROR, 'v24.0');
+    expect(reading).toBeTruthy();
+    // The thing that actually has to change.
+    expect(reading).toMatch(/2,000 unique recipients/);
+    expect(reading).toMatch(/cannot be purchased|cannot be bought/i);
+    // And the regional rule, which may be a hard stop.
+    expect(reading).toMatch(/Nigeria/);
+    // NOT the id advice, which is what sent the last search the wrong way.
+    expect(reading).not.toMatch(/Show this account's lines/);
+  });
+
+  it('recognises the documented Graph error number as well as the UI one', () => {
+    for (const err of [
+      '(#138015) Calling cannot be enabled',
+      'Calling APIs cannot be enabled for this phone number.',
+      'error 2593145',
+    ]) {
+      expect(interpretMetaRefusal(err, 'v24.0')).toMatch(/2,000 unique recipients/);
+    }
+  });
+
+  it('says plainly that nothing in this platform causes it', () => {
+    // The single most expensive wrong turn here is looking for the bug in our
+    // own code when the provider has refused the number.
+    const reading = interpretMetaRefusal(META_BUSINESS_MANAGER_ERROR, 'v24.0');
+    expect(reading).toMatch(/nothing in this platform causes this/i);
+  });
+
+  it('still reads the three-fault message as before', () => {
+    // The new branch runs first, so it must not swallow the other one.
+    const reading = interpretMetaRefusal(
+      "Object with ID '123' does not exist, cannot be loaded due to missing permissions, or does " +
+        'not support this operation.',
+      'v21.0'
+    );
+    expect(reading).toMatch(/Phone Number ID is wrong/i);
+    expect(reading).not.toMatch(/2,000 unique recipients/);
+  });
+});
