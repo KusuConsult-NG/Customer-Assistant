@@ -25,6 +25,19 @@ import { API_URL, apiFetch } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import EmptyState from '@/components/ui/EmptyState';
 import { RoleNotice } from '@/components/RoleNotice';
+import { useBrowserCallback, BrowserCallPanel } from '@/components/BrowserCallback';
+
+/**
+ * How this agency's promises get dialled — see `GET /api/callbacks/dialling`.
+ * Null until known, and left null if it could not be read: the page then
+ * offers "Call now", which the API refuses with the reason on an Infobip line.
+ */
+type Dialling = {
+  mode: 'automatic' | 'officer-browser' | 'none';
+  line: string | null;
+  ready: boolean;
+  blocked: string[];
+};
 
 type Callback = {
   id: string;
@@ -73,6 +86,7 @@ export default function CallbacksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [dialling, setDialling] = useState<Dialling | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +106,22 @@ export default function CallbacksPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/callbacks/dialling`)
+      .then(async (res) => (res.ok ? setDialling(await res.json()) : null))
+      .catch(() => null);
+  }, []);
+
+  const browserCall = useBrowserCallback({
+    onSettled: (message, tone) => {
+      if (tone === 'success') toast.success(message);
+      else if (tone === 'info') toast.info(message);
+      else toast.error(message);
+      load();
+    },
+  });
+  const officerDials = dialling?.mode === 'officer-browser';
 
   // The action segment is written out at each call site rather than passed in
   // as a variable. `apps/api/test/route-accounting.spec.ts` matches a caller
@@ -150,6 +180,32 @@ export default function CallbacksPage() {
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
+
+      {/* On an Infobip line the officer is the dialler. Said once, up front,
+          so a queue of DUE promises does not read as a dialler that stalled. */}
+      {officerDials && (
+        <div
+          data-testid="officer-dialling-notice"
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            dialling?.ready
+              ? 'bg-sky-50 dark:bg-sky-500/10 border-sky-200 dark:border-sky-500/30 text-sky-900 dark:text-sky-200'
+              : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-800 dark:text-red-300'
+          }`}
+        >
+          {dialling?.ready ? (
+            <>
+              This agency&apos;s line ({dialling.line}) is on Infobip, so promises are not dialled
+              automatically. Use <strong>Call from browser</strong> to ring a citizen back from this
+              screen — you will need a headset or microphone.
+            </>
+          ) : (
+            <>
+              <strong>Calling from the browser is not available yet.</strong>{' '}
+              {dialling?.blocked.join(' ')}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Stat label="Open promises" value={open.length} icon={<Clock className="w-4 h-4" />} />
@@ -219,7 +275,30 @@ export default function CallbacksPage() {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-end gap-2">
-                      {['PENDING', 'DUE'].includes(r.status) && (
+                      {['PENDING', 'DUE'].includes(r.status) && officerDials && (
+                        <button
+                          disabled={!dialling?.ready || browserCall.active}
+                          title={
+                            !dialling?.ready
+                              ? 'Calling from the browser is not configured yet'
+                              : browserCall.active
+                                ? 'Finish the call in progress first'
+                                : undefined
+                          }
+                          onClick={() =>
+                            browserCall.start({
+                              id: r.id,
+                              reference: r.reference,
+                              name: r.contact?.fullName || 'Citizen',
+                              phoneNumber: r.phoneNumber,
+                            })
+                          }
+                          className="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold disabled:opacity-50 inline-flex items-center gap-1"
+                        >
+                          <Phone className="w-3.5 h-3.5" /> Call from browser
+                        </button>
+                      )}
+                      {['PENDING', 'DUE'].includes(r.status) && !officerDials && (
                         <button
                           disabled={busy === r.id}
                           onClick={() => act(r.id, `${API_URL}/api/callbacks/${r.id}/call-now`, 'POST', 'Call placed', 'call-now')}
@@ -254,6 +333,7 @@ export default function CallbacksPage() {
           </table>
         </div>
       )}
+      <BrowserCallPanel call={browserCall} />
     </div>
   );
 }

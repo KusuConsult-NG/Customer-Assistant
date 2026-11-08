@@ -59,6 +59,58 @@ export const CALLBACK_FLOW: FlowDefinition = {
   title: 'Callback request',
 
   slots: [
+    /**
+     * WHO is calling, and WHERE they are.
+     *
+     * A callback used to carry a reason and a time window and nothing else.
+     * The number came free from the channel, so an officer ringing back knew
+     * what it was about and when — but not who they were asking for, which on
+     * a shared or family handset is the difference between reaching the
+     * citizen and starting again.
+     *
+     * The address is for the record rather than the call. A customer-care
+     * record of "somebody rang about a land title" is not a record anybody
+     * can act on later, and a government helpline is expected to be able to
+     * say who it served.
+     *
+     * Asked HERE, in the callback flow, and deliberately not of every caller.
+     * Somebody ringing to ask what time the registry opens should be told,
+     * not interviewed — and the call still leaves a `CallLog`, a `Contact`
+     * and a transcript either way. Identity is collected at the point a human
+     * will act on it.
+     */
+    {
+      name: 'fullName',
+      label: 'Name',
+      aliases: ['name', 'full name', 'surname', 'my name'],
+      // No `identifies`: almost any two words are a plausible name, which is
+      // why a name can only be corrected by being named. Same reasoning as
+      // the enrolment flow.
+      prompt: (_c, lang) => t(lang, 'callback_name_ask'),
+      accept: (text, _c, lang) => {
+        const value = text.trim().replace(/\s+/g, ' ');
+        // Two words, because "Musa" is not enough for an officer asking for
+        // somebody by name.
+        if (value.length < 3 || !/\s/.test(value)) {
+          return { error: t(lang, 'callback_name_two_words') };
+        }
+        if (/\d/.test(value)) {
+          return { error: t(lang, 'callback_name_digits') };
+        }
+        return { value };
+      },
+    },
+    {
+      name: 'address',
+      label: 'Address',
+      aliases: ['address', 'street', 'house', 'where i live', 'location'],
+      prompt: (_c, lang) => t(lang, 'callback_address_ask'),
+      accept: (text, _c, lang) => {
+        const value = text.trim();
+        if (value.length < 3) return { error: t(lang, 'callback_address_short') };
+        return { value };
+      },
+    },
     {
       name: 'reason',
       label: 'What it is about',
@@ -104,6 +156,8 @@ export const CALLBACK_FLOW: FlowDefinition = {
     const w = chosenWindow(c);
     if (!w) return t(lang, 'lost_track');
     return t(lang, 'callback_summary', {
+      name: c.fullName ?? '',
+      address: c.address ?? '',
       reason: c.reason ?? '',
       when: t(lang, w.key as any),
     });

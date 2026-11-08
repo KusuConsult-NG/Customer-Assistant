@@ -120,13 +120,26 @@ module.exports = async function () {
     return row === null ? { ok: true } : { expected: 'row gone', actual: 'row still present' };
   }, 'HIGH');
 
-  await check('CRM-015', 'Deleting a contact cascades to its leads/deals/tickets (no orphans)', async () => {
+  await check('CRM-015', 'Deleting a contact with records is refused until acknowledged, then cascades (no orphans)', async () => {
     const c = await prisma.contact.create({ data: { organizationId: orgId, fullName: 'Cascade Parent', phoneNumber: `+234701${Date.now().toString().slice(-7)}` } });
     const l = await prisma.lead.create({ data: { organizationId: orgId, contactId: c.id } });
     const d = await prisma.deal.create({ data: { organizationId: orgId, contactId: c.id, title: 'Cascade Deal', amount: 1000 } });
     const t = await prisma.ticket.create({ data: { organizationId: orgId, contactId: c.id, ticketNumber: `CAS-${Date.now()}`, subject: 'S', description: 'D', updatedAt: new Date() } });
 
-    const res = await api('DELETE', `/api/crm/contacts/${c.id}`, { token });
+    // A contact with records attached is refused until the deletion is
+    // acknowledged (b8423e4): those records cannot be recovered, and a citizen
+    // expecting a call back would still be expecting it. The refusal is part of
+    // the contract, so it is checked rather than skipped — and nothing may be
+    // destroyed by the refused request.
+    const refused = await api('DELETE', `/api/crm/contacts/${c.id}`, { token });
+    if (refused.status !== 400) {
+      return { expected: '400 until acknowledged', actual: `${refused.status} ${refused.text.slice(0, 150)}` };
+    }
+    if ((await prisma.contact.count({ where: { id: c.id } })) !== 1 || (await prisma.lead.count({ where: { id: l.id } })) !== 1) {
+      return { expected: 'nothing deleted by the refused request', actual: 'rows removed without acknowledgement' };
+    }
+
+    const res = await api('DELETE', `/api/crm/contacts/${c.id}`, { token, body: { acknowledgeDestroysRelatedRecords: true } });
     if (res.status !== 200) return { expected: '200', actual: `${res.status} ${res.text.slice(0, 150)}` };
 
     const orphans = {

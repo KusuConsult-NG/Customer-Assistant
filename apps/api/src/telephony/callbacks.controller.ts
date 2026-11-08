@@ -1,5 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException,
+  ConflictException, BadGatewayException,
 } from '@nestjs/common';
 import { prisma, callbackReference, normalizePhoneNumber, phoneNumberVariants, outboundContactHoursFrom, nextServiceTime } from '@ace/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -7,6 +8,40 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { CallbackDispatcherService } from './callback-dispatcher.service';
+import { InfobipVoiceService, INFOBIP_OUTBOUND_REASON } from './infobip/infobip-voice.service';
+import { outboundLineFor } from './outbound-line';
+import { clientIdentityFor } from './browser-calling.service';
+
+/**
+ * How long an officer's browser token lasts.
+ *
+ * Minted per call rather than per shift, so it only has to outlive one
+ * conversation. An hour is longer than any callback should take and short
+ * enough that a token lifted from a browser is not a lasting capability.
+ */
+const BROWSER_CALL_TOKEN_TTL_SECONDS = 60 * 60;
+
+/**
+ * What a browser may report about its call.
+ *
+ * `not_placed` is distinct from `failed` on purpose: it means the citizen's
+ * phone never rang (the SDK would not load, Infobip refused the connection),
+ * so the promise is handed back without an attempt counted against them.
+ * `failed` is a call Infobip accepted that then went wrong — it may have rung.
+ */
+const BROWSER_OUTCOMES = ['answered', 'not_answered', 'failed', 'not_placed'] as const;
+
+/**
+ * A number in the form Infobip's own examples use: digits only, no plus.
+ *
+ * Every phone number in Infobip's SDK documentation is written without it
+ * (`callPhone('41793026727', … setFrom('33712345678'))`). Stored numbers here
+ * are canonical E.164 WITH it, so it is stripped at the one place a number is
+ * handed to Infobip.
+ */
+function infobipNumber(phoneNumber: string): string {
+  return phoneNumber.trim().replace(/^\+/, '');
+}
 
 /**
  * The queue of citizens we owe a call.
@@ -25,7 +60,42 @@ import { CallbackDispatcherService } from './callback-dispatcher.service';
 @Controller('api/callbacks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CallbacksController {
-  constructor(private readonly dispatcher: CallbackDispatcherService) {}
+  constructor(
+    private readonly dispatcher: CallbackDispatcherService,
+    private readonly infobip: InfobipVoiceService,
+  ) {}
+
+  /**
+   * How this agency's promises get dialled, so the queue shows the right button.
+   *
+   * `automatic`: this process dials (Twilio and the other carriers), and
+   * "Call now" asks it to. `officer-browser`: the agency's line is Infobip,
+   * which this process does not dial — an officer rings the citizen from the
+   * browser, and "Call now" would only be refused. `none`: no line at all.
+   *
+   * `ready` is false when the line is Infobip but the deployment cannot mint
+   * a browser token, and `blocked` says what is missing. A button that fails
+   * on every press is worse than a stated gap.
+   */
+  @Get('dialling')
+  async dialling(@Req() req: { user: AuthUser }) {
+    const line = await outboundLineFor(req.user.organizationId);
+    if (!line?.phoneNumber) {
+      return {
+        mode: 'none' as const,
+        line: null,
+        ready: false,
+        blocked: ['This agency has no phone line. Add one under Settings → Voice & Telephony.'],
+      };
+    }
+    if ((line.provider as string) !== 'INFOBIP') {
+      return { mode: 'automatic' as const, line: line.phoneNumber, ready: true, blocked: [] as string[] };
+    }
+    const blocked: string[] = [];
+    if (!this.infobip.baseUrl()) blocked.push('INFOBIP_BASE_URL is not set (or is not https).');
+    if (!process.env.INFOBIP_API_KEY?.trim()) blocked.push('INFOBIP_API_KEY is not set.');
+    return { mode: 'officer-browser' as const, line: line.phoneNumber, ready: blocked.length === 0, blocked };
+  }
 
   /** The queue, newest promise first, scoped to the caller's own agency. */
   @Get()
@@ -104,6 +174,13 @@ export class CallbacksController {
     });
     if (!row) throw new BadRequestException('Callback not found in this agency');
 
+    // Refused with the reason, before anything is claimed. Without this the
+    // dispatcher skips the row and the officer is told only "Not placed".
+    const line = await outboundLineFor(req.user.organizationId);
+    if ((line?.provider as string | undefined) === 'INFOBIP') {
+      throw new BadRequestException(INFOBIP_OUTBOUND_REASON);
+    }
+
     const outcome = await this.dispatcher.placeOne(id);
     const after = await prisma.callbackRequest.findUnique({ where: { id } });
 
@@ -116,6 +193,122 @@ export class CallbacksController {
       failureReason: after?.failureReason ?? null,
       reference: callbackReference(id),
     };
+  }
+
+  /**
+   * An officer is about to ring this citizen from their browser, over Infobip.
+   *
+   * Claims the promise first, with the dispatcher's own atomic claim, so two
+   * officers cannot both ring the same citizen; the second is told who has
+   * it rather than dialling over them. Then mints a token for THIS officer —
+   * the identity comes from `req.user`, never from the request — and hands
+   * back exactly what the browser needs to dial: the citizen's number and the
+   * agency's line as caller ID.
+   *
+   * If Infobip refuses the token the claim is released, so the refusal does
+   * not leave the promise showing DIALLING and then cost the citizen an
+   * attempt that was never made.
+   */
+  @Post(':id/browser-call')
+  @Roles('OWNER', 'ADMIN', 'AGENT')
+  async browserCall(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    const organizationId = req.user.organizationId;
+    const line = await outboundLineFor(organizationId);
+    if ((line?.provider as string | undefined) !== 'INFOBIP' || !line?.phoneNumber) {
+      throw new BadRequestException(
+        "Calling from the browser is for an agency whose line is on Infobip. This agency's " +
+          'promises are dialled automatically: use "Call now".'
+      );
+    }
+
+    const row = await prisma.callbackRequest.findFirst({
+      where: { id, organizationId },
+      select: { id: true, status: true, assignedUser: { select: { fullName: true } } },
+    });
+    if (!row) throw new BadRequestException('Callback not found in this agency');
+    if (row.status !== 'PENDING' && row.status !== 'DUE') {
+      throw new ConflictException(
+        row.status === 'IN_PROGRESS'
+          ? `${row.assignedUser?.fullName ?? 'Another officer'} is already calling this citizen.`
+          : `This callback is ${row.status} and cannot be dialled.`
+      );
+    }
+
+    const claimed = await this.dispatcher.claimForBrowser(id, organizationId, req.user.userId);
+    if (!claimed) throw new ConflictException('Another officer started this call a moment ago.');
+
+    const minted = await this.infobip.webrtcToken(
+      clientIdentityFor(req.user.userId),
+      req.user.fullName,
+      BROWSER_CALL_TOKEN_TTL_SECONDS
+    );
+    if (!minted.ok) {
+      await this.dispatcher.releaseBrowserClaim(id, organizationId);
+      throw new BadGatewayException(minted.error);
+    }
+
+    return {
+      reference: callbackReference(id),
+      token: minted.token,
+      expiresAt: minted.expiresAt,
+      to: infobipNumber(claimed.phoneNumber),
+      from: infobipNumber(line.phoneNumber),
+    };
+  }
+
+  /**
+   * What the officer's browser call did, reported when it ends.
+   *
+   * `answered` only when Infobip raised ESTABLISHED; see
+   * `CallbackDispatcherService.recordBrowserAttempt` for why that is recorded
+   * as REACHED and everything else as an attempt that was not. A second
+   * report for the same call, or one for a promise nobody claimed, is a 409
+   * rather than a second attempt counted against the citizen.
+   */
+  @Post(':id/browser-call/result')
+  @Roles('OWNER', 'ADMIN', 'AGENT')
+  async browserCallResult(
+    @Req() req: { user: AuthUser },
+    @Param('id') id: string,
+    @Body() body: { callId?: string; outcome?: string; durationSeconds?: number; reason?: string }
+  ) {
+    const outcome = BROWSER_OUTCOMES.find((o) => o === body?.outcome);
+    if (!outcome) {
+      throw new BadRequestException(`outcome must be one of: ${BROWSER_OUTCOMES.join(', ')}`);
+    }
+    // Infobip's call ids are opaque; anything outside this shape is not one,
+    // and it ends up in a unique column.
+    const callId =
+      typeof body.callId === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(body.callId) ? body.callId : null;
+    const durationSeconds = Number.isFinite(Number(body.durationSeconds)) ? Number(body.durationSeconds) : 0;
+    const reason = typeof body.reason === 'string' ? body.reason.slice(0, 300) : null;
+
+    if (outcome === 'not_placed') {
+      const status = await this.dispatcher.releaseBrowserClaim(id, req.user.organizationId);
+      if (!status) {
+        throw new ConflictException('This callback is not being dialled from a browser any more.');
+      }
+      return { reference: callbackReference(id), status, attempts: null, failureReason: null };
+    }
+
+    const line = await outboundLineFor(req.user.organizationId);
+    const result = await this.dispatcher.recordBrowserAttempt({
+      id,
+      organizationId: req.user.organizationId,
+      officerName: req.user.fullName || req.user.email,
+      fromNumber: line?.phoneNumber ?? 'unknown',
+      callId,
+      outcome,
+      durationSeconds,
+      reason,
+    });
+    if (!result) {
+      throw new ConflictException(
+        'This callback is not being dialled from a browser any more — it was already recorded, ' +
+          'or it was reopened after going quiet.'
+      );
+    }
+    return { reference: callbackReference(id), ...result };
   }
 
   /** Close one off by hand — the officer rang from their own phone. */

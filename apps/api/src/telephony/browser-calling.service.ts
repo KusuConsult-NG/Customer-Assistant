@@ -110,6 +110,26 @@ export class BrowserCallingService {
    * console, and missing any of them means tokens Twilio refuses — which in
    * the browser looks like a dashboard that simply never rings.
    */
+  /**
+   * Should an inbound call ring the officers BEFORE the AI?
+   *
+   * Off by default, and that default is the point. The Twilio credentials
+   * are needed for an officer to place a callback FROM the dashboard, which
+   * is a different thing from an officer answering the agency's main line —
+   * and setting them for the first should not silently change who answers
+   * the second.
+   *
+   * The intended shape of this service is AI-first: the assistant answers,
+   * takes the citizen's name, address and reason, answers what it can, and
+   * promises a callback for what it cannot. An officer then rings back from
+   * the dashboard. Ringing thirty desks for every citizen who wants the
+   * registry's opening hours is a different product, and an agency that
+   * wants it should have to say so.
+   */
+  ringsOfficersFirst(): boolean {
+    return process.env.TWILIO_RING_OFFICERS_FIRST?.trim() === '1';
+  }
+
   readiness(): BrowserCallingReadiness {
     const blocked: string[] = [];
     if (!process.env.TWILIO_ACCOUNT_SID?.trim()) {
@@ -135,10 +155,14 @@ export class BrowserCallingService {
       enabled: blocked.length === 0,
       blocked,
       detail:
-        blocked.length === 0
-          ? `Inbound calls ring signed-in officers for ${RING_SECONDS}s before the AI answers. No real ` +
-            'call has proven this path yet — treat the first one as the test.'
-          : blocked.join(' '),
+        blocked.length !== 0
+          ? blocked.join(' ')
+          : this.ringsOfficersFirst()
+            ? `Inbound calls ring signed-in officers for ${RING_SECONDS}s before the AI answers. No ` +
+              'real call has proven this path yet — treat the first one as the test.'
+            : 'Officers can place callbacks from the dashboard. Inbound calls go to the AI, which is ' +
+              'the default: set TWILIO_RING_OFFICERS_FIRST=1 to ring officers before the AI instead. ' +
+              'No real call has proven this path yet — treat the first one as the test.',
     };
   }
 

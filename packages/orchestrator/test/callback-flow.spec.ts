@@ -48,16 +48,48 @@ function play(answers: string[], lang: Language = 'en') {
   return { replies, last: replies[replies.length - 1] ?? '', state, executed };
 }
 
-const GOOD = ['my water supply has been off for three days', '1', 'yes'];
+/**
+ * The two answers that now come FIRST.
+ *
+ * A callback used to carry a reason and a window and nothing else, so an
+ * officer ringing back knew what it was about and when — but not who to ask
+ * for, which on a shared or family handset is the difference between reaching
+ * the citizen and starting again. The address is for the record: "somebody
+ * rang about a land title" is not something anybody can act on later.
+ */
+const IDENTITY = ['Amina Yusuf', '12 Bello Way, Jos North'];
+
+const GOOD = [...IDENTITY, 'my water supply has been off for three days', '1', 'yes'];
 
 describe('the callback form', () => {
-  it('asks what the call is about before asking when', () => {
+  it('asks who is calling before anything else', () => {
     const { replies } = play([]);
     expect(replies[0]).toMatch(/call you back/i);
+    expect(replies[0]).toMatch(/full name/i);
+  });
+
+  it('wants a first name and a surname, because the officer asks by name', () => {
+    expect(play(['Musa']).last).toMatch(/first name and surname|surname/i);
+  });
+
+  it('refuses a name with digits in it', () => {
+    expect(play(['0803 111 2222']).last).toMatch(/numbers in it|as you would say it/i);
+  });
+
+  it('asks for the address once it has the name', () => {
+    expect(play(['Amina Yusuf']).last).toMatch(/address/i);
+  });
+
+  it('refuses an address too short to be one', () => {
+    expect(play(['Amina Yusuf', 'x']).last).toMatch(/little more|street or area/i);
+  });
+
+  it('asks what the call is about once it knows who and where', () => {
+    expect(play(IDENTITY).last).toMatch(/call you about/i);
   });
 
   it('offers real windows rather than asking for a time it cannot keep', () => {
-    const { last } = play(['my borehole has not worked for a week']);
+    const { last } = play([...IDENTITY, 'my borehole has not worked for a week']);
     for (let i = 1; i <= CALLBACK_WINDOWS.length; i++) {
       expect(last).toContain(`${i} —`);
     }
@@ -66,12 +98,12 @@ describe('the callback form', () => {
   it('refuses a reason too short to act on', () => {
     // An officer ringing back with "k" as the subject has to ask from
     // scratch, which is the call the citizen rang to avoid.
-    const { last } = play(['k']);
+    const { last } = play([...IDENTITY, 'k']);
     expect(last).toMatch(/little more|more about/i);
   });
 
   it('re-asks with the list when the window is not understood', () => {
-    const { last } = play(['my water supply has been off', 'sometime next year']);
+    const { last } = play([...IDENTITY, 'my water supply has been off', 'sometime next year']);
     expect(last).toMatch(/did not catch/i);
     expect(last).toContain('1 —');
   });
@@ -80,7 +112,13 @@ describe('the callback form', () => {
     // A read-back, not a second "are you sure?". The reason was typed freely
     // several turns earlier and it is what the officer will ring about, so
     // this is the citizen's only chance to correct it.
-    const { last } = play(['my water supply has been off for three days', '1']);
+    const { last } = play([...IDENTITY, 'my water supply has been off for three days', '1']);
+    // Everything collected, so everything is correctable — a detail taken and
+    // never read back is one the citizen cannot fix.
+    expect(last).toMatch(/name:/i);
+    expect(last).toMatch(/Amina Yusuf/);
+    expect(last).toMatch(/address:/i);
+    expect(last).toMatch(/12 Bello Way/);
     expect(last).toMatch(/about:/i);
     expect(last).toMatch(/my water supply has been off for three days/);
     expect(last).toMatch(/when:/i);
@@ -88,7 +126,7 @@ describe('the callback form', () => {
   });
 
   it('only executes once the citizen confirms', () => {
-    expect(play(['my water supply has been off for three days', '1']).executed).toBe(false);
+    expect(play([...IDENTITY, 'my water supply has been off for three days', '1']).executed).toBe(false);
     expect(play(GOOD).executed).toBe(true);
   });
 
@@ -115,7 +153,7 @@ describe('the promise is made in the citizen\'s own language', () => {
   });
 
   it.each(SUPPORTED_LANGUAGES)('reads the promise back in %s', (lang) => {
-    const { last } = play(['ruwa ya kare', '2'], lang as Language);
+    const { last } = play([...IDENTITY, 'ruwa ya kare', '2'], lang as Language);
     expect(last.length).toBeGreaterThan(0);
     expect(last).not.toMatch(/\{\w+\}/); // no unfilled placeholder
   });

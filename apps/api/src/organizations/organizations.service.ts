@@ -125,6 +125,9 @@ const TELEPHONY_PROVIDERS = [
   'MTN_ENTERPRISE_SIP',
   'AIRTEL_BUSINESS_SIP',
   'SIP_TRUNK',
+  // A number carried by Infobip — usually the agency's own, brought over SIP.
+  // Infobip hands the audio to this platform, so this platform's AI answers.
+  'INFOBIP',
 ] as const;
 
 function maskedWhatsAppConfig<T extends Record<string, any>>(c: T) {
@@ -1490,7 +1493,12 @@ export class OrganizationsService {
         'is processed.'
       );
     } else {
-      ok.push('WHATSAPP_APP_SECRET is set, so deliveries can be verified.');
+      // "Set" is all this line can honestly claim. Whether the secret belongs
+      // to a SUBSCRIBED app is checked per line below, against Meta's own
+      // list — this used to say "so deliveries can be verified", which is a
+      // statement about a variable being non-empty dressed up as a statement
+      // about Meta.
+      ok.push('WHATSAPP_APP_SECRET is set. Whether it is the right app\u2019s secret is checked per line below.');
     }
 
     const lines: any[] = [];
@@ -1563,10 +1571,21 @@ export class OrganizationsService {
           config.accessToken
         );
         if (subs.reached && subs.ok) {
-          const apps: string[] = (Array.isArray(subs.body?.data) ? subs.body.data : [])
-            .map((d: any) => d?.whatsapp_business_api_data?.name || d?.whatsapp_business_api_data?.id)
-            .filter(Boolean);
+          // Keep the ID as well as the name. The name is for a human; the ID
+          // is the only thing that can be COMPARED against META_APP_ID, and
+          // discarding it is what made the check below impossible.
+          const rawApps: Array<{ id?: string; name?: string }> = (
+            Array.isArray(subs.body?.data) ? subs.body.data : []
+          )
+            .map((d: any) => ({
+              id: d?.whatsapp_business_api_data?.id ? String(d.whatsapp_business_api_data.id) : undefined,
+              name: d?.whatsapp_business_api_data?.name ? String(d.whatsapp_business_api_data.name) : undefined,
+            }))
+            .filter((a: any) => a.id || a.name);
+          const apps: string[] = rawApps.map((a) => a.name || a.id!).filter(Boolean);
           line.subscribedApps = apps;
+          line.subscribedAppIds = rawApps.map((a) => a.id).filter(Boolean);
+
           if (apps.length === 0) {
             blocked.push(
               `${label}: no app is subscribed to this business account's webhooks, so Meta ` +
@@ -1574,6 +1593,52 @@ export class OrganizationsService {
             );
           } else {
             ok.push(`${label}: Meta is delivering to a subscribed app (${apps.join(', ')}).`);
+
+            // ── DOES OUR SECRET BELONG TO A SUBSCRIBED APP? ─────────────────
+            //
+            // This is the check that was missing, and the fault it catches
+            // took a live line down for a day.
+            //
+            // `WHATSAPP_APP_SECRET` is the signing secret of ONE Meta app.
+            // Meta signs each delivery with the secret of the app it is
+            // delivering to. If the configured secret belongs to an app that
+            // is not subscribed here, every delivery is refused with a 403 —
+            // and from the outside that is indistinguishable from Meta not
+            // delivering at all, which is where the search goes instead.
+            //
+            // Readiness had BOTH halves of this and never compared them: it
+            // listed the subscribed apps, and separately said "the secret is
+            // set, so deliveries can be verified" on the strength of a
+            // variable being non-empty. That is the "configured is not an
+            // answer" failure this codebase exists to avoid, committed by the
+            // readiness surface itself.
+            const configuredAppId = process.env.META_APP_ID?.trim();
+            const subscribedIds = rawApps.map((a) => a.id).filter(Boolean) as string[];
+            if (!configuredAppId) {
+              degraded.push(
+                `${label}: META_APP_ID is not set, so whether WHATSAPP_APP_SECRET belongs to one of ` +
+                'these subscribed apps could not be checked. A secret from a different app means ' +
+                'every delivery is rejected as an invalid signature.'
+              );
+            } else if (subscribedIds.length === 0) {
+              degraded.push(
+                `${label}: Meta named the subscribed apps but gave no ids, so they could not be ` +
+                'compared against META_APP_ID.'
+              );
+            } else if (!subscribedIds.includes(configuredAppId)) {
+              blocked.push(
+                `${label}: the app this deployment is configured as (META_APP_ID ${configuredAppId}) ` +
+                `is NOT among the apps subscribed to this account (${subscribedIds.join(', ')}). ` +
+                'WHATSAPP_APP_SECRET is therefore the secret of a different app, so every message ' +
+                'Meta delivers is rejected as an invalid signature and the citizen gets no reply. ' +
+                'Either subscribe that app, or set META_APP_ID and WHATSAPP_APP_SECRET to one that ' +
+                'is subscribed.'
+              );
+            } else {
+              ok.push(
+                `${label}: META_APP_ID matches a subscribed app, so Meta's signature will verify.`
+              );
+            }
           }
         } else if (subs.reached) {
           // A token without whatsapp_business_management cannot read this, and

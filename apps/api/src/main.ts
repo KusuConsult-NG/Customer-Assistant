@@ -5,6 +5,8 @@
 // This resolves the file from the repo root rather than process.cwd(), which
 // is not the root under `turbo run dev`. Must stay the first import.
 import './config/load-env';
+import { InfobipMediaStreamHandler } from './telephony/infobip/infobip-media-stream.handler';
+import { InfobipVoiceService } from './telephony/infobip/infobip-voice.service';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -217,8 +219,33 @@ async function bootstrap() {
   const twilioHandler = app.get(TwilioMediaStreamHandler);
   const twilioWss     = new WebSocketServer({ noServer: true });
 
+  // ── Infobip media streams ───────────────────────────────────────────────
+  //
+  // Infobip opens a plain WebSocket to the URL on its media stream config,
+  // and documents no authentication for it. So that URL ends in a secret
+  // token, and the token is checked HERE, BEFORE the upgrade: an
+  // unauthenticated connection is refused at the HTTP layer and never becomes
+  // a session, rather than being accepted and closed afterwards. The handler
+  // then also requires the stream to name a call that arrived through the
+  // authenticated event webhook.
+  const infobipHandler = app.get(InfobipMediaStreamHandler);
+  const infobipVoice   = app.get(InfobipVoiceService);
+  const infobipWss     = new WebSocketServer({ noServer: true });
+
   const httpServer = app.getHttpServer();
   httpServer.on('upgrade', (req: any, socket: any, head: any) => {
+    const infobipMatch = req.url?.match(/^\/telephony\/infobip\/stream\/([^?/]+)/);
+    if (infobipMatch) {
+      if (!infobipVoice.verifyStreamToken(infobipMatch[1])) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        logger.warn('Refused an Infobip media stream with a missing or wrong token');
+        return;
+      }
+      infobipWss.handleUpgrade(req, socket, head, (ws) => infobipHandler.handleConnection(ws));
+      return;
+    }
+
     // Only handle paths that match our Twilio stream pattern
     const match = req.url?.match(/^\/telephony\/stream\/([^?/]+)/);
     if (!match) {

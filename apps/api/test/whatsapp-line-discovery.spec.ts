@@ -289,6 +289,15 @@ describe('WhatsApp line discovery and handshake', () => {
     beforeEach(() => {
       setEnv('API_BASE_URL', 'https://api.example.test');
       setEnv('WHATSAPP_APP_SECRET', 'app_secret_value');
+      // Matches the app id the stub below reports as subscribed.
+      //
+      // These tests used to leave META_APP_ID unset and still expect READY,
+      // which is the state that took a live line down for a day: the app
+      // secret belonged to an app that was not subscribed, so every delivery
+      // was refused with a 403, and readiness said Ready because the variable
+      // was non-empty. A deployment that cannot check that link is DEGRADED
+      // now, so a fully-configured one has to say which app it is.
+      setEnv('META_APP_ID', '1');
     });
 
     /** `number` and `subs` each: 'ok' | 'refused' | 'unreachable' | an object. */
@@ -1648,6 +1657,110 @@ describe('WhatsApp line discovery and handshake', () => {
       const raw = JSON.stringify((await me()).body);
       expect(raw).not.toContain(UNDECRYPTABLE);
       expect(raw).not.toContain('rubbish');
+    });
+  });
+
+  /**
+   * THE SECRET MUST BELONG TO A SUBSCRIBED APP.
+   *
+   * ── The outage this exists to catch ─────────────────────────────────────
+   *
+   * A live WhatsApp line answered nobody for a day. Meta was delivering, the
+   * stored token was accepted, readiness reported Ready with nothing blocked
+   * — and every delivery was refused with a 403, because
+   * `WHATSAPP_APP_SECRET` was the signing secret of a DIFFERENT Meta app
+   * than the one subscribed to the account. Meta signs each delivery with
+   * the secret of the app it is delivering to.
+   *
+   * From outside, a signature rejection is indistinguishable from Meta not
+   * delivering at all — so the search went to subscriptions, Phone Number
+   * IDs, encryption keys and a Graph version, and not to the one variable
+   * that was wrong.
+   *
+   * Readiness had BOTH halves and never compared them. It listed the
+   * subscribed apps, and separately said "WHATSAPP_APP_SECRET is set, so
+   * deliveries can be verified" — a statement about a variable being
+   * non-empty, dressed up as a statement about Meta. That is exactly the
+   * "configured is not an answer" failure this codebase exists to prevent,
+   * committed by the readiness surface itself.
+   *
+   * It also discarded the app ID (`name || id`), which is the only thing
+   * that could have been compared.
+   */
+  describe('whether the app secret belongs to a subscribed app', () => {
+    const readiness = () =>
+      request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/readiness')
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    const metaWith = (subscribedApps: Array<{ id: string; name: string }>) => {
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        if (url.includes('/subscribed_apps')) {
+          return new Response(
+            JSON.stringify({ data: subscribedApps.map((a) => ({ whatsapp_business_api_data: a })) }),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify({ id: 'x', display_phone_number: '+234 708 107 8679' }), {
+          status: 200,
+        });
+      }) as any;
+    };
+
+    beforeEach(() => {
+      setEnv('WHATSAPP_APP_SECRET', 'an_app_secret');
+    });
+
+    it('BLOCKS when our app is not among the subscribed ones', async () => {
+      setEnv('META_APP_ID', '999999999');
+      await storeLine();
+      metaWith([{ id: '61596283615722', name: 'Customer Care' }]);
+
+      const res = await readiness();
+      const blocked = (res.body.blocked ?? []).join(' ');
+      expect(blocked).toMatch(/NOT among the apps subscribed/i);
+      // Names the consequence, not just the mismatch.
+      expect(blocked).toMatch(/rejected as an invalid signature/i);
+      expect(blocked).toMatch(/999999999/);
+      expect(res.body.state).toBe('blocked');
+    });
+
+    it('is OK when it IS among them, and says the signature will verify', async () => {
+      setEnv('META_APP_ID', '61596283615722');
+      await storeLine();
+      metaWith([
+        { id: '61596283615722', name: 'Customer Care' },
+        { id: '111', name: 'WA DevX Webhook Events 1P App' },
+      ]);
+
+      const res = await readiness();
+      expect((res.body.ok ?? []).join(' ')).toMatch(/META_APP_ID matches a subscribed app/i);
+      expect((res.body.blocked ?? []).join(' ')).not.toMatch(/invalid signature/i);
+    });
+
+    it('says UNKNOWN, not fine, when META_APP_ID is unset', async () => {
+      // The old wording claimed deliveries "can be verified" on the strength
+      // of the secret being non-empty. Without the app id there is nothing to
+      // compare, and that is a gap to report rather than a reassurance.
+      setEnv('META_APP_ID', undefined);
+      await storeLine();
+      metaWith([{ id: '61596283615722', name: 'Customer Care' }]);
+
+      const res = await readiness();
+      const degraded = (res.body.degraded ?? []).join(' ');
+      expect(degraded).toMatch(/META_APP_ID is not set/i);
+      expect(degraded).toMatch(/rejected as an invalid signature|could not be checked/i);
+    });
+
+    it('no longer claims a non-empty variable proves verification works', async () => {
+      setEnv('META_APP_ID', '61596283615722');
+      await storeLine();
+      metaWith([{ id: '61596283615722', name: 'Customer Care' }]);
+
+      const res = await readiness();
+      const ok = (res.body.ok ?? []).join(' ');
+      expect(ok).not.toMatch(/is set, so deliveries can be verified/i);
     });
   });
 

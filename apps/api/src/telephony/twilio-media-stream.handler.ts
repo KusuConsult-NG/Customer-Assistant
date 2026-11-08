@@ -68,7 +68,8 @@ import { CallBroadcastService } from './call-broadcast.service';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { ChannelType, MessageSender, bookedAppointmentId } from '@ace/shared-types';
-import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, createTicketWithUniqueNumber } from '@ace/database';
+import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone } from '@ace/database';
+import { fileHandoffTicket, handoffApology } from './handoff-ticket';
 
 // Early-audio buffer cap: 250 frames × 20 ms = 5 seconds maximum
 const MAX_EARLY_BUFFER_FRAMES = 250;
@@ -628,57 +629,19 @@ export class TwilioMediaStreamHandler {
     }
 
     // Could not transfer. Leave a record a human will actually see, then say
-    // precisely what did happen.
-    let ticketNumber: string | null = null;
-    try {
-      // The shared helper: it matches every stored shape, so the escalation
-      // lands on the record the customer already has from WhatsApp rather than
-      // a new one with none of their history, and it refuses to key a row on a
-      // withheld number — which this upsert used to do, giving every withheld
-      // caller in the State one shared contact.
-      const contact = await ensureContactForPhone(
-        prisma,
-        session.organizationId,
-        session.fromNumber
-      );
-      if (!contact) {
-        throw new Error(
-          `the caller's number was withheld (${session.fromNumber}), so there is no record to file this against`
-        );
-      }
+    // precisely what did happen. Shared with every carrier — see
+    // `handoff-ticket.ts` — so the promise made to a caller is the same one
+    // whichever network carried their call.
+    const ticketNumber = await fileHandoffTicket({
+      organizationId: session.organizationId,
+      fromNumber: session.fromNumber,
+      whyNotTransferred: forwardingNumber ? 'the redirect was refused' : 'no forwarding number is configured',
+      lastUtterance,
+      onError: (err) =>
+        this.logger.error('voice_handoff_ticket_failed', err as Error, { callSid: session.callSid }),
+    });
 
-      // `createTicketWithUniqueNumber`, not `TCK-${Date.now()…slice(-6)}`.
-      // That generator is the last six digits of the epoch millisecond: 10^6
-      // values REPEATING EVERY 16.7 MINUTES, shared across every tenant, on a
-      // column that is `@unique` table-wide, with no retry. A collision here
-      // means the caller who just asked for a human is told we could not even
-      // log it — the one moment in the product where that is least affordable.
-      const ticket = await createTicketWithUniqueNumber((ticketNumberCandidate) =>
-        prisma.ticket.create({
-          data: {
-            organizationId: session.organizationId,
-            contactId: contact.id,
-            ticketNumber: ticketNumberCandidate,
-            subject: 'Caller asked to speak to a human',
-            description:
-              `A caller on ${session.fromNumber} asked to be put through to a person, but the call ` +
-              `could not be transferred (${forwardingNumber ? 'the redirect was refused' : 'no forwarding number is configured'}). ` +
-              `They were told someone would call back.\n\nWhat they said: "${lastUtterance}"`,
-            status: 'OPEN',
-            priority: 'HIGH',
-          },
-        })
-      );
-      ticketNumber = ticket.ticketNumber;
-    } catch (err) {
-      this.logger.error('voice_handoff_ticket_failed', err as Error, { callSid: session.callSid });
-    }
-
-    const spoken = ticketNumber
-      ? `I'm sorry — I can't put you through to a colleague on this call. I've logged your request as ` +
-        `reference ${ticketNumber}, and someone will call you back on this number.`
-      : `I'm sorry — I can't put you through to a colleague on this call, and I wasn't able to log your ` +
-        `request either. Please call us back shortly and a member of the team will help you.`;
+    const spoken = handoffApology(ticketNumber);
 
     this.logger.warn('voice_handoff_not_transferred', {
       callSid: session.callSid,

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { InfobipVoiceService } from './infobip/infobip-voice.service';
 import {
   prisma,
   withTelephonyCredentials,
@@ -57,6 +58,8 @@ function apiBaseUrl(): string {
 
 @Injectable()
 export class VoiceReadinessService {
+  constructor(private readonly infobip: InfobipVoiceService) {}
+
   async forOrganization(organizationId: string) {
     const base = apiBaseUrl();
     const checks: ReadinessCheck[] = [];
@@ -99,6 +102,27 @@ export class VoiceReadinessService {
     }
 
     const twilio = lines.filter((l) => l.provider === 'TWILIO');
+
+    // ── 1b. Infobip lines ────────────────────────────────────────────────────
+    //
+    // Checked on their own terms. The Twilio checks below are filtered to
+    // Twilio lines, so an Infobip line was never MISreported — but it was
+    // reported as nothing at all, which on the screen an operator uses to ask
+    // "will a call work" reads as "nothing to fix".
+    for (const line of lines.filter((l) => l.provider === 'INFOBIP')) {
+      const r = this.infobip.readiness();
+      checks.push({
+        id: `infobip:${line.id}`,
+        label: `Infobip carries ${line.phoneNumber}`,
+        state: r.enabled ? 'ready' : 'blocked',
+        detail: r.detail,
+        consequence: r.enabled
+          ? ''
+          : 'Calls to this number reach Infobip and are not answered here: events are refused, the AI ' +
+            'cannot be attached, or the media stream is refused.',
+        remedy: r.enabled ? '' : 'Set the missing INFOBIP_* values on the API service, as listed.',
+      });
+    }
 
     // ── 2. Carrier credentials ───────────────────────────────────────────────
     for (const line of twilio) {

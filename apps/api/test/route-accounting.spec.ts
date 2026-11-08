@@ -164,6 +164,9 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/telephony/inbound/nigeria-carrier', calledBy: 'Nigerian carrier forward (shared secret)' },
   { method: 'POST', path: '/api/telephony/inbound/africa-talking', calledBy: "Africa's Talking voice webhook" },
   { method: 'POST', path: '/api/telephony/inbound/telnyx', calledBy: 'Telnyx voice webhook' },
+  // Infobip call events (CALL_RECEIVED / CALL_FINISHED / CALL_FAILED), sent by
+  // the subscription's notification profile with Basic authentication.
+  { method: 'POST', path: '/api/telephony/inbound/infobip', calledBy: 'Infobip call-event webhook (Basic auth)' },
   // Where a call goes when the officers' browsers did not pick it up. Twilio
   // POSTs here as the `<Dial action>`, and what it returns becomes the rest of
   // the call — the same AI TwiML the inbound webhook would have returned if

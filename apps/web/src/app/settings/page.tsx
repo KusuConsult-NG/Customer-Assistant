@@ -1379,6 +1379,11 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
 const VOICE_PROVIDERS: Array<{ value: string; label: string; note?: string }> = [
   { value: 'TWILIO', label: 'Twilio' },
   { value: 'SIP_TRUNK', label: 'SIP trunk (local carrier)', note: 'Answered by the hosted agent — no Twilio' },
+  {
+    value: 'INFOBIP',
+    label: 'Infobip (your number over SIP)',
+    note: 'Answered by this platform\u2019s AI. Point the Infobip subscription webhook at the URL below.',
+  },
   { value: 'AFRICAS_TALKING', label: "Africa's Talking" },
   { value: 'NIGERIA_CARRIER_FORWARD', label: 'Nigerian carrier forwarding' },
   { value: 'MTN_ENTERPRISE_SIP', label: 'MTN Business SIP (inbound only)' },
@@ -1405,6 +1410,10 @@ function inboundWebhookPath(provider: string): string | null {
       return 'nigeria-carrier';
     case 'TELNYX':
       return 'telnyx';
+    // Infobip delivers call EVENTS (not TwiML requests) to this route, set as
+    // the webhook URL on the Infobip subscription's notification profile.
+    case 'INFOBIP':
+      return 'infobip';
     // A SIP trunk goes to ElevenLabs, which answers it. Showing a webhook URL
     // for it would invite an operator to point the trunk back here and undo the
     // cutover. Plivo has no inbound route in this API.

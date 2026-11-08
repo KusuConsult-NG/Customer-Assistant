@@ -61,8 +61,55 @@ describe('browser calling', () => {
       const r = service().readiness();
       expect(r.enabled).toBe(true);
       expect(r.blocked).toEqual([]);
-      // And it does not claim a call has ever worked.
-      expect(r.detail).toMatch(/no real call has proven/i);
+    });
+
+    it('never claims a call has worked, in either mode', () => {
+      // The caveat belongs to BOTH. Ringing a browser and placing a callback
+      // from one are equally untested, and an enabled feature that sounds
+      // proven is how the first real failure becomes a surprise.
+      configure();
+      for (const mode of [undefined, '1']) {
+        setEnv('TWILIO_RING_OFFICERS_FIRST', mode);
+        expect(service().readiness().detail).toMatch(/no real call has proven/i);
+      }
+    });
+  });
+
+  describe('who answers an inbound call', () => {
+    /**
+     * AI-FIRST IS THE DEFAULT, and setting the Twilio credentials must not
+     * change that.
+     *
+     * Those credentials are what lets an officer place a CALLBACK from the
+     * dashboard. An agency that sets them for that reason would otherwise
+     * find its main line had quietly started ringing every desk — a
+     * different product, arriving as a side effect.
+     */
+    it('does NOT ring officers just because the credentials are present', () => {
+      configure();
+      setEnv('TWILIO_RING_OFFICERS_FIRST', undefined);
+      const svc = service();
+      expect(svc.readiness().enabled).toBe(true);
+      expect(svc.ringsOfficersFirst()).toBe(false);
+      // And says so, rather than describing a behaviour it is not performing.
+      expect(svc.readiness().detail).toMatch(/Inbound calls go to the AI/i);
+      expect(svc.readiness().detail).toMatch(/TWILIO_RING_OFFICERS_FIRST/);
+    });
+
+    it('rings them when an agency asks for it explicitly', () => {
+      configure();
+      setEnv('TWILIO_RING_OFFICERS_FIRST', '1');
+      const svc = service();
+      expect(svc.ringsOfficersFirst()).toBe(true);
+      expect(svc.readiness().detail).toMatch(/ring signed-in officers/i);
+    });
+
+    it('treats anything other than 1 as off', () => {
+      configure();
+      for (const v of ['0', 'true', 'yes', '', ' ']) {
+        setEnv('TWILIO_RING_OFFICERS_FIRST', v);
+        expect(service().ringsOfficersFirst()).toBe(false);
+      }
     });
   });
 

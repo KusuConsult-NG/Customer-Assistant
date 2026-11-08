@@ -3,6 +3,8 @@ import {
   Headers, UseGuards, HttpCode,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
+import { InfobipVoiceService } from './infobip/infobip-voice.service';
+import { InfobipCallsService, InfobipEvent } from './infobip/infobip-calls.service';
 import { BrowserCallingService, RING_SECONDS } from './browser-calling.service';
 import { TelephonyService } from './telephony.service';
 import { VoiceReadinessService } from './voice-readiness.service';
@@ -22,7 +24,9 @@ export class TelephonyController {
     // reconciliation cannot live inside TelephonyService without a cycle.
     private callbacks: CallbackDispatcherService,
     private voiceReadiness: VoiceReadinessService,
-    private browserCalling: BrowserCallingService
+    private browserCalling: BrowserCallingService,
+    private infobip: InfobipVoiceService,
+    private infobipCalls: InfobipCallsService
   ) {}
 
   /**
@@ -161,6 +165,37 @@ export class TelephonyController {
       to
     );
     res.send(xml);
+  }
+
+  /**
+   * Infobip call events — CALL_RECEIVED, CALL_FINISHED, CALL_FAILED and any
+   * others the subscription sends.
+   *
+   * VERIFY, THEN ACK, THEN WORK — the order every carrier route here keeps.
+   * Basic authentication is the scheme Infobip documents for a notification
+   * profile, and it is checked before a byte of the event is trusted. With no
+   * credentials configured every event is REFUSED rather than accepted: an
+   * unauthenticated CALL_RECEIVED would let anybody create contacts and call
+   * records in an agency's CRM.
+   *
+   * 500 for "not configured" — our fault, worth Infobip retrying once it is
+   * fixed — and 401 for wrong or missing credentials, which no retry fixes.
+   * Then 200 at once and the work afterwards: a citizen is ringing, and the
+   * dialog that answers them must not wait on Infobip's own webhook timeout.
+   */
+  @Post('inbound/infobip')
+  async infobipEvent(@Req() req: Request, @Res() res: Response, @Headers('authorization') authorization?: string) {
+    const verdict = this.infobip.verifyWebhook(authorization);
+    if (verdict === 'unconfigured') {
+      res.status(500).send('Server misconfiguration');
+      return;
+    }
+    if (verdict !== 'ok') {
+      res.status(401).send('Unauthorized');
+      return;
+    }
+    res.status(200).send();
+    void this.infobipCalls.handle((req.body ?? {}) as InfobipEvent);
   }
 
   @Post('inbound/twilio')
