@@ -1546,6 +1546,111 @@ describe('WhatsApp line discovery and handshake', () => {
    * into a generic catch: the citizen got no reply and the log said nothing
    * about why.
    */
+  /**
+   * `••••` MEANT TWO DIFFERENT THINGS.
+   *
+   * `maskStoredSecret` returns `••••` for an unreadable value deliberately,
+   * so the settings page still renders — an operator who cannot reach the
+   * form cannot re-enter the credential either. But a readable credential
+   * masked to `••••` too, so the two were indistinguishable on every
+   * settings screen.
+   *
+   * A deployment whose ENCRYPTION_KEY had changed therefore displayed a
+   * fully configured WhatsApp line and a fully configured carrier, while
+   * messages went unanswered — the only visible symptom being a citizen
+   * getting no reply. The operator had no way to know which box to retype,
+   * or that any of them needed retyping at all.
+   */
+  describe('telling a working credential from an unreadable one', () => {
+    const UNDECRYPTABLE = `v1.${Buffer.alloc(12).toString('base64')}.${Buffer.alloc(16).toString('base64')}.${Buffer.from('rubbish').toString('base64')}`;
+
+    const me = () =>
+      request(app.getHttpServer())
+        .get('/api/organizations/me')
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    it('names the unreadable field, rather than masking it like a good one', async () => {
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-mask-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: UNDECRYPTABLE,
+          webhookVerifyToken: encryptSecret('readable_verify'),
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      const res = await me();
+      expect(res.status).toBe(200);
+      const line = res.body.whatsAppConfigs.find((c: any) => c.accessToken);
+      expect(line.unreadableCredentials).toEqual(['accessToken']);
+      // The readable one is NOT listed, or the warning means nothing.
+      expect(line.unreadableCredentials).not.toContain('webhookVerifyToken');
+    });
+
+    it('lists nothing when every credential reads', async () => {
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-ok-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: encryptSecret('readable_verify'),
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      const res = await me();
+      const line = res.body.whatsAppConfigs.find((c: any) => c.accessToken);
+      expect(line.unreadableCredentials).toEqual([]);
+    });
+
+    it('still RENDERS the page, which is why the mask exists at all', async () => {
+      // The whole reason `maskStoredSecret` swallows the error: an operator
+      // who cannot load the settings page cannot re-enter the credential.
+      // Reporting the fault must not undo that.
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-render-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: UNDECRYPTABLE,
+          webhookVerifyToken: UNDECRYPTABLE,
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      const res = await me();
+      expect(res.status).toBe(200);
+      const line = res.body.whatsAppConfigs.find((c: any) => c.unreadableCredentials?.length === 2);
+      expect(line).toBeTruthy();
+      // Masked, not absent — the form still shows a line is stored.
+      expect(line.accessToken).toBe('••••');
+    });
+
+    it('never returns the ciphertext it could not read', async () => {
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-safe-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: UNDECRYPTABLE,
+          webhookVerifyToken: encryptSecret('readable_verify'),
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      const raw = JSON.stringify((await me()).body);
+      expect(raw).not.toContain(UNDECRYPTABLE);
+      expect(raw).not.toContain('rubbish');
+    });
+  });
+
   describe('a line whose stored credentials cannot be decrypted', () => {
     const handshake = (token: string) =>
       request(app.getHttpServer()).get(
