@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ace/shared-types": "1.0.0",
+    "@twilio/voice-sdk": "^2.18.5",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.453.0",

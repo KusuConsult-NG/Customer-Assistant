@@ -15,6 +15,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { whatsAppDeliveryLog } from './delivery-log.service';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { WhatsappService, handshakeTokenIsAccepted } from './whatsapp.service';
@@ -157,6 +158,14 @@ export class WhatsappController {
         correlationId,
         event: 'signature_rejected',
         signatureProvided: !!signature,
+      });
+      // Recorded HERE because a rejected delivery never reaches the service,
+      // and it is the one outcome that looks identical to Meta not delivering
+      // at all — which sends somebody to check the subscription instead of
+      // the app secret.
+      whatsAppDeliveryLog.record({
+        outcome: 'signature_rejected',
+        phoneNumberId: String(body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ?? '') || undefined,
       });
       res.status(403).send('Invalid signature');
       return;

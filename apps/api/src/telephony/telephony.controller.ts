@@ -3,6 +3,7 @@ import {
   Headers, UseGuards, HttpCode,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
+import { BrowserCallingService, RING_SECONDS } from './browser-calling.service';
 import { TelephonyService } from './telephony.service';
 import { VoiceReadinessService } from './voice-readiness.service';
 import { CallbackDispatcherService } from './callback-dispatcher.service';
@@ -20,7 +21,8 @@ export class TelephonyController {
     // that callback lands. The dispatcher depends on TelephonyService, so the
     // reconciliation cannot live inside TelephonyService without a cycle.
     private callbacks: CallbackDispatcherService,
-    private voiceReadiness: VoiceReadinessService
+    private voiceReadiness: VoiceReadinessService,
+    private browserCalling: BrowserCallingService
   ) {}
 
   /**
@@ -81,6 +83,85 @@ export class TelephonyController {
   }
 
   // ─── Inbound Webhooks (public — verified via HMAC inside service) ─────────────
+
+  // ─── Answering in the dashboard ──────────────────────────────────────────
+
+  /**
+   * A Twilio Voice token for the signed-in officer, so their browser can ring.
+   *
+   * Scoped to `req.user.userId` and nothing else — an officer cannot mint a
+   * token for a colleague, and the identity is derived from the id rather
+   * than taken from the request. A token that named its own identity would be
+   * a way to receive another officer's calls.
+   *
+   * OWNER/ADMIN/AGENT, matching who may speak to a citizen elsewhere in this
+   * controller. A VIEWER answering a call is a role boundary crossed by a
+   * telephone.
+   */
+  @Roles('OWNER', 'ADMIN', 'AGENT')
+  @Post('browser/token')
+  async browserToken(@Req() req: { user: AuthUser }) {
+    const readiness = this.browserCalling.readiness();
+    if (!readiness.enabled) {
+      // Not an error: a deployment that has not switched this on is a normal
+      // deployment, and the dashboard needs to know that rather than to
+      // retry. It renders nothing instead of a broken phone.
+      return { enabled: false, blocked: readiness.blocked, detail: readiness.detail };
+    }
+
+    const minted = this.browserCalling.accessTokenFor((req.user as any).userId ?? (req.user as any).id);
+    if (!minted) {
+      return { enabled: false, blocked: readiness.blocked, detail: readiness.detail };
+    }
+    return { enabled: true, ...minted, ringSeconds: RING_SECONDS };
+  }
+
+  /**
+   * Where a call goes when the officers' browsers did not answer it.
+   *
+   * Twilio POSTs here when the `<Dial>` ends for ANY reason — nobody picked
+   * up, everybody declined, no client was registered, the call failed. What
+   * this returns becomes the rest of the call, so it returns exactly the AI
+   * TwiML the inbound webhook would have returned if browser answering had
+   * never been switched on.
+   *
+   * PUBLIC, like every other carrier callback on this controller, and for the
+   * same reason: Twilio cannot present a JWT. It is reached only with a
+   * `CallSid` Twilio generated and parameters this platform put in the URL
+   * itself.
+   *
+   * If `DialCallStatus` is `completed`, an officer DID speak to the citizen
+   * and the call is over — handing it to the AI then would make a citizen who
+   * has already been helped listen to a greeting.
+   */
+  @Post('inbound/twilio/after-officers')
+  async twilioAfterOfficers(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('orgId') orgId: string,
+    @Query('callSid') callSid: string,
+    @Query('from') from: string,
+    @Query('to') to: string
+  ) {
+    const dialStatus = String((req.body as any)?.DialCallStatus ?? '').toLowerCase();
+    res.setHeader('Content-Type', 'text/xml');
+
+    if (dialStatus === 'completed') {
+      // An officer took it. Hang up rather than start a second conversation.
+      res.send('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
+      return;
+    }
+
+    const xml = await this.telephonyService.aiStreamTwiml(
+      TelephonyProviderType.TWILIO,
+      await this.telephonyService.inboundConfigFor(orgId),
+      orgId,
+      callSid,
+      from,
+      to
+    );
+    res.send(xml);
+  }
 
   @Post('inbound/twilio')
   async twilioInbound(

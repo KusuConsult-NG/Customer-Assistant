@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BrowserCallingService } from './browser-calling.service';
 import { TelephonyService } from './telephony.service';
 import { TelephonyController } from './telephony.controller';
 import { VoiceStreamGateway } from './voice-stream.gateway';
@@ -21,6 +22,11 @@ import { VoiceReadinessService } from './voice-readiness.service';
   providers: [
     // Core telephony logic
     TelephonyService,
+
+    // Answering a citizen's call in the dashboard rather than on a handset.
+    // Inert until its Twilio credentials are set: with none, the inbound path
+    // is exactly what it was before this existed.
+    BrowserCallingService,
 
     // Voice AI: Deepgram STT + ElevenLabs TTS
     VoiceAiService,
@@ -54,6 +60,7 @@ import { VoiceReadinessService } from './voice-readiness.service';
   ],
   controllers: [TelephonyController, CallbacksController],
   exports: [
+    BrowserCallingService,
     TelephonyService,
     TwilioMediaStreamHandler,  // Exported so main.ts can retrieve it via app.get()
     CallBroadcastService,

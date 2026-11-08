@@ -142,6 +142,28 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'TWILIO_API_KEY_SID',
+    required: false,
+    description:
+      'Twilio API Key SID (starts SK…) for BROWSER answering — officers picking up a citizen\'s call ' +
+      'in the dashboard. This is NOT the Account SID and NOT the Auth Token: it is a separate ' +
+      'credential pair created in the Twilio console. Without all four TWILIO_* browser variables, ' +
+      'inbound calls go straight to the AI exactly as before.',
+  },
+  {
+    key: 'TWILIO_API_KEY_SECRET',
+    required: false,
+    description:
+      'The secret half of TWILIO_API_KEY_SID. Twilio shows it ONCE, when the key is created.',
+  },
+  {
+    key: 'TWILIO_TWIML_APP_SID',
+    required: false,
+    description:
+      'Twilio TwiML App SID (starts AP…). What a browser client dials OUT through; without it ' +
+      'officers can answer calls but not place them.',
+  },
+  {
     key: 'DEEPGRAM_MODEL',
     required: false,
     description:

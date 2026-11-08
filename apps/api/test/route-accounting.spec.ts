@@ -164,6 +164,11 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/telephony/inbound/nigeria-carrier', calledBy: 'Nigerian carrier forward (shared secret)' },
   { method: 'POST', path: '/api/telephony/inbound/africa-talking', calledBy: "Africa's Talking voice webhook" },
   { method: 'POST', path: '/api/telephony/inbound/telnyx', calledBy: 'Telnyx voice webhook' },
+  // Where a call goes when the officers' browsers did not pick it up. Twilio
+  // POSTs here as the `<Dial action>`, and what it returns becomes the rest of
+  // the call — the same AI TwiML the inbound webhook would have returned if
+  // browser answering had never been switched on.
+  { method: 'POST', path: '/api/telephony/inbound/twilio/after-officers', calledBy: 'Twilio <Dial action> callback' },
   { method: 'POST', path: '/api/telephony/status/twilio', calledBy: 'Twilio status callback' },
   { method: 'POST', path: '/api/telephony/status/telnyx', calledBy: 'Telnyx status callback' },
 

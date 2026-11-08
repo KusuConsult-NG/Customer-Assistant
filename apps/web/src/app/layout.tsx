@@ -1,5 +1,6 @@
 "use client";
 import './globals.css';
+import { OfficerPhone } from '@/components/OfficerPhone';
 import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -241,6 +242,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         ) : (
           <div className="flex h-screen overflow-hidden relative">
+            {/* The officer's phone. Mounted in the SHELL, not on one page, so
+                a citizen's call reaches whoever is signed in wherever they
+                happen to be working. Renders nothing at all on a deployment
+                that has not switched browser answering on. */}
+            <OfficerPhone />
             {/* Ambient Background Glows */}
             <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-500/10 dark:bg-brand-600/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-brand-600/10 dark:bg-brand-500/5 rounded-full blur-3xl pointer-events-none" />

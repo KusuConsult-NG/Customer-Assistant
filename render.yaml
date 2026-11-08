@@ -191,6 +191,22 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      # ── Answering a citizen's call IN THE DASHBOARD ────────────────────────
+      #
+      # Leave blank and nothing changes: inbound calls go straight to the AI
+      # exactly as they always have. Set all three (plus TWILIO_ACCOUNT_SID
+      # above) and an inbound call rings every signed-in officer's browser
+      # first, falling back to the AI if none of them picks up.
+      #
+      # TWILIO_API_KEY_SID is NOT the Account SID and NOT the Auth Token. It
+      # is a separate credential pair created in the Twilio console, and its
+      # secret is shown once.
+      - key: TWILIO_API_KEY_SID
+        sync: false
+      - key: TWILIO_API_KEY_SECRET
+        sync: false
+      - key: TWILIO_TWIML_APP_SID
+        sync: false
       # ── Deepgram speech model ──────────────────────────────────────────────
       #
       # Leave blank for nova-2, which is what this platform has always used.

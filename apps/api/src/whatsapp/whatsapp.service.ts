@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { whatsAppDeliveryLog } from './delivery-log.service';
 import { timingSafeEqual } from 'crypto';
 import { prisma, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
@@ -324,6 +325,12 @@ export class WhatsappService {
         take: 2,
       });
       if (claimants.length > 1) {
+        whatsAppDeliveryLog.record({
+          outcome: 'ambiguous_line',
+          phoneNumberId,
+          organizationId: claimants[0]?.organizationId,
+          detail: `${claimants.length} agencies claim this line`,
+        });
         log.error(
           'whatsapp_ambiguous_phone_number_id',
           new Error('More than one agency claims this phoneNumberId'),
@@ -354,6 +361,12 @@ export class WhatsappService {
       try {
         config = withWhatsAppCredentials(claimant);
       } catch (err: any) {
+        whatsAppDeliveryLog.record({
+          outcome: 'credentials_unreadable',
+          phoneNumberId,
+          organizationId: claimant?.organizationId,
+          fromSuffix: fromNumber.slice(-4),
+        });
         log.error(
           'whatsapp_credentials_unreadable',
           err instanceof Error ? err : new Error(String(err)),
@@ -373,6 +386,11 @@ export class WhatsappService {
       }
 
       if (!config) {
+        whatsAppDeliveryLog.record({
+          outcome: 'no_config_found',
+          phoneNumberId,
+          fromSuffix: fromNumber.slice(-4),
+        });
         log.warn('whatsapp_no_config_found', {
           correlationId,
           event: 'config_not_found',
@@ -599,6 +617,12 @@ export class WhatsappService {
 
         try {
           const sendResult = await client.sendTextMessage(fromNumber, orchResult.replyText);
+          whatsAppDeliveryLog.record({
+            outcome: 'replied',
+            phoneNumberId,
+            organizationId,
+            fromSuffix: fromNumber.slice(-4),
+          });
           log.info('whatsapp_reply_sent', {
             correlationId,
             conversationId: conversation.id,
@@ -607,6 +631,13 @@ export class WhatsappService {
             event: 'reply_delivered',
           }, sendTimer);
         } catch (sendErr: any) {
+          whatsAppDeliveryLog.record({
+            outcome: 'reply_send_failed',
+            phoneNumberId,
+            organizationId,
+            fromSuffix: fromNumber.slice(-4),
+            detail: String(sendErr?.message ?? sendErr).slice(0, 200),
+          });
           log.error('whatsapp_reply_send_failed', sendErr, {
             correlationId,
             conversationId: conversation.id,
@@ -625,6 +656,10 @@ export class WhatsappService {
       }, timer);
 
     } catch (err: any) {
+      whatsAppDeliveryLog.record({
+        outcome: 'processing_failed',
+        detail: String(err?.message ?? err).slice(0, 200),
+      });
       log.error('whatsapp_webhook_unhandled_error', err, { correlationId });
     }
   }
