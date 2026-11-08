@@ -41,6 +41,40 @@ function maskStoredSecret(value: string | null | undefined, label: string): stri
   }
 }
 
+/**
+ * Which of these stored credentials cannot be decrypted.
+ *
+ * ── The bug this exists to catch ────────────────────────────────────────────
+ *
+ * `maskStoredSecret` returns `••••` for an unreadable value, deliberately, so
+ * the settings page still renders — an operator who cannot reach the form
+ * cannot re-enter the credential either. But the consequence was that an
+ * unreadable credential looked EXACTLY like a working one: `••••` in both
+ * cases, on every settings screen, with nothing to tell them apart.
+ *
+ * So a deployment whose ENCRYPTION_KEY had changed showed a fully configured
+ * WhatsApp line, a fully configured carrier and a fully configured agent key
+ * — while messages went unanswered, because the inbound path could not read
+ * the token it was being shown a mask of. The only visible symptom was a
+ * citizen getting no reply.
+ *
+ * Reported as a LIST of field names, never a value and never a reason that
+ * quotes ciphertext. The field name is what says which box to retype.
+ */
+function unreadableCredentials(row: Record<string, any>, fields: Array<[string, string]>): string[] {
+  const broken: string[] = [];
+  for (const [field, label] of fields) {
+    const value = row?.[field];
+    if (!value) continue;
+    try {
+      decryptSecret(value, label);
+    } catch {
+      broken.push(field);
+    }
+  }
+  return broken;
+}
+
 
 function maskedTelephonyConfig<T extends Record<string, any>>(c: T) {
   return {
@@ -53,6 +87,14 @@ function maskedTelephonyConfig<T extends Record<string, any>>(c: T) {
     // a trunk rather than open it, and an operator comparing our configuration
     // against their carrier's needs to read them. The password is a credential.
     sipPassword: maskStoredSecret(c.sipPassword, `TelephonyConfig ${c.id}.sipPassword`),
+    // A carrier credential nothing can read fails every call with an auth
+    // error pointing at Twilio, which is the wrong system entirely.
+    unreadableCredentials: unreadableCredentials(c, [
+      ['authToken', `TelephonyConfig ${c.id}.authToken`],
+      ['apiKey', `TelephonyConfig ${c.id}.apiKey`],
+      ['apiSecret', `TelephonyConfig ${c.id}.apiSecret`],
+      ['sipPassword', `TelephonyConfig ${c.id}.sipPassword`],
+    ]),
   };
 }
 
@@ -93,6 +135,11 @@ function maskedWhatsAppConfig<T extends Record<string, any>>(c: T) {
       c.webhookVerifyToken,
       `WhatsAppConfig ${c.id}.webhookVerifyToken`
     ),
+    // Which of the above are a mask over something nothing can read.
+    unreadableCredentials: unreadableCredentials(c, [
+      ['accessToken', `WhatsAppConfig ${c.id}.accessToken`],
+      ['webhookVerifyToken', `WhatsAppConfig ${c.id}.webhookVerifyToken`],
+    ]),
   };
 }
 
@@ -251,14 +298,17 @@ export class OrganizationsService {
       // exactly what happened to `sipPassword`, which the write path masked and
       // this read handed back as ciphertext.
       telephonyConfigs: org.telephonyConfigs.map((c) => maskedTelephonyConfig(c)),
-      whatsAppConfigs: org.whatsAppConfigs.map((c) => ({
-        ...c,
-        accessToken: maskStoredSecret(c.accessToken, `WhatsAppConfig ${c.id}.accessToken`),
-        webhookVerifyToken: maskStoredSecret(
-          c.webhookVerifyToken,
-          `WhatsAppConfig ${c.id}.webhookVerifyToken`
-        ),
-      })),
+      // ...and the WhatsApp line was STILL a second copy, directly beneath the
+      // comment saying it should not be. The telephony line obeyed it; this one
+      // was a hand-written duplicate of the same field list.
+      //
+      // It cost exactly what the comment predicts. `maskedWhatsAppConfig` was
+      // taught to report which credentials cannot be decrypted — the thing
+      // that tells an operator which box to retype when ENCRYPTION_KEY has
+      // changed — and this path, the one the settings screen actually reads,
+      // did not get it. The screen went on showing an unreadable token as
+      // `••••`, indistinguishable from a working one.
+      whatsAppConfigs: org.whatsAppConfigs.map((c) => maskedWhatsAppConfig(c)),
     };
   }
 

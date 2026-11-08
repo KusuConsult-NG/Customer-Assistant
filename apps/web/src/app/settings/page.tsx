@@ -16,6 +16,38 @@ const inputCls = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60
 const selectCls = `${inputCls} appearance-none cursor-pointer`;
 const labelCls = "text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block uppercase tracking-wider";
 
+/**
+ * A credential this deployment cannot decrypt.
+ *
+ * `••••` is shown for a readable credential AND for one nothing can read,
+ * so the two were indistinguishable on every settings screen. A deployment
+ * whose ENCRYPTION_KEY had changed therefore showed a fully configured
+ * WhatsApp line and carrier while messages went unanswered — the only
+ * visible symptom being a citizen getting no reply.
+ *
+ * Names the FIELD, because the field is what says which box to retype.
+ */
+const UnreadableCredentials = ({ fields, what }: { fields?: string[]; what: string }) => {
+  if (!fields || fields.length === 0) return null;
+  return (
+    <div className="mb-4 rounded-xl border border-red-300 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-3">
+      <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+        {fields.length === 1 ? 'A credential' : `${fields.length} credentials`} on this {what} cannot be
+        decrypted
+      </p>
+      <p className="mt-1 text-xs text-red-700 dark:text-red-400">
+        {fields.join(', ')} — shown as •••• above, but unreadable. ENCRYPTION_KEY is not the key that
+        wrote {fields.length === 1 ? 'it' : 'them'}. Either set the original key as
+        ENCRYPTION_KEY_PREVIOUS, or enter {fields.length === 1 ? 'a fresh value' : 'fresh values'} here
+        and save — saving re-encrypts with the current key.
+      </p>
+      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+        Until then this line does not work, whatever the rest of this page shows.
+      </p>
+    </div>
+  );
+};
+
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   return (
     <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium animate-fade-in-up ${
@@ -756,6 +788,10 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   return (
     <form onSubmit={save} className="space-y-5">
       <Section title="WhatsApp Cloud API" description="Connect your Meta Business WhatsApp number">
+        {/* FIRST, above everything. A line whose token cannot be read does
+            not work, and every other panel on this page would otherwise
+            describe it as configured. */}
+        <UnreadableCredentials fields={wa.unreadableCredentials} what="WhatsApp line" />
         {/* Calling: a citizen phones the agency from inside WhatsApp. The
             only route to a voice agent on a Nigerian number with no carrier,
             no international leg and nothing for the citizen to pay but data. */}
@@ -1417,6 +1453,7 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
   return (
     <form onSubmit={save} className="space-y-5">
       <Section title="Voice AI Telephony" description="How citizens' calls reach this agency">
+        <UnreadableCredentials fields={tc.unreadableCredentials} what="voice line" />
         {/* Say so, rather than letting the form imply the agency has one line.
             The other lines keep answering calls and are edited from whichever
             tooling created them; this form only ever touches the one shown. */}
