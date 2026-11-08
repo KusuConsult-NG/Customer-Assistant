@@ -1287,4 +1287,353 @@ describe('WhatsApp line discovery and handshake', () => {
       expect((await setCalling({ enabled: true }, agentToken)).status).toBe(403);
     });
   });
+
+  /**
+   * The Graph API VERSION is a cause of failure, and it was invisible.
+   *
+   * Meta refuses an edge the requested version does not carry with its single
+   * most misleading error:
+   *
+   *   Unsupported post request. Object with ID '<id>' does not exist, cannot
+   *   be loaded due to missing permissions, or does not support this operation.
+   *
+   * Three unrelated faults, one sentence, and the id is the one everybody
+   * reads. The calling calls were pinned to v21.0 — October 2024, long before
+   * the WhatsApp Calling API existed — so an operator chasing a stale phone
+   * number id would never find it, because the id was right all along.
+   */
+  /**
+   * The messaging limit is what decides whether calling can be switched on,
+   * and the operator could not see it.
+   *
+   * Meta refuses `calling: ENABLED` below 2,000 unique recipients a day, with
+   * a message that names neither the rule nor the number's current tier. So
+   * the screen said "Meta refused it" and the operator had no way to know
+   * what to change — or that the thing to change cannot be bought.
+   */
+  describe('whether Meta will allow calling at all', () => {
+    const graphWith = (settings: any, limitField: string | null, limitValue?: string) => {
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        if (url.includes('/settings')) return new Response(JSON.stringify(settings), { status: 200 });
+        if (limitField && url.includes(limitField)) {
+          return new Response(JSON.stringify({ [limitField]: limitValue }), { status: 200 });
+        }
+        // Any field we did not stub is refused, exactly as Graph refuses a
+        // field a version does not carry.
+        if (url.includes('fields=')) return new Response('{"error":{"message":"nonexisting field"}}', { status: 400 });
+        return new Response('{}', { status: 200 });
+      }) as any;
+    };
+
+    const readCalling = () =>
+      request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    it('reports a tier BELOW the threshold as the reason calling is refused', async () => {
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_250');
+
+      const res = await readCalling();
+      expect(res.body.messagingLimit).toBe('TIER_250');
+      expect(res.body.callingEligibility).toMatch(/BELOW/);
+      expect(res.body.callingEligibility).toMatch(/2,000/);
+      // And that no payment fixes it, which is the first thing anyone asks.
+      expect(res.body.callingEligibility).toMatch(/cannot be bought/i);
+    });
+
+    it('reports a tier that MEETS the threshold', async () => {
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_2K');
+
+      const res = await readCalling();
+      expect(res.body.callingEligibility).toMatch(/meets/i);
+      expect(res.body.callingEligibility).not.toMatch(/BELOW/);
+    });
+
+    it('treats UNLIMITED as meeting it, rather than as unparseable', async () => {
+      // It carries no digits, so a digits-only reading reported the HIGHEST
+      // tier there is as "unknown".
+      await storeLine();
+      graphWith({ calling: { status: 'ENABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_UNLIMITED');
+
+      const res = await readCalling();
+      expect(res.body.callingEligibility).toMatch(/meets/i);
+    });
+
+    it('falls back to the DEPRECATED field name when the new one is refused', async () => {
+      // `messaging_limit_tier` is deprecated in favour of
+      // `whatsapp_business_manager_messaging_limit`, and which one a given
+      // Graph version carries is not something to guess at.
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'messaging_limit_tier', 'TIER_250');
+
+      const res = await readCalling();
+      expect(res.body.messagingLimit).toBe('TIER_250');
+      expect(res.body.callingEligibility).toMatch(/BELOW/);
+    });
+
+    it('says UNKNOWN, not ineligible, when Meta reports no limit', async () => {
+      // Reporting an unknown tier as a low one would tell an agency its
+      // number is ineligible when the real cause might be the country rule —
+      // and send it chasing a verification it may already have.
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, null);
+
+      const res = await readCalling();
+      expect(res.body.messagingLimit).toBeNull();
+      expect(res.body.callingEligibility).toMatch(/unknown/i);
+      expect(res.body.callingEligibility).not.toMatch(/BELOW/);
+    });
+
+    it('does not let the limit lookup break the calling read', async () => {
+      // A separate request on purpose: folding the field into the settings
+      // read would turn a working 200 into a 400 and blank the screen.
+      await storeLine();
+      graphWith({ calling: { status: 'ENABLED' } }, null);
+
+      const res = await readCalling();
+      expect(res.status).toBe(200);
+      expect(res.body.callingStatus).toBe('ENABLED');
+      expect(res.body.enabled).toBe(true);
+    });
+
+    it('returns no credential value', async () => {
+      await storeLine();
+      graphWith({ calling: { status: 'DISABLED' } }, 'whatsapp_business_manager_messaging_limit', 'TIER_250');
+      const raw = JSON.stringify((await readCalling()).body);
+      expect(raw).not.toContain(META);
+      expect(raw).not.toContain('v1.');
+    });
+  });
+
+  describe('the Graph version used for calling', () => {
+    const settingsCalls: string[] = [];
+    const graphSettings = (body: any, ok = true) => {
+      settingsCalls.length = 0;
+      globalThis.fetch = (async (input: any) => {
+        const url = String(input);
+        if (url.includes('/settings')) {
+          settingsCalls.push(url);
+          return new Response(JSON.stringify(body), { status: ok ? 200 : 400 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }) as any;
+    };
+
+    const readCalling = () =>
+      request(app.getHttpServer())
+        .get('/api/organizations/whatsapp-config/calling')
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+    it('does NOT ask over v21.0, which predates the Calling API', async () => {
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings({ calling: { status: 'ENABLED' } });
+
+      const res = await readCalling();
+      expect(res.status).toBe(200);
+      expect(settingsCalls[0]).not.toContain('/v21.0/');
+      // And it says which version it used, because that is the one cause of
+      // the refusal invisible from Meta's own wording.
+      expect(res.body.graphVersion).toMatch(/^v\d+\.\d+$/);
+      expect(settingsCalls[0]).toContain(`/${res.body.graphVersion}/`);
+    });
+
+    it('uses META_GRAPH_VERSION, so a version can be tried without a deploy', async () => {
+      setEnv('META_GRAPH_VERSION', 'v27.0');
+      await storeLine();
+      graphSettings({ calling: { status: 'ENABLED' } });
+
+      const res = await readCalling();
+      expect(res.body.graphVersion).toBe('v27.0');
+      expect(settingsCalls[0]).toContain('/v27.0/');
+    });
+
+    it('ignores a malformed version rather than putting it in the path', async () => {
+      // Graph treats an unparseable segment as part of the PATH, so a typo
+      // becomes a call on an object named "v24" and comes back as "Unknown
+      // path components" — which reads as our URL being malformed rather than
+      // the version being wrong. Verified against the live Graph API: v99.0
+      // and vZZ both answer "Unknown path components", while v21.0 through
+      // v27.0 are parsed as versions and fail only on auth.
+      setEnv('META_GRAPH_VERSION', 'v24');
+      await storeLine();
+      graphSettings({ calling: { status: 'ENABLED' } });
+
+      const res = await readCalling();
+      expect(res.body.graphVersion).toMatch(/^v\d+\.\d+$/);
+      expect(settingsCalls[0]).not.toContain('/v24/');
+    });
+
+    it('reads Meta\'s three-fault refusal apart, instead of only quoting it', async () => {
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings(
+        {
+          error: {
+            message:
+              "Unsupported post request. Object with ID '1342529695620296' does not exist, cannot be " +
+              'loaded due to missing permissions, or does not support this operation.',
+          },
+        },
+        false
+      );
+
+      const res = await readCalling();
+      // Meta's words are still there, unedited.
+      expect(res.body.error).toContain('does not exist');
+      // And so is the reading, naming all three causes.
+      expect(res.body.refusalReading).toMatch(/Phone Number ID is wrong/i);
+      expect(res.body.refusalReading).toMatch(/cannot see that number/i);
+      expect(res.body.refusalReading).toMatch(/META_GRAPH_VERSION/);
+      expect(res.body.refusalReading).toContain(res.body.graphVersion);
+    });
+
+    it('adds no reading to a refusal that already speaks for itself', async () => {
+      // An expired token says so plainly. Appending three guesses to a clear
+      // answer is how a useful error becomes noise.
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings({ error: { message: 'Error validating access token: Session has expired.' } }, false);
+
+      const res = await readCalling();
+      expect(res.body.error).toContain('Session has expired');
+      expect(res.body.refusalReading).toBeUndefined();
+    });
+
+    it('still reports calling as UNKNOWN, not off, when Meta refuses', async () => {
+      setEnv('META_GRAPH_VERSION', undefined);
+      await storeLine();
+      graphSettings({ error: { message: "Object with ID '1' does not exist" } }, false);
+
+      const res = await readCalling();
+      // Could not ask is not the same as off — the reading must not change that.
+      expect(res.body.callingStatus).toBeNull();
+      expect(res.body.enabled).toBe(false);
+    });
+  });
+
+
+  /**
+   * AN UNREADABLE CREDENTIAL MUST NOT TAKE THE CHANNEL DOWN.
+   *
+   * ── The bug this exists to catch ────────────────────────────────────────────
+   *
+   * Found by probing the live deployment, not by reading. The Meta verification
+   * handshake answered HTTP 500 on every call — warm, in about a second, with
+   * the global filter's `{"statusCode":500,"error":"Internal Server Error"}`
+   * body rather than the handler's own deliberate plain-text 500. An unhandled
+   * exception.
+   *
+   * `decryptSecret` THROWS when a stored value is malformed, when
+   * ENCRYPTION_KEY is unset, and when neither the current nor the previous key
+   * can read it. `handshakeTokenIsAccepted` decrypted every active line's
+   * `webhookVerifyToken` with no guard, so ONE unreadable row threw straight out
+   * of the handler.
+   *
+   * Two consequences, both worse than the missing credential itself:
+   *
+   *  1. Meta's handshake is how a webhook URL is registered and re-verified. A
+   *     500 there can cost the subscription that delivers every message — so an
+   *     undecryptable token on one line can stop messaging on the whole
+   *     deployment.
+   *  2. One agency's broken row broke the handshake for every OTHER line,
+   *     including lines whose credentials read perfectly well.
+   *
+   * The same unguarded decrypt was on the inbound message path, where it threw
+   * into a generic catch: the citizen got no reply and the log said nothing
+   * about why.
+   */
+  describe('a line whose stored credentials cannot be decrypted', () => {
+    const handshake = (token: string) =>
+      request(app.getHttpServer()).get(
+        `/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(token)}&hub.challenge=chal999`
+      );
+
+    /** A `v1.…` value no key can open — a rotated key, or a corrupted row. */
+    const UNDECRYPTABLE = `v1.${Buffer.alloc(12).toString('base64')}.${Buffer.alloc(16).toString('base64')}.${Buffer.from('rubbish').toString('base64')}`;
+
+    it('does not answer 500 — it skips that row and keeps verifying', async () => {
+      setEnv('WHATSAPP_VERIFY_TOKEN', 'env_verify_still_works');
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-undec-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: UNDECRYPTABLE,
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      // The exact production symptom: a wrong token must be 403, never 500.
+      const rejected = await handshake('deliberately-wrong');
+      expect(rejected.status).toBe(403);
+
+      // And a GOOD token still verifies, despite the broken row sitting beside
+      // it. This is the half that made one agency's bad row everyone's outage.
+      const accepted = await handshake('env_verify_still_works');
+      expect(accepted.status).toBe(200);
+      expect(accepted.text).toBe('chal999');
+    });
+
+    it('still verifies a DIFFERENT line that is readable', async () => {
+      setEnv('WHATSAPP_VERIFY_TOKEN', undefined);
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-bad-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: UNDECRYPTABLE,
+          displayPhoneNumber: '+234 000 000 0000',
+          isActive: true,
+        },
+      });
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-good-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: encryptSecret('the_readable_one'),
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      const res = await handshake('the_readable_one');
+      expect(res.status).toBe(200);
+      expect(res.text).toBe('chal999');
+    });
+
+    it('reports a misconfiguration, not a rejection, when NOTHING is readable', async () => {
+      // No env token and the only line unreadable. That IS our
+      // misconfiguration, so 500 is correct here — Meta retries a 500 and
+      // gives up on a 403 — but it must be the handler's deliberate one,
+      // reached on purpose rather than by throwing.
+      //
+      // The candidate list is DEPLOYMENT-WIDE: the webhook is one URL and
+      // cannot know which agency Meta is verifying, so "nothing is readable"
+      // is a fact about the whole database and any other suite's fixture row
+      // decides it. This asserted 500 and got 403 for exactly that reason.
+      // Same spy the suite already uses for the same problem, two blocks up.
+      setEnv('WHATSAPP_VERIFY_TOKEN', undefined);
+      const spy = jest.spyOn(prisma.whatsAppConfig, 'findMany').mockResolvedValue([
+        { id: 'cfg_unreadable', webhookVerifyToken: UNDECRYPTABLE },
+      ] as any);
+      try {
+        const res = await handshake('anything');
+        expect(res.status).toBe(500);
+        // The handler's own words, not the global filter's JSON — which is
+        // how the production fault was identified in the first place.
+        expect(res.text).toBe('Server misconfiguration');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
 });

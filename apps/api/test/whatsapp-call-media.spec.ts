@@ -1,3 +1,6 @@
+import { randomBytes } from 'crypto';
+import { prisma } from '@ace/database';
+import { DEFAULT_WELCOME_MESSAGE } from '../src/common/welcome-message';
 import {
   WhatsAppCallMediaService,
   downmixToMono,
@@ -339,6 +342,210 @@ describe('WhatsApp call media', () => {
         correlationId: 'cid',
       });
       await expect(session.stop()).resolves.toBeUndefined();
+    });
+
+    /**
+     * THE CALLER MUST HEAR SOMETHING.
+     *
+     * `say()` was reachable only from a final Deepgram transcript, so a
+     * citizen whose WhatsApp call was ACCEPTED heard nothing at all until
+     * they spoke first. The Twilio handler has always greeted. This channel
+     * did not, and nothing compared the two — so the first impression of the
+     * whole product was dead air, with no error logged and a `CallLog`
+     * recording the call as answered.
+     */
+    describe('greeting the caller', () => {
+      it('speaks first, without waiting for the citizen to talk', async () => {
+        const pc = makePc();
+        const spoken: string[] = [];
+        const svc = new WhatsAppCallMediaService({
+          createDeepgramWsForOrg: async () => makeDeepgram().ws,
+          fetchTtsPcm24k: async (text: string) => {
+            spoken.push(text);
+            // 24 kHz mono, a tenth of a second, so framing has something real.
+            return Buffer.alloc(2400 * 2);
+          },
+        } as any);
+
+        await svc.attach({
+          pc: pc.pc,
+          organizationId: `org_absent_${randomBytes(4).toString('hex')}`,
+          callId: 'wacid.GREET',
+          citizenNumber: '+2348012345678',
+          correlationId: 'cid',
+        });
+        await settle();
+
+        // Nothing was transcribed, and the caller was still spoken to.
+        expect(spoken).toHaveLength(1);
+        expect(spoken[0]).toBe(DEFAULT_WELCOME_MESSAGE);
+        // And it actually went out as Opus, not merely synthesised.
+        expect(pc.written.length).toBeGreaterThan(0);
+      });
+
+      it("uses the AGENCY's wording when it has configured one", async () => {
+        const org = await prisma.organization.create({
+          data: {
+            name: 'Greeting Agency',
+            slug: `greet-${randomBytes(4).toString('hex')}`,
+            industry: 'GOVERNMENT',
+            welcomeMessage: 'Plateau Customer Care, good afternoon. How may we help?',
+          },
+        });
+        try {
+          const spoken: string[] = [];
+          const svc = new WhatsAppCallMediaService({
+            createDeepgramWsForOrg: async () => makeDeepgram().ws,
+            fetchTtsPcm24k: async (text: string) => {
+              spoken.push(text);
+              return Buffer.alloc(480 * 2);
+            },
+          } as any);
+
+          await svc.attach({
+            pc: makePc().pc,
+            organizationId: org.id,
+            callId: 'wacid.GREET2',
+            citizenNumber: '+2348012345678',
+            correlationId: 'cid',
+          });
+          await settle();
+
+          expect(spoken).toEqual(['Plateau Customer Care, good afternoon. How may we help?']);
+        } finally {
+          await prisma.organization.delete({ where: { id: org.id } }).catch(() => undefined);
+        }
+      });
+
+      it('still answers the citizen after greeting them', async () => {
+        // The greeting sets `speaking` while it streams. If it were awaited,
+        // or if it left the flag set, the citizen's first sentence would be
+        // recorded and never answered.
+        const dg = makeDeepgram();
+        const spoken: string[] = [];
+        const svc = new WhatsAppCallMediaService({
+          createDeepgramWsForOrg: async () => dg.ws,
+          fetchTtsPcm24k: async (text: string) => {
+            spoken.push(text);
+            return Buffer.alloc(240 * 2);
+          },
+        } as any);
+        (svc as any).orchestrator = {
+          processIncomingMessage: async () => ({ replyText: 'Your appointment is on Tuesday.' }),
+        };
+
+        await svc.attach({
+          pc: makePc().pc,
+          organizationId: `org_absent_${randomBytes(4).toString('hex')}`,
+          callId: 'wacid.GREET3',
+          citizenNumber: '+2348012345678',
+          correlationId: 'cid',
+        });
+        await settle();
+        dg.finalise('when is my appointment');
+        await settle();
+
+        expect(spoken[0]).toBe(DEFAULT_WELCOME_MESSAGE);
+        expect(spoken).toContain('Your appointment is on Tuesday.');
+      });
+    });
+
+    /**
+     * EVERY ANSWERED CALL HELD A SOCKET AND TWO CODECS FOR EVER.
+     *
+     * `attach()` returns a session with `stop()`, and the call site discarded
+     * it — so `stop()` was unreachable and nothing released a Deepgram
+     * WebSocket or the Opus encoder and decoder. A service answering calls
+     * all day accumulated them until the process restarted.
+     */
+    describe('releasing a finished call', () => {
+      it('closes Deepgram and frees the codecs when stopped', async () => {
+        let closed = 0;
+        const dg = makeDeepgram();
+        dg.ws.close = () => {
+          closed += 1;
+        };
+        const svc = new WhatsAppCallMediaService({
+          createDeepgramWsForOrg: async () => dg.ws,
+          fetchTtsPcm24k: async () => null,
+        } as any);
+
+        const session = await svc.attach({
+          pc: makePc().pc,
+          organizationId: `org_absent_${randomBytes(4).toString('hex')}`,
+          callId: 'wacid.REL',
+          citizenNumber: '+2348012345678',
+          correlationId: 'cid',
+        });
+        await settle();
+
+        await session.stop();
+        expect(closed).toBe(1);
+      });
+
+      it('is idempotent, because two things race to end a call', async () => {
+        // The `terminate` webhook and the connection state both trigger
+        // release, and either can arrive first or alone. Stopping twice must
+        // not throw on a live call path that never throws.
+        //
+        // What PROVIDES this is the nulling of the handles, not the `if
+        // (stopped) return` guard: mutation-testing showed this test still
+        // passes with the guard removed, because `deepgram?.close?.()` on a
+        // nulled handle is already a no-op. The guard is kept for clarity and
+        // is deliberately not claimed here as the mechanism — a test is only
+        // worth what it discriminates.
+        let closed = 0;
+        const dg = makeDeepgram();
+        dg.ws.close = () => {
+          closed += 1;
+        };
+        const svc = new WhatsAppCallMediaService({
+          createDeepgramWsForOrg: async () => dg.ws,
+          fetchTtsPcm24k: async () => null,
+        } as any);
+
+        const session = await svc.attach({
+          pc: makePc().pc,
+          organizationId: `org_absent_${randomBytes(4).toString('hex')}`,
+          callId: 'wacid.REL2',
+          citizenNumber: '+2348012345678',
+          correlationId: 'cid',
+        });
+        await settle();
+
+        await session.stop();
+        await session.stop();
+        await session.stop();
+        expect(closed).toBe(1);
+      });
+
+      it('stops sending audio once released, rather than into a dead socket', async () => {
+        const dg = makeDeepgram();
+        const svc = new WhatsAppCallMediaService({
+          createDeepgramWsForOrg: async () => dg.ws,
+          fetchTtsPcm24k: async () => Buffer.alloc(24000 * 2),
+        } as any);
+        (svc as any).orchestrator = {
+          processIncomingMessage: async () => ({ replyText: 'A long reply.' }),
+        };
+        const pc = makePc();
+
+        const session = await svc.attach({
+          pc: pc.pc,
+          organizationId: `org_absent_${randomBytes(4).toString('hex')}`,
+          callId: 'wacid.REL3',
+          citizenNumber: '+2348012345678',
+          correlationId: 'cid',
+        });
+        await new Promise((r) => setTimeout(r, 60));
+        await session.stop();
+        const atStop = pc.written.length;
+        await new Promise((r) => setTimeout(r, 400));
+
+        // Whatever was mid-flight stops, rather than pacing out a full second
+        // of audio to a call that has hung up.
+        expect(pc.written.length).toBe(atStop);
+      });
     });
 
     it('survives a connection with no audio transceiver', async () => {

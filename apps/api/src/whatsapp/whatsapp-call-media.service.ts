@@ -34,6 +34,7 @@ import { Injectable } from '@nestjs/common';
 import { ChannelType, MessageSender } from '@ace/shared-types';
 import { ConversationOrchestrator } from '@ace/orchestrator';
 import { VoiceAiService } from '../telephony/voice-ai.service';
+import { welcomeMessageFor } from '../common/welcome-message';
 import { AceLogger } from '../config/logger';
 
 const log = new AceLogger('WhatsAppCallMedia');
@@ -164,7 +165,17 @@ export class WhatsAppCallMediaService {
     let speaking = false;
     let stopped = false;
 
+    /**
+     * Release everything this call holds. Idempotent, and never throws.
+     *
+     * Each answered call opens a Deepgram WebSocket and two Opus codecs, and
+     * `attach()`'s return value was DISCARDED at the call site — so `stop()`
+     * was unreachable and none of it was ever released. An API that answers
+     * calls all day accumulated one open socket and two codecs per call until
+     * the process was restarted.
+     */
     const stop = async () => {
+      if (stopped) return;
       stopped = true;
       try {
         deepgram?.close?.();
@@ -177,6 +188,15 @@ export class WhatsAppCallMediaService {
       } catch {
         /* freeing a codec twice is not a failure */
       }
+      encoder = null;
+      decoder = null;
+      deepgram = null;
+      try {
+        outboundTrack?.stop?.();
+      } catch {
+        /* a track that is already stopped is not a failure */
+      }
+      log.debug('whatsapp_call_media_released', { correlationId, callId });
     };
 
     try {
@@ -336,6 +356,22 @@ export class WhatsAppCallMediaService {
         stt: deepgram ? 'deepgram' : 'unavailable',
         note: 'No real call has carried audio through this path yet.',
       });
+
+      // ── SPEAK FIRST ───────────────────────────────────────────────────────
+      //
+      // `say()` used to be reachable only from a final Deepgram transcript, so
+      // a citizen whose call was accepted heard NOTHING until they spoke. The
+      // Twilio handler has always greeted; this channel did not, and the two
+      // now read the same `Organization.welcomeMessage` through one function
+      // so they cannot drift apart again.
+      //
+      // Not awaited. `sendPcm` paces itself at real time — 20 ms per frame —
+      // so awaiting a greeting of a few seconds would hold `attach()` open for
+      // its whole duration, and `attach()` is awaited inside the webhook that
+      // Meta is waiting on. A failure inside it is already logged by `say()`.
+      void say(await welcomeMessageFor(organizationId)).catch((err) =>
+        log.error('whatsapp_call_greeting_failed', err as Error, { correlationId, callId })
+      );
 
       return { stop };
     } catch (err: any) {

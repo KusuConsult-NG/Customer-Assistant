@@ -142,6 +142,34 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'ELEVENLABS_MODEL_EN',
+    required: false,
+    description:
+      'ElevenLabs model id for ENGLISH speech (default eleven_flash_v2). Exists because a model id ' +
+      'ages out: the hardcoded eleven_turbo_v2 is deprecated, and ElevenLabs has removed models ' +
+      'outright before. On a removal every call on BOTH channels goes silent at once, because a ' +
+      'rejected TTS request returns no audio to a caller who is already connected. Set this to a ' +
+      'model the workspace offers; GET /api/diagnostics/providers lists them. Ignored unless it ' +
+      'looks like a model id.',
+  },
+  {
+    key: 'ELEVENLABS_MODEL_MULTILINGUAL',
+    required: false,
+    description:
+      'ElevenLabs model id for every NON-English language (default eleven_flash_v2_5). Same reason ' +
+      'as ELEVENLABS_MODEL_EN.',
+  },
+  {
+    key: 'META_GRAPH_VERSION',
+    required: false,
+    description:
+      "Graph API version for the WhatsApp CALLING settings calls (e.g. v24.0; default v24.0). A Graph " +
+      'version decides which edges exist, and a version older than the Calling API refuses it with ' +
+      '"Object with ID … does not exist, cannot be loaded due to missing permissions, or does not ' +
+      'support this operation" — a sentence covering three unrelated faults, of which the id is only ' +
+      'one. Set this to try a newer version without a code change. Ignored unless it looks like vNN.N.',
+  },
+  {
     key: 'TURN_URL',
     required: false,
     description:

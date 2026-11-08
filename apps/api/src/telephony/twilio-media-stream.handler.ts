@@ -60,6 +60,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { welcomeMessageFor } from '../common/welcome-message';
 import WebSocket from 'ws';
 import { AceLogger, generateCorrelationId } from '../config/logger';
 import { VoiceAiService } from './voice-ai.service';
@@ -203,18 +204,16 @@ export class TwilioMediaStreamHandler {
     }
 
     // ── FIX 4: Fetch org welcome message and language ─────────────────────
-    let welcomeMessage = 'Hello! Thank you for calling. How can I help you today?';
+    //
+    // Through the SHARED helper, not a literal here. The WhatsApp call bridge
+    // had no greeting at all, so a citizen calling on that channel heard dead
+    // air on a connected call — two copies of "what a caller hears first", one
+    // of which did not exist. One function now serves both channels.
+    const welcomeMessage = await welcomeMessageFor(resolvedOrgId);
     let language       = 'en';
     let carrier: CallSession['carrier'] = {};
 
     if (resolvedOrgId) {
-      try {
-        const org = await (prisma as any).organization?.findUnique?.({
-          where:  { id: resolvedOrgId },
-          select: { welcomeMessage: true },
-        });
-        if (org?.welcomeMessage) welcomeMessage = org.welcomeMessage;
-      } catch { /* welcomeMessage stays default */ }
 
       try {
         const settings = await (prisma as any).organizationSettings?.findFirst?.({

@@ -13,6 +13,7 @@
  * dials. "Marked COMPLETED but never rang" is the callback-shaped version of
  * the scheduling screen that said "Booking cancelled." and made no request.
  */
+import { randomBytes } from 'crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -30,7 +31,31 @@ describe('Callback queue', () => {
 
   jest.setTimeout(90000);
 
-  const phone = () => `+23480${String(Date.now()).slice(-8)}`;
+  /**
+   * A distinct number per call, from RANDOM bytes rather than the clock.
+   *
+   * This was `+23480${String(Date.now()).slice(-8)}`, and `Contact` is unique
+   * on `[organizationId, phoneNumber]` — so two contacts created in the SAME
+   * MILLISECOND in one organization got the same number and the second write
+   * failed with a P2002. Two tests below do exactly that, back to back in one
+   * org, so the suite failed intermittently with a unique-constraint
+   * violation that reads like a real regression in the callback queue and is
+   * nothing of the kind. It passes on a re-run, which is the worst property a
+   * failure can have: the next person re-runs it, sees green, and learns to
+   * ignore this suite.
+   */
+  // A random 4-digit run id, then a COUNTER. The counter makes collisions
+  // within a run impossible rather than unlikely, and the run id keeps two
+  // runs against the same database apart.
+  //
+  // Pure randomness truncated to 8 digits still collided 4 times in 20,000
+  // draws when measured, and a rare flake is worse than a frequent one: it
+  // surfaces in somebody else's unrelated change, months later, with no way
+  // to reproduce it.
+  const runId = randomBytes(2).readUInt16BE(0) % 10000;
+  let phoneSeq = 0;
+  const phone = () =>
+    `+23480${String(runId).padStart(4, '0')}${String((phoneSeq += 1) % 10000).padStart(4, '0')}`;
 
   async function seedCallback(orgId: string, cid: string, over: Record<string, any> = {}) {
     return prisma.callbackRequest.create({

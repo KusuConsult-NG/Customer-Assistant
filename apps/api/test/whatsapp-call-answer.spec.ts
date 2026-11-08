@@ -375,7 +375,10 @@ describe('Answering a WhatsApp call', () => {
       const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
       expect(out.answered).toBe(false);
       if (!out.answered) {
-        expect(out.reason).toMatch(/Meta refused the answer \(HTTP 400\)/);
+        // Names WHICH action Meta refused. There are now two requests on the
+        // `/calls` edge — pre-accept and accept — and "the answer" would not
+        // say which of them came back 400.
+        expect(out.reason).toMatch(/Meta refused the accept \(HTTP 400\)/);
         expect(out.reason).toMatch(/Calling is not enabled for this number/);
       }
     });
@@ -394,18 +397,176 @@ describe('Answering a WhatsApp call', () => {
   });
 
   describe('accepting the call', () => {
+    /**
+     * PRE-ACCEPT, then ACCEPT.
+     *
+     * Meta documents pre-accept as optional but strongly recommended: it
+     * brings the media path up before the call is committed, and skipping it
+     * CLIPS the start of the audio. The cost is not a failure anything
+     * reports — every call simply begins with the agent's greeting missing
+     * its first syllables, which sounds like a broken product and has no
+     * error anywhere to explain it.
+     */
+    it('pre-accepts BEFORE accepting, so the first audio is not clipped', async () => {
+      turnOn();
+      const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+
+      expect(out.answered).toBe(true);
+      expect(posted).toHaveLength(2);
+      expect(posted.map((p: any) => p.body.action)).toEqual(['pre_accept', 'accept']);
+      expect(posted[0].url).toContain('/pn_test/calls');
+      expect(posted[0].body).toMatchObject({
+        messaging_product: 'whatsapp',
+        call_id: 'wacid.TEST123',
+        action: 'pre_accept',
+        session: { sdp_type: 'answer', sdp: withRelay },
+      });
+    });
+
     it('sends Meta an accept carrying the SDP answer', async () => {
       turnOn();
       const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
 
       expect(out.answered).toBe(true);
-      expect(posted).toHaveLength(1);
-      expect(posted[0].url).toContain('/pn_test/calls');
-      expect(posted[0].body).toMatchObject({
+      const accept = posted.find((p: any) => p.body.action === 'accept');
+      expect(accept).toBeDefined();
+      expect(accept!.url).toContain('/pn_test/calls');
+      expect(accept!.body).toMatchObject({
         messaging_product: 'whatsapp',
         call_id: 'wacid.TEST123',
         action: 'accept',
         session: { sdp_type: 'answer', sdp: withRelay },
+      });
+    });
+
+    it('sends the IDENTICAL SDP in both, because Meta rejects a mismatch', async () => {
+      // Meta has a dedicated error for "the SDP answer provided in accept does
+      // not match the SDP answer given in the Pre-Accept endpoint for the same
+      // call-id". Re-reading `localDescription` between the two requests is
+      // how that happens by accident: a peer connection can still gain
+      // candidates, so the second read is a DIFFERENT string.
+      turnOn();
+      await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+
+      expect(posted).toHaveLength(2);
+      expect(posted[0].body.session.sdp).toBe(posted[1].body.session.sdp);
+      // Byte-identical, not merely equivalent.
+      expect(JSON.stringify(posted[0].body.session)).toBe(JSON.stringify(posted[1].body.session));
+    });
+
+    it('still accepts when Meta REFUSES the pre-accept, because it is optional', async () => {
+      // Refusing a call because an optional optimisation was rejected turns a
+      // working call into no call at all.
+      turnOn();
+      let n = 0;
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: any, init?: any) => {
+        n += 1;
+        posted.push({ url: String(input), body: JSON.parse(String(init?.body ?? '{}')) });
+        if (n === 1) return new Response('{"error":{"message":"unsupported"}}', { status: 400 });
+        return new Response('{"success":true}', { status: 200 });
+      }) as any;
+      try {
+        const out = await new StubbedNegotiation({ sdp: withRelay, pc: fakePc }).answer(CALL, 'TOKEN', 'cid');
+        expect(out.answered).toBe(true);
+        expect(posted.map((p: any) => p.body.action)).toEqual(['pre_accept', 'accept']);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    });
+
+    /**
+     * SOMETHING HAS TO HOLD THE SESSION.
+     *
+     * `attach()` returns a session with `stop()`, and the call site discarded
+     * it: `await this.media.attach({…})`. So `stop()` was unreachable, and a
+     * Deepgram WebSocket plus two Opus codecs stayed open per answered call
+     * for the life of the process.
+     *
+     * Mutation-testing is what found this gap in the tests, not in the code —
+     * discarding the session again left all 44 tests in these two suites
+     * passing.
+     */
+    describe('holding and releasing the call', () => {
+      it('holds the session, so it can be released later', async () => {
+        turnOn();
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc });
+        expect(svc.liveCallCount()).toBe(0);
+
+        const out = await svc.answer(CALL, 'TOKEN', 'cid');
+        expect(out.answered).toBe(true);
+        expect(svc.liveCallCount()).toBe(1);
+      });
+
+      it('stops the media bridge when the call is released', async () => {
+        turnOn();
+        let stopped = 0;
+        const media = {
+          attach: async (p: any) => {
+            attached.push(p);
+            return { stop: async () => { stopped += 1; } };
+          },
+        };
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, media);
+
+        await svc.answer(CALL, 'TOKEN', 'cid');
+        expect(stopped).toBe(0);
+
+        expect(await svc.release(CALL.callId, 'test')).toBe(true);
+        expect(stopped).toBe(1);
+        expect(svc.liveCallCount()).toBe(0);
+      });
+
+      it('releases only once, however many things claim the call ended', async () => {
+        // The `terminate` webhook and the connection state both fire, and
+        // either can arrive first or alone.
+        turnOn();
+        let stopped = 0;
+        const media = {
+          attach: async () => ({ stop: async () => { stopped += 1; } }),
+        };
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, media);
+        await svc.answer(CALL, 'TOKEN', 'cid');
+
+        expect(await svc.release(CALL.callId, 'webhook')).toBe(true);
+        expect(await svc.release(CALL.callId, 'connection closed')).toBe(false);
+        expect(stopped).toBe(1);
+      });
+
+      it('reports nothing to release for a call it never answered', async () => {
+        // A `terminate` for a call this pod did not answer is normal: calls
+        // are answered by whichever pod got the `connect`. It must not throw
+        // and must not claim to have released anything.
+        turnOn();
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc });
+        expect(await svc.release('wacid.NEVER_SEEN', 'webhook')).toBe(false);
+      });
+
+      it('does not hold a session for a call it DECLINED', async () => {
+        // A declined call closed its connection already. Holding a session
+        // for it would leak the very thing the registry exists to release.
+        turnOn();
+        const noRelay = withRelay.replace(/typ relay/g, 'typ host');
+        const svc = new StubbedNegotiation({ sdp: noRelay, pc: fakePc });
+
+        const out = await svc.answer(CALL, 'TOKEN', 'cid');
+        expect(out.answered).toBe(false);
+        expect(svc.liveCallCount()).toBe(0);
+      });
+
+      it('survives a media bridge whose stop() throws', async () => {
+        // Release runs on a live call path that never throws, and the thing
+        // it is cleaning up is by definition already in a bad state.
+        turnOn();
+        const media = {
+          attach: async () => ({ stop: async () => { throw new Error('socket already gone'); } }),
+        };
+        const svc = new StubbedNegotiation({ sdp: withRelay, pc: fakePc }, media);
+        await svc.answer(CALL, 'TOKEN', 'cid');
+
+        await expect(svc.release(CALL.callId, 'test')).resolves.toBe(true);
+        // And the call is still forgotten, rather than stuck in the map for ever.
+        expect(svc.liveCallCount()).toBe(0);
       });
     });
 
