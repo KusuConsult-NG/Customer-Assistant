@@ -47,6 +47,25 @@ describe('appointment reminders', () => {
   /** Hours from now, inside the tier's ±1h window. */
   const at = (hours: number) => new Date(Date.now() + hours * 60 * 60 * 1000);
 
+  /**
+   * How many sends went to THIS booking's citizen.
+   *
+   * `checkAndSendReminders()` sweeps EVERY organization — that is what makes
+   * it a cron job rather than a request — so a bare
+   * `expect(sendMock).toHaveBeenCalledTimes(1)` also counts bookings created
+   * by other suites that happen to fall inside the same ±1h tier window.
+   * This spec passed alone and failed in a full run for exactly that reason,
+   * which is the worst kind of failure: it points at the reminder logic and
+   * means nothing of the kind.
+   *
+   * Addresses are unique per booking so the count can be scoped to one
+   * citizen instead of to the whole database.
+   */
+  const sendsTo = (email: string) =>
+    sendMock.mock.calls.filter((args: any[]) => args?.[0]?.to === email).length;
+
+  const uniqueEmail = () => `amina.${randomBytes(6).toString('hex')}@example.test`;
+
   const makeBooking = async (opts: { email?: string | null; hours: number }) => {
     const contact = await prisma.contact.create({
       data: {
@@ -114,11 +133,12 @@ describe('appointment reminders', () => {
   });
 
   it('records it when the mail provider actually accepted the message', async () => {
-    const booking = await makeBooking({ hours: 72, email: 'amina@example.test' });
+    const email = uniqueEmail();
+    const booking = await makeBooking({ hours: 72, email });
 
     await service.checkAndSendReminders();
 
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendsTo(email)).toBe(1);
     expect(await notesOf(booking.id)).toContain('[REMINDED_72H]');
   });
 
@@ -126,20 +146,24 @@ describe('appointment reminders', () => {
     // A refusal is the case that reads as success in a log: the send returned,
     // and the only difference is a field nobody checked.
     sendMock.mockResolvedValue({ ok: false, error: 'domain not verified' });
-    const booking = await makeBooking({ hours: 72, email: 'amina@example.test' });
+    const email = uniqueEmail();
+    const booking = await makeBooking({ hours: 72, email });
 
     await service.checkAndSendReminders();
 
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendsTo(email)).toBe(1);
     expect(await notesOf(booking.id)).not.toContain('[REMINDED_72H]');
   });
 
   it('does NOT record it when no mail provider is configured at all', async () => {
     process.env.__TEST_EMAIL_PROVIDER = '0';
-    const booking = await makeBooking({ hours: 72, email: 'amina@example.test' });
+    const email = uniqueEmail();
+    const booking = await makeBooking({ hours: 72, email });
 
     await service.checkAndSendReminders();
 
+    // No provider means no send at all — for anyone, so a global assertion is
+    // correct here and is the stronger one.
     expect(sendMock).not.toHaveBeenCalled();
     expect(await notesOf(booking.id)).not.toContain('[REMINDED_72H]');
   });
@@ -147,7 +171,8 @@ describe('appointment reminders', () => {
   it('leaves an undeliverable booking retryable, rather than silently closed', async () => {
     // The consequence of releasing: the window has not passed, so a later
     // sweep tries again. Under the old code the first pass closed it forever.
-    const booking = await makeBooking({ hours: 72, email: 'amina@example.test' });
+    const email = uniqueEmail();
+    const booking = await makeBooking({ hours: 72, email });
     sendMock.mockResolvedValue({ ok: false, error: 'rate limited' });
     await service.checkAndSendReminders();
     expect(await notesOf(booking.id)).not.toContain('[REMINDED_72H]');
@@ -160,11 +185,12 @@ describe('appointment reminders', () => {
   it('still sends only once when two passes race, which is what the claim is for', async () => {
     // The claim stays BEFORE the send precisely so concurrent pods cannot both
     // send. Releasing on failure must not weaken that.
-    const booking = await makeBooking({ hours: 72, email: 'amina@example.test' });
+    const email = uniqueEmail();
+    const booking = await makeBooking({ hours: 72, email });
 
     await Promise.all([service.checkAndSendReminders(), service.checkAndSendReminders()]);
 
-    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendsTo(email)).toBe(1);
     expect(await notesOf(booking.id)).toContain('[REMINDED_72H]');
   });
 

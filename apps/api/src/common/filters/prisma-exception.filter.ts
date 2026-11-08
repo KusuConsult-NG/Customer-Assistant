@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { SecretUnreadableError } from '@ace/database';
 
 /**
  * Translates database-layer failures into honest HTTP responses.
@@ -60,6 +61,44 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         statusCode: carriedStatus,
         error: HttpStatus[carriedStatus] ?? 'Error',
         message: safeMessage,
+      });
+    }
+
+    // ── A stored credential could not be read ──────────────────────────────
+    //
+    // Translated HERE, in the one catch-all, rather than at each of the twenty
+    // or so `with*Credentials` read sites across the API, the orchestrator and
+    // the media-stream handler. Almost none of them guard the decrypt, and
+    // that is the right design: a path that cannot read its credential
+    // genuinely cannot continue. What was wrong is what the caller was then
+    // told — an opaque "An unexpected error occurred."
+    //
+    // Observed in production on two unrelated endpoints at the same time:
+    // Meta's webhook verification handshake, and the very screen an operator
+    // would use to diagnose it. Both answered 500 with no cause, so the fault
+    // was invisible from outside and the handshake failure could cost the
+    // webhook subscription that delivers every message.
+    //
+    // 503, not 500: the request is fine and the data is not lost. The
+    // deployment is holding a credential it cannot open, which is a
+    // configuration condition that a correct ENCRYPTION_KEY resolves — so the
+    // honest instruction to a client is "retry once this is fixed", not "give
+    // up".
+    //
+    // The provider's own message is passed through because it names the ROW —
+    // model, id and field — which is what says which credential to repair.
+    // That label is not a secret: no key, ciphertext or plaintext ever
+    // appears in it, and a test asserts that.
+    if (exception instanceof SecretUnreadableError) {
+      this.logger.error(`Unreadable stored credential — returning 503: ${message}`, exception?.stack);
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        error: 'Service Unavailable',
+        message,
+        remedy:
+          'This deployment holds a credential it cannot decrypt. Check ENCRYPTION_KEY is the key that ' +
+          'wrote it; if it was rotated, set the previous key as ENCRYPTION_KEY_PREVIOUS. ' +
+          'Run `npm run secrets:encrypt` to report which rows are affected across every model.',
       });
     }
 
