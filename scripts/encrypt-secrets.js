@@ -34,6 +34,7 @@
  * column that stays unused, it is somewhere credentials end up later with no
  * encryption in front of them.
  */
+const { databaseBanner } = require('./lib/describe-database');
 const path = require('path');
 
 require(path.join(__dirname, '..', 'apps', 'api', 'dist', 'config', 'load-env.js'));
@@ -68,6 +69,18 @@ async function main() {
     );
     process.exit(1);
   }
+
+  // SAY WHICH DATABASE, before reading a row.
+  //
+  // This report contradicted the live API: the API named a specific
+  // WhatsAppConfig row as undecryptable, and this said zero unreadable
+  // WhatsApp rows. Both cannot be true of one database — and neither output
+  // named the database it meant, so there was no way to tell which was
+  // talking about production. The natural reading was that the API was wrong.
+  //
+  // It matters more here than anywhere: `--apply` REWRITES credentials.
+  console.log(databaseBanner(apply ? 'APPLY — credentials will be rewritten' : 'REPORT ONLY'));
+  console.log('');
 
   const prisma = new PrismaClient();
   try {

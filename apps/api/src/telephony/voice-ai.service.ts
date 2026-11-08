@@ -18,6 +18,18 @@ import WebSocket from 'ws';
 // lower latency), overridable by env, and verified against ElevenLabs'
 // `/v1/models` by the provider health check.
 
+/**
+ * The Deepgram speech model, overridable by `DEEPGRAM_MODEL`.
+ *
+ * Validated rather than interpolated raw: a value with a slash or a space in
+ * it does not fail as "bad model", it corrupts the query string.
+ */
+export function deepgramModel(): string {
+  const configured = process.env.DEEPGRAM_MODEL?.trim();
+  if (!configured) return 'nova-2';
+  return /^[A-Za-z0-9_.-]{3,40}$/.test(configured) ? configured : 'nova-2';
+}
+
 @Injectable()
 export class VoiceAiService {
   private logger = new AceLogger('VoiceAiService');
@@ -68,7 +80,19 @@ export class VoiceAiService {
     }
 
     const params = new URLSearchParams({
-      model:        'nova-2',
+      // Configurable, defaulting to the model this platform has always used.
+      //
+      // Deliberately NOT changed to nova-3, which Deepgram now recommends and
+      // which is more accurate. nova-2 is legacy but supported, with no
+      // announced sunset, so moving every call onto a different speech model
+      // is a change to what citizens are understood as — and that is a
+      // decision to make with evidence on Nigerian English, not a default to
+      // flip while fixing something else.
+      //
+      // `DEEPGRAM_MODEL=nova-3` tries it without a deploy, and this is also
+      // the lever if nova-2 is ever retired, which is how `eleven_turbo_v2`
+      // became a problem on the TTS side.
+      model:        deepgramModel(),
       language,
       punctuate:    'true',
       smart_format: 'true',
@@ -89,19 +113,30 @@ export class VoiceAiService {
     }
   }
 
-  /** Synchronous fallback (used by legacy Socket.IO path, no org context). */
-  createDeepgramWs(): WebSocket | null {
-    const apiKey = process.env.DEEPGRAM_API_KEY;
-    if (!apiKey) return null;
-    try {
-      return new WebSocket(
-        'wss://api.deepgram.com/v1/listen?model=nova-2&language=en&punctuate=true&smart_format=true&vad_events=true&encoding=mulaw&sample_rate=8000&channels=1',
-        { headers: { Authorization: `Token ${apiKey}` } }
-      );
-    } catch {
-      return null;
-    }
-  }
+  // `createDeepgramWs()` was DELETED here, not replaced.
+  //
+  // It was a second Deepgram URL, fully hardcoded:
+  //   model=nova-2&language=en&...&encoding=mulaw&sample_rate=8000&channels=1
+  //
+  // It had ZERO callers — only its own definition and the generated .d.ts —
+  // and its comment claimed it was "used by legacy Socket.IO path", which was
+  // a caller that did not exist. A comment asserting a caller is what a
+  // reviewer reads instead of checking for one.
+  //
+  // Two things made it worth deleting rather than leaving:
+  //
+  //  - It hardcoded `language=en`, so had anything ever called it, an agency
+  //    configured for Hausa would have been transcribed as English — and
+  //    wrong-language transcription reads as a citizen talking nonsense, not
+  //    as an error.
+  //  - It was a second copy of the wire format. The whole reason
+  //    `createDeepgramWsForOrg` TAKES the encoding and sample rate is that
+  //    telling Deepgram mulaw/8000 while sending 48 kHz PCM transcribes every
+  //    word at the wrong speed and pitch. A hardcoded duplicate is the thing
+  //    that drifts out of agreement with the stream it is describing.
+  //
+  // `apps/api/test/deepgram-wiring.spec.ts` asserts there is exactly one
+  // Deepgram URL built anywhere in the API, so a second cannot come back.
 
   // ─── ElevenLabs TTS ───────────────────────────────────────────────────────
 

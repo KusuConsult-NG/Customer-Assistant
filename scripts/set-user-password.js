@@ -35,6 +35,7 @@
  * argv, so it stays out of the process list and the shell history.
  */
 
+const { databaseBanner } = require('./lib/describe-database');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -133,6 +134,12 @@ async function main() {
   // not reach the row either. The last way in was broken for the one case it
   // was for.
   const typedEmail = args.find((a) => !a.startsWith('--'))?.trim();
+
+  // Same reason as `secrets:encrypt`: this is where an operator finds out
+  // whether "no such account" is a fact about production or about a leftover
+  // local database. `--apply` sets a password and signs every session out.
+  console.log(databaseBanner(apply ? 'APPLY — a password will be set' : 'REPORT ONLY'));
+  console.log('');
 
   const prisma = new PrismaClient();
 

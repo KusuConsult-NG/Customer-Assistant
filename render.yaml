@@ -191,6 +191,16 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      # ── Deepgram speech model ──────────────────────────────────────────────
+      #
+      # Leave blank for nova-2, which is what this platform has always used.
+      # nova-3 is more accurate and is Deepgram's current recommendation, but
+      # changing which model hears every citizen is a decision that wants
+      # evidence on Nigerian English, not a default flipped in passing. Set
+      # nova-3 here to try it without a deploy. This is also the lever if
+      # nova-2 is retired — which is how eleven_turbo_v2 became a problem.
+      - key: DEEPGRAM_MODEL
+        sync: false
       # ── ElevenLabs model ids ───────────────────────────────────────────────
       #
       # Leave blank for the defaults (eleven_flash_v2 / eleven_flash_v2_5).

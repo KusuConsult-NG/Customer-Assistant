@@ -142,6 +142,16 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'DEEPGRAM_MODEL',
+    required: false,
+    description:
+      'Deepgram speech model (default nova-2, which is what this platform has always used). ' +
+      'nova-3 is more accurate and is what Deepgram now recommends, but changing which model hears ' +
+      'every citizen wants evidence on Nigerian English rather than being flipped as a default. Set ' +
+      'DEEPGRAM_MODEL=nova-3 to try it without a deploy; this is also the lever if nova-2 is ever ' +
+      'retired. Ignored unless it looks like a model id.',
+  },
+  {
     key: 'ELEVENLABS_MODEL_EN',
     required: false,
     description:
