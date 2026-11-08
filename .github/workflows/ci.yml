@@ -29,6 +29,16 @@ env:
   # tenant credential at all — deliberately — so CI needs one to exercise those
   # paths. A fixed throwaway: it protects nothing real and must never be reused.
   ENCRYPTION_KEY: Y2lfb25seV9lbmNyeXB0aW9uX2tleV8zMmJ5dGVzISE=
+  # Infobip, for the browser-callback e2e. `GET /api/callbacks/dialling`
+  # reports an officer-dialled line as NOT ready while either of these is
+  # unset, the dashboard disables "Call from browser" accordingly, and five
+  # e2e tests then wait 90s for a button that can never become enabled.
+  #
+  # Dummies are enough and nothing real is contacted: those tests intercept
+  # every Infobip-bound request in the browser. Same throwaway convention as
+  # the OpenAI and WhatsApp values above.
+  INFOBIP_BASE_URL: https://ci.api.infobip.com
+  INFOBIP_API_KEY: ci-infobip-dummy-key
 
 jobs:
   build-and-test:
