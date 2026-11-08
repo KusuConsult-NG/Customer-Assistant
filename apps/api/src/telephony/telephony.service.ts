@@ -4,6 +4,8 @@ import { prisma, withTelephonyCredentials, ensureContactForPhone, phoneNumberVar
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { SipTrunkOriginationService } from './sip-trunk-origination.service';
+import { INFOBIP_OUTBOUND_REASON } from './infobip/infobip-voice.service';
+import { outboundLineFor } from './outbound-line';
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
@@ -598,18 +600,7 @@ export class TelephonyService {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
 
-    // Fall back to *any* config for the org, not just isDefault.
-    // OrganizationsService.updateTelephonyConfig never writes isDefault, so an
-    // isDefault-only lookup returned null for every org configured through the
-    // dashboard and outbound calls were placed from the placeholder number
-    // +2348030000000 — which no carrier would accept as a verified caller ID.
-    const config = withTelephonyCredentials(
-      (await prisma.telephonyConfig.findFirst({ where: { organizationId, isDefault: true } })) ??
-        (await prisma.telephonyConfig.findFirst({
-          where: { organizationId },
-          orderBy: { createdAt: 'asc' },
-        }))
-    );
+    const config = withTelephonyCredentials(await outboundLineFor(organizationId));
 
     if (!config?.phoneNumber) {
       throw new BadRequestException(
@@ -620,6 +611,16 @@ export class TelephonyService {
 
     const fromNumber = config.phoneNumber;
     const resolvedProvider = providerType ?? (config.provider as TelephonyProviderType);
+
+    // ── An Infobip line is dialled by an officer, not by this process ──────
+    //
+    // Without this branch the factory's `default` answered INFOBIP with a
+    // credential-less TwilioProvider, so a callback on an Infobip agency
+    // failed with a Twilio authentication error — sending whoever read it to
+    // check Twilio credentials the agency deliberately does not have.
+    if ((resolvedProvider as string) === 'INFOBIP') {
+      throw new BadRequestException(INFOBIP_OUTBOUND_REASON);
+    }
 
     log.info('telephony_outbound_call_initiating', {
       correlationId,

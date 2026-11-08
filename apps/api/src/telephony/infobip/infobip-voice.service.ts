@@ -58,6 +58,18 @@ const log = new AceLogger('InfobipVoice');
 /** How long a call's context is kept. Longer than any call this line serves. */
 const CONTEXT_TTL_SECONDS = 2 * 60 * 60;
 
+/**
+ * Why a promised callback on an Infobip line is not dialled automatically.
+ *
+ * Shown to the officer pressing "Call now" and stored nowhere else: on an
+ * Infobip line the officer IS the dialler, from the Callback Queue, and this
+ * says so instead of a carrier error about credentials nobody is meant to set.
+ */
+export const INFOBIP_OUTBOUND_REASON =
+  "This agency's line is on Infobip. Callbacks on it are placed by an officer from the " +
+  'dashboard: use "Call from browser" on the Callback Queue. The automatic dialler does not ' +
+  'place Infobip calls.';
+
 /** What the bridge needs to know about the citizen's call. */
 export interface InfobipCallContext {
   parentCallId: string;
@@ -296,6 +308,52 @@ export class InfobipVoiceService implements OnModuleDestroy {
     } catch (err: any) {
       return { ok: false, error: `Could not reach Infobip: ${err?.message ?? err}` };
     }
+  }
+
+  /**
+   * A WebRTC token for one officer's browser, so it can ring a citizen.
+   *
+   * The request body is exactly the three fields Infobip's own generated API
+   * client declares for `POST /webrtc/1/token` (`WebRtcTokenRequestModel`):
+   * `identity` (3–64 characters; letters, digits, `-`, `_`, `.`), and the
+   * optional `displayName` (5–50 characters) and `timeToLive` (seconds,
+   * at most 24h, 8h when unset). Nothing is added that the model does not
+   * name, because a field Infobip does not know is either ignored or a 400 —
+   * and which one is not something this process can find out without an
+   * account.
+   *
+   * The identity is derived from the user id by the caller, never taken from
+   * the request: a token naming its own identity would let one officer act
+   * as another.
+   *
+   * A name outside Infobip's length rule is left out rather than truncated
+   * or padded. It is cosmetic; a refusal over it would stop the call.
+   */
+  async webrtcToken(
+    identity: string,
+    displayName: string | null | undefined,
+    timeToLiveSeconds: number
+  ): Promise<{ ok: true; token: string; expiresAt: string | null } | { ok: false; error: string }> {
+    if (!/^[A-Za-z0-9_.-]{3,64}$/.test(identity)) {
+      return { ok: false, error: `"${identity}" is not an identity Infobip accepts (3–64 of A-Z, 0-9, - _ .).` };
+    }
+    const name = displayName?.trim();
+    const body: Record<string, unknown> = { identity, timeToLive: timeToLiveSeconds };
+    if (name && name.length >= 5 && name.length <= 50) body.displayName = name;
+
+    const result = await this.post('/webrtc/1/token', body);
+    if (!result.ok) return { ok: false, error: result.error };
+    const token = result.body?.token;
+    if (typeof token !== 'string' || !token) {
+      // A 200 with no token is not a token. Handing the browser `undefined`
+      // produces an SDK error about the client, not about Infobip.
+      return { ok: false, error: 'Infobip answered the token request without a token.' };
+    }
+    return {
+      ok: true,
+      token,
+      expiresAt: typeof result.body?.expirationTime === 'string' ? result.body.expirationTime : null,
+    };
   }
 
   /**
