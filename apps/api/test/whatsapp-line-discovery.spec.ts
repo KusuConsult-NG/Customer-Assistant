@@ -1514,4 +1514,126 @@ describe('WhatsApp line discovery and handshake', () => {
       expect(res.body.enabled).toBe(false);
     });
   });
+
+
+  /**
+   * AN UNREADABLE CREDENTIAL MUST NOT TAKE THE CHANNEL DOWN.
+   *
+   * ── The bug this exists to catch ────────────────────────────────────────────
+   *
+   * Found by probing the live deployment, not by reading. The Meta verification
+   * handshake answered HTTP 500 on every call — warm, in about a second, with
+   * the global filter's `{"statusCode":500,"error":"Internal Server Error"}`
+   * body rather than the handler's own deliberate plain-text 500. An unhandled
+   * exception.
+   *
+   * `decryptSecret` THROWS when a stored value is malformed, when
+   * ENCRYPTION_KEY is unset, and when neither the current nor the previous key
+   * can read it. `handshakeTokenIsAccepted` decrypted every active line's
+   * `webhookVerifyToken` with no guard, so ONE unreadable row threw straight out
+   * of the handler.
+   *
+   * Two consequences, both worse than the missing credential itself:
+   *
+   *  1. Meta's handshake is how a webhook URL is registered and re-verified. A
+   *     500 there can cost the subscription that delivers every message — so an
+   *     undecryptable token on one line can stop messaging on the whole
+   *     deployment.
+   *  2. One agency's broken row broke the handshake for every OTHER line,
+   *     including lines whose credentials read perfectly well.
+   *
+   * The same unguarded decrypt was on the inbound message path, where it threw
+   * into a generic catch: the citizen got no reply and the log said nothing
+   * about why.
+   */
+  describe('a line whose stored credentials cannot be decrypted', () => {
+    const handshake = (token: string) =>
+      request(app.getHttpServer()).get(
+        `/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(token)}&hub.challenge=chal999`
+      );
+
+    /** A `v1.…` value no key can open — a rotated key, or a corrupted row. */
+    const UNDECRYPTABLE = `v1.${Buffer.alloc(12).toString('base64')}.${Buffer.alloc(16).toString('base64')}.${Buffer.from('rubbish').toString('base64')}`;
+
+    it('does not answer 500 — it skips that row and keeps verifying', async () => {
+      setEnv('WHATSAPP_VERIFY_TOKEN', 'env_verify_still_works');
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-undec-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: UNDECRYPTABLE,
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      // The exact production symptom: a wrong token must be 403, never 500.
+      const rejected = await handshake('deliberately-wrong');
+      expect(rejected.status).toBe(403);
+
+      // And a GOOD token still verifies, despite the broken row sitting beside
+      // it. This is the half that made one agency's bad row everyone's outage.
+      const accepted = await handshake('env_verify_still_works');
+      expect(accepted.status).toBe(200);
+      expect(accepted.text).toBe('chal999');
+    });
+
+    it('still verifies a DIFFERENT line that is readable', async () => {
+      setEnv('WHATSAPP_VERIFY_TOKEN', undefined);
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-bad-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: UNDECRYPTABLE,
+          displayPhoneNumber: '+234 000 000 0000',
+          isActive: true,
+        },
+      });
+      await prisma.whatsAppConfig.create({
+        data: {
+          organizationId: orgId,
+          phoneNumberId: `pn-good-${randomBytes(4).toString('hex')}`,
+          whatsappBusinessId: WABA,
+          accessToken: encryptSecret(META),
+          webhookVerifyToken: encryptSecret('the_readable_one'),
+          displayPhoneNumber: '+234 708 107 8679',
+          isActive: true,
+        },
+      });
+
+      const res = await handshake('the_readable_one');
+      expect(res.status).toBe(200);
+      expect(res.text).toBe('chal999');
+    });
+
+    it('reports a misconfiguration, not a rejection, when NOTHING is readable', async () => {
+      // No env token and the only line unreadable. That IS our
+      // misconfiguration, so 500 is correct here — Meta retries a 500 and
+      // gives up on a 403 — but it must be the handler's deliberate one,
+      // reached on purpose rather than by throwing.
+      //
+      // The candidate list is DEPLOYMENT-WIDE: the webhook is one URL and
+      // cannot know which agency Meta is verifying, so "nothing is readable"
+      // is a fact about the whole database and any other suite's fixture row
+      // decides it. This asserted 500 and got 403 for exactly that reason.
+      // Same spy the suite already uses for the same problem, two blocks up.
+      setEnv('WHATSAPP_VERIFY_TOKEN', undefined);
+      const spy = jest.spyOn(prisma.whatsAppConfig, 'findMany').mockResolvedValue([
+        { id: 'cfg_unreadable', webhookVerifyToken: UNDECRYPTABLE },
+      ] as any);
+      try {
+        const res = await handshake('anything');
+        expect(res.status).toBe(500);
+        // The handler's own words, not the global filter's JSON — which is
+        // how the production fault was identified in the first place.
+        expect(res.text).toBe('Server misconfiguration');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
 });

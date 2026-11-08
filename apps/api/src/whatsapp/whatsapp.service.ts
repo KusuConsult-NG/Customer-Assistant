@@ -100,9 +100,43 @@ export async function handshakeTokenIsAccepted(token: string | undefined): Promi
       log.error('whatsapp_verify_token_lookup_failed', err as Error);
       return [] as Array<{ id: string; webhookVerifyToken: string | null }>;
     });
+  // DECRYPT PER ROW, inside a try. `decryptSecret` THROWS when the stored
+  // value is malformed, when ENCRYPTION_KEY is unset, and when neither the
+  // current nor the previous key can read it — and this loop had no guard, so
+  // one unreadable row threw straight out of the handler.
+  //
+  // Observed in production: this endpoint answered HTTP 500 with the global
+  // filter's `{"statusCode":500,"error":"Internal Server Error"}` body on
+  // every call, warm, in about a second. Not the handler's deliberate 500
+  // below — an unhandled exception.
+  //
+  // That is a bad failure twice over. Meta's verification handshake is how a
+  // webhook URL is registered or re-verified, so a 500 here can cost the
+  // subscription that delivers every message. And one agency's broken row
+  // took the handshake down for every OTHER line on the deployment, including
+  // ones whose credentials are perfectly readable.
+  //
+  // So each row is opened on its own, failures are logged with the row id and
+  // the remedy, and the readable candidates are still compared.
+  let unreadable = 0;
   for (const row of rows) {
-    const stored = withWhatsAppCredentials(row as any)?.webhookVerifyToken?.trim();
-    if (stored) candidates.push(stored);
+    try {
+      const stored = withWhatsAppCredentials(row as any)?.webhookVerifyToken?.trim();
+      if (stored) candidates.push(stored);
+    } catch (err: any) {
+      unreadable += 1;
+      log.error('whatsapp_verify_token_unreadable', err instanceof Error ? err : new Error(String(err)), {
+        configId: row.id,
+        hint:
+          'This line\'s stored webhookVerifyToken could not be decrypted. Either ENCRYPTION_KEY is ' +
+          'unset or no longer the key that wrote it, or the row is malformed. Run ' +
+          '`npm run secrets:encrypt` to report across every model. The handshake is continuing with ' +
+          'the lines it CAN read.',
+      });
+    }
+  }
+  if (unreadable > 0) {
+    log.warn('whatsapp_verify_tokens_partially_unreadable', { unreadable, readable: candidates.length });
   }
 
   if (candidates.length === 0) return { accepted: false, configured: false };
@@ -305,7 +339,38 @@ export class WhatsappService {
           }
         );
       }
-      const config = withWhatsAppCredentials(claimants[0] ?? null);
+      // Same unguarded decrypt as the handshake had. An undecryptable
+      // credential here threw into `processIncomingWebhook`'s catch, which
+      // logs it as a generic processing failure — so the citizen got no reply
+      // and the log said nothing about the actual cause. There is no reply
+      // possible without the token, but which of those two it is decides
+      // where somebody looks.
+      // Typed from the row itself. `ReturnType<typeof withWhatsAppCredentials>`
+      // resolves to the generic's CONSTRAINT, which widens organizationId to
+      // `string | undefined` and breaks four call sites below — the type
+      // checker caught that, which is what it is for here.
+      const claimant: (typeof claimants)[number] | null = claimants[0] ?? null;
+      let config: (typeof claimants)[number] | null = null;
+      try {
+        config = withWhatsAppCredentials(claimant);
+      } catch (err: any) {
+        log.error(
+          'whatsapp_credentials_unreadable',
+          err instanceof Error ? err : new Error(String(err)),
+          {
+            correlationId,
+            phoneNumberId,
+            configId: claimant?.id,
+            organizationId: claimant?.organizationId,
+            hint:
+              'The stored credentials for this line could not be decrypted, so the citizen received ' +
+              'NO REPLY. Either ENCRYPTION_KEY is unset or no longer the key that wrote them, or the ' +
+              'row is malformed. This is a deployment configuration fault, not a Meta one — the ' +
+              'message arrived correctly. Run `npm run secrets:encrypt` to report across every model.',
+          }
+        );
+        return;
+      }
 
       if (!config) {
         log.warn('whatsapp_no_config_found', {
