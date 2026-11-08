@@ -276,7 +276,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="flex flex-col h-full">
                 {/* Logo */}
                 <div className={`flex items-center gap-3.5 px-6 py-5 border-b ${theme === 'dark' ? 'border-slate-800/80' : 'border-slate-200/80'}`}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}>
+                  {/* `shrink-0`: with the text now allowed to shrink, flex
+                      would otherwise squash the logo tile into an oval. */}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0" style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}>
                     {/* A neutral mark. This was a health cross, which is a
                         claim about what the agency does — wrong for a lands
                         registry or a revenue board. An agency that uploads a
@@ -288,9 +290,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       <Landmark className="w-6 h-6 text-white" />
                     )}
                   </div>
-                  <div>
+                  {/* `min-w-0` is what makes the `truncate` below work.
+                      A flex item defaults to min-width:auto, so this wrapper
+                      refused to shrink below its content and the heading grew
+                      past the sidebar instead of ellipsising — measured at
+                      297px of name inside a 288px rail. An agency named
+                      "Plateau State Citizen Information Center" therefore
+                      overlapped the portal label under it. Agency names come
+                      from the database and are as long as the agency is. */}
+                  <div className="min-w-0 flex-1">
                     <h1 className={`font-bold text-base tracking-tight leading-tight truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user?.organizationName || 'Customer Care'}</h1>
-                    <p className="text-[11px] font-medium text-brand-700 dark:text-brand-300">Citizen Care Portal</p>
+                    <p className="text-[11px] font-medium text-brand-700 dark:text-brand-300 truncate">Citizen Care Portal</p>
                   </div>
                 </div>
 
