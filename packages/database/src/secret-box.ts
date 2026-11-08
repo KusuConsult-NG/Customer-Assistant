@@ -46,7 +46,44 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12; // 96 bits, the size GCM is defined for
 const KEY_BYTES = 32;
 
-export class EncryptionKeyError extends Error {}
+/**
+ * A stored credential could not be read back.
+ *
+ * ── Why this is a NAMED class ───────────────────────────────────────────────
+ *
+ * `decryptSecret` throws on three different faults — a malformed value, no
+ * ENCRYPTION_KEY at all, and a value no configured key can open — and every
+ * one of them reached an HTTP client as:
+ *
+ *   {"statusCode":500,"error":"Internal Server Error",
+ *    "message":"An unexpected error occurred."}
+ *
+ * There are over twenty `with*Credentials` read sites across the API, the
+ * orchestrator and the media-stream handler, and almost none of them guard
+ * the decrypt — which is the right design, because a path that cannot read
+ * its credential genuinely cannot continue. What was wrong is what the caller
+ * was then told: nothing at all.
+ *
+ * Observed in production on two unrelated endpoints at once — Meta's webhook
+ * verification handshake, and the screen an operator would use to diagnose
+ * it. Both answered an opaque 500, so the one visible symptom pointed at no
+ * cause, and the credential being unreadable was invisible from outside.
+ *
+ * One named class means ONE place has to translate it, instead of twenty try
+ * blocks that each have to remember to.
+ *
+ * The message carries the row LABEL — a model, an id and a field name. That
+ * is deliberately not a secret: it is what tells an operator which row to
+ * fix, and it is the same label the legacy-plaintext warning already prints.
+ */
+export class SecretUnreadableError extends Error {}
+
+/**
+ * No usable key. A subclass so `instanceof SecretUnreadableError` catches it
+ * too, while the existing `toThrow(EncryptionKeyError)` assertions and the
+ * scripts that distinguish "no key" from "wrong key" keep working.
+ */
+export class EncryptionKeyError extends SecretUnreadableError {}
 
 /**
  * Read a 32-byte key from an environment variable.
@@ -148,7 +185,7 @@ export function decryptSecret(stored: string, label: string): string {
 
   const [, ivB64, tagB64, dataB64] = stored.split('.');
   if (!ivB64 || !tagB64 || !dataB64) {
-    throw new Error(`Stored secret for ${label} is malformed and cannot be decrypted.`);
+    throw new SecretUnreadableError(`Stored secret for ${label} is malformed and cannot be decrypted.`);
   }
 
   const iv = Buffer.from(ivB64, 'base64');
@@ -175,7 +212,7 @@ export function decryptSecret(stored: string, label: string): string {
     }
   }
 
-  throw new Error(
+  throw new SecretUnreadableError(
     `Could not decrypt the stored credential for ${label} with ENCRYPTION_KEY${
       previousKey() ? ' or ENCRYPTION_KEY_PREVIOUS' : ''
     }. The key has changed, or the value was tampered with.`

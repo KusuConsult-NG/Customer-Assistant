@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
+import { PrismaExceptionFilter } from '../../src/common/filters/prisma-exception.filter';
 
 /**
  * A test app configured the way `bootstrap()` configures the real one.
@@ -44,6 +45,15 @@ export async function createTestApp(): Promise<INestApplication> {
       transformOptions: { enableImplicitConversion: true },
     })
   );
+
+  // Mirrors main.ts for the same reason as the pipe above. Without it no suite
+  // could prove how a failure reaches a client, and the production fault that
+  // prompted this was exactly that: two endpoints answering an opaque
+  // `{"statusCode":500,"message":"An unexpected error occurred."}` with the
+  // real cause — a credential that could not be decrypted — nowhere in the
+  // response. A harness that cannot see the difference between that and a
+  // specific 503 cannot catch it coming back.
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   await app.init();
   return app;

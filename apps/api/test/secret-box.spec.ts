@@ -19,6 +19,7 @@ import {
   encryptSecret,
   encryptionAvailable,
   EncryptionKeyError,
+  SecretUnreadableError,
   isEncrypted,
   secretFingerprint,
 } from '@ace/database';
@@ -185,5 +186,108 @@ describe('secret box', () => {
     it('is empty for an absent secret', () => {
       expect(secretFingerprint('')).toBe('');
     });
+  });
+});
+
+/**
+ * An unreadable credential must say so, not answer "an unexpected error".
+ *
+ * ── The bug this exists to catch ────────────────────────────────────────────
+ *
+ * Found by probing the live deployment. Two unrelated endpoints answered
+ *
+ *   {"statusCode":500,"error":"Internal Server Error",
+ *    "message":"An unexpected error occurred."}
+ *
+ * at the same time: Meta's webhook verification handshake, and the screen an
+ * operator would use to diagnose it. One cause — a stored credential that
+ * could not be decrypted — and from outside it was invisible.
+ *
+ * `decryptSecret` throws on three different faults, and over twenty
+ * `with*Credentials` read sites do not guard it. That is the right design: a
+ * path that cannot read its credential cannot continue. What was wrong is
+ * what the caller was told. So the throw is a NAMED class and the catch-all
+ * filter translates it once, rather than twenty try blocks each having to
+ * remember to.
+ */
+describe('a credential that cannot be read', () => {
+  const saved: Record<string, string | undefined> = {};
+  const setKey = (k: string, v: string | undefined) => {
+    if (!(k in saved)) saved[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  };
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  const keyA = Buffer.alloc(32, 1).toString('base64');
+  const keyB = Buffer.alloc(32, 2).toString('base64');
+
+  it('throws SecretUnreadableError when no key is configured', () => {
+    setKey('ENCRYPTION_KEY', keyA);
+    const sealed = encryptSecret('EAAtoken');
+    setKey('ENCRYPTION_KEY', undefined);
+    setKey('ENCRYPTION_KEY_PREVIOUS', undefined);
+
+    expect(() => decryptSecret(sealed, 'WhatsAppConfig abc.accessToken')).toThrow(SecretUnreadableError);
+    // The subclass is kept, so existing callers that distinguish "no key"
+    // from "wrong key" still can.
+    expect(() => decryptSecret(sealed, 'WhatsAppConfig abc.accessToken')).toThrow(EncryptionKeyError);
+  });
+
+  it('throws SecretUnreadableError when the key has CHANGED', () => {
+    setKey('ENCRYPTION_KEY', keyA);
+    const sealed = encryptSecret('EAAtoken');
+    setKey('ENCRYPTION_KEY', keyB);
+    setKey('ENCRYPTION_KEY_PREVIOUS', undefined);
+
+    expect(() => decryptSecret(sealed, 'WhatsAppConfig abc.accessToken')).toThrow(SecretUnreadableError);
+    // NOT the key-missing subclass: a key is configured, it is the wrong one,
+    // and those send an operator to different places.
+    expect(() => decryptSecret(sealed, 'WhatsAppConfig abc.accessToken')).not.toThrow(EncryptionKeyError);
+  });
+
+  it('throws SecretUnreadableError on a malformed value', () => {
+    setKey('ENCRYPTION_KEY', keyA);
+    expect(() => decryptSecret('v1.only.two', 'WhatsAppConfig abc.accessToken')).toThrow(SecretUnreadableError);
+  });
+
+  it('still reads with ENCRYPTION_KEY_PREVIOUS after a rotation', () => {
+    // The whole point of the previous key: a rotation must not black out
+    // every credential at once.
+    setKey('ENCRYPTION_KEY', keyA);
+    const sealed = encryptSecret('EAAtoken');
+    setKey('ENCRYPTION_KEY', keyB);
+    setKey('ENCRYPTION_KEY_PREVIOUS', keyA);
+
+    expect(decryptSecret(sealed, 'WhatsAppConfig abc.accessToken')).toBe('EAAtoken');
+  });
+
+  it('names the ROW in the message, and no secret material', () => {
+    // The label is what tells an operator which credential to repair, and it
+    // travels to the client in the 503. It must carry the model, the id and
+    // the field — and never the key, the ciphertext or the plaintext.
+    setKey('ENCRYPTION_KEY', keyA);
+    const sealed = encryptSecret('EAAsupersecrettoken');
+    setKey('ENCRYPTION_KEY', keyB);
+    setKey('ENCRYPTION_KEY_PREVIOUS', undefined);
+
+    let message = '';
+    try {
+      decryptSecret(sealed, 'WhatsAppConfig cfg_123.accessToken');
+    } catch (err: any) {
+      message = String(err?.message ?? '');
+    }
+
+    expect(message).toContain('WhatsAppConfig cfg_123.accessToken');
+    expect(message).toMatch(/ENCRYPTION_KEY/);
+    expect(message).not.toContain('EAAsupersecrettoken');
+    expect(message).not.toContain(keyA);
+    expect(message).not.toContain(keyB);
+    expect(message).not.toContain(sealed);
   });
 });
