@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -2832,12 +2832,56 @@ export class ConversationOrchestrator {
     const dueAt = nextServiceTime(new Date(Date.now() + window.minutes * 60_000), hours);
     const promisedText = t(lang, window.key as any);
 
+    // ── The details go on the CUSTOMER RECORD, not only the callback ──────
+    //
+    // A callback carrying a reason and a time is enough to make the call. It
+    // is not enough to be a customer-care record: "somebody rang about a land
+    // title" cannot be acted on later, and a government helpline is expected
+    // to be able to say who it served.
+    //
+    // They go on the CONTACT because that is the record an officer opens, and
+    // because `CallbackRequest` has no columns for them — adding some would
+    // mean a schema change pushed to production ahead of the code, to store
+    // on one request what belongs to the person.
+    //
+    // The NAME only ever upgrades a placeholder. `Caller (···8679)` is one of
+    // ours and should be replaced the moment the citizen says who they are;
+    // a name an officer typed should not be overwritten by whatever speech
+    // recognition heard. `isPlaceholderContactName` knows every placeholder
+    // shape in live data, not just the current one.
+    const givenName = (collected.fullName ?? '').trim();
+    const givenAddress = (collected.address ?? '').trim();
+    if (givenName || givenAddress) {
+      const data: Record<string, string> = {};
+      if (givenName && isPlaceholderContactName(contact.fullName)) data.fullName = givenName;
+      // An address is only ever absent or stale, never "ours", so a freshly
+      // given one wins.
+      if (givenAddress) data.address = givenAddress.slice(0, 500);
+      if (Object.keys(data).length > 0) {
+        // Never throws into the call. The citizen has been promised a
+        // callback and the callback itself is what must be written; losing
+        // the CRM detail is worse than nothing but far better than losing the
+        // promise.
+        await prisma.contact.update({ where: { id: contact.id }, data }).catch(() => undefined);
+      }
+    }
+
     const record = await prisma.callbackRequest.create({
       data: {
         organizationId: context.organizationId,
         contactId: contact.id,
         phoneNumber: normalizePhoneNumber(phone),
-        reason: (collected.reason ?? '').slice(0, 1000),
+        // The reason an officer reads, with who and where alongside it — the
+        // callback row is what the queue screen shows, so the name must be
+        // legible there too and not only on the contact.
+        reason: [
+          givenName ? `${givenName}` : '',
+          givenAddress ? `(${givenAddress})` : '',
+          (collected.reason ?? '').trim(),
+        ]
+          .filter(Boolean)
+          .join(' — ')
+          .slice(0, 1000),
         promisedText,
         dueAt,
         conversationId: context.conversationId ?? null,

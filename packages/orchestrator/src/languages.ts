@@ -268,6 +268,8 @@ type TemplateKey =
   | 'enrol_nin_ask' | 'enrol_nin_length' | 'enrol_nin_none'
   | 'enrol_summary' | 'enrol_summary_free'
   /** Asking to be rung back, and the promise that is made in return. */
+  | 'callback_name_ask' | 'callback_name_two_words' | 'callback_name_digits'
+  | 'callback_address_ask' | 'callback_address_short'
   | 'callback_reason_ask' | 'callback_reason_short'
   | 'callback_when_ask' | 'callback_when_unclear'
   | 'callback_window_hour' | 'callback_window_today' | 'callback_window_tomorrow'
@@ -373,8 +375,18 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Here is what I have — please check it carefully before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Service: {plan}{free}\n• Location: {facility}\n• NIN: {nin}\n\nIs all of that correct? Reply *yes* to register, or tell me what to change.',
     enrol_summary_free:
       ' (free — no payment)',
+    callback_name_ask:
+      'Of course — I can arrange for someone to call you back. Could I take your full name, please?',
+    callback_name_two_words:
+      'Could I have your first name and surname? The officer will be asking for you by name.',
+    callback_name_digits:
+      'That looks like it has numbers in it. Could you give me your name as you would say it?',
+    callback_address_ask:
+      'Thank you. And what address should I put on the record?',
+    callback_address_short:
+      'Could you give me a little more of the address — a street or area is enough.',
     callback_reason_ask:
-      'Of course — I can arrange for someone to call you back. What should they call you about?',
+      'Thank you. What should they call you about?',
     callback_reason_short:
       'Could you tell me a little more about what it is about? One or two words is not enough for the officer who will ring you.',
     callback_when_ask:
@@ -388,7 +400,7 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     callback_window_tomorrow:
       'Tomorrow',
     callback_summary:
-      'Let me read that back:\n\n• About: {reason}\n• When: {when}\n\nShall I book the callback? Reply *yes*, or tell me what to change.',
+      'Let me read that back:\n\n• Name: {name}\n• Address: {address}\n• About: {reason}\n• When: {when}\n\nShall I book the callback? Reply *yes*, or tell me what to change.',
     callback_confirmed:
       'Done — reference {ref}. Someone will call you on {number} {when}. If you need us sooner, you can reply here any time.',
     callback_already_open:
@@ -504,6 +516,16 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Na wetin I get be this — abeg check am well before I register you:\n\n• Name: {name}\n• Age / DOB: {age}\n• Address: {address}\n• LGA: {lga}\n• Service: {plan}{free}\n• Location: {facility}\n• NIN: {nin}\n\nEverything correct? Reply *yes* make I register you, abi tell me wetin I go change.',
     enrol_summary_free:
       ' (free — you no go pay anything)',
+    callback_name_ask:
+      'No wahala — I fit arrange make person call you back. Abeg, wetin be your full name?',
+    callback_name_two_words:
+      'Abeg give me your first name and your surname. Na by name the officer go ask for you.',
+    callback_name_digits:
+      'E get number inside am. Abeg talk your name the way you dey call am.',
+    callback_address_ask:
+      'Thank you. Wetin be the address wey I go put for the record?',
+    callback_address_short:
+      'Abeg add small — the street abi area wey you dey live go do.',
     callback_reason_ask:
       'No wahala — I fit arrange make person call you back. Wetin make dem call you about?',
     callback_reason_short:
@@ -519,7 +541,7 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     callback_window_tomorrow:
       'Tomorrow',
     callback_summary:
-      'Make I read am back:\n\n• About: {reason}\n• When: {when}\n\nMake I book the callback? Reply *yes*, abi tell me wetin I go change.',
+      'Make I read am back:\n\n• Name: {name}\n• Address: {address}\n• About: {reason}\n• When: {when}\n\nMake I book the callback? Reply *yes*, abi tell me wetin I go change.',
     callback_confirmed:
       'E don set — reference {ref}. Person go call you for {number} {when}. If you need us before then, you fit reply here any time.',
     callback_already_open:
@@ -633,6 +655,16 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Ga abin da na samu — ka duba shi da kyau kafin in yi maka rijista:\n\n• Suna: {name}\n• Shekaru / Ranar haihuwa: {age}\n• Adireshi: {address}\n• Karamar Hukuma: {lga}\n• Sabis: {plan}{free}\n• Wuri: {facility}\n• NIN: {nin}\n\nDuk daidai ne? Ka amsa *yes* in yi rijista, ko ka gaya mini abin da zan canza.',
     enrol_summary_free:
       ' (kyauta — babu biyan kudi)',
+    callback_name_ask:
+      'Babu matsala — zan iya shirya wani ya sake kiran ka. Don Allah, menene cikakken sunanka?',
+    callback_name_two_words:
+      'Ka ba ni sunan farko da sunan mahaifi. Da suna ne jami\u2019in zai neme ka.',
+    callback_name_digits:
+      'Akwai lambobi a ciki. Don Allah ka fa\u1E0Di sunanka kamar yadda kake kiransa.',
+    callback_address_ask:
+      'Na gode. Wane adireshi zan sa a cikin bayanan?',
+    callback_address_short:
+      'Ka kara bayani kadan — titi ko yankin da kake zama ya isa.',
     callback_reason_ask:
       'Babu matsala — zan iya shirya wani ya sake kiran ka. A kan me za su kira ka?',
     callback_reason_short:
@@ -648,7 +680,7 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     callback_window_tomorrow:
       'Gobe',
     callback_summary:
-      'Bari in sake karanta maka:\n\n• A kan: {reason}\n• Lokaci: {when}\n\nIn yi rijistar kiran? Ka amsa *yes*, ko ka gaya mini abin da zan canza.',
+      'Bari in sake karanta maka:\n\n• Suna: {name}\n• Adireshi: {address}\n• A kan: {reason}\n• Lokaci: {when}\n\nIn yi rijistar kiran? Ka amsa *yes*, ko ka gaya mini abin da zan canza.',
     callback_confirmed:
       'An gama — lambar tabbatarwa {ref}. Wani zai kira ka a {number} {when}. Idan kana bukatar mu kafin nan, ka iya amsa a nan kowane lokaci.',
     callback_already_open:
@@ -762,6 +794,16 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Nke a bụ ihe m nwetara — biko lelee ya nke ọma tupu m debanye aha gị:\n\n• Aha: {name}\n• Afọ / Ụbọchị ọmụmụ: {age}\n• Adreesị: {address}\n• LGA: {lga}\n• Ọrụ: {plan}{free}\n• Ebe: {facility}\n• NIN: {nin}\n\nIhe niile ziri ezi? Zaa *yes* ka m debanye, ma ọ bụ gwa m ihe m ga-agbanwe.',
     enrol_summary_free:
       ' (n\'efu — ọ dịghị ụgwọ)',
+    callback_name_ask:
+      'Ọ dị mma — enwere m ike ịhazi ka mmadụ kpọghachi gị. Biko, gịnị bụ aha gị zuru ezu?',
+    callback_name_two_words:
+      'Biko nye m aha mbụ gị na aha nna gị. Ọ bụ aha ka onye ọrụ ahụ ga-eji jụọ maka gị.',
+    callback_name_digits:
+      'Ọ dị ka o nwere ọnụọgụ n\u2019ime ya. Biko kwuo aha gị otu ị si akpọ ya.',
+    callback_address_ask:
+      'Daalụ. Gịnị bụ adreesị m ga-etinye na ndekọ ahụ?',
+    callback_address_short:
+      'Biko tinye ntakịrị ọzọ — okporo ámá ma ọ bụ ebe ị bi ezuola.',
     callback_reason_ask:
       'Ọ dị mma — enwere m ike ịhazi ka mmadụ kpọghachi gị. Gịnị ka ha ga-akpọ gị maka ya?',
     callback_reason_short:
@@ -777,7 +819,7 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     callback_window_tomorrow:
       'Echi',
     callback_summary:
-      'Ka m gụghachi ya:\n\n• Maka: {reason}\n• Mgbe: {when}\n\nKa m debanye oku ahụ? Zaa *yes*, ma ọ bụ gwa m ihe m ga-agbanwe.',
+      'Ka m gụghachi ya:\n\n• Aha: {name}\n• Adreesị: {address}\n• Maka: {reason}\n• Mgbe: {when}\n\nKa m debanye oku ahụ? Zaa *yes*, ma ọ bụ gwa m ihe m ga-agbanwe.',
     callback_confirmed:
       'Emechaala — nnyocha {ref}. Mmadụ ga-akpọ gị na {number} {when}. Ọ bụrụ na ịchọrọ anyị ngwa ngwa, ị nwere ike ịzaghachi ebe a oge ọ bụla.',
     callback_already_open:
@@ -891,6 +933,16 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
       'Èyí ni ohun tí mo ní — jọ̀wọ́ ṣàyẹ̀wò rẹ̀ dáadáa kí n tó forúkọ rẹ sílẹ̀:\n\n• Orúkọ: {name}\n• Ọdún / Ọjọ́ ìbí: {age}\n• Àdírẹ́sì: {address}\n• Ìjọba Ìbílẹ̀: {lga}\n• Iṣẹ́: {plan}{free}\n• Ibùdó: {facility}\n• NIN: {nin}\n\nGbogbo rẹ̀ tọ̀nà? Dáhùn *yes* kí n forúkọ sílẹ̀, tàbí sọ ohun tí n óò yí padà.',
     enrol_summary_free:
       ' (ọ̀fẹ́ — kò sí owó kankan)',
+    callback_name_ask:
+      'Kò burú — mo lè ṣètò kí ẹnìkan pè ọ́ padà. Jọ̀wọ́, kí ni orúkọ rẹ ní kíkún?',
+    callback_name_two_words:
+      'Jọ̀wọ́ fún mi ní orúkọ àkọ́kọ́ àti orúkọ ìdílé rẹ. Orúkọ ni òṣìṣẹ́ yóò fi béèrè fún ọ.',
+    callback_name_digits:
+      'Ó dà bí pé nọ́mbà wà nínú rẹ̀. Jọ̀wọ́ sọ orúkọ rẹ bí o ṣe ń pè é.',
+    callback_address_ask:
+      'O ṣeun. Kí ni àdírẹ́sì tí màá fi sínú ìwé ìròyìn náà?',
+    callback_address_short:
+      'Jọ̀wọ́ fi kún un díẹ̀ — òpópónà tàbí agbègbè tí o ń gbé tó.',
     callback_reason_ask:
       'Kò burú — mo lè ṣètò kí ẹnìkan pè ọ́ padà. Kí ni wọn yóò pè ọ́ nípa rẹ̀?',
     callback_reason_short:
@@ -906,7 +958,7 @@ const TEMPLATES: Record<Language, Record<TemplateKey, string>> = {
     callback_window_tomorrow:
       'Ọ̀la',
     callback_summary:
-      'Jẹ́ kí n kà á padà:\n\n• Nípa: {reason}\n• Ìgbà: {when}\n\nKí n ṣètò ìpè náà? Dáhùn *yes*, tàbí sọ ohun tí n óò yí padà.',
+      'Jẹ́ kí n kà á padà:\n\n• Orúkọ: {name}\n• Àdírẹ́sì: {address}\n• Nípa: {reason}\n• Ìgbà: {when}\n\nKí n ṣètò ìpè náà? Dáhùn *yes*, tàbí sọ ohun tí n óò yí padà.',
     callback_confirmed:
       'Ó ti ṣe tán — ìtọ́kasí {ref}. Ẹnìkan yóò pè ọ́ ní {number} {when}. Tí o bá nílò wa kíákíá, o lè dáhùn níbí nígbàkigbà.',
     callback_already_open:
