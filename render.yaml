@@ -201,6 +201,29 @@ services:
       # TWILIO_API_KEY_SID is NOT the Account SID and NOT the Auth Token. It
       # is a separate credential pair created in the Twilio console, and its
       # secret is shown once.
+      # ── Infobip as the carrier, this platform's AI as the voice ───────────
+      #
+      # Leave all blank and nothing changes. Set them and a number carried by
+      # Infobip — usually the agency's own toll-free, brought over SIP — is
+      # answered by THIS platform's AI, with the same knowledge base, intake
+      # flow, callbacks and records as every other channel.
+      #
+      # The media stream config on Infobip's side must point at
+      #   wss://<this API>/telephony/infobip/stream/<INFOBIP_STREAM_TOKEN>
+      # and the notification profile must send Basic auth matching the
+      # WEBHOOK pair, to https://<this API>/api/telephony/inbound/infobip.
+      - key: INFOBIP_BASE_URL
+        sync: false
+      - key: INFOBIP_API_KEY
+        sync: false
+      - key: INFOBIP_MEDIA_STREAM_CONFIG_ID
+        sync: false
+      - key: INFOBIP_WEBHOOK_USERNAME
+        sync: false
+      - key: INFOBIP_WEBHOOK_PASSWORD
+        sync: false
+      - key: INFOBIP_STREAM_TOKEN
+        sync: false
       # Leave blank: the AI answers inbound calls, which is the intended
       # shape. Set to 1 only if officers should be rung BEFORE the AI.
       - key: TWILIO_RING_OFFICERS_FIRST

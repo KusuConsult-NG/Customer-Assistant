@@ -192,6 +192,35 @@ export class VoiceAiService {
    * silent caller must never read as success.
    */
   async fetchTtsPcm24k(text: string, language = 'en', signal?: AbortSignal): Promise<Buffer | null> {
+    return this.fetchTtsPcm(text, language, 24000, signal);
+  }
+
+  /**
+   * TTS as raw 16-bit mono PCM at one of the rates ElevenLabs offers.
+   *
+   * Generalised from `fetchTtsPcm24k` for the Infobip media stream, whose
+   * sample rate is chosen on the Infobip side when the stream configuration is
+   * created (their own tutorial uses 16000). Asking ElevenLabs for the rate the
+   * stream already runs at means no resample at all — and a resample done
+   * wrong is heard as a robotic voice, never reported as an error.
+   *
+   * Restricted to the rates ElevenLabs actually publishes. An unlisted rate is
+   * refused here rather than requested, because ElevenLabs answering 400 on a
+   * live call is the caller hearing nothing.
+   */
+  async fetchTtsPcm(
+    text: string,
+    language = 'en',
+    sampleRate: 16000 | 22050 | 24000 | 44100 = 24000,
+    signal?: AbortSignal
+  ): Promise<Buffer | null> {
+    if (![16000, 22050, 24000, 44100].includes(sampleRate)) {
+      this.logger.error(
+        'tts_pcm_unsupported_rate',
+        new Error(`ElevenLabs offers no pcm_${sampleRate}; the caller would have heard nothing.`)
+      );
+      return null;
+    }
     const apiKey = process.env.ELEVENLABS_API_KEY;
     const voiceId = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
@@ -208,7 +237,7 @@ export class VoiceAiService {
 
     try {
       const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_24000`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_${sampleRate}`,
         {
           method: 'POST',
           headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },

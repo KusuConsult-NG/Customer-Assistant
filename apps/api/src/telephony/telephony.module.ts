@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { InfobipVoiceService } from './infobip/infobip-voice.service';
+import { InfobipCallsService } from './infobip/infobip-calls.service';
+import { InfobipMediaStreamHandler } from './infobip/infobip-media-stream.handler';
 import { BrowserCallingService } from './browser-calling.service';
 import { TelephonyService } from './telephony.service';
 import { TelephonyController } from './telephony.controller';
@@ -27,6 +30,13 @@ import { VoiceReadinessService } from './voice-readiness.service';
     // Inert until its Twilio credentials are set: with none, the inbound path
     // is exactly what it was before this existed.
     BrowserCallingService,
+
+    // Infobip as the carrier, this platform's AI as the voice: the event
+    // webhook, the call-context store, and the raw media-stream bridge
+    // (instantiated from main.ts, like the Twilio one).
+    InfobipVoiceService,
+    InfobipCallsService,
+    InfobipMediaStreamHandler,
 
     // Voice AI: Deepgram STT + ElevenLabs TTS
     VoiceAiService,

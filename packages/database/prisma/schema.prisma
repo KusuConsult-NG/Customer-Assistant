@@ -137,6 +137,14 @@ enum TelephonyProviderType {
   /// a Meta call as a Twilio one sends whoever investigates it to the wrong
   /// console.
   WHATSAPP_CLOUD
+  /// Infobip, carrying a number the agency already holds (bring-your-own-
+  /// carrier over SIP) or one leased from Infobip. Infobip delivers the call
+  /// and hands its audio to this platform over a WebSocket; this platform's AI
+  /// runs the conversation, so the knowledge base, the intake flow, callbacks
+  /// and the records all stay here. Unlike `SIP_TRUNK` — which sends the call
+  /// to the hosted agent, where no person can ever take it over — a call that
+  /// arrives through Infobip can later be connected to an officer's browser.
+  INFOBIP
 }
 
 enum BookingStatus {

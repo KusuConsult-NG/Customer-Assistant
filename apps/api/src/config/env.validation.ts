@@ -142,6 +142,47 @@ export const ENV_SPECS: EnvSpec[] = [
       'suppresses the message fallback. NO REAL CALL HAS PROVEN THIS PATH — treat the first one as the test.',
   },
   {
+    key: 'INFOBIP_BASE_URL',
+    required: false,
+    description:
+      'Your personal Infobip API base URL (https://xxxxx.api.infobip.com) from the Infobip portal. ' +
+      'With the other INFOBIP_* variables, an Infobip-carried number — usually your own toll-free, ' +
+      'brought over SIP — is answered by THIS platform\'s AI. Without them nothing changes.',
+  },
+  {
+    key: 'INFOBIP_API_KEY',
+    required: false,
+    description: 'Infobip API key with the calls:traffic:send scope. Sent as "Authorization: App <key>".',
+  },
+  {
+    key: 'INFOBIP_MEDIA_STREAM_CONFIG_ID',
+    required: false,
+    description:
+      'The id Infobip returns when the WEBSOCKET_ENDPOINT media stream config is created. That config ' +
+      'must point at wss://<this API>/telephony/infobip/stream/<INFOBIP_STREAM_TOKEN> with sampleRate ' +
+      '8000, 16000, 24000 or 48000.',
+  },
+  {
+    key: 'INFOBIP_WEBHOOK_USERNAME',
+    required: false,
+    description:
+      'Basic-auth username Infobip sends on call events. Set the same pair on the Infobip notification ' +
+      'profile. With either half unset, EVERY call event is refused — an unauthenticated CALL_RECEIVED ' +
+      'would let anybody create contacts and call records.',
+  },
+  {
+    key: 'INFOBIP_WEBHOOK_PASSWORD',
+    required: false,
+    description: 'The password half of INFOBIP_WEBHOOK_USERNAME.',
+  },
+  {
+    key: 'INFOBIP_STREAM_TOKEN',
+    required: false,
+    description:
+      'A secret of 16+ characters that ends the media stream URL. Infobip documents no authentication ' +
+      'for the stream, so this is it: connections without it are refused before the WebSocket opens.',
+  },
+  {
     key: 'TWILIO_RING_OFFICERS_FIRST',
     required: false,
     description:
