@@ -91,7 +91,16 @@ describe('Infobip media stream', () => {
   });
 
   /** Build a handler wired to fakes, with one known call. */
-  const setup = async (opts: { ttsMs?: number; reply?: (text: string) => any } = {}) => {
+  const setup = async (
+    opts: {
+      ttsMs?: number;
+      reply?: (text: string) => any;
+      /** Null means the line has nobody to put a caller through to. */
+      forwardingNumber?: string | null;
+      /** What Infobip answers when asked to connect the officer. */
+      transfer?: (parentCallId: string, phoneNumber: string, from?: string | null) => any;
+    } = {}
+  ) => {
     const infobip = new InfobipVoiceService();
     const callId = `parent-${randomBytes(6).toString('hex')}`;
     await infobip.remember({
@@ -101,6 +110,7 @@ describe('Infobip media stream', () => {
       // number, which is the collision this repo already measured at 100%.
       fromNumber: `+23480${randomBytes(4).readUInt32BE(0).toString().padStart(8, '0').slice(0, 8)}`,
       toNumber: '+2348000000001',
+      forwardingNumber: opts.forwardingNumber === undefined ? '+2348099999999' : opts.forwardingNumber,
     });
     await prisma.callLog.create({
       data: {
@@ -127,6 +137,19 @@ describe('Infobip media stream', () => {
       },
     };
     const broadcast = { emit: jest.fn() };
+    // Infobip itself is never reached: the request it would receive is what
+    // these tests assert on.
+    const transfers: Array<{ parentCallId: string; phoneNumber: string; from?: string | null }> = [];
+    (infobip as any).transferToHuman = async (
+      parentCallId: string,
+      phoneNumber: string,
+      from?: string | null
+    ) => {
+      transfers.push({ parentCallId, phoneNumber, from });
+      return opts.transfer
+        ? opts.transfer(parentCallId, phoneNumber, from)
+        : { ok: true, body: { id: 'child-leg' } };
+    };
     const handler = new InfobipMediaStreamHandler(voiceAi, infobip, broadcast as any);
     const asked: string[] = [];
     (handler as any).orchestrator = {
@@ -137,7 +160,7 @@ describe('Infobip media stream', () => {
     };
     const ws = new FakeInfobipSocket();
     handler.handleConnection(ws as any);
-    return { handler, ws, deepgram, spoken, asked, callId, broadcast };
+    return { handler, ws, deepgram, spoken, asked, callId, broadcast, transfers };
   };
 
   it('speaks first, in packets of the size Infobip announced', async () => {
@@ -238,22 +261,129 @@ describe('Infobip media stream', () => {
     expect(asked).toEqual([]);
   });
 
-  it('never announces a transfer: it files a ticket and reads the reference back', async () => {
-    const { ws, deepgram, spoken, callId } = await setup({
-      ttsMs: 50,
-      // The orchestrator's own text might say "connecting you" — it must not be spoken.
-      reply: () => ({ replyText: 'Connecting you to an agent now.', shouldHandoff: true }),
-    });
-    ws.meta(callId);
-    await eventually(() => ws.audioFrames().length > 0);
-    deepgram.final('I want to talk to a person');
-    await eventually(() => spoken.length >= 2);
+  describe('putting the caller through to a person', () => {
+    const askForAHuman = { reply: () => ({ replyText: 'Connecting you to an agent now.', shouldHandoff: true }) };
 
-    expect(spoken).not.toContain('Connecting you to an agent now.');
-    expect(spoken[1]).toMatch(/can't put you through/i);
-    expect(spoken[1]).toMatch(/reference/i);
-    const ticket = await prisma.ticket.findFirst({ where: { organizationId: orgId, priority: 'HIGH' as any } });
-    expect(ticket?.subject).toMatch(/speak to a human/i);
+    it("connects the officer, and only THEN says so", async () => {
+      const { ws, deepgram, spoken, callId, transfers, broadcast } = await setup({ ttsMs: 50, ...askForAHuman });
+      ws.meta(callId);
+      await eventually(() => ws.audioFrames().length > 0);
+      deepgram.final('I want to talk to a person');
+      await eventually(() => spoken.length >= 2);
+
+      // The citizen's call is the parent; the officer's number is the child;
+      // the agency's own line is the caller ID, so the officer recognises it
+      // and answers.
+      expect(transfers).toHaveLength(1);
+      expect(transfers[0]).toEqual({
+        parentCallId: callId,
+        phoneNumber: '+2348099999999',
+        from: '+2348000000001',
+      });
+
+      expect(spoken[1]).toMatch(/connecting you to a colleague/i);
+      // The orchestrator's own words are still never the announcement.
+      expect(spoken).not.toContain('Connecting you to an agent now.');
+      expect(broadcast.emit).toHaveBeenCalledWith(
+        callId,
+        'human_handoff',
+        expect.objectContaining({ transferred: true })
+      );
+      // Nothing was promised AND filed: a ticket here would have an officer
+      // chasing a citizen already on the phone to one.
+      const ticket = await prisma.ticket.findFirst({ where: { organizationId: orgId, priority: 'HIGH' as any } });
+      expect(ticket).toBeNull();
+    });
+
+    it('stops listening once the officer is on, instead of talking over them', async () => {
+      const { ws, deepgram, spoken, callId } = await setup({ ttsMs: 50, ...askForAHuman });
+      ws.meta(callId);
+      await eventually(() => ws.audioFrames().length > 0);
+      deepgram.final('I want to talk to a person');
+      await eventually(() => spoken.length >= 2);
+      await settle(200);
+
+      expect(deepgram.readyState).toBe(3);
+      // Whatever the citizen says to the officer is not answered by the AI.
+      const before = spoken.length;
+      deepgram.final('Hello officer, my name is Grace');
+      await settle(400);
+      expect(spoken).toHaveLength(before);
+    });
+
+    it('files a ticket when the CARRIER refuses, quoting the refusal', async () => {
+      const { ws, deepgram, spoken, callId, broadcast } = await setup({
+        ttsMs: 50,
+        ...askForAHuman,
+        transfer: () => ({ ok: false, error: 'destination unreachable' }),
+      });
+      ws.meta(callId);
+      await eventually(() => ws.audioFrames().length > 0);
+      deepgram.final('I want to talk to a person');
+      await eventually(() => spoken.length >= 2);
+
+      expect(spoken[1]).toMatch(/can't put you through/i);
+      expect(spoken[1]).toMatch(/reference/i);
+      expect(spoken).not.toContain('Connecting you to an agent now.');
+      expect(broadcast.emit).toHaveBeenCalledWith(
+        callId,
+        'human_handoff',
+        expect.objectContaining({ transferred: false, reason: 'destination unreachable' })
+      );
+      const ticket = await prisma.ticket.findFirst({
+        where: { organizationId: orgId, priority: 'HIGH' as any },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(ticket?.subject).toMatch(/speak to a human/i);
+      expect(ticket?.description).toMatch(/destination unreachable/);
+    });
+
+    it('does not call the carrier at all when the line has no forwarding number', async () => {
+      const { ws, deepgram, spoken, callId, transfers } = await setup({
+        ttsMs: 50,
+        ...askForAHuman,
+        forwardingNumber: null,
+      });
+      ws.meta(callId);
+      await eventually(() => ws.audioFrames().length > 0);
+      deepgram.final('I want to talk to a person');
+      await eventually(() => spoken.length >= 2);
+
+      // There is nobody to attempt it to. A request made to be told so costs
+      // the citizen the seconds it takes.
+      expect(transfers).toEqual([]);
+      expect(spoken[1]).toMatch(/can't put you through/i);
+      const ticket = await prisma.ticket.findFirst({
+        where: { organizationId: orgId, priority: 'HIGH' as any },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(ticket?.description).toMatch(/no forwarding number/i);
+    });
+
+    it('attempts the transfer once, however often the caller asks', async () => {
+      const { ws, deepgram, spoken, callId, transfers } = await setup({
+        ttsMs: 50,
+        ...askForAHuman,
+        transfer: () => ({ ok: false, error: 'busy' }),
+      });
+      ws.meta(callId);
+      await eventually(() => ws.audioFrames().length > 0);
+      deepgram.final('I want to talk to a person');
+      await eventually(() => spoken.length >= 2);
+      deepgram.final('please put me through');
+      await settle(400);
+
+      // A second attempt would ring an officer who already declined, and a
+      // second ticket would double-count one citizen's request.
+      expect(transfers).toHaveLength(1);
+      // Counted by THIS refusal's reason, not by every HIGH ticket in the
+      // agency: earlier tests in this file file their own, and a total would
+      // pass or fail on what ran before it.
+      const tickets = await prisma.ticket.count({
+        where: { organizationId: orgId, priority: 'HIGH' as any, description: { contains: 'busy' } },
+      });
+      expect(tickets).toBe(1);
+    });
   });
 
   it('writes the transcript to the call record when the stream ends', async () => {

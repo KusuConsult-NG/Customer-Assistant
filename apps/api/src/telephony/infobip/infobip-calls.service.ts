@@ -150,6 +150,9 @@ export class InfobipCallsService {
       toNumber,
       callLogId: callLog.id,
       contactId: contact?.id ?? null,
+      // Carried now so a handoff later needs no database round trip while the
+      // citizen waits.
+      forwardingNumber: config.forwardingNumber ?? null,
     });
 
     this.webhookDispatcher

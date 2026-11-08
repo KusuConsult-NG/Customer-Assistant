@@ -361,29 +361,17 @@ export class InfobipMediaStreamHandler {
       text
     );
 
-    // ACT, THEN ANNOUNCE. A live transfer to an officer is not built for this
-    // carrier yet, so a request for a person is never answered with
-    // "connecting you" — the orchestrator's own reply might say that, so it
-    // is not spoken. A HIGH-priority ticket is filed and its reference read
-    // back, exactly as the Twilio path does when it cannot transfer.
+    // ACT, THEN ANNOUNCE. The transfer is attempted FIRST, and the caller is
+    // told they are being connected only once Infobip has accepted it. The
+    // orchestrator's own reply may already say "connecting you" — it is never
+    // spoken here, because at that moment nothing has connected anybody.
+    //
+    // Whatever happens, the caller leaves this branch with something real: an
+    // officer's phone ringing, or a HIGH-priority ticket whose reference they
+    // have been read back. Never a reassurance.
     if (result.shouldHandoff && !session.handoffAttempted) {
       session.handoffAttempted = true;
-      const ticket = await fileHandoffTicket({
-        organizationId: session.ctx.organizationId,
-        fromNumber: session.ctx.fromNumber,
-        whyNotTransferred: 'live transfer to an officer is not yet available on the Infobip line',
-        lastUtterance: text,
-        onError: (err) =>
-          log.error('infobip_handoff_ticket_failed', err as Error, { callId: session.ctx.parentCallId }),
-      });
-      this.broadcast.emit(session.ctx.parentCallId, 'human_handoff', {
-        callSid: session.ctx.parentCallId,
-        transferred: false,
-        reason: 'live transfer is not available on the Infobip line',
-      });
-      const spoken = handoffApology(ticket);
-      session.history.push({ sender: MessageSender.AI, content: spoken, timestamp: new Date() });
-      await this.say(session, ws, spoken);
+      await this.handOffToHuman(session, ws, text);
       return;
     }
 
@@ -394,6 +382,75 @@ export class InfobipMediaStreamHandler {
       text: result.replyText,
     });
     await this.say(session, ws, result.replyText);
+  }
+
+  /**
+   * Put the caller through to a person, or tell them exactly why not.
+   *
+   * The order is the voice path's central rule, and it is the order here:
+   *
+   *   1. ATTEMPT the transfer. No forwarding number on the line means there
+   *      is nobody to attempt it to, and that is a refusal before any
+   *      request — not a request worth making and reporting as failed.
+   *   2. ANNOUNCE from what Infobip actually did. A dialog it accepted means
+   *      the officer's phone is ringing; anything else means it is not.
+   *   3. When it did not happen, FILE A TICKET and read the reference back,
+   *      through the same `handoff-ticket.ts` every carrier shares, so the
+   *      promise made to a citizen does not depend on which network carried
+   *      their call.
+   *
+   * The console is told `transferred` from the same verdict, so an officer
+   * watching sees what the caller was told rather than what was intended.
+   */
+  private async handOffToHuman(session: Session, ws: WebSocket, lastUtterance: string): Promise<void> {
+    const callId = session.ctx.parentCallId;
+    const forwardingNumber = session.ctx.forwardingNumber?.trim() || null;
+
+    const outcome = forwardingNumber
+      ? await this.infobip.transferToHuman(callId, forwardingNumber, session.ctx.toNumber)
+      : ({ ok: false as const, error: 'no forwarding number is configured for this line' });
+
+    this.broadcast.emit(callId, 'human_handoff', {
+      callSid: callId,
+      transferred: outcome.ok,
+      ...(outcome.ok ? {} : { reason: outcome.error }),
+    });
+
+    if (outcome.ok) {
+      log.info('infobip_handoff_transferred', { callId, organizationId: session.ctx.organizationId });
+      const spoken = 'Thank you for holding — I am connecting you to a colleague now.';
+      session.history.push({ sender: MessageSender.AI, content: spoken, timestamp: new Date() });
+      await this.say(session, ws, spoken);
+      // The officer's leg is ringing on this call now. Stop listening and
+      // stop speaking: an AI still transcribing a conversation between a
+      // citizen and an officer would answer over the top of them.
+      session.epoch += 1;
+      session.closed = true;
+      try {
+        session.deepgram?.close();
+      } catch {
+        // Already gone; the teardown path records the transcript either way.
+      }
+      return;
+    }
+
+    log.warn('infobip_handoff_not_transferred', {
+      callId,
+      organizationId: session.ctx.organizationId,
+      reason: outcome.error,
+    });
+    const ticket = await fileHandoffTicket({
+      organizationId: session.ctx.organizationId,
+      fromNumber: session.ctx.fromNumber,
+      whyNotTransferred: forwardingNumber
+        ? `the carrier refused the transfer (${outcome.error})`
+        : 'no forwarding number is configured',
+      lastUtterance,
+      onError: (err) => log.error('infobip_handoff_ticket_failed', err as Error, { callId }),
+    });
+    const spoken = handoffApology(ticket);
+    session.history.push({ sender: MessageSender.AI, content: spoken, timestamp: new Date() });
+    await this.say(session, ws, spoken);
   }
 
   /**
