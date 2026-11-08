@@ -1,4 +1,5 @@
 import { Controller, Get, Patch, Post, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { whatsAppDeliveryLog } from '../whatsapp/delivery-log.service';
 import { UpdateWhatsAppConfigDto, RegisterCloudApiNumberDto } from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -179,6 +180,20 @@ export class OrganizationsController {
   @Post('whatsapp-config/subscribe')
   async subscribeWhatsAppWebhooks(@Req() req: { user: AuthUser }) {
     return this.orgsService.subscribeWhatsAppWebhooks(req.user.organizationId);
+  }
+
+  /**
+   * What happened to the last few inbound deliveries.
+   *
+   * Readiness answers "will Meta deliver here". This answers "and what
+   * happened when it did" — six different faults produce the same silence on
+   * the citizen's phone, and telling them apart has meant reading a hosting
+   * console and knowing which of twenty log strings matters.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Get('whatsapp-config/deliveries')
+  async whatsAppDeliveries(@Req() req: { user: AuthUser }) {
+    return { deliveries: whatsAppDeliveryLog.recent(req.user.organizationId) };
   }
 
   @Roles('OWNER', 'ADMIN')

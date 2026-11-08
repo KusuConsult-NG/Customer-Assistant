@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { BrowserCallingService } from './browser-calling.service';
 import { prisma, withTelephonyCredentials, ensureContactForPhone, phoneNumberVariants } from '@ace/database';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -115,7 +116,8 @@ export class TelephonyService {
   constructor(
     private webhookDispatcher: WebhookDispatcherService,
     private workflows: WorkflowTriggerService,
-    private sipOrigination: SipTrunkOriginationService
+    private sipOrigination: SipTrunkOriginationService,
+    private browserCalling: BrowserCallingService
   ) {}
 
   async handleInboundCall(
@@ -463,26 +465,44 @@ export class TelephonyService {
           : 'No hosted agent configured — using media-stream fallback',
     });
 
-    const provider = TelephonyFactory.createProvider(providerType, {
-      accountSid: config?.accountSid,
-      authToken:  config?.authToken,
-      apiKey:     config?.apiKey,
-    });
+    // ── RING THE OFFICERS FIRST, when that is switched on ─────────────────
+    //
+    // Only for Twilio: `<Client>` is a Twilio noun, and the other carriers in
+    // this switch have no equivalent. Only when every credential is present,
+    // and only when the agency actually has officers who may answer.
+    //
+    // Everything about this branch is arranged so that NOT taking it is the
+    // same as before it existed. No credentials, no officers, a failed
+    // lookup — each falls straight through to the AI below. The dial's
+    // `action` route returns this very same AI TwiML when nobody picks up, so
+    // a declined call and an unanswered one both end where the call would
+    // have begun.
+    if (providerType === TelephonyProviderType.TWILIO && this.browserCalling.readiness().enabled) {
+      const identities = await this.browserCalling.answeringIdentities(organizationId);
+      if (identities.length > 0) {
+        const resumeParams = new URLSearchParams({
+          orgId: organizationId,
+          callSid,
+          from: fromNumber,
+          to: toNumber,
+        });
+        const actionUrl = `${apiBaseUrl()}/api/telephony/inbound/twilio/after-officers?${resumeParams}`;
 
-    const welcomeMsg = config?.organization?.welcomeMessage
-      ?? 'Hello! Thank you for calling. How may I assist you today?';
+        log.info('telephony_ringing_officers', {
+          correlationId,
+          organizationId,
+          callSid,
+          officers: identities.length,
+          note: 'The AI answers if none of them picks up.',
+        }, timer);
 
-    const wsBaseUrl = apiBaseUrl().replace(/^http/, 'ws');
-    // Embed org/from/to so TwilioMediaStreamHandler can identify the session
-    // without a DB lookup inside the WS upgrade handler.
-    const streamParams = new URLSearchParams({
-      orgId: organizationId,
-      from:  fromNumber,
-      to:    toNumber,
-    });
-    const websocketStreamUrl = `${wsBaseUrl}/telephony/stream/${callSid}?${streamParams}`;
+        // The citizen's own number as caller id, so an officer sees who is
+        // calling rather than the agency's own line.
+        return this.browserCalling.dialOfficersTwiml(identities, actionUrl, fromNumber);
+      }
+    }
 
-    const response = provider.generateInboundWebhookResponse(welcomeMsg, websocketStreamUrl);
+    const response = await this.aiStreamTwiml(providerType, config, organizationId, callSid, fromNumber, toNumber);
 
     log.info('telephony_inbound_handled', {
       correlationId,
@@ -492,6 +512,64 @@ export class TelephonyService {
     }, timer);
 
     return response;
+  }
+
+  /**
+   * The stored line for an agency, for a route that has only the org id.
+   *
+   * `after-officers` is reached by Twilio with nothing but what this platform
+   * put in the URL, so it cannot resolve the line the way the inbound webhook
+   * does (by dialled number). Ordered, never `findFirst` unordered: an agency
+   * holds several lines and an arbitrary one would mean the AI greeting came
+   * from a different agency's configuration than the call did.
+   */
+  async inboundConfigFor(organizationId: string) {
+    // ONLY the welcome message. This TwiML needs no credential — it is a
+    // stream URL and a greeting — and selecting the encrypted columns would
+    // put ciphertext on a path that has no use for it, where decrypting it
+    // could throw on a deployment whose ENCRYPTION_KEY has changed and take
+    // down a call that did not need the credential at all.
+    return prisma.telephonyConfig.findFirst({
+      where: { organizationId },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      select: { id: true, organization: { select: { welcomeMessage: true } } },
+    });
+  }
+
+  /**
+   * The TwiML that hands a call to the AI.
+   *
+   * Extracted because TWO routes must produce exactly this: the inbound
+   * webhook, and the `action` route Twilio calls when the officers' browsers
+   * did not pick up. A second copy would be a second thing that can stop
+   * agreeing about which stream URL carries the call, and the symptom of
+   * disagreeing is a caller connected to nothing.
+   */
+  async aiStreamTwiml(
+    providerType: TelephonyProviderType,
+    config: { accountSid?: string | null; authToken?: string | null; apiKey?: string | null; organization?: { welcomeMessage?: string | null } | null } | null,
+    organizationId: string,
+    callSid: string,
+    fromNumber: string,
+    toNumber: string
+  ): Promise<string> {
+    const provider = TelephonyFactory.createProvider(providerType, {
+      accountSid: config?.accountSid ?? undefined,
+      authToken: config?.authToken ?? undefined,
+      apiKey: config?.apiKey ?? undefined,
+    });
+
+    const welcomeMsg =
+      config?.organization?.welcomeMessage ?? 'Hello! Thank you for calling. How may I assist you today?';
+
+    const wsBaseUrl = apiBaseUrl().replace(/^http/, 'ws');
+    // Embed org/from/to so TwilioMediaStreamHandler can identify the session
+    // without a DB lookup inside the WS upgrade handler.
+    const streamParams = new URLSearchParams({ orgId: organizationId, from: fromNumber, to: toNumber });
+    return provider.generateInboundWebhookResponse(
+      welcomeMsg,
+      `${wsBaseUrl}/telephony/stream/${callSid}?${streamParams}`
+    );
   }
 
   async initiateOutboundCall(

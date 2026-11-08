@@ -551,6 +551,30 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
   // Whether a citizen's message can arrive at all. `null` is "not asked",
   // never "fine".
   const [readiness, setReadiness] = useState<any | null>(null);
+
+  // What happened to the last few inbound deliveries. Readiness answers "will
+  // Meta deliver here"; this answers "and what happened when it did" — six
+  // different faults produce the same silence on a citizen's phone.
+  const [deliveries, setDeliveries] = useState<any[] | null>(null);
+  const [deliveriesError, setDeliveriesError] = useState<string | null>(null);
+  const loadDeliveries = async () => {
+    setDeliveriesError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/organizations/whatsapp-config/deliveries`, {
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeliveries(null);
+        setDeliveriesError(body?.message || `Could not load (HTTP ${res.status}).`);
+        return;
+      }
+      setDeliveries(Array.isArray(body.deliveries) ? body.deliveries : []);
+    } catch (err: any) {
+      setDeliveries(null);
+      setDeliveriesError(err?.message || 'Could not reach the API.');
+    }
+  };
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [loadingReadiness, setLoadingReadiness] = useState(false);
 
@@ -941,6 +965,58 @@ function WhatsAppTab({ org, authHeaders, showToast }: any) {
               <p className="text-xs font-medium pt-1">{readiness.nextStep}</p>
             </div>
           )}
+
+          {/* WHAT HAPPENED WHEN META DID DELIVER.
+              Readiness proves Meta will send. It cannot say what became of a
+              message once it arrived — and six different faults all end as
+              the same silence on a citizen's phone. */}
+          <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-500/20">
+            <button
+              type="button"
+              onClick={loadDeliveries}
+              className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-200 hover:bg-slate-500/30 transition-all font-semibold"
+            >
+              What happened to recent messages
+            </button>
+
+            {deliveriesError && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{deliveriesError}</p>
+            )}
+
+            {deliveries && deliveries.length === 0 && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                No inbound deliveries recorded since this server last restarted. If you have just
+                messaged the line and this stays empty, Meta is not delivering to this platform at
+                all — which is a subscription or callback-URL problem, not a problem with what
+                happens after.
+              </p>
+            )}
+
+            {deliveries && deliveries.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {deliveries.slice(0, 10).map((d: any, i: number) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg p-2 text-xs ${
+                      d.outcome === 'replied' || d.outcome === 'duplicate_ignored' || d.outcome === 'handed_to_human'
+                        ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-red-500/10 text-red-800 dark:text-red-300'
+                    }`}
+                  >
+                    <p className="font-semibold">
+                      {d.outcome.replace(/_/g, ' ')}
+                      <span className="font-normal opacity-70">
+                        {' '}· {new Date(d.at).toLocaleTimeString()}
+                        {d.fromSuffix ? ` · from …${d.fromSuffix}` : ''}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 opacity-90">{d.explanation}</p>
+                    {d.detail && <p className="mt-0.5 font-mono opacity-70">{d.detail}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="p-4 rounded-xl bg-blue-500/[0.06] border border-blue-200 dark:border-blue-500/20">
