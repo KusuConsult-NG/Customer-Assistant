@@ -164,7 +164,9 @@ describe('Platform administration tier', () => {
         data: {
           organizationId: agencyA.orgId,
           fullName: 'Amina Yakubu',
-          phoneNumber: `+2348${randomBytes(4).toString('hex').replace(/\D/g, '').padEnd(9, '1').slice(0, 9)}`,
+          // Random DIGITS, not hex with the letters stripped and '1'-padded,
+          // which collapses letter-heavy draws onto the same number.
+          phoneNumber: `+2348${randomBytes(5).readUIntBE(0, 5).toString().padStart(13, '0').slice(-9)}`,
         },
       });
 

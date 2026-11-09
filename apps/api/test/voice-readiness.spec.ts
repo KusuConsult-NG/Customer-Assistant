@@ -124,6 +124,7 @@ describe('voice readiness', () => {
     carrier();
     await prisma.telephonyConfig.deleteMany({ where: { organizationId: orgId } });
     await prisma.hostedAgentConfig.deleteMany({ where: { organizationId: orgId } });
+    await prisma.callbackRequest.deleteMany({ where: { organizationId: orgId } });
   });
 
   afterEach(() => {
@@ -219,23 +220,63 @@ describe('voice readiness', () => {
     expect(body.twilio.mediaStream).toBe('wss://api.readiness.example/telephony/stream/<callSid>');
   });
 
-  it('calls a missing forwarding number DEGRADED, not blocked', async () => {
-    fullyConfiguredEnv();
-    await prisma.telephonyConfig.create({
-      data: {
-        organizationId: orgId, provider: 'TWILIO', phoneNumber: '+2348030007777',
-        accountSid: 'AC_readiness', authToken: encryptSecret('b'.repeat(32)), isDefault: true,
-      },
+  /**
+   * A caller who needs a person is queued for a CALLBACK, not transferred, so
+   * a line needs no forwarding number. The old check called a missing one
+   * DEGRADED — under this design that is the intended state, and a report
+   * that flags the intended state on every run teaches an operator to stop
+   * reading it. What can actually be wrong now is a queue nobody works.
+   */
+  describe('when a caller needs a person', () => {
+    const line = () =>
+      prisma.telephonyConfig.create({
+        data: {
+          organizationId: orgId, provider: 'TWILIO', phoneNumber: '+2348030007777',
+          accountSid: 'AC_readiness', authToken: encryptSecret('b'.repeat(32)), isDefault: true,
+        },
+      });
+    const owed = async (dueMinutesAgo: number) => {
+      const contact = await prisma.contact.create({
+        data: { organizationId: orgId, fullName: 'Citizen', phoneNumber: `+23480${Math.floor(Math.random() * 1e8)}` },
+      });
+      return prisma.callbackRequest.create({
+        data: {
+          organizationId: orgId, contactId: contact.id, phoneNumber: contact.phoneNumber,
+          reason: 'Asked for a person', promisedText: 'As soon as an officer is free',
+          dueAt: new Date(Date.now() - dueMinutesAgo * 60_000), status: 'DUE' as any,
+        },
+      });
+    };
+
+    it('does NOT flag a line with no forwarding number', async () => {
+      fullyConfiguredEnv();
+      await line();
+      const { body } = await get();
+      expect(check(body, 'forwarding')).toBeUndefined();
+      expect(check(body, 'handoff').state).toBe('ready');
+      expect(check(body, 'handoff').detail).toMatch(/callback/i);
     });
 
-    const { body } = await get();
-    // The call still works and the AI is honest about not transferring — it
-    // files a ticket and reads back the reference. That is reduced service,
-    // not a broken line, and conflating the two is how a real blocker gets
-    // lost among warnings.
-    expect(body.state).toBe('degraded');
-    expect(check(body, 'forwarding').state).toBe('degraded');
-    expect(check(body, 'forwarding').consequence).toMatch(/files a HIGH-priority ticket/);
+    it('counts what is owed, and flags callbacks over an hour late', async () => {
+      fullyConfiguredEnv();
+      await line();
+      await owed(5);
+      await owed(90);
+      const { body } = await get();
+      const c = check(body, 'handoff');
+      expect(c.detail).toMatch(/2 open, 1 more than an hour overdue/);
+      // Each of those citizens was told an officer would ring.
+      expect(c.state).toBe('degraded');
+      expect(c.consequence).toMatch(/nobody has/i);
+    });
+
+    it('stays ready when everything owed is recent', async () => {
+      fullyConfiguredEnv();
+      await line();
+      await owed(5);
+      const { body } = await get();
+      expect(check(body, 'handoff').state).toBe('ready');
+    });
   });
 
   it('is BLOCKED with no line at all, and says what the caller hears', async () => {
@@ -325,9 +366,8 @@ describe('voice readiness', () => {
 
       const { body } = await get();
       expect(check(body, 'carrier:+2348030005555').state).toBe('ready');
-      // The fixture line carries a forwarding number too, so nothing is left
-      // reduced: this is the only configuration in which the report may say a
-      // call will connect and be answered.
+      // Nothing is left reduced: this is the only configuration in which the
+      // report may say a call will connect and be answered.
       expect(body.state).toBe('ready');
     });
   });

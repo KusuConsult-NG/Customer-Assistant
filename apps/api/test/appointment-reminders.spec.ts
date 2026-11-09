@@ -70,7 +70,12 @@ describe('appointment reminders', () => {
     const contact = await prisma.contact.create({
       data: {
         organizationId: orgId,
-        phoneNumber: `+23480${randomBytes(3).toString('hex').replace(/\D/g, '').padEnd(7, '1').slice(0, 7)}`,
+        // Seven genuinely random DIGITS. This used hex with the letters
+        // stripped and padded with '1': three bytes like `abcdef` collapsed to
+        // `1111111`, so two bookings in one test regularly got the same number
+        // and failed the (organizationId, phoneNumber) unique constraint — a
+        // failure in whichever suite happened to draw the collision.
+        phoneNumber: `+23480${randomBytes(4).readUInt32BE(0).toString().padStart(10, '0').slice(-7)}`,
         fullName: 'Amina Bello',
         ...(opts.email ? { email: opts.email } : {}),
       },
