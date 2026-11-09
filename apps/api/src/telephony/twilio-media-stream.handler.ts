@@ -69,7 +69,7 @@ import { ConversationOrchestrator } from '@ace/orchestrator';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { ChannelType, MessageSender, bookedAppointmentId } from '@ace/shared-types';
 import { prisma, withTelephonyCredentials, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone } from '@ace/database';
-import { fileHandoffTicket, handoffApology } from './handoff-ticket';
+import { queueHandoffCallback, handoffCallbackPromise } from './handoff-callback';
 
 // Early-audio buffer cap: 250 frames × 20 ms = 5 seconds maximum
 const MAX_EARLY_BUFFER_FRAMES = 250;
@@ -580,75 +580,45 @@ export class TwilioMediaStreamHandler {
   // ─── Silence watchdog (FIX 8) ────────────────────────────────────────────
 
   /**
-   * Puts a caller through to a person, or tells them honestly why it could not
-   * happen. Never both, and never neither.
+   * The caller needs a person: queue a callback and tell them so.
    *
-   * Three outcomes, all of them true when spoken:
-   *   TRANSFERRED — Twilio redirected the live call to the organization's
-   *     forwarding number. Twilio's own TwiML speaks the "connecting you"
-   *     line, so it is only ever heard after the redirect was accepted.
-   *   logged     — no forwarding number, or the redirect was refused. A ticket
-   *     is filed so the request reaches a human who can call back, and the
-   *     caller is told that is what happened.
-   *   neither    — even the ticket failed. The caller is told that too. An
-   *     apology the customer can act on beats a reassurance that is false.
+   * The call is NOT transferred. A transfer only works while an officer is
+   * free at the exact moment a citizen asks, and fails exactly when the line
+   * is busiest; a queued callback survives that, carries the citizen's own
+   * words, and is worked from the dashboard's Callbacks page in order. See
+   * `handoff-callback.ts`, shared with every carrier so the promise does not
+   * depend on which network carried the call.
+   *
+   * What is spoken is chosen from what actually happened — queued, the
+   * number was withheld, or the write failed — and never claims the call is
+   * being put through.
    */
   private async handOffCallToHuman(
     session: CallSession,
     twilioWs: WebSocket,
     lastUtterance: string
   ): Promise<void> {
-    const forwardingNumber = session.carrier.forwardingNumber;
-
-    const outcome = forwardingNumber
-      ? await this.voiceAiService.transferCallToHuman(
-          session.callSid,
-          session.carrier,
-          forwardingNumber,
-          session.toNumber
-        )
-      : 'FAILED';
+    const result = await queueHandoffCallback({
+      organizationId: session.organizationId,
+      fromNumber: session.fromNumber,
+      lastUtterance,
+      onError: (err) =>
+        this.logger.error('voice_handoff_callback_failed', err as Error, { callSid: session.callSid }),
+    });
 
     this.broadcast.emit(session.callSid, 'human_handoff', {
       callSid: session.callSid,
-      transferred: outcome === 'TRANSFERRED',
-      reason: forwardingNumber ? undefined : 'no forwarding number configured',
+      transferred: false,
+      callback: result.kind === 'queued' ? result.reference : null,
+      ...(result.kind === 'queued' ? {} : { reason: result.kind }),
     });
-
-    if (outcome === 'TRANSFERRED') {
-      this.logger.info('voice_handoff_transferred', { callSid: session.callSid });
-      session.conversationHistory.push({
-        sender: MessageSender.AI,
-        content: '[Call transferred to a human agent]',
-        timestamp: new Date(),
-      });
-      // The call now belongs to Twilio's <Dial>. Stop speaking over it and let
-      // teardown record the transcript; Twilio closes the media stream itself.
-      if (session.ttsAbortController) session.ttsAbortController.abort();
-      return;
-    }
-
-    // Could not transfer. Leave a record a human will actually see, then say
-    // precisely what did happen. Shared with every carrier — see
-    // `handoff-ticket.ts` — so the promise made to a caller is the same one
-    // whichever network carried their call.
-    const ticketNumber = await fileHandoffTicket({
-      organizationId: session.organizationId,
-      fromNumber: session.fromNumber,
-      whyNotTransferred: forwardingNumber ? 'the redirect was refused' : 'no forwarding number is configured',
-      lastUtterance,
-      onError: (err) =>
-        this.logger.error('voice_handoff_ticket_failed', err as Error, { callSid: session.callSid }),
-    });
-
-    const spoken = handoffApology(ticketNumber);
-
-    this.logger.warn('voice_handoff_not_transferred', {
+    this.logger.info('voice_handoff_callback', {
       callSid: session.callSid,
-      reason: forwardingNumber ? 'twilio_redirect_failed' : 'no_forwarding_number',
-      ticketNumber: ticketNumber ?? 'none',
+      outcome: result.kind,
+      ...(result.kind === 'queued' ? { reference: result.reference, existing: result.existing } : {}),
     });
 
+    const spoken = handoffCallbackPromise(result);
     session.conversationHistory.push({
       sender: MessageSender.AI,
       content: spoken,

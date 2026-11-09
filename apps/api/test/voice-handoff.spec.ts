@@ -1,10 +1,11 @@
 /**
- * Voice handoff — putting a caller through to a person.
+ * Voice handoff — what a caller gets when they need a person.
  *
- * The orchestrator answers "Connecting you to a live human agent right away"
- * whenever a customer asks for one. On chat and WhatsApp that is true. On a
- * phone call nothing used to happen: the sentence was spoken and the AI kept
- * talking to a caller who had just asked for a human.
+ * They are QUEUED FOR A CALLBACK, not transferred: the request goes on the
+ * callback queue an officer works from the dashboard, and the caller is read
+ * the reference. The orchestrator still answers "Connecting you to a live
+ * human agent right away" — that sentence must never be spoken on a call,
+ * because nothing is connecting anybody.
  *
  * These tests drive the real handler and the real VoiceAiService against a
  * stubbed Twilio REST API, because the property that matters is not "a
@@ -15,6 +16,7 @@
 import { TwilioMediaStreamHandler } from '../src/telephony/twilio-media-stream.handler';
 import { VoiceAiService } from '../src/telephony/voice-ai.service';
 import { prisma } from '@ace/database';
+import { randomBytes } from 'crypto';
 
 const TWILIO_CALLS_URL = /api\.twilio\.com.*\/Calls\//;
 
@@ -104,7 +106,7 @@ describe('Voice handoff to a human', () => {
       callSid: `CA_test_${Date.now()}`,
       streamSid: 'MZ_test',
       organizationId: orgId,
-      fromNumber: `+23480${Date.now().toString().slice(-8)}`,
+      fromNumber: `+23480${randomBytes(4).readUInt32BE(0).toString().padStart(8, '0').slice(0, 8)}`,
       toNumber: '+15550001111',
       language: 'en',
       carrier: {
@@ -201,106 +203,70 @@ describe('Voice handoff to a human', () => {
     });
   });
 
+  const callbackFor = (phone: string) =>
+    prisma.callbackRequest.findFirst({
+      where: { organizationId: orgId, phoneNumber: phone },
+      orderBy: { createdAt: 'desc' },
+    });
+
   it('announces no handover webhook, because voice has no conversation to name', async () => {
     stubTwilio(200);
-    const session = makeSession();
-
-    await runHandoff(session);
-
-    // The transfer is real — it is the CallLog and the TwiML that record it.
-    expect(twilioRequests).toHaveLength(1);
-    // But `handover.requested` carries a conversationId, and VOICE has no
-    // `Conversation` row: the media-stream handler passes the callSid as the
-    // conversation id. A delivery here would name a thread that does not exist.
+    await runHandoff(makeSession());
+    // `handover.requested` carries a conversationId, and VOICE has no
+    // `Conversation` row. The callback row is the record of this one.
     expect(webhookCalls.filter((c) => c.method === 'handoverRequested')).toEqual([]);
   });
 
-  it('transfers the live call to the forwarding number', async () => {
+  it('queues a callback instead of transferring, even with a forwarding number set', async () => {
     stubTwilio(200);
+    // The forwarding number is present and deliberately NOT used.
     const session = makeSession();
 
-    await runHandoff(session);
+    await runHandoff(session, 'I need to speak to someone about my pension');
 
-    expect(twilioRequests).toHaveLength(1);
-    expect(twilioRequests[0].url).toContain(session.callSid);
-    // The caller must actually be dialled through to the configured number.
-    expect(twilioRequests[0].twiml).toContain('<Dial');
-    expect(twilioRequests[0].twiml).toContain('+2348030001111');
-    // Caller ID is the business's own number so the colleague sees the business.
-    expect(twilioRequests[0].twiml).toContain('callerId="+15550001111"');
-
-    const handoff = broadcastEvents.find((e) => e.event === 'human_handoff');
-    expect(handoff?.payload.transferred).toBe(true);
-
-    // Nothing is spoken over the stream: Twilio's own TwiML announces the
-    // transfer, and only after the redirect was accepted.
-    expect(spoken).toHaveLength(0);
-  });
-
-  it('never promises a transfer it could not perform (no forwarding number)', async () => {
-    stubTwilio(200);
-    const session = makeSession({
-      carrier: { accountSid: 'AC_stub', authToken: 'stub_token', forwardingNumber: null },
-    });
-
-    await runHandoff(session);
-
-    // No redirect was attempted, because there is nowhere to send the call.
+    // The carrier is never asked to move the call.
     expect(twilioRequests).toHaveLength(0);
 
-    // What the caller hears must not claim a connection.
-    expect(spoken).toHaveLength(1);
-    expect(spoken[0]).not.toMatch(/connecting you/i);
-    expect(spoken[0]).toMatch(/can't put you through/i);
+    const row = await callbackFor(session.fromNumber);
+    expect(row).toBeTruthy();
+    expect(row!.reason).toContain('my pension');
+    const ref = `CB-${row!.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 
-    // The request must survive as something a human will see.
-    // `/TCK-\d+/` was the OLD generator — `TCK-` plus the last six digits of
-    // the epoch millisecond, which repeat every 16.7 minutes across every
-    // tenant on a column that is `@unique` table-wide. This path was the last
-    // one still using it, so the pattern here was pinning the collision in
-    // place. `createTicketWithUniqueNumber` produces TCK-<base36 time>-<hex>.
-    expect(spoken[0]).toMatch(/TCK-[0-9A-Z]+-[0-9A-F]+/);
-    const ticket = await prisma.ticket.findFirst({
-      where: { organizationId: orgId, subject: 'Caller asked to speak to a human' },
-      orderBy: { createdAt: 'desc' },
-    });
-    expect(ticket).toBeTruthy();
-    expect(ticket!.priority).toBe('HIGH');
-    expect(ticket!.description).toContain('let me speak to a human');
+    expect(spoken).toHaveLength(1);
+    expect(spoken[0]).toContain(ref);
+    expect(spoken[0]).toMatch(/call you back/i);
 
     const handoff = broadcastEvents.find((e) => e.event === 'human_handoff');
-    expect(handoff?.payload.transferred).toBe(false);
+    expect(handoff?.payload).toMatchObject({ transferred: false, callback: ref });
   });
 
-  it('tells the truth when Twilio refuses the redirect', async () => {
-    stubTwilio(400);
+  it('never claims the call is being put through', async () => {
+    stubTwilio(200);
+    await runHandoff(makeSession());
+    expect(spoken.join(' ')).not.toMatch(/connecting you|putting you through|transferring/i);
+  });
+
+  it('files the callback under the caller\'s own number, so the officer reaches them', async () => {
+    stubTwilio(200);
     const session = makeSession();
-
-    await runHandoff(session);
-
-    // It tried — and the caller is told it did not work, not that it did.
-    expect(twilioRequests).toHaveLength(1);
-    expect(spoken).toHaveLength(1);
-    expect(spoken[0]).not.toMatch(/connecting you/i);
-    expect(spoken[0]).toMatch(/call you back|call us back/i);
-
-    const handoff = broadcastEvents.find((e) => e.event === 'human_handoff');
-    expect(handoff?.payload.transferred).toBe(false);
-  });
-
-  it('files the caller under their own number so the callback reaches them', async () => {
-    stubTwilio(500);
-    const session = makeSession({
-      carrier: { accountSid: 'AC_stub', authToken: 'stub_token', forwardingNumber: null },
-    });
 
     await runHandoff(session);
 
     const contact = await prisma.contact.findFirst({
       where: { organizationId: orgId, phoneNumber: session.fromNumber },
-      include: { tickets: true },
+      include: { callbacks: true },
     });
     expect(contact).toBeTruthy();
-    expect(contact!.tickets.length).toBeGreaterThan(0);
+    expect(contact!.callbacks).toHaveLength(1);
+  });
+
+  it('promises nothing it cannot keep when the number is withheld', async () => {
+    stubTwilio(200);
+    await runHandoff(makeSession({ fromNumber: 'anonymous' }));
+
+    expect(spoken[0]).toMatch(/number isn't showing/i);
+    expect(spoken[0]).not.toMatch(/reference/i);
+    const handoff = broadcastEvents.find((e) => e.event === 'human_handoff');
+    expect(handoff?.payload).toMatchObject({ transferred: false, callback: null, reason: 'withheld' });
   });
 });

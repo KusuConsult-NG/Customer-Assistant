@@ -79,17 +79,6 @@ export interface InfobipCallContext {
   toNumber: string;
   callLogId?: string;
   contactId?: string | null;
-  /**
-   * Where a caller asking for a person is put through, read from the line at
-   * CALL_RECEIVED and carried here.
-   *
-   * On the context rather than fetched when the handoff happens: the citizen
-   * is mid-sentence at that point, and a database round trip that fails leaves
-   * them in silence. Absent or null means the line has no officer to reach,
-   * which is a reason to file a ticket — never a reason to say "connecting
-   * you" and hope.
-   */
-  forwardingNumber?: string | null;
 }
 
 export interface InfobipReadiness {
@@ -382,36 +371,6 @@ export class InfobipVoiceService implements OnModuleDestroy {
           type: 'WEBSOCKET',
           websocketEndpointConfigId: process.env.INFOBIP_MEDIA_STREAM_CONFIG_ID?.trim(),
         },
-      },
-    });
-  }
-
-  /**
-   * Put the citizen through to a person.
-   *
-   * Infobip's own "transfer" methods are NOT this: they change which
-   * application owns a call, so its events go to a different webhook. The
-   * caller hears nothing and nobody joins. Connecting a human means a second
-   * leg — a dialog whose parent is the citizen's call and whose child is the
-   * officer's number — which is the same request `connectToAi` already makes,
-   * with a PHONE endpoint where that one names a WebSocket.
-   *
-   * `from` is the number the CITIZEN dialled, so the officer's phone shows the
-   * agency's own line rather than an unrecognised one. An officer who does not
-   * recognise the caller does not answer, and the transfer fails for a reason
-   * no log would explain.
-   *
-   * Returns Infobip's verdict. The caller must not be told they are being
-   * connected until this says `ok` — see the handoff branch in the media
-   * stream handler, and `handoff-ticket.ts` for what is promised when it is
-   * not.
-   */
-  async transferToHuman(parentCallId: string, phoneNumber: string, from?: string | null) {
-    return this.post('/calls/1/dialogs', {
-      parentCallId,
-      childCallRequest: {
-        endpoint: { type: 'PHONE', phoneNumber },
-        ...(from ? { from } : {}),
       },
     });
   }

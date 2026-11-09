@@ -282,28 +282,50 @@ export class VoiceReadinessService {
     });
 
     // ── 6. What happens when the AI hands over ───────────────────────────────
-    // `forwardingNumber` lives on the LINE, not on the organization — the
-    // media-stream handler reads `session.carrier.forwardingNumber` — so it is
-    // reported per line. An agency with three numbers can have a handoff
-    // target on one of them and none on the others, and only the line that was
-    // dialled decides what that caller gets.
-    const withForwarding = lines.filter((l) => !!l.forwardingNumber);
+    // A caller who needs a person is put on the CALLBACK QUEUE, not transferred
+    // — see `handoff-callback.ts`. So the question is no longer "is there a
+    // forwarding number" (there need not be) but "is anybody working the
+    // queue". That cannot be read off configuration, so this reports what can
+    // be: how many promises are still owed, and how many are already late.
+    //
+    // It used to report a missing forwarding number as DEGRADED. Under this
+    // design that is the intended state, and a report that flags the intended
+    // state on every run teaches an operator to stop reading it.
+    let openCallbacks: number | null = null;
+    let overdueCallbacks: number | null = null;
+    try {
+      [openCallbacks, overdueCallbacks] = await Promise.all([
+        prisma.callbackRequest.count({
+          where: { organizationId, status: { in: ['PENDING', 'DUE', 'IN_PROGRESS'] as any } },
+        }),
+        prisma.callbackRequest.count({
+          where: {
+            organizationId,
+            status: { in: ['PENDING', 'DUE'] as any },
+            // Due more than an hour ago and still nobody has rung.
+            dueAt: { lt: new Date(Date.now() - 60 * 60 * 1000) },
+          },
+        }),
+      ]);
+    } catch {
+      // Unknown stays unknown: a failed count is reported as such, never as 0.
+    }
     checks.push({
-      id: 'forwarding',
-      label: 'Human handoff target',
-      state: lines.length > 0 && withForwarding.length === lines.length ? 'ready' : 'degraded',
-      detail: lines.length === 0
-        ? 'No line configured'
-        : lines
-            .map((l) => `${l.phoneNumber} → ${l.forwardingNumber || 'nobody'}`)
-            .join(', '),
-      consequence: withForwarding.length === lines.length && lines.length > 0
-        ? ''
-        : 'On a line with no forwarding number a handoff cannot move the call. ' +
-          'The AI does NOT claim a transfer — it files a HIGH-priority ticket ' +
-          'against the caller\'s number and reads back the reference — but ' +
-          'nobody picks up during the call.',
-      remedy: 'Settings → Voice & Telephony: set the forwarding number on each line.',
+      id: 'handoff',
+      label: 'When a caller needs a person',
+      state:
+        openCallbacks === null ? 'degraded' : overdueCallbacks && overdueCallbacks > 0 ? 'degraded' : 'ready',
+      detail:
+        openCallbacks === null
+          ? 'Queued as a callback. The queue could not be read just now.'
+          : `Queued as a callback for an officer to return from the Callbacks page — ` +
+            `${openCallbacks} open, ${overdueCallbacks} more than an hour overdue.`,
+      consequence:
+        overdueCallbacks && overdueCallbacks > 0
+          ? `${overdueCallbacks} citizen(s) were promised a callback over an hour ago and have not been rung. ` +
+            'The AI told each of them an officer would call; nobody has.'
+          : '',
+      remedy: overdueCallbacks && overdueCallbacks > 0 ? 'Work the queue on the Callbacks page.' : '',
     });
 
     // ── 7. The greeting the caller will actually hear ────────────────────────

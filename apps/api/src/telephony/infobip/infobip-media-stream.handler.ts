@@ -41,7 +41,7 @@ import { AceLogger } from '../../config/logger';
 import { VoiceAiService } from '../voice-ai.service';
 import { CallBroadcastService } from '../call-broadcast.service';
 import { welcomeMessageFor } from '../../common/welcome-message';
-import { fileHandoffTicket, handoffApology } from '../handoff-ticket';
+import { queueHandoffCallback, handoffCallbackPromise } from '../handoff-callback';
 import { upsample2x } from '../../whatsapp/whatsapp-call-media.service';
 import { InfobipVoiceService, InfobipCallContext } from './infobip-voice.service';
 
@@ -361,17 +361,14 @@ export class InfobipMediaStreamHandler {
       text
     );
 
-    // ACT, THEN ANNOUNCE. The transfer is attempted FIRST, and the caller is
-    // told they are being connected only once Infobip has accepted it. The
-    // orchestrator's own reply may already say "connecting you" — it is never
-    // spoken here, because at that moment nothing has connected anybody.
-    //
-    // Whatever happens, the caller leaves this branch with something real: an
-    // officer's phone ringing, or a HIGH-priority ticket whose reference they
-    // have been read back. Never a reassurance.
+    // A CALLBACK, not a transfer. The call is never put through to anyone:
+    // the request goes on the callback queue an officer works from the
+    // dashboard, and the caller is read the reference. The orchestrator's own
+    // reply may say "connecting you" — it is never spoken here, because
+    // nothing is connecting anybody. See `handoff-callback.ts`.
     if (result.shouldHandoff && !session.handoffAttempted) {
       session.handoffAttempted = true;
-      await this.handOffToHuman(session, ws, text);
+      await this.queueCallback(session, ws, text);
       return;
     }
 
@@ -385,70 +382,35 @@ export class InfobipMediaStreamHandler {
   }
 
   /**
-   * Put the caller through to a person, or tell them exactly why not.
+   * The caller needs a person: queue a callback and tell them so.
    *
-   * The order is the voice path's central rule, and it is the order here:
-   *
-   *   1. ATTEMPT the transfer. No forwarding number on the line means there
-   *      is nobody to attempt it to, and that is a refusal before any
-   *      request — not a request worth making and reporting as failed.
-   *   2. ANNOUNCE from what Infobip actually did. A dialog it accepted means
-   *      the officer's phone is ringing; anything else means it is not.
-   *   3. When it did not happen, FILE A TICKET and read the reference back,
-   *      through the same `handoff-ticket.ts` every carrier shares, so the
-   *      promise made to a citizen does not depend on which network carried
-   *      their call.
-   *
-   * The console is told `transferred` from the same verdict, so an officer
-   * watching sees what the caller was told rather than what was intended.
+   * The console hears `human_handoff` with `transferred: false` and the
+   * callback reference, so an officer watching sees the promise that was made
+   * and where to find it — the Callbacks page, not a ringing phone.
    */
-  private async handOffToHuman(session: Session, ws: WebSocket, lastUtterance: string): Promise<void> {
+  private async queueCallback(session: Session, ws: WebSocket, lastUtterance: string): Promise<void> {
     const callId = session.ctx.parentCallId;
-    const forwardingNumber = session.ctx.forwardingNumber?.trim() || null;
-
-    const outcome = forwardingNumber
-      ? await this.infobip.transferToHuman(callId, forwardingNumber, session.ctx.toNumber)
-      : ({ ok: false as const, error: 'no forwarding number is configured for this line' });
+    const result = await queueHandoffCallback({
+      organizationId: session.ctx.organizationId,
+      fromNumber: session.ctx.fromNumber,
+      lastUtterance,
+      onError: (err) => log.error('infobip_handoff_callback_failed', err as Error, { callId }),
+    });
 
     this.broadcast.emit(callId, 'human_handoff', {
       callSid: callId,
-      transferred: outcome.ok,
-      ...(outcome.ok ? {} : { reason: outcome.error }),
+      transferred: false,
+      callback: result.kind === 'queued' ? result.reference : null,
+      ...(result.kind === 'queued' ? {} : { reason: result.kind }),
     });
-
-    if (outcome.ok) {
-      log.info('infobip_handoff_transferred', { callId, organizationId: session.ctx.organizationId });
-      const spoken = 'Thank you for holding — I am connecting you to a colleague now.';
-      session.history.push({ sender: MessageSender.AI, content: spoken, timestamp: new Date() });
-      await this.say(session, ws, spoken);
-      // The officer's leg is ringing on this call now. Stop listening and
-      // stop speaking: an AI still transcribing a conversation between a
-      // citizen and an officer would answer over the top of them.
-      session.epoch += 1;
-      session.closed = true;
-      try {
-        session.deepgram?.close();
-      } catch {
-        // Already gone; the teardown path records the transcript either way.
-      }
-      return;
-    }
-
-    log.warn('infobip_handoff_not_transferred', {
+    log.info('infobip_handoff_callback', {
       callId,
       organizationId: session.ctx.organizationId,
-      reason: outcome.error,
+      outcome: result.kind,
+      ...(result.kind === 'queued' ? { reference: result.reference, existing: result.existing } : {}),
     });
-    const ticket = await fileHandoffTicket({
-      organizationId: session.ctx.organizationId,
-      fromNumber: session.ctx.fromNumber,
-      whyNotTransferred: forwardingNumber
-        ? `the carrier refused the transfer (${outcome.error})`
-        : 'no forwarding number is configured',
-      lastUtterance,
-      onError: (err) => log.error('infobip_handoff_ticket_failed', err as Error, { callId }),
-    });
-    const spoken = handoffApology(ticket);
+
+    const spoken = handoffCallbackPromise(result);
     session.history.push({ sender: MessageSender.AI, content: spoken, timestamp: new Date() });
     await this.say(session, ws, spoken);
   }
