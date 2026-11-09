@@ -1712,6 +1712,70 @@ export class OrganizationsService {
   }
 
   /**
+   * Remove a voice line the agency no longer holds.
+   *
+   * There was no way to do this. A line could be added and edited and never
+   * taken away, so a number an agency had given up stayed on the settings
+   * screen and in `voice-readiness` — which reports a number the carrier does
+   * not route as BLOCKED, correctly. A blocker nobody can clear trains an
+   * operator to read the whole report as noise, which is the one thing that
+   * report cannot afford.
+   *
+   * CALL HISTORY SURVIVES. `CallLog.telephonyConfigId` is optional with
+   * `onDelete: SetNull`, so the records of calls this line carried keep their
+   * numbers, transcripts and outcomes and simply stop pointing at a line that
+   * is gone. The count is returned, because "deleted" without saying what
+   * happened to the history invites somebody to check the hard way.
+   *
+   * An id belonging to another agency is a 404, exactly as the edit path
+   * treats one: scoping the delete in the WHERE clause is what makes a
+   * mistyped id a refusal rather than another agency's line disappearing.
+   */
+  async deleteTelephonyConfig(actor: Actor, organizationId: string, id: string) {
+    const existing = await prisma.telephonyConfig.findFirst({
+      where: { id, organizationId },
+      select: { id: true, provider: true, phoneNumber: true, isDefault: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('That voice line does not exist for this agency.');
+    }
+
+    // Counted BEFORE the delete: afterwards the link is null and the question
+    // can no longer be asked.
+    const callsKept = await prisma.callLog.count({ where: { telephonyConfigId: id } });
+
+    await prisma.telephonyConfig.delete({ where: { id } });
+
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.telephony_line.deleted',
+      targetType: 'TelephonyConfig',
+      targetId: id,
+      previousValue: {
+        provider: existing.provider,
+        phoneNumber: existing.phoneNumber,
+        isDefault: existing.isDefault,
+      },
+    });
+
+    const remaining = await prisma.telephonyConfig.count({ where: { organizationId } });
+    return {
+      deleted: true,
+      phoneNumber: existing.phoneNumber,
+      provider: existing.provider,
+      callsKept,
+      remainingLines: remaining,
+      note:
+        `${existing.phoneNumber} is no longer a line for this agency. ` +
+        (callsKept
+          ? `${callsKept} call record(s) are kept and no longer point at it.`
+          : 'It had carried no calls.') +
+        (remaining === 0
+          ? ' This agency now has no voice line, so no call can be routed to it.'
+          : ''),
+    };
+  }
+
+  /**
    * The agency's one voice line.
    *
    * There is a single `TelephonyConfig` row per organization, so saving a
