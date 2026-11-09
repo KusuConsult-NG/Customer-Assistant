@@ -152,7 +152,7 @@ export default function SettingsPage() {
           {tab === 'profile' && <ProfileTab authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'general' && <GeneralTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'whatsapp' && <WhatsAppTab org={org} authHeaders={authHeaders} showToast={showToast} />}
-          {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} />}
+          {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'agent' && <HostedAgentTab showToast={showToast} />}
           {tab === 'team' && <TeamTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'apikeys' && <ApiKeyTab authHeaders={authHeaders} showToast={showToast} />}
@@ -1457,12 +1457,13 @@ function Configured({ value }: { value?: string | null }) {
   return <span className="font-mono text-slate-600 dark:text-slate-300">{value}</span>;
 }
 
-function VoiceTab({ org, authHeaders, showToast }: any) {
+function VoiceTab({ org, authHeaders, showToast, onSaved }: any) {
   // The API orders these — default line first — so this is the line outbound
   // calls use, and it is the same line on every refresh. It was an unordered
   // array, so a multi-line agency saw a different line after reloading.
   const lines = org?.telephonyConfigs ?? [];
   const tc = lines[0] || {};
+  const [deleting, setDeleting] = useState(false);
   const [provider, setProvider] = useState(tc.provider || 'TWILIO');
   const [phoneNumber, setPhoneNumber] = useState(tc.phoneNumber || '');
   const [forwardingNumber, setForwardingNumber] = useState(tc.forwardingNumber || '');
@@ -1693,8 +1694,49 @@ function VoiceTab({ org, authHeaders, showToast }: any) {
         </div>
       )}
 
-      <div className="flex justify-end">
-        <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
+      <div className="flex justify-end items-center gap-3">
+        {/* Offered only for a line that EXISTS. Destructive, so it is behind a
+            confirm naming the number, and it says what happens to the call
+            history — which survives, because CallLog.telephonyConfigId is
+            SetNull. An operator who cannot tell is one who checks the hard
+            way. */}
+        {tc.id && (
+          <button
+            type="button"
+            disabled={saving || deleting}
+            onClick={async () => {
+              const ok = window.confirm(
+                `Remove ${tc.phoneNumber || 'this line'} from this agency?\n\n` +
+                'Calls already recorded on it are KEPT — they simply stop pointing at a line ' +
+                'that no longer exists. Citizens can no longer be routed to this number.'
+              );
+              if (!ok) return;
+              setDeleting(true);
+              setError(null);
+              try {
+                const res = await apiFetch(`${API_URL}/api/organizations/telephony-config/${tc.id}`, {
+                  method: 'DELETE', headers: authHeaders,
+                });
+                const payload = await res.json().catch(() => null);
+                if (!res.ok) {
+                  // A refused delete must not look like a successful one.
+                  setError(payload?.message || `The line could not be removed (HTTP ${res.status}).`);
+                  return;
+                }
+                showToast(payload?.note || 'Line removed.');
+                onSaved?.();
+              } catch (err: any) {
+                setError(err?.message || 'Could not reach the API.');
+              } finally {
+                setDeleting(false);
+              }
+            }}
+            className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm disabled:opacity-50 transition-all"
+          >
+            {deleting ? 'Removing…' : 'Remove this line'}
+          </button>
+        )}
+        <button type="submit" disabled={saving || deleting} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-brand-600/20">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Saving...' : 'Save Voice Config'}
         </button>

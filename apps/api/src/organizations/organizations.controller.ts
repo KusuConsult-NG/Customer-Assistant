@@ -237,6 +237,16 @@ export class OrganizationsController {
     return this.orgsService.updateWhatsAppConfig(req.user.organizationId, body);
   }
 
+  /**
+   * Remove a line the agency no longer holds. Call history is kept — the
+   * response says how many records were detached.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Delete('telephony-config/:id')
+  async deleteTelephonyConfig(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+    return this.orgsService.deleteTelephonyConfig(actor(req), req.user.organizationId, id);
+  }
+
   @Roles('OWNER', 'ADMIN')
   @Post('telephony-config')
   async updateTelephonyConfig(
