@@ -10,6 +10,8 @@ import { AceLogger } from '../config/logger';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
 import { WhatsAppCallAnswerService } from './whatsapp-call-answer.service';
+import { understandMedia, mediaTextForEngine, mediaRefusalReply, MEDIA_LIMITS, type MediaKind, type MediaOutcome } from './media-understanding';
+import { recordSent, recordSendFailure, applyDeliveryReceipt } from './delivery-status';
 
 const log = new AceLogger('WhatsappService');
 
@@ -195,6 +197,12 @@ export class WhatsappService {
           recipientId: statusReceipt.recipient_id,
           messageId: statusReceipt.id,
         });
+        // Recorded on the message itself (PRD §06 "track sent, delivered, read
+        // and failed"). It used to be logged and dropped, so a reply Meta
+        // refused looked identical to one the citizen read.
+        await applyDeliveryReceipt(statusReceipt).catch((err) =>
+          log.warn('whatsapp_status_receipt_not_recorded', { correlationId, error: String(err?.message ?? err) }),
+        );
         return;
       }
 
@@ -225,6 +233,12 @@ export class WhatsappService {
       let textContent: string;
       let mediaUrl: string | undefined;
       let mediaType: string | undefined;
+      // Kept so the file can be fetched and UNDERSTOOD below (PRD §06), not
+      // just recorded as "[Customer sent a voice message]".
+      const mediaId: string | undefined =
+        message.audio?.id ?? message.image?.id ?? message.document?.id ?? undefined;
+      const mediaCaption: string | undefined = message.image?.caption ?? message.document?.caption ?? undefined;
+      const mediaFileName: string | undefined = message.document?.filename ?? undefined;
 
       if (message.text?.body) {
         textContent = message.text.body;
@@ -499,6 +513,27 @@ export class WhatsappService {
         if (handled) return;
       }
 
+      // ── 4c. Understand a voice note, photo or document (PRD §06) ───────────
+      //
+      // Runs BEFORE the takeover check so an officer holding the thread reads
+      // the transcript too, not a placeholder. A file that cannot be used is
+      // answered honestly ("couldn't make out that voice note") rather than
+      // passed on as a placeholder for the model to guess at.
+      if (mediaId && (mediaType === 'audio' || mediaType === 'image' || mediaType === 'document')) {
+        const understood = await this.understandInboundMedia(
+          config, mediaId, mediaType, mediaCaption, mediaFileName, messageId, correlationId,
+        );
+        if (understood.ok) {
+          textContent = mediaTextForEngine(understood, mediaCaption);
+        } else if (!conversation.isHumanHandoffActive) {
+          await this.replyAndRecord(config, conversation.id, fromNumber, mediaRefusalReply(understood), {
+            intent: 'MEDIA_UNREADABLE',
+            mediaRefusal: understood.reason,
+          }, correlationId);
+          return;
+        }
+      }
+
       // ── 5. Human agent takeover check ─────────────────────────────────────────
       if (conversation.isHumanHandoffActive) {
         log.info('whatsapp_human_handoff_active', {
@@ -594,7 +629,7 @@ export class WhatsappService {
 
       // ── 9. Send AI reply via WhatsApp Cloud API ───────────────────────────────
       if (orchResult.replyText) {
-        await prisma.message.create({
+        const aiMessage = await prisma.message.create({
           data: {
             conversationId: conversation.id,
             sender: MessageSender.AI,
@@ -617,6 +652,7 @@ export class WhatsappService {
 
         try {
           const sendResult = await client.sendTextMessage(fromNumber, orchResult.replyText);
+          await recordSent(aiMessage.id, sendResult?.messages?.[0]?.id);
           whatsAppDeliveryLog.record({
             outcome: 'replied',
             phoneNumberId,
@@ -638,6 +674,7 @@ export class WhatsappService {
             fromSuffix: fromNumber.slice(-4),
             detail: String(sendErr?.message ?? sendErr).slice(0, 200),
           });
+          await recordSendFailure(aiMessage.id, sendErr);
           log.error('whatsapp_reply_send_failed', sendErr, {
             correlationId,
             conversationId: conversation.id,
@@ -661,6 +698,84 @@ export class WhatsappService {
         detail: String(err?.message ?? err).slice(0, 200),
       });
       log.error('whatsapp_webhook_unhandled_error', err, { correlationId });
+    }
+  }
+
+  /**
+   * Download one inbound file and turn it into text the engine can answer.
+   * Never throws. On success the stored message is updated to carry the
+   * transcript / description / extract, so the dashboard shows what the
+   * citizen actually said rather than "[Customer sent a voice message]".
+   */
+  private async understandInboundMedia(
+    config: { phoneNumberId: string | null; accessToken: string | null; webhookVerifyToken: string | null },
+    mediaId: string,
+    kind: MediaKind,
+    caption: string | undefined,
+    fileName: string | undefined,
+    messageId: string,
+    correlationId: string,
+  ): Promise<MediaOutcome> {
+    let outcome: MediaOutcome;
+    try {
+      const client = resolveWhatsAppClient(config);
+      // +1 byte so an oversized file is reported as too large, not as unreadable.
+      const media = await client.downloadMedia(mediaId, MEDIA_LIMITS[kind].maxBytes + 1);
+      outcome = media
+        ? await understandMedia(kind, media.bytes, media.mimeType, { caption, fileName })
+        : { ok: false, kind, reason: 'unreadable', detail: 'download failed or exceeded the size limit' };
+    } catch (err: any) {
+      outcome = { ok: false, kind, reason: 'unreadable', detail: String(err?.message ?? err) };
+    }
+
+    log.info('whatsapp_media_understood', {
+      correlationId,
+      messageId,
+      kind,
+      ok: outcome.ok,
+      ...(outcome.ok ? {} : { reason: outcome.reason, detail: outcome.detail }),
+    });
+
+    try {
+      const existing = await prisma.message.findUnique({ where: { externalId: messageId }, select: { id: true, content: true, metadata: true } });
+      if (existing) {
+        await prisma.message.update({
+          where: { id: existing.id },
+          data: {
+            ...(outcome.ok ? { content: `${existing.content}\n\n${outcome.kind === 'audio' ? 'Transcript: ' : ''}${outcome.text}` } : {}),
+            metadata: {
+              ...((existing.metadata as object) ?? {}),
+              media: outcome.ok
+                ? { kind: outcome.kind, understood: true, detail: outcome.detail ?? null }
+                : { kind: outcome.kind, understood: false, reason: outcome.reason, detail: outcome.detail },
+            },
+          },
+        });
+      }
+    } catch (err: any) {
+      log.warn('whatsapp_media_record_failed', { correlationId, messageId, error: String(err?.message ?? err) });
+    }
+    return outcome;
+  }
+
+  /** Send a fixed reply, recording it and its delivery like any AI reply. Never throws. */
+  private async replyAndRecord(
+    config: { phoneNumberId: string | null; accessToken: string | null; webhookVerifyToken: string | null },
+    conversationId: string,
+    to: string,
+    text: string,
+    metadata: Record<string, unknown>,
+    correlationId: string,
+  ): Promise<void> {
+    const row = await prisma.message.create({
+      data: { conversationId, sender: MessageSender.AI, content: text, metadata: metadata as any },
+    });
+    try {
+      const sent = await resolveWhatsAppClient(config).sendTextMessage(to, text);
+      await recordSent(row.id, sent?.messages?.[0]?.id);
+    } catch (err: any) {
+      await recordSendFailure(row.id, err);
+      log.error('whatsapp_fixed_reply_failed', err, { correlationId, conversationId });
     }
   }
 
@@ -1260,15 +1375,18 @@ export class WhatsappService {
     const client = resolveWhatsAppClient(config ?? {});
 
     // Attempt sending via Meta WhatsApp Cloud API
-    await client.sendTextMessage(conversation.contact.phoneNumber, content);
+    const sent = await client.sendTextMessage(conversation.contact.phoneNumber, content);
+    const wamid: string | undefined = sent?.messages?.[0]?.id;
 
-    // Save to DB only after successful delivery
+    // Save to DB only after Meta accepted it — with Meta's id, so the
+    // delivered/read/failed receipts that follow land on this row.
     const msg = await prisma.message.create({
       data: {
         conversationId,
         sender: MessageSender.HUMAN_AGENT,
         content,
-        metadata: { sentByAgentId: agentUserId },
+        ...(wamid ? { externalId: wamid } : {}),
+        metadata: { sentByAgentId: agentUserId, delivery: { status: 'sent', at: new Date().toISOString() } },
       },
     });
 

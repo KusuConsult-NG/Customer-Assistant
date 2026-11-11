@@ -255,6 +255,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [name, setName] = useState(org?.name || '');
   const [aiPersonaPrompt, setAiPersonaPrompt] = useState(org?.aiPersonaPrompt || '');
   const [welcomeMessage, setWelcomeMessage] = useState(org?.welcomeMessage || '');
+  const [emergencyContacts, setEmergencyContacts] = useState(org?.emergencyContacts || '');
   // Payment collection details. The AI assistant reads these out verbatim when a
   // customer asks how to pay; with them blank it says it will fetch a colleague
   // rather than guessing. (It used to recite a hardcoded account number instead.)
@@ -300,7 +301,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
-          name, aiPersonaPrompt, welcomeMessage, defaultLanguage,
+          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
           openingHour, closingHour, serviceDays,
           outboundOpeningHour: outboundOpening,
@@ -362,6 +363,22 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             placeholder="Hello! 👋 Welcome to [Company]. I'm your AI assistant. How can I help you today?"
           />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">First message sent to every new customer conversation.</p>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="emergency-contacts">Emergency contacts</label>
+          <textarea
+            id="emergency-contacts"
+            rows={3}
+            value={emergencyContacts}
+            onChange={e => setEmergencyContacts(e.target.value)}
+            className={inputCls}
+            placeholder={'Fire Service, Jos: <approved number>\nState Emergency Management Agency: <approved number>'}
+          />
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+            When someone reports a fire, attack, accident or medical emergency, the assistant always tells them to call 112.
+            It then lists these lines exactly as written, one per line. Add only numbers your agency has confirmed.
+            The assistant never says help has been sent.
+          </p>
         </div>
         <div>
           <label className={labelCls}>Default Language</label>

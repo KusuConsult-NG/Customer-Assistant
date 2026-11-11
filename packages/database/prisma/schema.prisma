@@ -213,6 +213,11 @@ model Organization {
   suspendedReason      String?
   aiPersonaPrompt      String?      @db.Text
   welcomeMessage       String?      @db.Text
+  /// Emergency contacts the agency has APPROVED, one per line ("Fire Service,
+  /// Jos: 0803…"). Read verbatim into the emergency reply after 112. Never
+  /// filled by the platform: a wrong number in an emergency script is worse
+  /// than none, and only the agency can vouch for its own (PRD §11).
+  emergencyContacts    String?      @db.Text
   // ─── Embedded widget appearance ────────────────────────────────────────────
   // The Widget Generator page offered colour and position controls that had
   // nowhere to persist to — the API returned hardcoded values, so an operator

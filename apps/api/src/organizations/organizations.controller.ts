@@ -60,6 +60,7 @@ export class OrganizationsController {
     @Req() req: { user: AuthUser },
     @Body() body: {
       name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string;
+      emergencyContacts?: string | null;
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;

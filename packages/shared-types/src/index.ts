@@ -218,6 +218,12 @@ export interface OrchestrationResult {
   shouldHandoff: boolean;
   handoffReason?: HandoffReason;
   toolCallsExecuted?: Array<{ toolName: string; result: any }>;
+  /**
+   * Set when the citizen described an emergency (PRD §11). Voice handlers speak
+   * the reply BEFORE the callback promise when this is set — the 112 guidance
+   * must never be swallowed by the handoff path.
+   */
+  emergencyKind?: string;
 }
 
 /**

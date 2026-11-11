@@ -321,6 +321,8 @@ export class OrganizationsService {
       name?: string;
       aiPersonaPrompt?: string;
       welcomeMessage?: string;
+      /** One per line, read verbatim after 112 in the emergency reply (PRD §11). */
+      emergencyContacts?: string | null;
       phone?: string;
       logoUrl?: string;
       webhookUrl?: string;
@@ -423,6 +425,9 @@ export class OrganizationsService {
         ...(cleanName !== undefined && { name: cleanName }),
         ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
+        ...(data.emergencyContacts !== undefined && {
+          emergencyContacts: (data.emergencyContacts ?? '').trim().slice(0, 2000) || null,
+        }),
         ...(data.phone !== undefined && { phone: data.phone }),
         ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
         ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),

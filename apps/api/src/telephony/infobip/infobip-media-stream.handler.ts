@@ -368,7 +368,8 @@ export class InfobipMediaStreamHandler {
     // nothing is connecting anybody. See `handoff-callback.ts`.
     if (result.shouldHandoff && !session.handoffAttempted) {
       session.handoffAttempted = true;
-      await this.queueCallback(session, ws, text);
+      // An emergency's 112 guidance is spoken FIRST, then the callback promise.
+      await this.queueCallback(session, ws, text, result.emergencyKind ? result.replyText : undefined);
       return;
     }
 
@@ -388,12 +389,18 @@ export class InfobipMediaStreamHandler {
    * callback reference, so an officer watching sees the promise that was made
    * and where to find it — the Callbacks page, not a ringing phone.
    */
-  private async queueCallback(session: Session, ws: WebSocket, lastUtterance: string): Promise<void> {
+  private async queueCallback(
+    session: Session,
+    ws: WebSocket,
+    lastUtterance: string,
+    emergencyPreface?: string,
+  ): Promise<void> {
     const callId = session.ctx.parentCallId;
     const result = await queueHandoffCallback({
       organizationId: session.ctx.organizationId,
       fromNumber: session.ctx.fromNumber,
       lastUtterance,
+      urgent: !!emergencyPreface,
       onError: (err) => log.error('infobip_handoff_callback_failed', err as Error, { callId }),
     });
 
@@ -410,7 +417,9 @@ export class InfobipMediaStreamHandler {
       ...(result.kind === 'queued' ? { reference: result.reference, existing: result.existing } : {}),
     });
 
-    const spoken = handoffCallbackPromise(result);
+    const spoken = emergencyPreface
+      ? `${emergencyPreface} ${handoffCallbackPromise(result)}`
+      : handoffCallbackPromise(result);
     session.history.push({ sender: MessageSender.AI, content: spoken, timestamp: new Date() });
     await this.say(session, ws, spoken);
   }

@@ -50,6 +50,8 @@ import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
 export * from './llm';
+import { detectEmergency, emergencyReply } from './emergency';
+export * from './emergency';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1211,6 +1213,29 @@ export class ConversationOrchestrator {
         // again. That is the one field telling staff why a thread needs a
         // person. Omitting it leaves the original intact: Prisma treats an
         // undefined field as "not provided" rather than as null.
+      };
+    }
+
+    // ── 1b. An emergency (PRD §11) ──────────────────────────────────────────
+    //
+    // Above the disclosure, language, escalation and flow branches: somebody
+    // reporting a fire must not be asked question four of a registration form
+    // or answered from the knowledge base. Below the handoff check only
+    // because a person already holds that thread and sees the message; the AI
+    // talking over them is the thing handoff exists to prevent.
+    //
+    // The reply gives 112 and the agency's own approved contacts, and says an
+    // officer has been ALERTED — never that responders were dispatched, which
+    // nothing here can do. See emergency.ts.
+    const emergency = detectEmergency(cleanInput);
+    if (emergency) {
+      return {
+        replyText: emergencyReply(lang, await this.getEmergencyContacts(context.organizationId)),
+        intentDetected: 'EMERGENCY',
+        confidenceScore: 1.0,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.URGENT_ESCALATION,
+        emergencyKind: emergency,
       };
     }
 
@@ -3839,6 +3864,19 @@ export class ConversationOrchestrator {
   }
 
   /** Organization display name, with a neutral fallback if the row is unreachable. */
+  /** The agency's approved emergency contacts, or null. Never throws: an emergency reply must go out. */
+  private async getEmergencyContacts(organizationId: string): Promise<string | null> {
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { emergencyContacts: true },
+      });
+      return (org as any)?.emergencyContacts ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private async getOrganizationName(organizationId: string): Promise<string> {
     try {
       const org = await prisma.organization.findUnique({

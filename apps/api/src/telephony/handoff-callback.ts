@@ -38,6 +38,9 @@ import {
   OPEN_CALLBACK_STATUSES,
 } from '@ace/database';
 
+/** Leads the reason of any callback raised by an emergency, so the queue reads it first. */
+export const EMERGENCY_PREFIX = 'EMERGENCY REPORTED — check the caller is safe and that 112 was called. ';
+
 export type HandoffCallbackResult =
   | {
       kind: 'queued';
@@ -68,6 +71,11 @@ export async function queueHandoffCallback(params: {
   /** What the citizen said, so the officer knows why before dialling. */
   lastUtterance: string;
   onError?: (err: unknown) => void;
+  /**
+   * The caller described an emergency. The request is due NOW whatever the
+   * office hours, and its reason says so first, so it sorts and reads as one.
+   */
+  urgent?: boolean;
   /** Injected so tests can pin the clock against the agency's hours. */
   now?: Date;
 }): Promise<HandoffCallbackResult> {
@@ -82,6 +90,7 @@ export async function queueHandoffCallback(params: {
     // asking for a person needs one call back, not two officers phoning them
     // at once, and the second call should hear the reference they already
     // hold rather than a new one that makes the first look lost.
+    const now = params.now ?? new Date();
     const open = await prisma.callbackRequest.findFirst({
       where: {
         organizationId: params.organizationId,
@@ -89,10 +98,21 @@ export async function queueHandoffCallback(params: {
         status: { in: [...OPEN_CALLBACK_STATUSES] as any },
       },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, dueAt: true },
+      select: { id: true, dueAt: true, reason: true },
     });
-    const now = params.now ?? new Date();
     if (open) {
+      // An emergency on a second call makes the request they already hold
+      // urgent too, rather than leaving it waiting for opening time.
+      if (params.urgent) {
+        await prisma.callbackRequest.update({
+          where: { id: open.id },
+          data: {
+            dueAt: now,
+            reason: open.reason.startsWith(EMERGENCY_PREFIX) ? open.reason : EMERGENCY_PREFIX + open.reason,
+          },
+        });
+        open.dueAt = now;
+      }
       return {
         kind: 'queued',
         reference: callbackReference(open.id),
@@ -106,7 +126,9 @@ export async function queueHandoffCallback(params: {
     // 22:00 is due at opening time, not at 22:00 — the queue then shows it as
     // waiting for the office rather than as already overdue.
     const hours = await outboundContactHoursFrom(prisma, params.organizationId);
-    const dueAt = nextServiceTime(now, hours);
+    // An emergency is not held for opening time: it is due now and shows as
+    // overdue until somebody acts, which is exactly what it should look like.
+    const dueAt = params.urgent ? now : nextServiceTime(now, hours);
     const outsideHours = dueAt.getTime() > now.getTime() + 60_000;
 
     const record = await prisma.callbackRequest.create({
@@ -115,6 +137,7 @@ export async function queueHandoffCallback(params: {
         contactId: contact.id,
         phoneNumber: normalizePhoneNumber(params.fromNumber) || params.fromNumber,
         reason:
+          (params.urgent ? EMERGENCY_PREFIX : '') +
           `Asked on a phone call to speak to a person. What they said: ` +
           `"${params.lastUtterance.trim().slice(0, 800)}"`,
         // Stored as what the caller was TOLD, which is what the queue shows
