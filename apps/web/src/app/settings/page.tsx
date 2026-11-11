@@ -389,11 +389,13 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       outboundClosing === null ? null : (outboundOpeningHour === '' ? 0 : outboundOpeningHour);
 
     try {
+      // Empty keeps everything; computed here so the request body stays plain fields.
+      const retentionDaysValue = retentionDays.trim() === '' ? null : Number(retentionDays);
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
           name, aiPersonaPrompt, welcomeMessage, emergencyContacts, privacyNotice, requireKnowledgeApproval,
-          retentionDays: retentionDays.trim() === '' ? null : Number(retentionDays),
+          retentionDays: retentionDaysValue,
           defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
           openingHour, closingHour, serviceDays,
