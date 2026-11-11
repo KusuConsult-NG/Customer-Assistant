@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -52,6 +52,25 @@ import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 export * from './llm';
 import { detectEmergency, emergencyReply } from './emergency';
 import { answerBudgetQuestion, answerProjectQuestion, type StructuredAnswer } from './budget-answers';
+
+/**
+ * What a citizen is told when their report becomes a case. Promises exactly
+ * what is true: a reference, that it is recorded and will be assigned, and
+ * whether their name is withheld. It does NOT promise a fix or a date — the
+ * service deadline is an internal target, not something the State has
+ * committed to this citizen.
+ */
+function caseOpenedReply(r: { ticketNumber: string; category: string; anonymous: boolean; lga: string | null; sensitive: boolean }): string {
+  const what = r.category === 'other' ? 'your report' : `your ${r.category.replace(/_/g, ' ')} report`;
+  const parts = [
+    `I've recorded ${what}${r.lga ? ` in ${r.lga}` : ''}. Your case reference is *${r.ticketNumber}* — please keep it.`,
+    `An officer will review it and assign it to the responsible office. You can quote the reference to ask for an update.`,
+  ];
+  if (r.anonymous) parts.push(`As you asked, your name will not be shared with the office handling it.`);
+  if (r.sensitive) parts.push(`Because of what it concerns, it will be handled confidentially.`);
+  if (!r.lga) parts.push(`If you can, tell me the LGA and community where this is, so it reaches the right office.`);
+  return parts.join(' ');
+}
 export * from './budget-answers';
 export * from './emergency';
 
@@ -1515,11 +1534,14 @@ export class ConversationOrchestrator {
 
     // ── 10. Tool: Support Ticket ───────────────────────────────────────────────
     const TICKET_PHRASES = ['file a complaint', 'open ticket', 'issue with service', 'report problem', 'complaint', 'not working', 'broken'];
-    if (TICKET_PHRASES.some((p) => lowerInput.includes(p))) {
+    // A report of a damaged road, a water shortage, misconduct… becomes a
+    // classified CASE (PRD §10), not a generic ticket. `looksLikeComplaint`
+    // widens what is caught beyond the literal word "complaint".
+    if (TICKET_PHRASES.some((p) => lowerInput.includes(p)) || looksLikeComplaint(cleanInput)) {
       try {
         const ticketResult = await this.executeCreateTicket(context, cleanInput);
         return {
-          replyText: `I've opened support ticket *#${ticketResult.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
+          replyText: caseOpenedReply(ticketResult),
           intentDetected: 'CREATE_TICKET',
           confidenceScore: 0.95,
           shouldHandoff: false,
@@ -2956,6 +2978,12 @@ export class ConversationOrchestrator {
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
+    const cls = classifyComplaint(subjectText);
+    const anonymous = wantsAnonymity(subjectText);
+    const lga = PLATEAU_LGAS.slice().sort((a, b) => b.length - a.length)
+      .find((l) => subjectText.toLowerCase().includes(l.toLowerCase())) ?? null;
+    const dueAt = new Date(Date.now() + cls.serviceDays * 86_400_000);
+    const stage = cls.category === 'other' ? 'RECEIVED' : 'CLASSIFIED';
 
     // The number was `TCK-<last 6 digits of Date.now()>`: a million values,
     // repeating every 16.7 minutes, unique across the WHOLE table and therefore
@@ -2969,14 +2997,39 @@ export class ConversationOrchestrator {
           contactId: contact.id,
           ticketNumber,
           subject: subjectText.slice(0, 100),
+          // The citizen's own words, unedited (PRD §10 "original description").
           description: subjectText,
           status: 'OPEN',
-          priority: 'MEDIUM',
+          priority: cls.priority,
+          caseStage: stage,
+          category: cls.category,
+          isSensitive: cls.sensitive,
+          isAnonymous: anonymous,
+          lga,
+          dueAt,
+          channel: String(context.channel),
+          events: {
+            create: {
+              organizationId: context.organizationId,
+              type: 'CREATED',
+              toStage: stage,
+              actorLabel: 'system:assistant',
+              body: `Opened from a ${String(context.channel).toLowerCase()} conversation; classified as ${cls.category}.`,
+            },
+          },
         },
       })
     );
 
-    return { ticketId: ticket.id, ticketNumber: ticket.ticketNumber };
+    return {
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      category: cls.category,
+      sensitive: cls.sensitive,
+      anonymous,
+      lga,
+      dueAt: dueAt.toISOString(),
+    };
   }
 
   /**

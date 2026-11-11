@@ -188,18 +188,40 @@ export class CrmService {
     });
   }
 
-  async getTickets(organizationId: string, rawPage?: unknown, rawLimit?: unknown) {
+  /**
+   * The same visibility rules as the Cases screen (CasesService), because a
+   * second list that ignores them is a way round them: a sensitive case is
+   * visible only to OWNER/ADMIN and its assignee, an anonymous reporter is
+   * withheld from everyone below OWNER/ADMIN, and an MDA liaison sees only
+   * cases referred to their MDA.
+   */
+  async getTickets(
+    organizationId: string,
+    rawPage?: unknown,
+    rawLimit?: unknown,
+    viewer?: { userId: string; role: string; mdaName?: string | null },
+  ) {
     const paging = resolvePaging(rawPage, rawLimit);
-    const [data, total] = await Promise.all([
+    const privileged = !viewer || viewer.role === 'OWNER' || viewer.role === 'ADMIN';
+    const where: any = { organizationId };
+    if (viewer?.mdaName) where.referrals = { some: { mdaName: viewer.mdaName } };
+    else if (!privileged) where.OR = [{ isSensitive: false }, { assignedUserId: viewer!.userId }];
+    const [rows, total] = await Promise.all([
       prisma.ticket.findMany({
-        where: { organizationId },
+        where,
         include: { contact: true, assignedUser: true },
         orderBy: STABLE_DESC,
         take: paging.limit,
         skip: paging.skip,
       }),
-      prisma.ticket.count({ where: { organizationId } }),
+      prisma.ticket.count({ where }),
     ]);
+    const hideAnonymous = !privileged || !!viewer?.mdaName;
+    const data = rows.map((t: any) =>
+      t.isAnonymous && hideAnonymous
+        ? { ...t, contactId: null, contact: { id: null, fullName: 'Anonymous reporter', phoneNumber: null, email: null } }
+        : t,
+    );
     return pageEnvelope(data, total, paging);
   }
 

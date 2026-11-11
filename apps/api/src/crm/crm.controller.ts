@@ -73,7 +73,7 @@ export class CrmController {
 
   @Get('tickets')
   async getTickets(@Req() req: { user: AuthUser }, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.crmService.getTickets(req.user.organizationId, page, limit);
+    return this.crmService.getTickets(req.user.organizationId, page, limit, req.user);
   }
 
   @Post('tickets')

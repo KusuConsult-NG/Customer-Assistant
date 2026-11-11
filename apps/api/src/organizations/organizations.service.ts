@@ -1950,6 +1950,7 @@ export class OrganizationsService {
         isActive: true,
         avatarUrl: true,
         createdAt: true,
+        mdaName: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -1974,6 +1975,29 @@ export class OrganizationsService {
       newValue: { role: updated.role, email: updated.email },
     });
 
+    return updated;
+  }
+
+  async setTeamMemberMda(organizationId: string, userId: string, mdaName: string | null, actor: Actor) {
+    const user = await prisma.user.findFirst({ where: { id: userId, organizationId } });
+    if (!user) throw new NotFoundException('User not found');
+    const clean = typeof mdaName === 'string' ? mdaName.trim().slice(0, 200) || null : null;
+    if (clean && (user.role === 'OWNER' || user.role === 'ADMIN')) {
+      // An administrator scoped to one MDA would lose the agency they administer.
+      throw new BadRequestException('An owner or administrator cannot be scoped to one MDA. Change their role first.');
+    }
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { mdaName: clean },
+      select: { id: true, email: true, fullName: true, role: true, isActive: true, mdaName: true },
+    });
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.member.mda_scope_changed',
+      targetType: 'User',
+      targetId: user.id,
+      previousValue: { mdaName: user.mdaName },
+      newValue: { mdaName: clean },
+    });
     return updated;
   }
 

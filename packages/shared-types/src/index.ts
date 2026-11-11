@@ -307,6 +307,11 @@ export interface AuthUser {
    * Only `PlatformAdminGuard` reads this; no tenant route may branch on it.
    */
   isPlatformAdmin: boolean;
+  /**
+   * Set for an MDA liaison officer (PRD §15). Such a user sees only cases
+   * referred to this MDA, whatever their role. Null/absent for State staff.
+   */
+  mdaName?: string | null;
 }
 
 // ── Outbound webhook events ─────────────────────────────────────────────────

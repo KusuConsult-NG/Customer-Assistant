@@ -2425,6 +2425,23 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
     }
   };
 
+  // MDA liaison scope (PRD §15): a liaison sees only cases referred to their MDA.
+  const handleMdaScope = async (userId: string, current: string | null, name: string) => {
+    const next = window.prompt(
+      `Make ${name} the liaison for one MDA? They will then see only cases referred to it.\n` +
+        'Enter the MDA name exactly as you refer cases to it, or leave empty to remove the scope.',
+      current ?? '',
+    );
+    if (next === null) return;
+    try {
+      await api.organizations.setMemberMda(userId, next.trim() || null);
+      showToast(next.trim() ? `${name} is now the liaison for ${next.trim()}` : `${name} is no longer scoped to an MDA`);
+      fetchTeamAndMatrix();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update the MDA scope', 'error');
+    }
+  };
+
   const handleStatusToggle = async (userId: string, currentStatus: boolean) => {
     try {
       await api.organizations.updateMemberStatus(userId, !currentStatus);
@@ -2478,10 +2495,19 @@ function TeamTab({ org, authHeaders, showToast, onSaved }: any) {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400">{m.email}</p>
+                    {m.mdaName && <p className="text-[11px] text-slate-600 dark:text-slate-300">Liaison for {m.mdaName}</p>}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
+                  {m.role !== 'OWNER' && m.role !== 'ADMIN' && (
+                    <button
+                      onClick={() => handleMdaScope(m.id, m.mdaName ?? null, m.fullName || m.email)}
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold text-slate-700 dark:text-slate-200"
+                    >
+                      {m.mdaName ? 'Change MDA' : 'MDA liaison…'}
+                    </button>
+                  )}
                   {/* Role Selector */}
                   <select
                     value={m.role}

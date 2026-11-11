@@ -312,6 +312,54 @@ export const api = {
    * where it sends them. Reading is open to any member; writing is OWNER/ADMIN
    * and the API enforces that, not this.
    */
+  cases: {
+    list: async (q: { stage?: string; category?: string; lga?: string; overdue?: boolean; mine?: boolean } = {}) => {
+      const p = new URLSearchParams();
+      if (q.stage) p.set('stage', q.stage);
+      if (q.category) p.set('category', q.category);
+      if (q.lga) p.set('lga', q.lga);
+      if (q.overdue) p.set('overdue', 'true');
+      if (q.mine) p.set('mine', 'true');
+      const res = await fetch(`${API_URL}/api/cases?${p}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    summary: async () => {
+      const res = await fetch(`${API_URL}/api/cases/summary`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    get: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    moveStage: async (id: string, body: { stage: string; outcome?: string; note?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/stage`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    assign: async (id: string, userId: string | null) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/assign`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ userId }) });
+      return handleResponse(res);
+    },
+    classify: async (id: string, body: { category?: string; lga?: string; ward?: string; community?: string; responsibleMda?: string; summary?: string; dueAt?: string; priority?: string; isSensitive?: boolean }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/classify`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    addNote: async (id: string, body: string) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/notes`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ body }) });
+      return handleResponse(res);
+    },
+    refer: async (id: string, body: { mdaName: string; liaisonName?: string; liaisonContact?: string; liaisonUserId?: string; note?: string; dueAt?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/refer`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    respondToReferral: async (referralId: string, body: { status: string; response?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/referrals/${referralId}/respond`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    citizenNotified: async (id: string, body: { channel: string; note?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/citizen-notified`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+  },
   budget: {
     documents: async () => {
       const res = await fetch(`${API_URL}/api/budget/documents`, { headers: getHeaders() });
@@ -476,6 +524,14 @@ export const api = {
         method: "PATCH",
         headers: getHeaders(),
         body: JSON.stringify({ role }),
+      });
+      return handleResponse(res);
+    },
+    setMemberMda: async (userId: string, mdaName: string | null) => {
+      const res = await fetch(`${API_URL}/api/organizations/members/${userId}/mda`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify({ mdaName }),
       });
       return handleResponse(res);
     },

@@ -105,6 +105,21 @@ export class OrganizationsController {
     return this.orgsService.updateTeamMemberStatus(req.user.organizationId, userId, body.isActive, actor(req));
   }
 
+  /**
+   * Make a member an MDA liaison (PRD §15), or clear it. A liaison sees only
+   * cases referred to their MDA. A separate column from role on purpose, like
+   * isPlatformAdmin: it NARROWS access, whatever role the person holds.
+   */
+  @Roles('OWNER', 'ADMIN')
+  @Patch('members/:id/mda')
+  async setMemberMda(
+    @Req() req: { user: AuthUser },
+    @Param('id') userId: string,
+    @Body() body: { mdaName: string | null }
+  ) {
+    return this.orgsService.setTeamMemberMda(req.user.organizationId, userId, body.mdaName ?? null, actor(req));
+  }
+
   @Get('roles/permissions')
   async getPermissionsMatrix() {
     return this.orgsService.getPermissionsMatrix();

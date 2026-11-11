@@ -60,6 +60,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         organizationId: true,
         tokenVersion: true,
         isPlatformAdmin: true,
+        mdaName: true,
         organization: { select: { suspendedAt: true } },
       },
     });
@@ -90,6 +91,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       fullName: user.fullName,
       role: user.role as AuthUser['role'],
       isPlatformAdmin: user.isPlatformAdmin,
+      // Read from the database like role, so narrowing a liaison takes effect at once.
+      mdaName: user.mdaName ?? null,
     };
   }
 }

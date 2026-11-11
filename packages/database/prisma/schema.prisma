@@ -324,6 +324,9 @@ model User {
   assignedTickets       Ticket[]          @relation("AssignedTicketAgent")
   notes                 Note[]
   assignedCallbacks     CallbackRequest[] @relation("AssignedCallback")
+  /// Set for an MDA liaison officer (PRD §15): they see only cases referred to
+  /// this MDA and cannot read any other institution's. Null for State staff.
+  mdaName               String?
 
   @@index([organizationId])
   @@index([passwordResetToken])
@@ -508,8 +511,39 @@ model Ticket {
   description    String         @db.Text
   status         TicketStatus   @default(OPEN)
   priority       TicketPriority @default(MEDIUM)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+
+  // ── Case management (PRD §10) ─────────────────────────────────────────────
+  // A ticket IS a case: the CRM screens keep working and every complaint has
+  // one record. `caseStage` is the PRD lifecycle; `status` is kept in step
+  // with it so older screens and filters read the same thing.
+  caseStage         CaseStage @default(RECEIVED)
+  /// roads, water, waste, electricity, health, education, security, misconduct, environment, project, service_delay, other
+  category          String?
+  lga               String?
+  ward              String?
+  community         String?
+  responsibleMda    String?
+  /// Officer's summary; `description` stays the citizen's own words, unedited.
+  summary           String?   @db.Text
+  /// The reporter asked not to be identified. Their contact is withheld from
+  /// everyone except OWNER/ADMIN, and from every MDA referral.
+  isAnonymous       Boolean   @default(false)
+  /// Security reports, misconduct allegations, personal records (PRD §18).
+  /// Visible to OWNER/ADMIN and the assigned officer only.
+  isSensitive       Boolean   @default(false)
+  /// The service deadline. Overdue = past this and not RESOLVED/CLOSED.
+  dueAt             DateTime?
+  /// What was actually done. Required to resolve: a referral is not a resolution.
+  resolutionOutcome String?   @db.Text
+  resolvedAt        DateTime?
+  citizenNotifiedAt DateTime?
+  channel           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events    CaseEvent[]
+  referrals MdaReferral[]
 
   @@index([organizationId, createdAt])
   @@index([contactId])
@@ -1399,4 +1433,72 @@ model ProjectObservation {
 
   @@index([projectId])
   @@map("project_observations")
+}
+
+enum CaseStage {
+  RECEIVED
+  CLASSIFIED
+  ASSIGNED
+  UNDER_REVIEW
+  ACTION_IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+/// Every change to a case, append-only (PRD §10 "escalation history, internal
+/// notes … audit history"). Nothing updates or deletes these rows.
+model CaseEvent {
+  id             String     @id @default(uuid())
+  organizationId String
+  ticketId       String
+  ticket         Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  /// STAGE_CHANGED, ASSIGNED, NOTE, REFERRED, REFERRAL_RESPONSE, CITIZEN_NOTIFIED, ESCALATED, CREATED
+  type           String
+  fromStage      CaseStage?
+  toStage        CaseStage?
+  actorUserId    String?
+  /// "system:assistant" etc. when no person acted.
+  actorLabel     String?
+  body           String?    @db.Text
+  /// Internal notes are never shown or sent to the citizen.
+  internal       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("case_events")
+}
+
+enum ReferralStatus {
+  SENT
+  ACKNOWLEDGED
+  RESPONDED
+  DECLINED
+  OVERDUE
+}
+
+/// A case handed to an MDA liaison (PRD §09 "MDA referral", §15). Tracks
+/// acceptance and response; referral alone never resolves the case.
+model MdaReferral {
+  id             String         @id @default(uuid())
+  organizationId String
+  ticketId       String
+  ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  mdaName        String
+  liaisonName    String?
+  liaisonContact String?
+  /// Who it was assigned to inside the platform, when the liaison has an account.
+  liaisonUserId  String?
+  status         ReferralStatus @default(SENT)
+  note           String?        @db.Text
+  response       String?        @db.Text
+  dueAt          DateTime?
+  sentByUserId   String?
+  sentAt         DateTime       @default(now())
+  acknowledgedAt DateTime?
+  respondedAt    DateTime?
+
+  @@index([organizationId, mdaName, status])
+  @@index([ticketId])
+  @@map("mda_referrals")
 }
