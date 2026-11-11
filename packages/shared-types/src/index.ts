@@ -218,6 +218,12 @@ export interface OrchestrationResult {
   shouldHandoff: boolean;
   handoffReason?: HandoffReason;
   toolCallsExecuted?: Array<{ toolName: string; result: any }>;
+  /**
+   * Set when the citizen described an emergency (PRD §11). Voice handlers speak
+   * the reply BEFORE the callback promise when this is set — the 112 guidance
+   * must never be swallowed by the handoff path.
+   */
+  emergencyKind?: string;
 }
 
 /**
@@ -301,6 +307,11 @@ export interface AuthUser {
    * Only `PlatformAdminGuard` reads this; no tenant route may branch on it.
    */
   isPlatformAdmin: boolean;
+  /**
+   * Set for an MDA liaison officer (PRD §15). Such a user sees only cases
+   * referred to this MDA, whatever their role. Null/absent for State staff.
+   */
+  mdaName?: string | null;
 }
 
 // ── Outbound webhook events ─────────────────────────────────────────────────

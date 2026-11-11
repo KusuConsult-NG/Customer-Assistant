@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class UploadDocumentDto {
   @IsString()
@@ -48,4 +48,22 @@ export class CrawlWebsiteDto {
   @Min(1)
   @Max(40)
   maxPages?: number;
+}
+
+export class KnowledgeMetadataDto {
+  @IsOptional() @IsString() @MaxLength(1000) sourceUrl?: string;
+  @IsOptional() @IsString() @MaxLength(200) mdaOwner?: string;
+  @IsOptional() @IsString() publishedAt?: string;
+  @IsOptional() @IsString() effectiveDate?: string;
+  @IsOptional() @IsString() reviewDueAt?: string;
+}
+
+export class WithdrawKnowledgeDto {
+  @IsString() @MaxLength(1000) reason!: string;
+}
+
+export class UpdateGapDto {
+  @IsOptional() @IsIn(['OPEN', 'ASSIGNED', 'RESOLVED', 'DISMISSED']) status?: string;
+  @IsOptional() @IsString() @MaxLength(4000) resolution?: string;
+  @IsOptional() @IsString() assignedUserId?: string | null;
 }

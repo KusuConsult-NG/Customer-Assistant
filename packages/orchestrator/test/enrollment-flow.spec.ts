@@ -29,6 +29,10 @@ const mockPrisma = {
 const mockUpsertEnrollee = jest.fn();
 
 jest.mock('@ace/database', () => ({
+  ...jest.requireActual('../../database/src/cases'),
+  ...jest.requireActual('../../database/src/knowledge-gaps'),
+  ...jest.requireActual('../../database/src/state-geography'),
+  ...jest.requireActual('../../database/src/budget'),
   ...jest.requireActual('../../database/src/phone-number'),
   ...jest.requireActual('../../database/src/callback'),
   ...jest.requireActual('../../database/src/booking-conflicts'),

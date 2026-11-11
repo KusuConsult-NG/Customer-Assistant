@@ -26,6 +26,7 @@ import {
   Moon,
   Landmark,
   Briefcase,
+  ClipboardList,
   Bot
 } from 'lucide-react';
 import { io } from 'socket.io-client';
@@ -363,6 +364,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                           link('/telephony', <PhoneCall className="w-4 h-4" />, 'Telephone Service'),
                           link('/scheduling', <Calendar className="w-4 h-4" />, 'Appointments'),
                           link('/callbacks', <PhoneCall className="w-4 h-4" />, 'Callback Queue'),
+                          link('/cases', <ClipboardList className="w-4 h-4" />, 'Cases'),
                           link('/agent-provisioning', <Bot className="w-4 h-4" />, 'Agent Provisioning'),
                         ])}
 
@@ -381,6 +383,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                         {section('Administration', [
                           link('/services', <Briefcase className="w-4 h-4" />, 'Services & Locations'),
+                          link('/budget', <Landmark className="w-4 h-4" />, 'Budget & Projects'),
                           link('/white-label', <Building2 className="w-4 h-4" />, 'Branding & White Label'),
                           link('/settings', <Settings className="w-4 h-4" />, 'System Settings'),
                         ])}

@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
-import { CrawlWebsiteDto, UploadDocumentDto } from './knowledge.dto';
+import { CrawlWebsiteDto, UploadDocumentDto, KnowledgeMetadataDto, WithdrawKnowledgeDto, UpdateGapDto } from './knowledge.dto';
+import { KnowledgeGovernanceService } from './knowledge-governance.service';
 import { actorFrom } from '../common/actor';
 
 // RolesGuard follows JwtAuthGuard: guards execute in the order given, and RolesGuard
@@ -13,7 +14,10 @@ import { actorFrom } from '../common/actor';
 @Controller('api/knowledge')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class KnowledgeController {
-  constructor(private knowledgeService: KnowledgeService) {}
+  constructor(
+    private readonly governance: KnowledgeGovernanceService,
+    private knowledgeService: KnowledgeService,
+  ) {}
 
   @Get('documents')
   async getDocuments(@Req() req: { user: AuthUser }) {
@@ -35,6 +39,7 @@ export class KnowledgeController {
       fileSize: fileBuffer.byteLength,
       mimeType: body.mimeType,
       fileBuffer,
+      createdByUserId: req.user.userId,
     });
   }
 
@@ -70,6 +75,7 @@ export class KnowledgeController {
   async crawlWebsite(@Req() req: { user: AuthUser }, @Body() body: CrawlWebsiteDto) {
     return this.knowledgeService.crawlAndIndexWebsite(req.user.organizationId, body.url, {
       maxPages: body.maxPages,
+      createdByUserId: req.user.userId,
     });
   }
 
@@ -83,6 +89,38 @@ export class KnowledgeController {
   @Post('reindex')
   async reindexAll(@Req() req: { user: AuthUser }) {
     return this.knowledgeService.reindexAllDocuments(req.user.organizationId);
+  }
+
+  // ── Governance (PRD §12) ──────────────────────────────────────────────────
+
+  @Roles('OWNER', 'ADMIN')
+  @Patch('documents/:id/metadata')
+  async updateMetadata(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: KnowledgeMetadataDto) {
+    return this.governance.updateMetadata(req.user.organizationId, id, body);
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Post('documents/:id/approve')
+  async approve(@Req() req: { user: AuthUser; ip?: string }, @Param('id') id: string) {
+    return this.governance.approve(req.user.organizationId, id, actorFrom(req));
+  }
+
+  @Roles('OWNER', 'ADMIN')
+  @Post('documents/:id/withdraw')
+  async withdraw(@Req() req: { user: AuthUser; ip?: string }, @Param('id') id: string, @Body() body: WithdrawKnowledgeDto) {
+    return this.governance.withdraw(req.user.organizationId, id, actorFrom(req), body.reason);
+  }
+
+  /** Questions nobody could answer, most-asked first. */
+  @Get('gaps')
+  async gaps(@Req() req: { user: AuthUser }, @Query('status') status?: string) {
+    return this.governance.listGaps(req.user.organizationId, status);
+  }
+
+  @Roles('OWNER', 'ADMIN', 'AGENT')
+  @Patch('gaps/:id')
+  async updateGap(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: UpdateGapDto) {
+    return this.governance.updateGap(req.user.organizationId, id, body);
   }
 
   @Roles('OWNER', 'ADMIN')

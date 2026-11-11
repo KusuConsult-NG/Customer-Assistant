@@ -53,14 +53,18 @@ describe('Deepgram wiring', () => {
     expect(files.some((f) => f.endsWith('voice-ai.service.ts'))).toBe(true);
   });
 
-  it('builds the listen URL in exactly one place', () => {
+  // STREAMING (wss, a live call) and PRE-RECORDED (https, a WhatsApp voice
+  // note) are two different Deepgram endpoints that share a path. The rule
+  // this guards — one place that opens a live transcription — is about the
+  // streaming one; the voice-note path is pinned separately below.
+  it('builds the streaming listen URL in exactly one place', () => {
     const sites = files
       .filter((f) => !f.includes('.spec.'))
       .flatMap((f) =>
         readFileSync(f, 'utf8')
           .split('\n')
           .map((line, i) => ({ f, i, line }))
-          .filter(({ line }) => /api\.deepgram\.com\/v1\/listen/.test(line))
+          .filter(({ line }) => /wss:\/\/api\.deepgram\.com\/v1\/listen/.test(line))
           // The explanation of why the second copy was deleted names the URL.
           .filter(({ line }) => !/^\s*(\/\/|\*|\/\*)/.test(line))
       )
@@ -70,12 +74,26 @@ describe('Deepgram wiring', () => {
     expect(sites[0]).toContain('voice-ai.service.ts');
   });
 
+  it('transcribes voice notes from one pre-recorded URL, with the same model setting', () => {
+    const sites = files
+      .filter((f) => !f.includes('.spec.'))
+      .flatMap((f) =>
+        readFileSync(f, 'utf8')
+          .split('\n')
+          .filter((line) => /https:\/\/api\.deepgram\.com\/v1\/listen/.test(line) && !/^\s*(\/\/|\*|\/\*)/.test(line))
+          .map(() => f.replace(SRC, 'src')),
+      );
+    expect(sites).toEqual(['src/whatsapp/media-understanding.ts']);
+    const src = readFileSync(join(SRC, 'whatsapp', 'media-understanding.ts'), 'utf8');
+    expect(src).toMatch(/model: deepgramModel\(\)/);
+  });
+
   it('hardcodes neither the language nor the wire format in that URL', () => {
     // The two values that make a wrong transcript rather than an error.
     const src = readFileSync(join(SRC, 'telephony', 'voice-ai.service.ts'), 'utf8');
     const urlLines = src
       .split('\n')
-      .filter((l) => /api\.deepgram\.com\/v1\/listen/.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l));
+      .filter((l) => /wss:\/\/api\.deepgram\.com\/v1\/listen/.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l));
 
     expect(urlLines).toHaveLength(1);
     expect(urlLines[0]).not.toMatch(/language=/);

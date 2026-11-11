@@ -269,4 +269,32 @@ describe('Voice handoff to a human', () => {
     const handoff = broadcastEvents.find((e) => e.event === 'human_handoff');
     expect(handoff?.payload).toMatchObject({ transferred: false, callback: null, reason: 'withheld' });
   });
+
+  /**
+   * PRD §11: an emergency on a call. The 112 guidance must be SPOKEN, before
+   * the callback promise — the handoff path used to replace the orchestrator's
+   * reply entirely, which would have swallowed it — and the callback is due
+   * now, whatever the office hours, and reads as an emergency in the queue.
+   */
+  it('speaks the 112 guidance first on an emergency, and makes the callback due now', async () => {
+    stubTwilio(200);
+    const session = makeSession();
+    const before = Date.now();
+    await (handler as any).handOffCallToHuman(
+      session,
+      { readyState: 1 } as any,
+      'there is a fire outbreak in our street',
+      'This sounds like an emergency. If anyone is in immediate danger, call 112 now.',
+    );
+
+    expect(spoken).toHaveLength(1);
+    expect(spoken[0].indexOf('112')).toBeGreaterThanOrEqual(0);
+    expect(spoken[0].indexOf('112')).toBeLessThan(spoken[0].search(/call you back/i));
+    expect(spoken[0]).not.toMatch(/dispatched|on (their|the) way/i);
+
+    const row = await callbackFor(session.fromNumber);
+    expect(row!.reason).toMatch(/^EMERGENCY REPORTED/);
+    expect(row!.dueAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(row!.dueAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
 });

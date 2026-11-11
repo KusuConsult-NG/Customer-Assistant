@@ -787,11 +787,12 @@ export default function KnowledgePage() {
                             {doc.fileSize && <span className="text-xs text-slate-500 dark:text-slate-400">{(doc.fileSize / 1024).toFixed(1)} KB</span>}
                             {doc.chunkCount && <span className="text-xs text-slate-500 dark:text-slate-400">{doc.chunkCount} vector chunks</span>}
                           </div>
+                          <GovernanceRow doc={doc} onChanged={(next) => setDocs(prev => prev.map(d => d.id === next.id ? { ...d, ...next } : d))} />
                         </div>
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border flex-shrink-0 ${cfg.className}`}>
                           {cfg.icon} {cfg.label}
                         </div>
-                        {doc.sourceUrl ? (
+                        {doc.mimeType === 'text/html' && doc.sourceUrl ? (
                           <a
                             href={doc.sourceUrl}
                             target="_blank"
@@ -825,6 +826,7 @@ export default function KnowledgePage() {
                       </div>
                     );
                   })}
+                  <KnowledgeGaps />
                   {downloadError && (
                     <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300">
                       {downloadError}
@@ -1080,5 +1082,108 @@ export default function KnowledgePage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Governance for one document (PRD §12): whether citizens can hear it, where it
+ * came from, and when it must be re-checked. Approval by a different person is
+ * enforced by the API; this row shows its refusal rather than hiding the button.
+ */
+function GovernanceRow({ doc, onChanged }: { doc: any; onChanged: (d: any) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const status: string = doc.publicationStatus ?? 'APPROVED';
+  const reviewOverdue = doc.reviewDueAt && new Date(doc.reviewDueAt).getTime() < Date.now();
+
+  const call = async (url: string, method: 'POST' | 'PATCH', body?: unknown) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(Array.isArray(out?.message) ? out.message.join(' ') : out?.message || `Failed (${res.status})`);
+      onChanged(out);
+    } catch (e: any) {
+      setErr(e?.message || 'Failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tone =
+    status === 'APPROVED' ? 'text-emerald-700 dark:text-emerald-400' : status === 'WITHDRAWN' ? 'text-slate-500' : 'text-amber-700 dark:text-amber-400';
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" onClick={(e) => e.stopPropagation()}>
+      <span className={`font-bold ${tone}`}>
+        {status === 'APPROVED' ? 'Answering citizens' : status === 'WITHDRAWN' ? 'Withdrawn — not used' : 'Draft — not used until approved'}
+      </span>
+      {doc.mdaOwner && <span className="text-slate-500">Owner: {doc.mdaOwner}</span>}
+      {doc.verifiedAt && <span className="text-slate-500">Verified {new Date(doc.verifiedAt).toLocaleDateString()}</span>}
+      {reviewOverdue && <span className="font-bold text-red-700 dark:text-red-400">Review overdue</span>}
+      {status !== 'APPROVED' && (
+        <button className="underline font-semibold text-slate-700 dark:text-slate-200" disabled={busy}
+          onClick={() => call(`${API_URL}/api/knowledge/documents/${doc.id}/approve`, 'POST')}>Approve</button>
+      )}
+      {status === 'APPROVED' && (
+        <button className="underline text-slate-600 dark:text-slate-300" disabled={busy}
+          onClick={() => { const reason = window.prompt('Why withdraw this? It stops answering citizens at once.'); if (reason) call(`${API_URL}/api/knowledge/documents/${doc.id}/withdraw`, 'POST', { reason }); }}>Withdraw</button>
+      )}
+      <button className="underline text-slate-600 dark:text-slate-300" disabled={busy}
+        onClick={() => {
+          const sourceUrl = window.prompt('Official source link (leave as is to keep):', doc.sourceUrl ?? '');
+          if (sourceUrl === null) return;
+          const mdaOwner = window.prompt('MDA responsible for keeping it correct:', doc.mdaOwner ?? '') ?? undefined;
+          const reviewDueAt = window.prompt('Re-check by (YYYY-MM-DD):', doc.reviewDueAt ? String(doc.reviewDueAt).slice(0, 10) : '') ?? undefined;
+          call(`${API_URL}/api/knowledge/documents/${doc.id}/metadata`, 'PATCH', { sourceUrl, mdaOwner, reviewDueAt });
+        }}>Source &amp; review</button>
+      {err && <span role="alert" className="text-red-700 dark:text-red-400">{err}</span>}
+    </div>
+  );
+}
+
+/** Questions citizens asked that no approved knowledge answered (PRD §12). */
+function KnowledgeGaps() {
+  const [gaps, setGaps] = useState<any[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => {
+    apiFetch(`${API_URL}/api/knowledge/gaps`)
+      .then(async (r) => { if (!r.ok) throw new Error(`Could not load (${r.status})`); setGaps(await r.json()); })
+      .catch((e) => setErr(String(e?.message ?? e)));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const update = async (id: string, body: Record<string, unknown>) => {
+    const r = await apiFetch(`${API_URL}/api/knowledge/gaps/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) {
+      const out = await r.json().catch(() => ({}));
+      setErr(out?.message || `Failed (${r.status})`);
+      return;
+    }
+    load();
+  };
+
+  if (err) return <p role="alert" className="text-xs text-red-700 dark:text-red-400 mt-4">{err}</p>;
+  if (!gaps || gaps.length === 0) return null;
+  return (
+    <section className="mt-6 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20 p-4" aria-labelledby="gaps">
+      <h3 id="gaps" className="text-sm font-bold text-slate-900 dark:text-white">Questions the assistant could not answer ({gaps.length})</h3>
+      <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">Most-asked first. Publish an answer, then mark it resolved with where the answer now lives.</p>
+      <ul className="mt-3 divide-y divide-amber-100 dark:divide-amber-900/30">
+        {gaps.map((g) => (
+          <li key={g.id} className="py-2 flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm text-slate-800 dark:text-slate-100">“{g.sampleText}”</p>
+              <p className="text-[11px] text-slate-500">Asked {g.count} time{g.count === 1 ? '' : 's'} · last {new Date(g.lastAskedAt).toLocaleDateString()}{g.status === 'ASSIGNED' ? ' · assigned' : ''}</p>
+            </div>
+            <div className="flex gap-2 text-xs">
+              <button className="underline font-semibold" onClick={() => { const resolution = window.prompt('Where is the answer now? (document or FAQ title)'); if (resolution) update(g.id, { status: 'RESOLVED', resolution }); }}>Resolved</button>
+              <button className="underline text-slate-500" onClick={() => update(g.id, { status: 'DISMISSED' })}>Not a real gap</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

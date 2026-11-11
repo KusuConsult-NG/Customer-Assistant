@@ -18,7 +18,7 @@
  *    layout re-renders children on toggle, which re-reads it.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { authFetch } from '@/lib/api';
+import { authFetch, apiFetch, API_URL } from '@/lib/api';
 import {
   BarChart3, Loader2, AlertCircle, Table2, LineChart as LineChartIcon,
   AlertTriangle, ArrowUp, Minus, CheckCircle2,
@@ -151,6 +151,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="max-w-6xl space-y-6">
+      <ServiceStandards card={card} heading={heading} sub={sub} />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className={`text-2xl font-bold flex items-center gap-2 ${heading}`}>
@@ -457,5 +458,98 @@ function RankedBars({ theme, rows, color, colorOf }: {
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+/**
+ * Service standards (PRD §16): whether citizens are being SERVED — cases,
+ * callbacks kept, MDA response times, emergencies, unanswered questions.
+ * A figure the API could not read is shown as "—" and named, never as 0.
+ */
+function ServiceStandards({ card, heading, sub }: { card: string; heading: string; sub: string }) {
+  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'quarter'>('week');
+  const [r, setR] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setErr(null);
+    authFetch(`/api/analytics/service-standards?period=${period}`).then(setR).catch((e: any) => setErr(e?.message || 'Could not load'));
+  }, [period]);
+
+  const v = (x: unknown) => (x === null || x === undefined ? '—' : String(x));
+  const download = async () => {
+    const res = await apiFetch(`${API_URL}/api/analytics/service-standards.csv?period=${period}`);
+    if (!res.ok) { setErr(`Download failed (${res.status})`); return; }
+    const blob = new Blob([await res.text()], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `service-standards-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const tiles: Array<[string, unknown, boolean?]> = r
+    ? [
+        ['Cases opened', r.cases.opened],
+        ['Cases resolved', r.cases.resolved],
+        ['Cases overdue now', r.cases.overdueNow, (r.cases.overdueNow ?? 0) > 0],
+        ['Callbacks promised', r.callbacks.promised],
+        ['Callbacks kept', r.callbacks.keptPercent === null ? v(r.callbacks.kept) : `${r.callbacks.kept} (${r.callbacks.keptPercent}%)`],
+        ['Callbacks over 1h late', r.callbacks.overOneHourLateNow, (r.callbacks.overOneHourLateNow ?? 0) > 0],
+        ['Emergencies reported', r.emergencies.whatsapp === null || r.emergencies.voice === null ? null : r.emergencies.whatsapp + r.emergencies.voice],
+        ['Unanswered questions', r.knowledgeGaps.open],
+      ]
+    : [];
+
+  return (
+    <section className={`${card} p-5`} aria-labelledby="standards">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="standards" className={`text-lg font-bold ${heading}`}>Service standards</h2>
+          <p className={`text-xs mt-1 ${sub}`}>{r?.note ?? 'Whether citizens who contacted the service were served.'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select aria-label="Report period" value={period} onChange={(e) => setPeriod(e.target.value as any)}
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm">
+            <option value="day">Last day</option><option value="week">Last week</option><option value="month">Last month</option><option value="quarter">Last quarter</option>
+          </select>
+          <button onClick={download} className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">Download CSV</button>
+        </div>
+      </div>
+      {err && <p role="alert" className="text-xs text-red-700 dark:text-red-400 mt-3">{err}</p>}
+      {r?.unavailable?.length > 0 && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-3">Could not read: {r.unavailable.join(', ')}. Those figures show “—”, not zero.</p>
+      )}
+      {r && (
+        <>
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4 mt-4">
+            {tiles.map(([label, value, warn]) => (
+              <div key={label} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+                <p className={`text-[11px] font-semibold uppercase tracking-wide ${sub}`}>{label}</p>
+                <p className={`text-xl font-bold tabular-nums mt-1 ${warn ? 'text-red-700 dark:text-red-400' : heading}`}>{v(value)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4 md:grid-cols-3 mt-5 text-xs">
+            <div>
+              <h3 className={`font-bold mb-2 ${heading}`}>Open cases by category</h3>
+              <ul className="space-y-1">{Object.entries(r.cases.byCategory ?? {}).sort((a: any, b: any) => b[1] - a[1]).map(([k, n]: any) => <li key={k} className="flex justify-between"><span>{k.replace(/_/g, ' ')}</span><span className="tabular-nums">{n}</span></li>)}</ul>
+            </div>
+            <div>
+              <h3 className={`font-bold mb-2 ${heading}`}>Cases by LGA</h3>
+              <ul className="space-y-1">{Object.entries(r.cases.byLga ?? {}).sort((a: any, b: any) => b[1] - a[1]).map(([k, n]: any) => <li key={k} className="flex justify-between"><span>{k}</span><span className="tabular-nums">{n}</span></li>)}</ul>
+            </div>
+            <div>
+              <h3 className={`font-bold mb-2 ${heading}`}>MDA referrals</h3>
+              {(r.mdaReferrals ?? []).length === 0 ? <p className={sub}>None in this period.</p> : (
+                <ul className="space-y-1">{r.mdaReferrals.map((m: any) => (
+                  <li key={m.mda} className="flex justify-between gap-2"><span className="truncate">{m.mda}</span><span className="tabular-nums">{m.responded}/{m.sent} · {m.medianHoursToRespond === null ? '—' : `${m.medianHoursToRespond}h`}</span></li>
+                ))}</ul>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

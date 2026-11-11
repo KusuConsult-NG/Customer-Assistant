@@ -537,7 +537,9 @@ export class TwilioMediaStreamHandler {
       // failed redirect can never leave them holding a promise.
       if (result.shouldHandoff && !session.handoffAttempted) {
         session.handoffAttempted = true;
-        await this.handOffCallToHuman(session, twilioWs, text);
+        // An emergency's 112 guidance is spoken FIRST, then the callback
+        // promise; otherwise the handoff path would replace it entirely.
+        await this.handOffCallToHuman(session, twilioWs, text, result.emergencyKind ? result.replyText : undefined);
         return;
       }
 
@@ -596,12 +598,14 @@ export class TwilioMediaStreamHandler {
   private async handOffCallToHuman(
     session: CallSession,
     twilioWs: WebSocket,
-    lastUtterance: string
+    lastUtterance: string,
+    emergencyPreface?: string,
   ): Promise<void> {
     const result = await queueHandoffCallback({
       organizationId: session.organizationId,
       fromNumber: session.fromNumber,
       lastUtterance,
+      urgent: !!emergencyPreface,
       onError: (err) =>
         this.logger.error('voice_handoff_callback_failed', err as Error, { callSid: session.callSid }),
     });
@@ -618,7 +622,9 @@ export class TwilioMediaStreamHandler {
       ...(result.kind === 'queued' ? { reference: result.reference, existing: result.existing } : {}),
     });
 
-    const spoken = handoffCallbackPromise(result);
+    const spoken = emergencyPreface
+      ? `${emergencyPreface} ${handoffCallbackPromise(result)}`
+      : handoffCallbackPromise(result);
     session.conversationHistory.push({
       sender: MessageSender.AI,
       content: spoken,

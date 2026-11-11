@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -50,6 +50,29 @@ import { WhatsAppCloudClient } from '@ace/whatsapp-sdk';
 import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
 export * from './llm';
+import { detectEmergency, emergencyReply } from './emergency';
+import { answerBudgetQuestion, answerProjectQuestion, type StructuredAnswer } from './budget-answers';
+
+/**
+ * What a citizen is told when their report becomes a case. Promises exactly
+ * what is true: a reference, that it is recorded and will be assigned, and
+ * whether their name is withheld. It does NOT promise a fix or a date — the
+ * service deadline is an internal target, not something the State has
+ * committed to this citizen.
+ */
+function caseOpenedReply(r: { ticketNumber: string; category: string; anonymous: boolean; lga: string | null; sensitive: boolean }): string {
+  const what = r.category === 'other' ? 'your report' : `your ${r.category.replace(/_/g, ' ')} report`;
+  const parts = [
+    `I've recorded ${what}${r.lga ? ` in ${r.lga}` : ''}. Your case reference is *${r.ticketNumber}* — please keep it.`,
+    `An officer will review it and assign it to the responsible office. You can quote the reference to ask for an update.`,
+  ];
+  if (r.anonymous) parts.push(`As you asked, your name will not be shared with the office handling it.`);
+  if (r.sensitive) parts.push(`Because of what it concerns, it will be handled confidentially.`);
+  if (!r.lga) parts.push(`If you can, tell me the LGA and community where this is, so it reaches the right office.`);
+  return parts.join(' ');
+}
+export * from './budget-answers';
+export * from './emergency';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -455,7 +478,7 @@ export class QdrantRAGService {
 
     if (this.openAiKey) {
       try {
-        return await this.vectorSearch(collectionName, clampedQuery, topK);
+        return await this.onlyPublished(organizationId, await this.vectorSearch(collectionName, clampedQuery, topK));
       } catch (vectorErr: any) {
         console.error(JSON.stringify({
           level: 'warn',
@@ -468,7 +491,35 @@ export class QdrantRAGService {
     }
 
     // PostgreSQL full-text fallback
-    return this.postgresFullTextFallback(organizationId, clampedQuery, topK);
+    return this.onlyPublished(organizationId, await this.postgresFullTextFallback(organizationId, clampedQuery, topK));
+  }
+
+  /**
+   * Drop excerpts from documents that are not APPROVED (PRD §12). A draft, or a
+   * withdrawn document, must never answer a citizen — and Qdrant still holds
+   * its vectors until they are deleted, so the check is made here, on every
+   * search, against the database.
+   *
+   * Fails CLOSED: if publication status cannot be read, nothing is returned
+   * and the citizen gets the honest "I can't answer that" path rather than
+   * text nobody can vouch for. The `typeof` guard exists only for the
+   * orchestrator unit suites, which mock `@ace/database` without this model.
+   */
+  private async onlyPublished(organizationId: string, results: QdrantSearchResult[]): Promise<QdrantSearchResult[]> {
+    const ids = [...new Set(results.map((r) => r.documentId).filter(Boolean))];
+    if (!ids.length) return results;
+    const model = (prisma as any).knowledgeDocument;
+    if (typeof model?.findMany !== 'function') return results;
+    try {
+      const published = await model.findMany({
+        where: { id: { in: ids }, organizationId, publicationStatus: 'APPROVED' },
+        select: { id: true },
+      });
+      const ok = new Set(published.map((d: { id: string }) => d.id));
+      return results.filter((r) => !r.documentId || ok.has(r.documentId));
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1214,6 +1265,29 @@ export class ConversationOrchestrator {
       };
     }
 
+    // ── 1b. An emergency (PRD §11) ──────────────────────────────────────────
+    //
+    // Above the disclosure, language, escalation and flow branches: somebody
+    // reporting a fire must not be asked question four of a registration form
+    // or answered from the knowledge base. Below the handoff check only
+    // because a person already holds that thread and sees the message; the AI
+    // talking over them is the thing handoff exists to prevent.
+    //
+    // The reply gives 112 and the agency's own approved contacts, and says an
+    // officer has been ALERTED — never that responders were dispatched, which
+    // nothing here can do. See emergency.ts.
+    const emergency = detectEmergency(cleanInput);
+    if (emergency) {
+      return {
+        replyText: emergencyReply(lang, await this.getEmergencyContacts(context.organizationId)),
+        intentDetected: 'EMERGENCY',
+        confidenceScore: 1.0,
+        shouldHandoff: true,
+        handoffReason: HandoffReason.URGENT_ESCALATION,
+        emergencyKind: emergency,
+      };
+    }
+
     // ── 2. Explicit escalation request ───────────────────────────────────────
     // ── 2a. "Are you a bot?" ────────────────────────────────────────────────
     //
@@ -1459,13 +1533,43 @@ export class ConversationOrchestrator {
       }
     }
 
+    // ── 9b. Budget and project questions (PRD §03, §04) ─────────────────────
+    //
+    // Answered from the structured register, never from the model: the figure
+    // and its source are read off approved rows and the sentence is assembled
+    // from them. Above the ticket branch so "the road project in Bokkos was
+    // abandoned" is recorded against the project, not as a generic complaint.
+    // Returns null — and changes nothing — for an agency with no budget data.
+    try {
+      const structured: StructuredAnswer | null =
+        (await answerProjectQuestion(prisma, context.organizationId, cleanInput, (context as any).contactId ?? null, context.channel)) ??
+        (await answerBudgetQuestion(prisma, context.organizationId, cleanInput));
+      if (structured) {
+        return {
+          replyText: structured.replyText,
+          intentDetected: structured.intent,
+          confidenceScore: 1.0,
+          shouldHandoff: structured.needsHuman,
+          ...(structured.needsHuman ? { handoffReason: HandoffReason.COMPLEX_QUERY } : {}),
+          toolCallsExecuted: [{ toolName: 'budget_project_register', result: structured.toolResult ?? null }],
+        };
+      }
+    } catch (err) {
+      // PRD §20 "knowledge or API failure: do not guess". A figure question
+      // that could not be checked is told so, never sent to the model to answer.
+      return this.toolFailureReply('BUDGET_ANSWER', err, lang);
+    }
+
     // ── 10. Tool: Support Ticket ───────────────────────────────────────────────
     const TICKET_PHRASES = ['file a complaint', 'open ticket', 'issue with service', 'report problem', 'complaint', 'not working', 'broken'];
-    if (TICKET_PHRASES.some((p) => lowerInput.includes(p))) {
+    // A report of a damaged road, a water shortage, misconduct… becomes a
+    // classified CASE (PRD §10), not a generic ticket. `looksLikeComplaint`
+    // widens what is caught beyond the literal word "complaint".
+    if (TICKET_PHRASES.some((p) => lowerInput.includes(p)) || looksLikeComplaint(cleanInput)) {
       try {
         const ticketResult = await this.executeCreateTicket(context, cleanInput);
         return {
-          replyText: `I've opened support ticket *#${ticketResult.ticketNumber}* for your inquiry. Our team has been notified and will follow up with you shortly.`,
+          replyText: caseOpenedReply(ticketResult),
           intentDetected: 'CREATE_TICKET',
           confidenceScore: 0.95,
           shouldHandoff: false,
@@ -1604,6 +1708,12 @@ export class ConversationOrchestrator {
       // agency was asked about.
       .map((r) => (r.title ? `From "${r.title}":\n${r.content}` : r.content))
       .join('\n---\n');
+
+    // Nothing approved answered it: count it as a knowledge gap so an officer
+    // can find the answer and publish it (PRD §12). Not awaited for the reply.
+    if (!kbContextText) {
+      void recordKnowledgeGap(prisma as any, context.organizationId, cleanInput, String(context.channel));
+    }
 
     // ── 12. Persona & GPT-4o response synthesis ──────────────────────────────
     let org: any = null;
@@ -2902,6 +3012,12 @@ export class ConversationOrchestrator {
 
   private async executeCreateTicket(context: ConversationContext, subjectText: string) {
     const contact = await this.getOrCreateContact(context);
+    const cls = classifyComplaint(subjectText);
+    const anonymous = wantsAnonymity(subjectText);
+    const lga = PLATEAU_LGAS.slice().sort((a, b) => b.length - a.length)
+      .find((l) => subjectText.toLowerCase().includes(l.toLowerCase())) ?? null;
+    const dueAt = new Date(Date.now() + cls.serviceDays * 86_400_000);
+    const stage = cls.category === 'other' ? 'RECEIVED' : 'CLASSIFIED';
 
     // The number was `TCK-<last 6 digits of Date.now()>`: a million values,
     // repeating every 16.7 minutes, unique across the WHOLE table and therefore
@@ -2915,14 +3031,39 @@ export class ConversationOrchestrator {
           contactId: contact.id,
           ticketNumber,
           subject: subjectText.slice(0, 100),
+          // The citizen's own words, unedited (PRD §10 "original description").
           description: subjectText,
           status: 'OPEN',
-          priority: 'MEDIUM',
+          priority: cls.priority,
+          caseStage: stage,
+          category: cls.category,
+          isSensitive: cls.sensitive,
+          isAnonymous: anonymous,
+          lga,
+          dueAt,
+          channel: String(context.channel),
+          events: {
+            create: {
+              organizationId: context.organizationId,
+              type: 'CREATED',
+              toStage: stage,
+              actorLabel: 'system:assistant',
+              body: `Opened from a ${String(context.channel).toLowerCase()} conversation; classified as ${cls.category}.`,
+            },
+          },
         },
       })
     );
 
-    return { ticketId: ticket.id, ticketNumber: ticket.ticketNumber };
+    return {
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      category: cls.category,
+      sensitive: cls.sensitive,
+      anonymous,
+      lga,
+      dueAt: dueAt.toISOString(),
+    };
   }
 
   /**
@@ -3839,6 +3980,19 @@ export class ConversationOrchestrator {
   }
 
   /** Organization display name, with a neutral fallback if the row is unreachable. */
+  /** The agency's approved emergency contacts, or null. Never throws: an emergency reply must go out. */
+  private async getEmergencyContacts(organizationId: string): Promise<string | null> {
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { emergencyContacts: true },
+      });
+      return (org as any)?.emergencyContacts ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private async getOrganizationName(organizationId: string): Promise<string> {
     try {
       const org = await prisma.organization.findUnique({

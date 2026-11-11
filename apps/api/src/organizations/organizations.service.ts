@@ -321,6 +321,16 @@ export class OrganizationsService {
       name?: string;
       aiPersonaPrompt?: string;
       welcomeMessage?: string;
+      /** One per line, read verbatim after 112 in the emergency reply (PRD §11). */
+      emergencyContacts?: string | null;
+      /** Owners/admins must enrol in MFA before getting a session (PRD §17). */
+      requireAdminMfa?: boolean;
+      /** Sent once to each citizen before the first WhatsApp answer (PRD §18). */
+      privacyNotice?: string | null;
+      /** New knowledge starts as DRAFT and needs a second person's approval (PRD §12). */
+      requireKnowledgeApproval?: boolean;
+      /** Keep message text/transcripts this many days (PRD §18). Null keeps them. */
+      retentionDays?: number | null;
       phone?: string;
       logoUrl?: string;
       webhookUrl?: string;
@@ -417,12 +427,27 @@ export class OrganizationsService {
       }
     }
 
+    if (data.retentionDays !== undefined && data.retentionDays !== null) {
+      const d = Number(data.retentionDays);
+      // Under 30 days would erase citizens' words before most cases close.
+      if (!Number.isInteger(d) || d < 30 || d > 3650) {
+        throw new BadRequestException('Retention must be a whole number of days between 30 and 3650, or empty to keep everything.');
+      }
+      data.retentionDays = d;
+    }
     return prisma.organization.update({
       where: { id: organizationId },
       data: {
         ...(cleanName !== undefined && { name: cleanName }),
         ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
+        ...(typeof data.requireAdminMfa === 'boolean' && { requireAdminMfa: data.requireAdminMfa }),
+        ...(typeof data.requireKnowledgeApproval === 'boolean' && { requireKnowledgeApproval: data.requireKnowledgeApproval }),
+        ...(data.retentionDays !== undefined && { retentionDays: data.retentionDays }),
+        ...(data.privacyNotice !== undefined && { privacyNotice: (data.privacyNotice ?? '').trim().slice(0, 1500) || null }),
+        ...(data.emergencyContacts !== undefined && {
+          emergencyContacts: (data.emergencyContacts ?? '').trim().slice(0, 2000) || null,
+        }),
         ...(data.phone !== undefined && { phone: data.phone }),
         ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl }),
         ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
@@ -1945,6 +1970,7 @@ export class OrganizationsService {
         isActive: true,
         avatarUrl: true,
         createdAt: true,
+        mdaName: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -1969,6 +1995,29 @@ export class OrganizationsService {
       newValue: { role: updated.role, email: updated.email },
     });
 
+    return updated;
+  }
+
+  async setTeamMemberMda(organizationId: string, userId: string, mdaName: string | null, actor: Actor) {
+    const user = await prisma.user.findFirst({ where: { id: userId, organizationId } });
+    if (!user) throw new NotFoundException('User not found');
+    const clean = typeof mdaName === 'string' ? mdaName.trim().slice(0, 200) || null : null;
+    if (clean && (user.role === 'OWNER' || user.role === 'ADMIN')) {
+      // An administrator scoped to one MDA would lose the agency they administer.
+      throw new BadRequestException('An owner or administrator cannot be scoped to one MDA. Change their role first.');
+    }
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { mdaName: clean },
+      select: { id: true, email: true, fullName: true, role: true, isActive: true, mdaName: true },
+    });
+    await this.auditAgency(actor, organizationId, {
+      action: 'agency.member.mda_scope_changed',
+      targetType: 'User',
+      targetId: user.id,
+      previousValue: { mdaName: user.mdaName },
+      newValue: { mdaName: clean },
+    });
     return updated;
   }
 

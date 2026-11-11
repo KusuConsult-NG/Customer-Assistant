@@ -11,7 +11,48 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Two-step sign-in (PRD §17). The password step returns a short-lived
+  // step token, never a session, when the account has MFA on or the agency
+  // requires it.
+  const [step, setStep] = useState<'password' | 'code' | 'enrol' | 'recovery'>('password');
+  const [mfaToken, setMfaToken] = useState('');
+  const [code, setCode] = useState('');
+  const [enrolment, setEnrolment] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [pendingSession, setPendingSession] = useState<any>(null);
   const router = useRouter();
+
+  const startSession = (res: any) => {
+    const token = res.accessToken || res.token;
+    if (!token) {
+      setError('Login failed: Token not returned from server');
+      return;
+    }
+    localStorage.setItem('ace_token', token);
+    if (res.refreshToken) localStorage.setItem('ace_refresh_token', res.refreshToken);
+    if (res.user) localStorage.setItem('ace_user', JSON.stringify(res.user));
+    router.push('/');
+  };
+
+  const handleCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (step === 'code') {
+        startSession(await api.auth.mfaVerify(mfaToken, code.trim()));
+      } else {
+        const res = await api.auth.mfaEnrolEnable(mfaToken, code.trim());
+        setRecoveryCodes(res.recoveryCodes ?? []);
+        setPendingSession(res);
+        setStep('recovery');
+      }
+    } catch (err: any) {
+      setError(err.message || 'That code did not work.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,6 +60,17 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.auth.login(email, password);
+      if (res.mfaRequired) {
+        setMfaToken(res.mfaToken);
+        setStep('code');
+        return;
+      }
+      if (res.mfaSetupRequired) {
+        setMfaToken(res.mfaToken);
+        setEnrolment(await api.auth.mfaEnrolSetup(res.mfaToken));
+        setStep('enrol');
+        return;
+      }
       const token = res.accessToken || res.token;
       if (token) {
         localStorage.setItem('ace_token', token);
@@ -101,6 +153,73 @@ export default function LoginPage() {
             </div>
           )}
 
+          {step === 'recovery' && (
+            <div className="space-y-4">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Save your recovery codes</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Each code signs you in once if you lose your phone. They are shown only now — write them down or store them safely.
+              </p>
+              <ul className="grid grid-cols-2 gap-2 font-mono text-sm" aria-label="Recovery codes">
+                {recoveryCodes.map((c) => <li key={c} className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800">{c}</li>)}
+              </ul>
+              <button
+                type="button"
+                onClick={() => startSession(pendingSession)}
+                className="w-full py-3.5 px-4 rounded-xl text-white font-semibold bg-[#3b6102] hover:bg-[#2f4e02]"
+              >
+                I have saved them — continue
+              </button>
+            </div>
+          )}
+
+          {(step === 'code' || step === 'enrol') && (
+            <form onSubmit={handleCode} className="space-y-5">
+              {step === 'enrol' && enrolment && (
+                <div className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                  <p className="font-semibold text-slate-900 dark:text-white">Your agency requires two-step sign-in for administrators.</p>
+                  <p>
+                    In an authenticator app (Google Authenticator, Microsoft Authenticator, Authy), add an account with this
+                    setup key, then enter the 6-digit code it shows.
+                  </p>
+                  <p className="font-mono text-base break-all px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 select-all" aria-label="Setup key">
+                    {enrolment.secret}
+                  </p>
+                  <a href={enrolment.otpauthUrl} className="text-xs text-blue-700 dark:text-blue-400 underline">Open in an authenticator app on this device</a>
+                </div>
+              )}
+              {step === 'code' && (
+                <p className="text-sm text-slate-700 dark:text-slate-300">
+                  Enter the 6-digit code from your authenticator app, or one of your recovery codes.
+                </p>
+              )}
+              <div className="space-y-2">
+                <label htmlFor="mfa-code" className="text-sm font-medium text-slate-700 dark:text-slate-300">Code</label>
+                <input
+                  id="mfa-code"
+                  autoFocus
+                  required
+                  autoComplete="one-time-code"
+                  inputMode={step === 'enrol' ? 'numeric' : 'text'}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white tracking-widest font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  placeholder="123456"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 px-4 rounded-xl text-white font-semibold bg-[#3b6102] hover:bg-[#2f4e02] disabled:opacity-50"
+              >
+                {loading ? 'Checking…' : step === 'enrol' ? 'Turn on and sign in' : 'Verify and sign in'}
+              </button>
+              <button type="button" onClick={() => { setStep('password'); setCode(''); setMfaToken(''); }} className="w-full text-xs text-slate-500 underline">
+                Start again
+              </button>
+            </form>
+          )}
+
+          {step === 'password' && (
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Email address</label>
@@ -157,6 +276,7 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+          )}
 
           <div className="text-center text-sm text-slate-600 dark:text-slate-400">
             Citizen Care Portal &bull; Plateau State Government

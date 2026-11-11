@@ -201,6 +201,41 @@ export const api = {
       });
       return handleResponse(res);
     },
+    // ── Two-step sign-in (PRD §17) ──────────────────────────────────────────
+    mfaVerify: async (mfaToken: string, code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/verify`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mfaToken, code }),
+      });
+      return handleResponse(res);
+    },
+    mfaEnrolSetup: async (mfaToken: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/enrol/setup`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mfaToken }),
+      });
+      return handleResponse(res);
+    },
+    mfaEnrolEnable: async (mfaToken: string, code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/enrol/enable`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mfaToken, code }),
+      });
+      return handleResponse(res);
+    },
+    mfaStatus: async () => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/status`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    mfaSetup: async () => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/setup`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+    mfaEnable: async (code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/enable`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ code }) });
+      return handleResponse(res);
+    },
+    mfaDisable: async (code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/disable`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ code }) });
+      return handleResponse(res);
+    },
   },
 
   crm: {
@@ -312,6 +347,122 @@ export const api = {
    * where it sends them. Reading is open to any member; writing is OWNER/ADMIN
    * and the API enforces that, not this.
    */
+  cases: {
+    list: async (q: { stage?: string; category?: string; lga?: string; overdue?: boolean; mine?: boolean } = {}) => {
+      const p = new URLSearchParams();
+      if (q.stage) p.set('stage', q.stage);
+      if (q.category) p.set('category', q.category);
+      if (q.lga) p.set('lga', q.lga);
+      if (q.overdue) p.set('overdue', 'true');
+      if (q.mine) p.set('mine', 'true');
+      const res = await fetch(`${API_URL}/api/cases?${p}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    summary: async () => {
+      const res = await fetch(`${API_URL}/api/cases/summary`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    get: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    moveStage: async (id: string, body: { stage: string; outcome?: string; note?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/stage`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    assign: async (id: string, userId: string | null) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/assign`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ userId }) });
+      return handleResponse(res);
+    },
+    classify: async (id: string, body: { category?: string; lga?: string; ward?: string; community?: string; responsibleMda?: string; summary?: string; dueAt?: string; priority?: string; isSensitive?: boolean }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/classify`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    addNote: async (id: string, body: string) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/notes`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ body }) });
+      return handleResponse(res);
+    },
+    refer: async (id: string, body: { mdaName: string; liaisonName?: string; liaisonContact?: string; liaisonUserId?: string; note?: string; dueAt?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/refer`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    respondToReferral: async (referralId: string, body: { status: string; response?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/referrals/${referralId}/respond`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+    citizenNotified: async (id: string, body: { channel: string; note?: string }) => {
+      const res = await fetch(`${API_URL}/api/cases/${id}/citizen-notified`, { method: "POST", headers: getHeaders(), body: JSON.stringify(body) });
+      return handleResponse(res);
+    },
+  },
+  budget: {
+    documents: async () => {
+      const res = await fetch(`${API_URL}/api/budget/documents`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createDocument: async (body: {
+      title: string; documentType: string; fiscalYear: number; sourceUrl?: string;
+      reportingPeriod?: string; declaredTotal?: string; notes?: string;
+    }) => {
+      const res = await fetch(`${API_URL}/api/budget/documents`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    importLines: async (id: string, csv: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/lines`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify({ csv }),
+      });
+      return handleResponse(res);
+    },
+    validation: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/validation`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    approve: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/approve`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+    withdraw: async (id: string, reason: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/withdraw`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify({ reason }),
+      });
+      return handleResponse(res);
+    },
+    facets: async () => {
+      const res = await fetch(`${API_URL}/api/budget/facets`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    query: async (q: { year: number; stage: string; mda?: string; sector?: string }) => {
+      const params = new URLSearchParams({ year: String(q.year), stage: q.stage });
+      if (q.mda) params.set('mda', q.mda);
+      if (q.sector) params.set('sector', q.sector);
+      const res = await fetch(`${API_URL}/api/budget/query?${params}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    projects: async () => {
+      const res = await fetch(`${API_URL}/api/budget/projects`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    importProjects: async (csv: string) => {
+      const res = await fetch(`${API_URL}/api/budget/projects/import`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify({ csv }),
+      });
+      return handleResponse(res);
+    },
+    approveProject: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/projects/${id}/approve`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+    observations: async () => {
+      const res = await fetch(`${API_URL}/api/budget/observations`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    markReferred: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/observations/${id}/referred`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+  },
   catalogue: {
     lgas: async () => {
       const res = await fetch(`${API_URL}/api/catalogue/lgas`, { headers: getHeaders() });
@@ -408,6 +559,14 @@ export const api = {
         method: "PATCH",
         headers: getHeaders(),
         body: JSON.stringify({ role }),
+      });
+      return handleResponse(res);
+    },
+    setMemberMda: async (userId: string, mdaName: string | null) => {
+      const res = await fetch(`${API_URL}/api/organizations/members/${userId}/mda`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify({ mdaName }),
       });
       return handleResponse(res);
     },

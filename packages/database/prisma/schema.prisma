@@ -163,18 +163,18 @@ enum DocStatus {
 }
 
 model Organization {
-  id                   String       @id @default(uuid())
-  name                 String
-  slug                 String       @unique
-  industry             IndustryType @default(SME)
-  country              String       @default("Nigeria")
-  timezone             String       @default("Africa/Lagos")
+  id              String       @id @default(uuid())
+  name            String
+  slug            String       @unique
+  industry        IndustryType @default(SME)
+  country         String       @default("Nigeria")
+  timezone        String       @default("Africa/Lagos")
   /// The language the assistant opens in and falls back to: en, pcm (Nigerian
   /// Pidgin), ha (Hausa), ig (Igbo), yo (Yoruba). Per-customer preference on
   /// Contact.preferredLanguage wins once known.
-  defaultLanguage      String       @default("en")
-  phone                String?
-  logoUrl              String?
+  defaultLanguage String       @default("en")
+  phone           String?
+  logoUrl         String?
   // ─── When this agency serves citizens ────────────────────────────────────
   // Appointment search used to assume Mon–Fri 08:00–18:00 for everyone. A
   // teaching hospital is not closed at weekends and a registry does not open
@@ -184,9 +184,9 @@ model Organization {
   // Hours are whole hours in West Africa Time; serviceDays uses 0 = Sunday
   // through 6 = Saturday. The defaults reproduce the old constants exactly, so
   // every existing agency keeps the behaviour it had.
-  openingHour          Int          @default(8)
-  closingHour          Int          @default(18)
-  serviceDays          Int[]        @default([1, 2, 3, 4, 5])
+  openingHour     Int          @default(8)
+  closingHour     Int          @default(18)
+  serviceDays     Int[]        @default([1, 2, 3, 4, 5])
 
   /// When the platform may CONTACT a citizen it has undertaken to reach — a
   /// callback it is about to dial, a reminder it is about to send.
@@ -204,15 +204,20 @@ model Organization {
   /// other two hold.
   outboundOpeningHour  Int?
   outboundClosingHour  Int?
-  outboundDays         Int[]        @default([])
+  outboundDays         Int[]     @default([])
   /// Set by the operating ministry to take an agency out of service. Members of
   /// a suspended agency are refused at authentication, so the agency stops
   /// answering citizens immediately rather than at token expiry. Platform
   /// operators are exempt, or a suspension could not be lifted.
   suspendedAt          DateTime?
   suspendedReason      String?
-  aiPersonaPrompt      String?      @db.Text
-  welcomeMessage       String?      @db.Text
+  aiPersonaPrompt      String?   @db.Text
+  welcomeMessage       String?   @db.Text
+  /// Emergency contacts the agency has APPROVED, one per line ("Fire Service,
+  /// Jos: 0803…"). Read verbatim into the emergency reply after 112. Never
+  /// filled by the platform: a wrong number in an emergency script is worse
+  /// than none, and only the agency can vouch for its own (PRD §11).
+  emergencyContacts    String?   @db.Text
   // ─── Embedded widget appearance ────────────────────────────────────────────
   // The Widget Generator page offered colour and position controls that had
   // nowhere to persist to — the API returned hardcoded values, so an operator
@@ -220,34 +225,34 @@ model Organization {
   // on their site. These columns are where those controls now land.
   widgetPrimaryColor   String?
   widgetSecondaryColor String?
-  widgetPosition       String?      @default("bottom-right")
+  widgetPosition       String?   @default("bottom-right")
   // ─── Subscription & Billing ────────────────────────────────────────────────
   // Updated by BillingService when Paystack fires charge.success webhook.
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  users                User[]
-  apiKeys              ApiKey[]
-  telephonyConfigs     TelephonyConfig[]
-  hostedAgentConfig    HostedAgentConfig?
-  whatsAppConfigs      WhatsAppConfig[]
-  contacts             Contact[]
-  leads                Lead[]
-  deals                Deal[]
-  tickets              Ticket[]
-  conversations        Conversation[]
-  callLogs             CallLog[]
-  knowledgeDocuments   KnowledgeDocument[]
-  bookings             Booking[]
-  reservations         Reservation[]
-  faqEntries           FaqEntry[]
-  whatsAppTemplates    WhatsAppTemplate[]
-  broadcastCampaigns   BroadcastCampaign[]
-  workflows            Workflow[]
-  selfieRequests       SelfieRequest[]
-  auditLogs            AuditLog[]
-  serviceOptions       ServiceOption[]
-  serviceLocations     ServiceLocation[]
+  users              User[]
+  apiKeys            ApiKey[]
+  telephonyConfigs   TelephonyConfig[]
+  hostedAgentConfig  HostedAgentConfig?
+  whatsAppConfigs    WhatsAppConfig[]
+  contacts           Contact[]
+  leads              Lead[]
+  deals              Deal[]
+  tickets            Ticket[]
+  conversations      Conversation[]
+  callLogs           CallLog[]
+  knowledgeDocuments KnowledgeDocument[]
+  bookings           Booking[]
+  reservations       Reservation[]
+  faqEntries         FaqEntry[]
+  whatsAppTemplates  WhatsAppTemplate[]
+  broadcastCampaigns BroadcastCampaign[]
+  workflows          Workflow[]
+  selfieRequests     SelfieRequest[]
+  auditLogs          AuditLog[]
+  serviceOptions     ServiceOption[]
+  serviceLocations   ServiceLocation[]
 
   // White-label webhook settings
   webhookUrl           String?
@@ -260,13 +265,26 @@ model Organization {
   // directed real customers to send money to an account nobody controls.
   // When these are null the assistant says it will have a human follow up instead
   // of inventing details.
-  payoutBankName      String?
-  payoutAccountName   String?
-  payoutAccountNumber String?
-  payoutUssdCode      String?
+  payoutBankName           String?
+  payoutAccountName        String?
+  payoutAccountNumber      String?
+  payoutUssdCode           String?
+  callbackRequests         CallbackRequest[]
+  budgetDocuments          BudgetDocument[]
+  governmentProjects       GovernmentProject[]
+  /// Owners and admins must enrol in MFA before they get a session (PRD §17).
+  requireAdminMfa          Boolean             @default(false)
+  /// Sent once to each citizen on their first WhatsApp message, before the
+  /// first answer, and recorded as a ConsentRecord (PRD §18). Null = none.
+  privacyNotice            String?             @db.Text
+  /// New knowledge documents start as DRAFT and need a second person to
+  /// approve them before they answer citizens (PRD §12, §17).
+  requireKnowledgeApproval Boolean             @default(false)
+  /// Days to keep message text, call transcripts and recordings (PRD §18).
+  /// Null keeps them. Applied by `npm run retention:apply` (report-first).
+  retentionDays            Int?
 
   @@map("organizations")
-  callbackRequests CallbackRequest[]
 }
 
 model User {
@@ -313,14 +331,28 @@ model User {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
-  assignedConversations Conversation[] @relation("AssignedAgent")
-  assignedTickets       Ticket[]       @relation("AssignedTicketAgent")
+  assignedConversations Conversation[]    @relation("AssignedAgent")
+  assignedTickets       Ticket[]          @relation("AssignedTicketAgent")
   notes                 Note[]
+  assignedCallbacks     CallbackRequest[] @relation("AssignedCallback")
+  /// Set for an MDA liaison officer (PRD §15): they see only cases referred to
+  /// this MDA and cannot read any other institution's. Null for State staff.
+  mdaName               String?
+
+  // ── Multi-factor authentication (PRD §17) ──────────────────────────────────
+  /// TOTP secret, encrypted with ENCRYPTION_KEY like every provider credential.
+  mfaSecret         String?
+  /// Set during enrolment until the first code proves the app has it.
+  mfaPendingSecret  String?
+  mfaEnabledAt      DateTime?
+  /// The last time-step accepted, so a code cannot be replayed in its window.
+  mfaLastStep       Int?
+  /// SHA-256 of each unused recovery code. Spent codes are removed.
+  mfaRecoveryHashes String[]  @default([])
 
   @@index([organizationId])
   @@index([passwordResetToken])
   @@map("users")
-  assignedCallbacks CallbackRequest[] @relation("AssignedCallback")
 }
 
 model ApiKey {
@@ -338,7 +370,7 @@ model ApiKey {
 }
 
 model TelephonyConfig {
-  id               String                @id @default(uuid())
+  id             String                @id @default(uuid())
   /// ONE row per agency. The uniqueness is a SQL-ONLY index, not `@unique`
   /// here — see `20261104000000_one_channel_config_per_agency`.
   ///
@@ -357,13 +389,13 @@ model TelephonyConfig {
   /// duplicates exist — and carrying that flag in the deploy path would
   /// silence the warning for every future schema change. Same reason the
   /// `HostedAgentConfig.agentId` uniqueness is enforced in code.
-  organizationId   String
-  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  provider         TelephonyProviderType @default(TWILIO)
-  accountSid       String?
-  authToken        String?
-  apiKey           String?
-  apiSecret        String?
+  organizationId String
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       TelephonyProviderType @default(TWILIO)
+  accountSid     String?
+  authToken      String?
+  apiKey         String?
+  apiSecret      String?
 
   /// ── SIP trunk ─────────────────────────────────────────────────────────────
   ///
@@ -377,14 +409,14 @@ model TelephonyConfig {
   /// the same reason `accountSid` does. `sipPassword` is a credential and is
   /// encrypted; see TELEPHONY_SECRET_FIELDS.
   sipAddress       String?
-  sipTransport     String?               @default("udp")
+  sipTransport     String?  @default("udp")
   sipUsername      String?
   sipPassword      String?
   phoneNumber      String
   forwardingNumber String? // Nigerian local number forwarding target (e.g. MTN/Airtel/Glo/9mobile)
-  isDefault        Boolean               @default(true)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  isDefault        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   callLogs CallLog[]
 
@@ -418,22 +450,22 @@ model WhatsAppConfig {
 }
 
 model Contact {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  fullName       String
-  phoneNumber    String
-  email          String?
-  address        String?
-  city           String?
-  state          String?
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fullName          String
+  phoneNumber       String
+  email             String?
+  address           String?
+  city              String?
+  state             String?
   /// Learned from the customer's own messages (conservative detection) or set
   /// by staff. Null until known — never guessed from name or location.
   preferredLanguage String?
-  tags           String[]     @default([])
-  metadata       Json?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  tags              String[]     @default([])
+  metadata          Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   leads          Lead[]
   deals          Deal[]
@@ -445,6 +477,7 @@ model Contact {
   reservations   Reservation[]
   notes          Note[]
   selfieRequests SelfieRequest[]
+  consentRecords ConsentRecord[]
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
@@ -501,8 +534,39 @@ model Ticket {
   description    String         @db.Text
   status         TicketStatus   @default(OPEN)
   priority       TicketPriority @default(MEDIUM)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+
+  // ── Case management (PRD §10) ─────────────────────────────────────────────
+  // A ticket IS a case: the CRM screens keep working and every complaint has
+  // one record. `caseStage` is the PRD lifecycle; `status` is kept in step
+  // with it so older screens and filters read the same thing.
+  caseStage         CaseStage @default(RECEIVED)
+  /// roads, water, waste, electricity, health, education, security, misconduct, environment, project, service_delay, other
+  category          String?
+  lga               String?
+  ward              String?
+  community         String?
+  responsibleMda    String?
+  /// Officer's summary; `description` stays the citizen's own words, unedited.
+  summary           String?   @db.Text
+  /// The reporter asked not to be identified. Their contact is withheld from
+  /// everyone except OWNER/ADMIN, and from every MDA referral.
+  isAnonymous       Boolean   @default(false)
+  /// Security reports, misconduct allegations, personal records (PRD §18).
+  /// Visible to OWNER/ADMIN and the assigned officer only.
+  isSensitive       Boolean   @default(false)
+  /// The service deadline. Overdue = past this and not RESOLVED/CLOSED.
+  dueAt             DateTime?
+  /// What was actually done. Required to resolve: a referral is not a resolution.
+  resolutionOutcome String?   @db.Text
+  resolvedAt        DateTime?
+  citizenNotifiedAt DateTime?
+  channel           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events    CaseEvent[]
+  referrals MdaReferral[]
 
   @@index([organizationId, createdAt])
   @@index([contactId])
@@ -511,12 +575,12 @@ model Ticket {
 }
 
 enum CallbackStatus {
-  PENDING     // promised, not yet due
-  DUE         // due now, not yet claimed
+  PENDING // promised, not yet due
+  DUE // due now, not yet claimed
   IN_PROGRESS // claimed by one pod, dialling
-  COMPLETED   // the citizen was reached
-  FAILED      // every attempt used up, or the carrier refused
-  CANCELLED   // the citizen or an officer called it off
+  COMPLETED // the citizen was reached
+  FAILED // every attempt used up, or the carrier refused
+  CANCELLED // the citizen or an officer called it off
 }
 
 /// A promise to ring a citizen back, and the record of whether we kept it.
@@ -531,38 +595,41 @@ enum CallbackStatus {
 /// dials. Two pods polling the same minute would otherwise both ring the same
 /// citizen, which is worse than a missed callback.
 model CallbackRequest {
-  id             String         @id @default(uuid())
+  id             String       @id @default(uuid())
   organizationId String
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contactId      String
-  contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   /// Stored canonical (E.164). The citizen may give a different number from
   /// the one they are calling from, so this is not read off the contact.
-  phoneNumber    String
-  reason         String         @db.Text
+  phoneNumber  String
+  reason       String @db.Text
   /// What the citizen was told, verbatim, so an officer picking this up says
   /// the same thing back.
-  promisedText   String
+  promisedText String
 
-  dueAt          DateTime
-  status         CallbackStatus @default(PENDING)
-  attempts       Int            @default(0)
-  maxAttempts    Int            @default(3)
+  dueAt       DateTime
+  status      CallbackStatus @default(PENDING)
+  attempts    Int            @default(0)
+  maxAttempts Int            @default(3)
 
   /// Set when a dial is actually placed. Absent means nothing was dialled.
-  callSid        String?
-  lastAttemptAt  DateTime?
-  completedAt    DateTime?
+  callSid       String?
+  lastAttemptAt DateTime?
+  completedAt   DateTime?
   /// Why it failed, in the carrier's words, for the officer who has to explain.
-  failureReason  String?
+  failureReason String?
 
   assignedUserId String?
-  assignedUser   User?          @relation("AssignedCallback", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedUser   User?   @relation("AssignedCallback", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   conversationId String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  /// When the citizen said suits them ("after 4pm"), as they said it.
+  preferredTime  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  attemptLog     CallbackAttempt[]
 
   @@index([organizationId, status, dueAt])
   @@index([contactId])
@@ -603,10 +670,10 @@ model Conversation {
   /// Without it every message was answered in isolation — the assistant could
   /// not collect a form, confirm before writing, or accept a correction, which
   /// is most of what makes an assistant feel capable rather than mechanical.
-  flowState            Json?
+  flowState Json?
 
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   messages Message[]
 
@@ -643,7 +710,7 @@ model Message {
   ///
   /// Null for messages we originate ourselves, which have no provider id. Postgres
   /// permits many NULLs in a unique column, so that is safe.
-  externalId     String?       @unique
+  externalId String? @unique
 
   @@index([conversationId, sentAt])
   @@map("messages")
@@ -688,8 +755,29 @@ model KnowledgeDocument {
   status         DocStatus    @default(PENDING)
   chunkCount     Int          @default(0)
   errorMessage   String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+
+  // ── Knowledge governance (PRD §12) ────────────────────────────────────────
+  /// Only APPROVED documents answer citizens. Defaults to APPROVED so every
+  /// document that predates the workflow keeps answering; an agency that turns
+  /// on `requireKnowledgeApproval` gets DRAFT uploads that a second person
+  /// must approve.
+  publicationStatus PublicationStatus @default(APPROVED)
+  /// Where it came from: an official URL, gazette, circular reference.
+  sourceUrl         String?
+  /// The MDA responsible for keeping it correct.
+  mdaOwner          String?
+  publishedAt       DateTime?
+  effectiveDate     DateTime?
+  verifiedAt        DateTime?
+  /// When it must be re-checked. Past this, the dashboard lists it as stale.
+  reviewDueAt       DateTime?
+  version           Int               @default(1)
+  createdByUserId   String?
+  approvedByUserId  String?
+  approvedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   chunks DocumentChunk[]
 
@@ -1141,7 +1229,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-
 /// A service an agency registers citizens for.
 ///
 /// These used to be four health plans hardcoded in the orchestrator — Formal
@@ -1154,7 +1241,7 @@ model ServiceOption {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   /// What the citizen is registering for, as written on the record.
-  name String
+  name        String
   /// Shown when the options are read out. Optional.
   description String?
 
@@ -1217,4 +1304,319 @@ model ServiceLocation {
   @@unique([organizationId, lga, name])
   @@index([organizationId, lga, isActive])
   @@map("service_locations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget intelligence and the project register (PRD §03, §04)
+//
+// Every figure a citizen is told comes from a row here, and every row carries
+// where it came from: the document, its page/table/code, the fiscal year and
+// the STAGE. Stage is the whole point of the design — the PRD's own example is
+// that an approved allocation of ₦500m does not establish that ₦500m was spent.
+// Proposed, approved, revised, released and actually-spent amounts are
+// therefore separate rows that can never be summed together by accident.
+//
+// Amounts are Decimal(20,2), never Float: binary floating point cannot hold
+// ₦1,234,567.89 exactly, and "zero fabricated critical figures" includes ones
+// fabricated by rounding.
+//
+// Nothing is answered from a document until it is APPROVED, and the person who
+// approves it cannot be the person who uploaded it (PRD §17 "separate approval
+// and editing permissions").
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum BudgetDocumentType {
+  APPROPRIATION_LAW
+  PROPOSED_BUDGET
+  SUPPLEMENTARY_BUDGET
+  REVISED_APPROPRIATION
+  CITIZENS_BUDGET
+  IMPLEMENTATION_REPORT
+  AUDITED_STATEMENT
+  PROCUREMENT_PLAN
+  OTHER
+}
+
+enum BudgetStage {
+  PROPOSED
+  APPROVED
+  REVISED
+  RELEASED
+  ACTUAL_EXPENDITURE
+}
+
+enum PublicationStatus {
+  DRAFT
+  APPROVED
+  WITHDRAWN
+}
+
+model BudgetDocument {
+  id               String             @id @default(uuid())
+  organizationId   String
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title            String
+  documentType     BudgetDocumentType
+  fiscalYear       Int
+  /// Official URL the citizen can be sent (PRD §03 "share verified official links").
+  sourceUrl        String?
+  publishedAt      DateTime?
+  /// The period an implementation report covers, e.g. "Q2 2025". Null for a whole-year document.
+  reportingPeriod  String?
+  /// The total the document itself states. Used to VALIDATE the imported
+  /// lines: a sum that disagrees with the document is a failed import, not a
+  /// figure to read out.
+  declaredTotal    Decimal?           @db.Decimal(20, 2)
+  currency         String             @default("NGN")
+  status           PublicationStatus  @default(DRAFT)
+  version          Int                @default(1)
+  createdByUserId  String?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  /// When an officer last checked these figures against the source.
+  verifiedAt       DateTime?
+  notes            String?            @db.Text
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  lines BudgetLine[]
+
+  @@index([organizationId, fiscalYear, status])
+  @@map("budget_documents")
+}
+
+model BudgetLine {
+  id             String         @id @default(uuid())
+  organizationId String
+  documentId     String
+  document       BudgetDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fiscalYear     Int
+  stage          BudgetStage
+  mdaName        String
+  mdaCode        String?
+  sector         String?
+  programme      String?
+  /// Budget / classification code as printed.
+  lineCode       String?
+  description    String         @db.Text
+  /// PERSONNEL, OVERHEAD, CAPITAL, RECURRENT, REVENUE, OTHER — as published.
+  economicClass  String?
+  lga            String?
+  amount         Decimal        @db.Decimal(20, 2)
+  currency       String         @default("NGN")
+  /// "Q1 2025", "FY" — what period this amount covers.
+  period         String?
+  /// Where in the document: "p. 214", "Table 3", etc.
+  sourcePage     String?
+  sourceTable    String?
+  createdAt      DateTime       @default(now())
+
+  @@index([organizationId, fiscalYear, stage])
+  @@index([organizationId, mdaName])
+  @@index([documentId])
+  @@map("budget_lines")
+}
+
+enum ProjectStatus {
+  PLANNED
+  AWARDED
+  ONGOING
+  COMPLETED
+  SUSPENDED
+  ABANDONED
+  OTHER
+}
+
+model GovernmentProject {
+  id                  String            @id @default(uuid())
+  organizationId      String
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                String
+  responsibleMda      String
+  projectCode         String?
+  fiscalYear          Int?
+  lga                 String?
+  ward                String?
+  community           String?
+  approvedAllocation  Decimal?          @db.Decimal(20, 2)
+  contractValue       Decimal?          @db.Decimal(20, 2)
+  contractor          String?
+  reportedExpenditure Decimal?          @db.Decimal(20, 2)
+  status              ProjectStatus     @default(PLANNED)
+  /// Physical progress as PUBLISHED, 0–100. Separate from money on purpose (PRD §03).
+  physicalProgress    Int?
+  startDate           DateTime?
+  expectedCompletion  DateTime?
+  sourceUrl           String?
+  sourceDocument      String?
+  publicationStatus   PublicationStatus @default(DRAFT)
+  createdByUserId     String?
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  verifiedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  observations ProjectObservation[]
+
+  @@index([organizationId, lga])
+  @@index([organizationId, publicationStatus])
+  @@map("government_projects")
+}
+
+/// What a citizen SAYS about a project. Kept apart from the verified record
+/// (PRD §04 "record allegations or observations separately from verified
+/// project status") — an observation never changes `status`.
+model ProjectObservation {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  project        GovernmentProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contactId      String?
+  channel        String?
+  text           String            @db.Text
+  referred       Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+
+  @@index([projectId])
+  @@map("project_observations")
+}
+
+enum CaseStage {
+  RECEIVED
+  CLASSIFIED
+  ASSIGNED
+  UNDER_REVIEW
+  ACTION_IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+/// Every change to a case, append-only (PRD §10 "escalation history, internal
+/// notes … audit history"). Nothing updates or deletes these rows.
+model CaseEvent {
+  id             String     @id @default(uuid())
+  organizationId String
+  ticketId       String
+  ticket         Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  /// STAGE_CHANGED, ASSIGNED, NOTE, REFERRED, REFERRAL_RESPONSE, CITIZEN_NOTIFIED, ESCALATED, CREATED
+  type           String
+  fromStage      CaseStage?
+  toStage        CaseStage?
+  actorUserId    String?
+  /// "system:assistant" etc. when no person acted.
+  actorLabel     String?
+  body           String?    @db.Text
+  /// Internal notes are never shown or sent to the citizen.
+  internal       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("case_events")
+}
+
+enum ReferralStatus {
+  SENT
+  ACKNOWLEDGED
+  RESPONDED
+  DECLINED
+  OVERDUE
+}
+
+/// A case handed to an MDA liaison (PRD §09 "MDA referral", §15). Tracks
+/// acceptance and response; referral alone never resolves the case.
+model MdaReferral {
+  id             String         @id @default(uuid())
+  organizationId String
+  ticketId       String
+  ticket         Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  mdaName        String
+  liaisonName    String?
+  liaisonContact String?
+  /// Who it was assigned to inside the platform, when the liaison has an account.
+  liaisonUserId  String?
+  status         ReferralStatus @default(SENT)
+  note           String?        @db.Text
+  response       String?        @db.Text
+  dueAt          DateTime?
+  sentByUserId   String?
+  sentAt         DateTime       @default(now())
+  acknowledgedAt DateTime?
+  respondedAt    DateTime?
+
+  @@index([organizationId, mdaName, status])
+  @@index([ticketId])
+  @@map("mda_referrals")
+}
+
+/// One try at keeping a callback promise (PRD §09 "log attempts and
+/// outcomes"). Written for every attempt an officer makes — from the browser
+/// softphone or from their own phone — so "we tried three times" is a list of
+/// three rows with times and outcomes, not a counter.
+model CallbackAttempt {
+  id             String          @id @default(uuid())
+  organizationId String
+  callbackId     String
+  callback       CallbackRequest @relation(fields: [callbackId], references: [id], onDelete: Cascade)
+  /// REACHED, NO_ANSWER, BUSY, WRONG_NUMBER, VOICEMAIL, FAILED
+  outcome        String
+  /// BROWSER, OWN_PHONE, CARRIER
+  via            String
+  userId         String?
+  note           String?         @db.Text
+  createdAt      DateTime        @default(now())
+
+  @@index([callbackId, createdAt])
+  @@map("callback_attempts")
+}
+
+/// What a citizen was told, or agreed to, and when (PRD §18 "consent records").
+/// Append-only: a withdrawal is a NEW row with granted=false, never an edit,
+/// so the record shows what was in force at any moment.
+model ConsentRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  /// PRIVACY_NOTICE, FOLLOW_UP_MESSAGES, CALLBACK, DATA_PROCESSING
+  purpose        String
+  granted        Boolean
+  channel        String
+  /// The exact text shown or said, so the record proves what was consented to.
+  evidence       String   @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([contactId, purpose, createdAt])
+  @@map("consent_records")
+}
+
+enum KnowledgeGapStatus {
+  OPEN
+  ASSIGNED
+  RESOLVED
+  DISMISSED
+}
+
+/// A question the assistant could not answer from approved knowledge
+/// (PRD §12 "identify unanswered questions, assign verification tasks").
+/// One row per distinct question per agency; `count` is how often it was asked.
+model KnowledgeGap {
+  id             String             @id @default(uuid())
+  organizationId String
+  /// Normalised question, the de-duplication key.
+  questionKey    String
+  /// The latest wording a citizen actually used.
+  sampleText     String             @db.Text
+  count          Int                @default(1)
+  channel        String?
+  status         KnowledgeGapStatus @default(OPEN)
+  assignedUserId String?
+  resolution     String?            @db.Text
+  firstAskedAt   DateTime           @default(now())
+  lastAskedAt    DateTime           @default(now())
+
+  @@unique([organizationId, questionKey])
+  @@index([organizationId, status, count])
+  @@map("knowledge_gaps")
 }

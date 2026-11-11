@@ -225,7 +225,7 @@ async function downloadDocument(storageUrl: string): Promise<Buffer> {
  * fail with an actionable message and the document is marked FAILED, so the operator
  * can see that it is not searchable instead of believing that it is.
  */
-async function extractText(buffer: Buffer, mimeType: string, fileName: string): Promise<string> {
+export async function extractText(buffer: Buffer, mimeType: string, fileName: string): Promise<string> {
   switch (mimeType) {
     case 'text/plain':
     case 'text/markdown':

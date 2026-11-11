@@ -1,4 +1,5 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Query, Req, UseGuards } from '@nestjs/common';
+import { ServiceStandardsService, type ReportPeriod } from './service-standards.service';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsInsightsService } from './analytics-insights.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,7 +11,23 @@ export class AnalyticsController {
   constructor(
     private analyticsService: AnalyticsService,
     private insights: AnalyticsInsightsService,
+    private standards: ServiceStandardsService,
   ) {}
+
+  /** Service standards (PRD §16): cases, callbacks, MDA response, emergencies, gaps. */
+  @Get('service-standards')
+  async serviceStandards(@Req() req: { user: AuthUser }, @Query('period') period: string = 'week') {
+    const p = (['day', 'week', 'month', 'quarter'].includes(period) ? period : 'week') as ReportPeriod;
+    return this.standards.report(req.user.organizationId, p);
+  }
+
+  /** The same, as CSV, for the daily/weekly/monthly/quarterly report pack. */
+  @Get('service-standards.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async serviceStandardsCsv(@Req() req: { user: AuthUser }, @Query('period') period: string = 'week') {
+    const p = (['day', 'week', 'month', 'quarter'].includes(period) ? period : 'week') as ReportPeriod;
+    return this.standards.toCsv(await this.standards.report(req.user.organizationId, p));
+  }
 
   @Get('dashboard')
   async getDashboardMetrics(

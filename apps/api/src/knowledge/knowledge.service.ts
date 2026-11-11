@@ -115,6 +115,20 @@ function getDocumentQueue(): Queue {
 
 // ─── Service ───────────────────────────────────────────────────────────────────
 
+/**
+ * How a new document starts life (PRD §12). An agency that requires approval
+ * gets DRAFTs — not read to citizens until a second person approves. Every
+ * other agency keeps today's behaviour: published on upload.
+ */
+async function initialPublication(organizationId: string, createdByUserId?: string) {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { requireKnowledgeApproval: true } });
+  return {
+    publicationStatus: (org?.requireKnowledgeApproval ? 'DRAFT' : 'APPROVED') as 'DRAFT' | 'APPROVED',
+    createdByUserId: createdByUserId ?? null,
+    ...(org?.requireKnowledgeApproval ? {} : { approvedAt: new Date() }),
+  };
+}
+
 @Injectable()
 export class KnowledgeService {
   private ragService = new QdrantRAGService();
@@ -169,6 +183,8 @@ export class KnowledgeService {
       fileSize: number;
       mimeType: string;
       fileBuffer: Buffer;
+      /** Who uploaded it, so a different person can be required to approve it. */
+      createdByUserId?: string;
     }
   ) {
     const timer = log.startTimer();
@@ -214,6 +230,8 @@ export class KnowledgeService {
         mimeType: data.mimeType,
         storageUrl: storagePath, // Supabase Storage path (not a public URL)
         status: 'PENDING',
+        // PRD §12: a draft when the agency requires a second person's approval.
+        ...(await initialPublication(organizationId, data.createdByUserId)),
       },
     });
 
@@ -659,7 +677,7 @@ export class KnowledgeService {
   async crawlAndIndexWebsite(
     organizationId: string,
     websiteUrl: string,
-    opts: { maxPages?: number } = {}
+    opts: { maxPages?: number; createdByUserId?: string } = {}
   ) {
     let cleanUrl = websiteUrl.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
@@ -717,7 +735,7 @@ export class KnowledgeService {
       try {
         const page =
           pageUrl === first.finalUrl ? first : await this.fetchFollowingRedirects(pageUrl);
-        const result = await this.indexOnePage(organizationId, page);
+        const result = await this.indexOnePage(organizationId, page, opts.createdByUserId);
         indexed.push({ url: page.finalUrl, documentId: result.documentId, chunks: result.chunks });
       } catch (err: any) {
         // One unreadable page must not lose the rest of the site, and the
@@ -760,8 +778,10 @@ export class KnowledgeService {
   /** One fetched resource → one knowledge document. HTML or PDF or text. */
   private async indexOnePage(
     organizationId: string,
-    page: { finalUrl: string; contentType: string; buffer: Buffer }
+    page: { finalUrl: string; contentType: string; buffer: Buffer },
+    createdByUserId?: string,
   ): Promise<{ documentId: string; chunks: number }> {
+    const opts = { createdByUserId };
     const isPdf = /application\/pdf/i.test(page.contentType);
     const isText = /text\/html|text\/plain|application\/xhtml|text\/markdown/i.test(page.contentType);
     if (!isPdf && !isText) {
@@ -795,6 +815,7 @@ export class KnowledgeService {
         fileSize: page.buffer.byteLength,
         mimeType: 'application/pdf',
         fileBuffer: page.buffer,
+        createdByUserId,
       });
       // The worker finishes asynchronously, so chunks are not known yet. The
       // caller is told how many pages were taken, not a count invented here.
@@ -832,6 +853,10 @@ export class KnowledgeService {
         mimeType: 'text/html',
         storageUrl: page.finalUrl,
         status: 'PROCESSING',
+        // The page itself is the source, fetched from the official site just now.
+        sourceUrl: page.finalUrl,
+        verifiedAt: new Date(),
+        ...(await initialPublication(organizationId, opts.createdByUserId)),
       },
     });
 
