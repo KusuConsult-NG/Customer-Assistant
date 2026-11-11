@@ -329,6 +329,8 @@ export class OrganizationsService {
       privacyNotice?: string | null;
       /** New knowledge starts as DRAFT and needs a second person's approval (PRD §12). */
       requireKnowledgeApproval?: boolean;
+      /** Keep message text/transcripts this many days (PRD §18). Null keeps them. */
+      retentionDays?: number | null;
       phone?: string;
       logoUrl?: string;
       webhookUrl?: string;
@@ -425,6 +427,14 @@ export class OrganizationsService {
       }
     }
 
+    if (data.retentionDays !== undefined && data.retentionDays !== null) {
+      const d = Number(data.retentionDays);
+      // Under 30 days would erase citizens' words before most cases close.
+      if (!Number.isInteger(d) || d < 30 || d > 3650) {
+        throw new BadRequestException('Retention must be a whole number of days between 30 and 3650, or empty to keep everything.');
+      }
+      data.retentionDays = d;
+    }
     return prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -433,6 +443,7 @@ export class OrganizationsService {
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
         ...(typeof data.requireAdminMfa === 'boolean' && { requireAdminMfa: data.requireAdminMfa }),
         ...(typeof data.requireKnowledgeApproval === 'boolean' && { requireKnowledgeApproval: data.requireKnowledgeApproval }),
+        ...(data.retentionDays !== undefined && { retentionDays: data.retentionDays }),
         ...(data.privacyNotice !== undefined && { privacyNotice: (data.privacyNotice ?? '').trim().slice(0, 1500) || null }),
         ...(data.emergencyContacts !== undefined && {
           emergencyContacts: (data.emergencyContacts ?? '').trim().slice(0, 2000) || null,

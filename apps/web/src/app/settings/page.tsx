@@ -346,6 +346,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [emergencyContacts, setEmergencyContacts] = useState(org?.emergencyContacts || '');
   const [privacyNotice, setPrivacyNotice] = useState(org?.privacyNotice || '');
   const [requireKnowledgeApproval, setRequireKnowledgeApproval] = useState(!!org?.requireKnowledgeApproval);
+  const [retentionDays, setRetentionDays] = useState<string>(org?.retentionDays ? String(org.retentionDays) : '');
   // Payment collection details. The AI assistant reads these out verbatim when a
   // customer asks how to pay; with them blank it says it will fetch a colleague
   // rather than guessing. (It used to recite a hardcoded account number instead.)
@@ -391,7 +392,9 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
-          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, privacyNotice, requireKnowledgeApproval, defaultLanguage,
+          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, privacyNotice, requireKnowledgeApproval,
+          retentionDays: retentionDays.trim() === '' ? null : Number(retentionDays),
+          defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
           openingHour, closingHour, serviceDays,
           outboundOpeningHour: outboundOpening,
@@ -467,6 +470,14 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
             Sent once to each citizen before their first answer on WhatsApp, and recorded with the date and exact wording.
             Have your legal or data-protection officer approve the wording; the platform does not write it for you.
+          </p>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="retention-days">Keep message text and call transcripts for (days)</label>
+          <input id="retention-days" inputMode="numeric" className={inputCls} value={retentionDays} onChange={e => setRetentionDays(e.target.value)} placeholder="Empty keeps everything" />
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+            Older text, transcripts and recordings are removed when an operator runs <code>npm run retention:apply</code>.
+            The fact that a conversation or call happened is kept. Agree the period with your data-protection officer. Minimum 30 days.
           </p>
         </div>
         <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">

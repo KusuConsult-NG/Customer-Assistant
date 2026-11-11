@@ -64,6 +64,7 @@ export class OrganizationsController {
       requireAdminMfa?: boolean;
       privacyNotice?: string | null;
       requireKnowledgeApproval?: boolean;
+      retentionDays?: number | null;
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;

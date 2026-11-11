@@ -280,6 +280,9 @@ model Organization {
   /// New knowledge documents start as DRAFT and need a second person to
   /// approve them before they answer citizens (PRD §12, §17).
   requireKnowledgeApproval Boolean             @default(false)
+  /// Days to keep message text, call transcripts and recordings (PRD §18).
+  /// Null keeps them. Applied by `npm run retention:apply` (report-first).
+  retentionDays            Int?
 
   @@map("organizations")
 }
