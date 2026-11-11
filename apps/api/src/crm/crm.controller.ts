@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { CrmService } from './crm.service';
+import { DataRightsService } from './data-rights.service';
 import { CrmTimelineService } from './crm-timeline.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -27,8 +28,27 @@ import { actorFrom } from '../common/actor';
 export class CrmController {
   constructor(
     private crmService: CrmService,
-    private crmTimelineService: CrmTimelineService
+    private crmTimelineService: CrmTimelineService,
+    private dataRights: DataRightsService,
   ) {}
+
+  /** Everything held about one citizen, for an access request (PRD §18). */
+  @Roles('OWNER', 'ADMIN')
+  @Get('contacts/:id/export')
+  async exportContact(@Req() req: { user: AuthUser; ip?: string }, @Param('id') id: string) {
+    return this.dataRights.export(req.user.organizationId, id, actorFrom(req));
+  }
+
+  /** Erase a citizen's personal content at their request. Irreversible; audited. */
+  @Roles('OWNER', 'ADMIN')
+  @Post('contacts/:id/erase')
+  async eraseContact(
+    @Req() req: { user: AuthUser; ip?: string },
+    @Param('id') id: string,
+    @Body() body: { confirm?: string; reason?: string },
+  ) {
+    return this.dataRights.erase(req.user.organizationId, id, actorFrom(req), body);
+  }
 
   @Get('contacts')
   async getContacts(@Req() req: { user: AuthUser }, @Query('page') page?: string, @Query('limit') limit?: string) {

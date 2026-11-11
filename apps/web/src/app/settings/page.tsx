@@ -344,6 +344,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [aiPersonaPrompt, setAiPersonaPrompt] = useState(org?.aiPersonaPrompt || '');
   const [welcomeMessage, setWelcomeMessage] = useState(org?.welcomeMessage || '');
   const [emergencyContacts, setEmergencyContacts] = useState(org?.emergencyContacts || '');
+  const [privacyNotice, setPrivacyNotice] = useState(org?.privacyNotice || '');
   // Payment collection details. The AI assistant reads these out verbatim when a
   // customer asks how to pay; with them blank it says it will fetch a colleague
   // rather than guessing. (It used to recite a hardcoded account number instead.)
@@ -389,7 +390,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
-          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, defaultLanguage,
+          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, privacyNotice, defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
           openingHour, closingHour, serviceDays,
           outboundOpeningHour: outboundOpening,
@@ -451,6 +452,21 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             placeholder="Hello! 👋 Welcome to [Company]. I'm your AI assistant. How can I help you today?"
           />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">First message sent to every new customer conversation.</p>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="privacy-notice">Privacy notice</label>
+          <textarea
+            id="privacy-notice"
+            rows={3}
+            value={privacyNotice}
+            onChange={e => setPrivacyNotice(e.target.value)}
+            className={inputCls}
+            placeholder="This service is run by the Plateau State Government. We keep what you tell us to answer you and follow up. Reply PRIVACY to learn more."
+          />
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+            Sent once to each citizen before their first answer on WhatsApp, and recorded with the date and exact wording.
+            Have your legal or data-protection officer approve the wording; the platform does not write it for you.
+          </p>
         </div>
         <div>
           <label className={labelCls} htmlFor="emergency-contacts">Emergency contacts</label>

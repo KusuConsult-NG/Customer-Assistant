@@ -627,8 +627,20 @@ export class WhatsappService {
         this.webhookDispatcher.appointmentBooked(organizationId, bookedId).catch(() => {});
       }
 
+      // ── 8b. The privacy notice, once per citizen (PRD §18) ──────────────────
+      //
+      // Prepended to the FIRST reply this citizen ever gets, and recorded with
+      // the exact text, so "was this person told how their data is used?" has
+      // an answer with a date on it. Never sent twice: the ConsentRecord is
+      // the memory, not the conversation, so a new thread does not repeat it.
+      let replyText = orchResult.replyText;
+      if (replyText) {
+        replyText = await this.withPrivacyNotice(organizationId, contact.id, replyText);
+      }
+
       // ── 9. Send AI reply via WhatsApp Cloud API ───────────────────────────────
-      if (orchResult.replyText) {
+      if (replyText) {
+        orchResult.replyText = replyText;
         const aiMessage = await prisma.message.create({
           data: {
             conversationId: conversation.id,
@@ -698,6 +710,31 @@ export class WhatsappService {
         detail: String(err?.message ?? err).slice(0, 200),
       });
       log.error('whatsapp_webhook_unhandled_error', err, { correlationId });
+    }
+  }
+
+  /**
+   * The reply, with the agency's privacy notice in front of it if this
+   * citizen has never been shown it. Never throws: a notice that could not be
+   * recorded is not sent either, so the record and the conversation agree.
+   */
+  private async withPrivacyNotice(organizationId: string, contactId: string, reply: string): Promise<string> {
+    try {
+      const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { privacyNotice: true } });
+      const notice = org?.privacyNotice?.trim();
+      if (!notice) return reply;
+      const shown = await prisma.consentRecord.findFirst({
+        where: { organizationId, contactId, purpose: 'PRIVACY_NOTICE' },
+        select: { id: true },
+      });
+      if (shown) return reply;
+      await prisma.consentRecord.create({
+        data: { organizationId, contactId, purpose: 'PRIVACY_NOTICE', granted: true, channel: 'WHATSAPP', evidence: notice },
+      });
+      return `${notice}\n\n${reply}`;
+    } catch (err: any) {
+      log.warn('whatsapp_privacy_notice_not_recorded', { organizationId, error: String(err?.message ?? err) });
+      return reply;
     }
   }
 

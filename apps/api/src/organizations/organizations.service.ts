@@ -325,6 +325,8 @@ export class OrganizationsService {
       emergencyContacts?: string | null;
       /** Owners/admins must enrol in MFA before getting a session (PRD §17). */
       requireAdminMfa?: boolean;
+      /** Sent once to each citizen before the first WhatsApp answer (PRD §18). */
+      privacyNotice?: string | null;
       phone?: string;
       logoUrl?: string;
       webhookUrl?: string;
@@ -428,6 +430,7 @@ export class OrganizationsService {
         ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
         ...(typeof data.requireAdminMfa === 'boolean' && { requireAdminMfa: data.requireAdminMfa }),
+        ...(data.privacyNotice !== undefined && { privacyNotice: (data.privacyNotice ?? '').trim().slice(0, 1500) || null }),
         ...(data.emergencyContacts !== undefined && {
           emergencyContacts: (data.emergencyContacts ?? '').trim().slice(0, 2000) || null,
         }),

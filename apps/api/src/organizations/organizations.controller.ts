@@ -62,6 +62,7 @@ export class OrganizationsController {
       name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string;
       emergencyContacts?: string | null;
       requireAdminMfa?: boolean;
+      privacyNotice?: string | null;
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;

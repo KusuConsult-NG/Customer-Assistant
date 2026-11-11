@@ -274,6 +274,9 @@ model Organization {
   governmentProjects  GovernmentProject[]
   /// Owners and admins must enrol in MFA before they get a session (PRD §17).
   requireAdminMfa     Boolean             @default(false)
+  /// Sent once to each citizen on their first WhatsApp message, before the
+  /// first answer, and recorded as a ConsentRecord (PRD §18). Null = none.
+  privacyNotice       String?             @db.Text
 
   @@map("organizations")
 }
@@ -468,6 +471,7 @@ model Contact {
   reservations   Reservation[]
   notes          Note[]
   selfieRequests SelfieRequest[]
+  consentRecords ConsentRecord[]
 
   @@unique([organizationId, phoneNumber])
   @@index([organizationId, createdAt])
@@ -1538,4 +1542,24 @@ model CallbackAttempt {
 
   @@index([callbackId, createdAt])
   @@map("callback_attempts")
+}
+
+/// What a citizen was told, or agreed to, and when (PRD §18 "consent records").
+/// Append-only: a withdrawal is a NEW row with granted=false, never an edit,
+/// so the record shows what was in force at any moment.
+model ConsentRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  /// PRIVACY_NOTICE, FOLLOW_UP_MESSAGES, CALLBACK, DATA_PROCESSING
+  purpose        String
+  granted        Boolean
+  channel        String
+  /// The exact text shown or said, so the record proves what was consented to.
+  evidence       String   @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([contactId, purpose, createdAt])
+  @@map("consent_records")
 }

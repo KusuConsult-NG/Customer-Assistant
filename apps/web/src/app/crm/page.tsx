@@ -1343,6 +1343,73 @@ function PreferredLanguageControl({ contact }: { contact: any }) {
  * thing an officer picking up a call needs. It had no screen at all, so the
  * endpoint existed and the officer did not have the answer.
  */
+/**
+ * A citizen's data rights (PRD §18): export everything held, or erase the
+ * personal content. Both are OWNER/ADMIN at the API; this bar surfaces the
+ * refusal for anyone else rather than hiding it.
+ */
+function DataRightsBar({ contact, onDone }: { contact: any; onDone: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const exportData = async () => {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts/${contact.id}/export`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.message || `Export failed (${res.status})`);
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `citizen-data-${contact.id}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success('Exported. The export is recorded in the activity log.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Export failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const erase = async () => {
+    const reason = window.prompt(
+      `Erase ${contact.fullName}'s personal data? Their name, number, messages, transcripts and case details are removed for good; ` +
+        'the fact that conversations and cases existed is kept.\n\nRecord the reason (e.g. "Citizen request by phone, 11 Nov"):',
+    );
+    if (!reason) return;
+    const confirm = window.prompt('Type ERASE to confirm. This cannot be undone.');
+    if (confirm !== 'ERASE') { toast.error('Not erased.'); return; }
+    setBusy(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/crm/contacts/${contact.id}/erase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm, reason }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.message || `Erase failed (${res.status})`);
+      toast.success(`Erased: ${body.messages} message(s), ${body.calls} call(s), ${body.cases} case(s).`);
+      onDone();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erase failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="px-6 py-2 border-b border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 justify-end">
+      <button onClick={exportData} disabled={busy} className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50">
+        Export data
+      </button>
+      <button onClick={erase} disabled={busy} className="px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-500/30 text-xs font-bold text-red-700 dark:text-red-400 disabled:opacity-50">
+        Erase personal data
+      </button>
+    </div>
+  );
+}
+
 function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; onClose: () => void; onOpenTicket: () => void }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'activity' | 'onboarding'>('overview');
 
@@ -1399,6 +1466,8 @@ function ContactDetailModal({ contact, onClose, onOpenTicket }: { contact: any; 
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        <DataRightsBar contact={contact} onDone={onClose} />
 
         {/* Hero Card Banner */}
         <div className="p-6 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent border-b border-slate-200 dark:border-slate-800 space-y-4">
