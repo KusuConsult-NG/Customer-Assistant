@@ -51,8 +51,21 @@ type Callback = {
   maxAttempts: number;
   failureReason: string | null;
   overdue: boolean;
+  escalated?: boolean;
+  preferredTime?: string | null;
+  assignedUser?: { id: string; fullName: string } | null;
+  attemptLog?: Array<{ id: string; outcome: string; via: string; note: string | null; createdAt: string }>;
   contact?: { id: string; fullName: string; phoneNumber: string } | null;
 };
+
+const ATTEMPT_OUTCOMES: Array<[string, string]> = [
+  ['REACHED', 'Reached them'],
+  ['NO_ANSWER', 'No answer'],
+  ['BUSY', 'Line busy'],
+  ['VOICEMAIL', 'Voicemail'],
+  ['WRONG_NUMBER', 'Wrong number'],
+  ['FAILED', 'Call would not connect'],
+];
 
 const STATUS_STYLES: Record<Callback['status'], string> = {
   PENDING: 'bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700',
@@ -128,6 +141,78 @@ export default function CallbacksPage() {
   // to a route by its LAST LITERAL segment, so `/${id}/${path}` makes three
   // real endpoints invisible to it — and an endpoint no screen appears to
   // reach is exactly what that test exists to catch.
+  /**
+   * An officer rang from their own phone. What the server decided — reached,
+   * retry at a time, or given up — is what is reported back, not the request.
+   */
+  const logAttempt = async (r: Callback, outcome: string) => {
+    if (!outcome) return;
+    const note = outcome === 'REACHED' ? '' : (window.prompt('Anything to note about this attempt? (optional)') ?? '');
+    setBusy(r.id);
+    try {
+      const res = await apiFetch(`${API_URL}/api/callbacks/${r.id}/attempt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome, ...(note ? { note } : {}) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body?.message || `Could not record the attempt (${res.status})`);
+        return;
+      }
+      if (body.status === 'COMPLETED') toast.success(`Recorded as reached — ${body.reference}`);
+      else if (body.status === 'FAILED') toast.error(`No attempts left — ${body.reference} is now NOT REACHED for a supervisor`);
+      else toast.success(`Attempt ${body.attempts} recorded — next try ${new Date(body.dueAt).toLocaleString('en-NG')}`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not record the attempt');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Send a JSON PATCH and report what the server said. */
+  const patchJson = async (r: Callback, path: 'assign' | 'reschedule', body: Record<string, unknown>, done: string) => {
+    setBusy(r.id);
+    try {
+      // Written out per path: a route checker reads the last segment literally.
+      const url = path === 'assign' ? `${API_URL}/api/callbacks/${r.id}/assign` : `${API_URL}/api/callbacks/${r.id}/reschedule`;
+      const res = await apiFetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(out?.message || `Failed (${res.status})`);
+        return;
+      }
+      toast.success(`${done} — ${out.reference ?? r.reference}`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const assignToMe = (r: Callback) => {
+    let me: { id?: string; userId?: string } = {};
+    try { me = JSON.parse(localStorage.getItem('ace_user') || '{}'); } catch { /* the API decides */ }
+    const userId = me.id ?? me.userId;
+    if (!userId) { toast.error('Sign in again to take this callback.'); return; }
+    patchJson(r, 'assign', { userId }, 'Assigned to you');
+  };
+
+  const reschedule = (r: Callback) => {
+    const when = window.prompt('New time agreed with the citizen (e.g. 2026-11-12 16:00)');
+    if (!when) return;
+    const parsed = new Date(when.replace(' ', 'T'));
+    if (Number.isNaN(parsed.getTime())) { toast.error('That is not a date and time.'); return; }
+    const preferredTime = window.prompt('What did they say suits them? (optional, e.g. "after 4pm")') ?? '';
+    patchJson(r, 'reschedule', { dueAt: parsed.toISOString(), ...(preferredTime ? { preferredTime } : {}) }, 'Rescheduled');
+  };
+
   const act = async (id: string, url: string, method: 'POST' | 'PATCH', label: string, path: string) => {
     setBusy(id);
     try {
@@ -259,6 +344,11 @@ export default function CallbacksPage() {
                     <div className={`text-[11px] ${r.overdue ? 'text-red-700 dark:text-red-400 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
                       {r.overdue ? 'Overdue — ' : ''}due {new Date(r.dueAt).toLocaleString('en-NG')}
                     </div>
+                    {r.escalated && (
+                      <div className="text-[10px] font-bold text-red-700 dark:text-red-400 mt-1">ESCALATED — over an hour late</div>
+                    )}
+                    {r.preferredTime && <div className="text-[11px] text-slate-500 mt-1">Prefers: {r.preferredTime}</div>}
+                    {r.assignedUser && <div className="text-[11px] text-slate-500 mt-1">With {r.assignedUser.fullName}</div>}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border ${STATUS_STYLES[r.status]}`}>{STATUS_LABELS[r.status] ?? r.status}</span>
@@ -271,6 +361,16 @@ export default function CallbacksPage() {
                         call needs the reason, not "it failed". */}
                     {r.failureReason && (
                       <div className="text-[10px] text-red-700 dark:text-red-400 mt-1 max-w-[220px]">{r.failureReason}</div>
+                    )}
+                    {(r.attemptLog?.length ?? 0) > 0 && (
+                      <ol className="mt-1 space-y-0.5" aria-label={`Attempts for ${r.reference}`}>
+                        {r.attemptLog!.map((a) => (
+                          <li key={a.id} className="text-[10px] text-slate-500 dark:text-slate-400">
+                            {new Date(a.createdAt).toLocaleString('en-NG')} · {a.outcome.toLowerCase().replace(/_/g, ' ')}
+                            {a.via === 'OWN_PHONE' ? ' (own phone)' : a.via === 'BROWSER' ? ' (browser)' : ''}
+                          </li>
+                        ))}
+                      </ol>
                     )}
                   </td>
                   <td className="px-5 py-4">
@@ -306,6 +406,32 @@ export default function CallbacksPage() {
                         >
                           <Phone className="w-3.5 h-3.5" /> Call now
                         </button>
+                      )}
+                      {['PENDING', 'DUE', 'IN_PROGRESS'].includes(r.status) && (
+                        <select
+                          aria-label={`Record an attempt from your own phone for ${r.reference}`}
+                          disabled={busy === r.id}
+                          value=""
+                          onChange={(e) => logAttempt(r, e.target.value)}
+                          className="px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200"
+                        >
+                          <option value="">I rang from my phone…</option>
+                          {ATTEMPT_OUTCOMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      )}
+                      {['PENDING', 'DUE', 'FAILED'].includes(r.status) && (
+                        <>
+                          {!r.assignedUser && (
+                            <button disabled={busy === r.id} onClick={() => assignToMe(r)}
+                              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 disabled:opacity-50">
+                              Take it
+                            </button>
+                          )}
+                          <button disabled={busy === r.id} onClick={() => reschedule(r)}
+                            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 disabled:opacity-50">
+                            Reschedule
+                          </button>
+                        </>
                       )}
                       {!['COMPLETED', 'CANCELLED'].includes(r.status) && (
                         <>

@@ -602,8 +602,11 @@ model CallbackRequest {
   assignedUser   User?   @relation("AssignedCallback", fields: [assignedUserId], references: [id], onDelete: SetNull)
 
   conversationId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  /// When the citizen said suits them ("after 4pm"), as they said it.
+  preferredTime  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  attemptLog     CallbackAttempt[]
 
   @@index([organizationId, status, dueAt])
   @@index([contactId])
@@ -1501,4 +1504,25 @@ model MdaReferral {
   @@index([organizationId, mdaName, status])
   @@index([ticketId])
   @@map("mda_referrals")
+}
+
+/// One try at keeping a callback promise (PRD §09 "log attempts and
+/// outcomes"). Written for every attempt an officer makes — from the browser
+/// softphone or from their own phone — so "we tried three times" is a list of
+/// three rows with times and outcomes, not a counter.
+model CallbackAttempt {
+  id             String          @id @default(uuid())
+  organizationId String
+  callbackId     String
+  callback       CallbackRequest @relation(fields: [callbackId], references: [id], onDelete: Cascade)
+  /// REACHED, NO_ANSWER, BUSY, WRONG_NUMBER, VOICEMAIL, FAILED
+  outcome        String
+  /// BROWSER, OWN_PHONE, CARRIER
+  via            String
+  userId         String?
+  note           String?         @db.Text
+  createdAt      DateTime        @default(now())
+
+  @@index([callbackId, createdAt])
+  @@map("callback_attempts")
 }

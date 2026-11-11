@@ -633,6 +633,15 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
             (reached ? `answered, ${durationSeconds}s.` : `not reached — ${reason}`),
         },
       });
+      await tx.callbackAttempt.create({
+        data: {
+          organizationId: input.organizationId,
+          callbackId: row.id,
+          outcome: reached ? 'REACHED' : input.outcome === 'failed' ? 'FAILED' : 'NO_ANSWER',
+          via: 'BROWSER',
+          note: reached ? `Answered, ${durationSeconds}s.` : reason,
+        },
+      });
       return callLog;
     });
     if (!settled) return null;
