@@ -265,18 +265,21 @@ model Organization {
   // directed real customers to send money to an account nobody controls.
   // When these are null the assistant says it will have a human follow up instead
   // of inventing details.
-  payoutBankName      String?
-  payoutAccountName   String?
-  payoutAccountNumber String?
-  payoutUssdCode      String?
-  callbackRequests    CallbackRequest[]
-  budgetDocuments     BudgetDocument[]
-  governmentProjects  GovernmentProject[]
+  payoutBankName           String?
+  payoutAccountName        String?
+  payoutAccountNumber      String?
+  payoutUssdCode           String?
+  callbackRequests         CallbackRequest[]
+  budgetDocuments          BudgetDocument[]
+  governmentProjects       GovernmentProject[]
   /// Owners and admins must enrol in MFA before they get a session (PRD §17).
-  requireAdminMfa     Boolean             @default(false)
+  requireAdminMfa          Boolean             @default(false)
   /// Sent once to each citizen on their first WhatsApp message, before the
   /// first answer, and recorded as a ConsentRecord (PRD §18). Null = none.
-  privacyNotice       String?             @db.Text
+  privacyNotice            String?             @db.Text
+  /// New knowledge documents start as DRAFT and need a second person to
+  /// approve them before they answer citizens (PRD §12, §17).
+  requireKnowledgeApproval Boolean             @default(false)
 
   @@map("organizations")
 }
@@ -749,8 +752,29 @@ model KnowledgeDocument {
   status         DocStatus    @default(PENDING)
   chunkCount     Int          @default(0)
   errorMessage   String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+
+  // ── Knowledge governance (PRD §12) ────────────────────────────────────────
+  /// Only APPROVED documents answer citizens. Defaults to APPROVED so every
+  /// document that predates the workflow keeps answering; an agency that turns
+  /// on `requireKnowledgeApproval` gets DRAFT uploads that a second person
+  /// must approve.
+  publicationStatus PublicationStatus @default(APPROVED)
+  /// Where it came from: an official URL, gazette, circular reference.
+  sourceUrl         String?
+  /// The MDA responsible for keeping it correct.
+  mdaOwner          String?
+  publishedAt       DateTime?
+  effectiveDate     DateTime?
+  verifiedAt        DateTime?
+  /// When it must be re-checked. Past this, the dashboard lists it as stale.
+  reviewDueAt       DateTime?
+  version           Int               @default(1)
+  createdByUserId   String?
+  approvedByUserId  String?
+  approvedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   chunks DocumentChunk[]
 
@@ -1562,4 +1586,34 @@ model ConsentRecord {
 
   @@index([contactId, purpose, createdAt])
   @@map("consent_records")
+}
+
+enum KnowledgeGapStatus {
+  OPEN
+  ASSIGNED
+  RESOLVED
+  DISMISSED
+}
+
+/// A question the assistant could not answer from approved knowledge
+/// (PRD §12 "identify unanswered questions, assign verification tasks").
+/// One row per distinct question per agency; `count` is how often it was asked.
+model KnowledgeGap {
+  id             String             @id @default(uuid())
+  organizationId String
+  /// Normalised question, the de-duplication key.
+  questionKey    String
+  /// The latest wording a citizen actually used.
+  sampleText     String             @db.Text
+  count          Int                @default(1)
+  channel        String?
+  status         KnowledgeGapStatus @default(OPEN)
+  assignedUserId String?
+  resolution     String?            @db.Text
+  firstAskedAt   DateTime           @default(now())
+  lastAskedAt    DateTime           @default(now())
+
+  @@unique([organizationId, questionKey])
+  @@index([organizationId, status, count])
+  @@map("knowledge_gaps")
 }

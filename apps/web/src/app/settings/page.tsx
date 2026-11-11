@@ -345,6 +345,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
   const [welcomeMessage, setWelcomeMessage] = useState(org?.welcomeMessage || '');
   const [emergencyContacts, setEmergencyContacts] = useState(org?.emergencyContacts || '');
   const [privacyNotice, setPrivacyNotice] = useState(org?.privacyNotice || '');
+  const [requireKnowledgeApproval, setRequireKnowledgeApproval] = useState(!!org?.requireKnowledgeApproval);
   // Payment collection details. The AI assistant reads these out verbatim when a
   // customer asks how to pay; with them blank it says it will fetch a colleague
   // rather than guessing. (It used to recite a hardcoded account number instead.)
@@ -390,7 +391,7 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
         body: JSON.stringify({
-          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, privacyNotice, defaultLanguage,
+          name, aiPersonaPrompt, welcomeMessage, emergencyContacts, privacyNotice, requireKnowledgeApproval, defaultLanguage,
           payoutBankName, payoutAccountName, payoutAccountNumber, payoutUssdCode,
           openingHour, closingHour, serviceDays,
           outboundOpeningHour: outboundOpening,
@@ -468,6 +469,13 @@ function GeneralTab({ org, authHeaders, showToast, onSaved }: any) {
             Have your legal or data-protection officer approve the wording; the platform does not write it for you.
           </p>
         </div>
+        <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+          <input type="checkbox" className="mt-1" checked={requireKnowledgeApproval} onChange={e => setRequireKnowledgeApproval(e.target.checked)} />
+          <span>
+            <strong>New knowledge needs a second person&apos;s approval.</strong> Uploaded documents and crawled pages start as drafts.
+            The assistant does not use a draft until another administrator approves it in Knowledge.
+          </span>
+        </label>
         <div>
           <label className={labelCls} htmlFor="emergency-contacts">Emergency contacts</label>
           <textarea

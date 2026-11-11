@@ -327,6 +327,8 @@ export class OrganizationsService {
       requireAdminMfa?: boolean;
       /** Sent once to each citizen before the first WhatsApp answer (PRD §18). */
       privacyNotice?: string | null;
+      /** New knowledge starts as DRAFT and needs a second person's approval (PRD §12). */
+      requireKnowledgeApproval?: boolean;
       phone?: string;
       logoUrl?: string;
       webhookUrl?: string;
@@ -430,6 +432,7 @@ export class OrganizationsService {
         ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
         ...(typeof data.requireAdminMfa === 'boolean' && { requireAdminMfa: data.requireAdminMfa }),
+        ...(typeof data.requireKnowledgeApproval === 'boolean' && { requireKnowledgeApproval: data.requireKnowledgeApproval }),
         ...(data.privacyNotice !== undefined && { privacyNotice: (data.privacyNotice ?? '').trim().slice(0, 1500) || null }),
         ...(data.emergencyContacts !== undefined && {
           emergencyContacts: (data.emergencyContacts ?? '').trim().slice(0, 2000) || null,

@@ -107,3 +107,4 @@ export * from './outbound-hours';
 export * from './audit';
 export * from './budget';
 export * from './cases';
+export * from './knowledge-gaps';

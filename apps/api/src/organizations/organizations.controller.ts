@@ -63,6 +63,7 @@ export class OrganizationsController {
       emergencyContacts?: string | null;
       requireAdminMfa?: boolean;
       privacyNotice?: string | null;
+      requireKnowledgeApproval?: boolean;
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;

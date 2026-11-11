@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -478,7 +478,7 @@ export class QdrantRAGService {
 
     if (this.openAiKey) {
       try {
-        return await this.vectorSearch(collectionName, clampedQuery, topK);
+        return await this.onlyPublished(organizationId, await this.vectorSearch(collectionName, clampedQuery, topK));
       } catch (vectorErr: any) {
         console.error(JSON.stringify({
           level: 'warn',
@@ -491,7 +491,35 @@ export class QdrantRAGService {
     }
 
     // PostgreSQL full-text fallback
-    return this.postgresFullTextFallback(organizationId, clampedQuery, topK);
+    return this.onlyPublished(organizationId, await this.postgresFullTextFallback(organizationId, clampedQuery, topK));
+  }
+
+  /**
+   * Drop excerpts from documents that are not APPROVED (PRD §12). A draft, or a
+   * withdrawn document, must never answer a citizen — and Qdrant still holds
+   * its vectors until they are deleted, so the check is made here, on every
+   * search, against the database.
+   *
+   * Fails CLOSED: if publication status cannot be read, nothing is returned
+   * and the citizen gets the honest "I can't answer that" path rather than
+   * text nobody can vouch for. The `typeof` guard exists only for the
+   * orchestrator unit suites, which mock `@ace/database` without this model.
+   */
+  private async onlyPublished(organizationId: string, results: QdrantSearchResult[]): Promise<QdrantSearchResult[]> {
+    const ids = [...new Set(results.map((r) => r.documentId).filter(Boolean))];
+    if (!ids.length) return results;
+    const model = (prisma as any).knowledgeDocument;
+    if (typeof model?.findMany !== 'function') return results;
+    try {
+      const published = await model.findMany({
+        where: { id: { in: ids }, organizationId, publicationStatus: 'APPROVED' },
+        select: { id: true },
+      });
+      const ok = new Set(published.map((d: { id: string }) => d.id));
+      return results.filter((r) => !r.documentId || ok.has(r.documentId));
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1680,6 +1708,12 @@ export class ConversationOrchestrator {
       // agency was asked about.
       .map((r) => (r.title ? `From "${r.title}":\n${r.content}` : r.content))
       .join('\n---\n');
+
+    // Nothing approved answered it: count it as a knowledge gap so an officer
+    // can find the answer and publish it (PRD §12). Not awaited for the reply.
+    if (!kbContextText) {
+      void recordKnowledgeGap(prisma as any, context.organizationId, cleanInput, String(context.channel));
+    }
 
     // ── 12. Persona & GPT-4o response synthesis ──────────────────────────────
     let org: any = null;
