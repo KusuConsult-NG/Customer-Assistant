@@ -150,6 +150,7 @@ export default function SettingsPage() {
       ) : (
         <>
           {tab === 'profile' && <ProfileTab authHeaders={authHeaders} showToast={showToast} />}
+          {tab === 'profile' && <TwoStepPanel org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'general' && <GeneralTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
           {tab === 'whatsapp' && <WhatsAppTab org={org} authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
@@ -164,6 +165,93 @@ export default function SettingsPage() {
 }
 
 // ─────────────────────── Profile Tab ───────────────────────
+/**
+ * Two-step sign-in (PRD §17). Enrol with an authenticator app; recovery codes
+ * are shown once. Owners/admins can require it for every administrator of the
+ * agency — enforced at sign-in by the API, not by this screen.
+ */
+function TwoStepPanel({ org, authHeaders, showToast, onSaved }: any) {
+  const [status, setStatus] = useState<{ enabled: boolean; recoveryCodesLeft: number; requiredByAgency: boolean } | null>(null);
+  const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [codes, setCodes] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  let role = '';
+  try { role = JSON.parse(localStorage.getItem('ace_user') || '{}').role ?? ''; } catch { /* the API decides */ }
+  const isAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  const load = useCallback(() => {
+    api.auth.mfaStatus().then(setStatus).catch(() => setStatus(null));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try { await fn(); } catch (e: any) { showToast(e?.message || 'That did not work', 'error'); } finally { setBusy(false); }
+  };
+
+  return (
+    <section className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-4" aria-labelledby="two-step">
+      <h2 id="two-step" className="text-base font-bold text-slate-900 dark:text-white">Two-step sign-in</h2>
+      {!status ? (
+        <p className="text-xs text-slate-500">Could not load the current setting.</p>
+      ) : status.enabled ? (
+        <>
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            On. Signing in needs a code from your authenticator app. {status.recoveryCodesLeft} recovery code(s) left.
+          </p>
+          {!status.requiredByAgency && (
+            <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); run(async () => { await api.auth.mfaDisable(code.trim()); setCode(''); showToast('Two-step sign-in turned off. Sign in again.'); load(); }); }}>
+              <input className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm font-mono" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Current code" aria-label="Current code to turn off" required />
+              <button className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold" disabled={busy}>Turn off</button>
+            </form>
+          )}
+        </>
+      ) : setup ? (
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); run(async () => { const r = await api.auth.mfaEnable(code.trim()); setCodes(r.recoveryCodes); setSetup(null); setCode(''); load(); }); }}>
+          <p className="text-sm text-slate-700 dark:text-slate-300">Add an account in your authenticator app with this key, then enter the code it shows.</p>
+          <p className="font-mono text-sm break-all px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 select-all" aria-label="Setup key">{setup.secret}</p>
+          <a href={setup.otpauthUrl} className="text-xs text-blue-700 dark:text-blue-400 underline">Open in an authenticator app on this device</a>
+          <div className="flex gap-2">
+            <input className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm font-mono" value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" aria-label="Code from the app" required />
+            <button className="px-3 py-2 rounded-xl text-white bg-[#3b6102] text-xs font-bold" disabled={busy}>Turn on</button>
+          </div>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-slate-700 dark:text-slate-300">Off. Anyone with your password can sign in as you.</p>
+          <button className="px-3 py-2 rounded-xl text-white bg-[#3b6102] text-xs font-bold" disabled={busy} onClick={() => run(async () => setSetup(await api.auth.mfaSetup()))}>Set up</button>
+        </div>
+      )}
+      {codes.length > 0 && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 p-4">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Save these recovery codes now. They will not be shown again.</p>
+          <ul className="grid grid-cols-2 gap-2 mt-2 font-mono text-sm">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
+        </div>
+      )}
+      {isAdmin && org && (
+        <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={!!org.requireAdminMfa}
+            disabled={busy}
+            onChange={(e) => run(async () => {
+              const res = await apiFetch(`${API_URL}/api/organizations/settings`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ requireAdminMfa: e.target.checked }) });
+              if (!res.ok) throw new Error(`Could not save (${res.status})`);
+              showToast(e.target.checked ? 'Administrators must now use two-step sign-in.' : 'No longer required.');
+              onSaved?.();
+            })}
+          />
+          <span>
+            <strong>Require two-step sign-in for owners and administrators.</strong> Anyone without it is asked to set it up the next time they sign in, before they get in.
+          </span>
+        </label>
+      )}
+    </section>
+  );
+}
+
 function ProfileTab({ authHeaders, showToast }: any) {
   const [user, setUser] = useState<{ fullName?: string; email?: string; role?: string } | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');

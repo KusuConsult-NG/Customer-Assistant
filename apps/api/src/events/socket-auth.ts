@@ -42,6 +42,7 @@ export async function authenticateSocket(
   }
 
   if (!payload?.userId || !payload?.organizationId) return null;
+  if (payload.purpose) return null; // an MFA step token, not a session
 
   // Same checks as JwtStrategy: a revoked or deactivated account must not be able to
   // hold a long-lived socket open past the point its HTTP access was cut off.

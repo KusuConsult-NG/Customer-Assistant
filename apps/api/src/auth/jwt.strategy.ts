@@ -48,6 +48,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!payload?.userId || !payload?.organizationId) {
       throw new UnauthorizedException('Invalid JWT payload');
     }
+    // An MFA step token proves a password, not a second factor. It must never
+    // open an API session, whatever else it carries.
+    if (payload.purpose) throw new UnauthorizedException('Finish signing in first.');
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },

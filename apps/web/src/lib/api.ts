@@ -201,6 +201,41 @@ export const api = {
       });
       return handleResponse(res);
     },
+    // ── Two-step sign-in (PRD §17) ──────────────────────────────────────────
+    mfaVerify: async (mfaToken: string, code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/verify`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mfaToken, code }),
+      });
+      return handleResponse(res);
+    },
+    mfaEnrolSetup: async (mfaToken: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/enrol/setup`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mfaToken }),
+      });
+      return handleResponse(res);
+    },
+    mfaEnrolEnable: async (mfaToken: string, code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/enrol/enable`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mfaToken, code }),
+      });
+      return handleResponse(res);
+    },
+    mfaStatus: async () => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/status`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    mfaSetup: async () => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/setup`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+    mfaEnable: async (code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/enable`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ code }) });
+      return handleResponse(res);
+    },
+    mfaDisable: async (code: string) => {
+      const res = await fetch(`${API_URL}/api/auth/mfa/disable`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ code }) });
+      return handleResponse(res);
+    },
   },
 
   crm: {

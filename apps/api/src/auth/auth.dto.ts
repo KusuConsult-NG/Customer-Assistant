@@ -133,3 +133,26 @@ export class UpdateMemberStatusDto {
   @IsBoolean()
   isActive!: boolean;
 }
+
+export class MfaLoginDto {
+  @IsString()
+  @MinLength(10)
+  mfaToken!: string;
+
+  /** A 6-digit authenticator code, or a recovery code (xxxxx-xxxxx). */
+  @IsString()
+  @MinLength(6)
+  code!: string;
+}
+
+export class MfaStepTokenDto {
+  @IsString()
+  @MinLength(10)
+  mfaToken!: string;
+}
+
+export class MfaCodeDto {
+  @IsString()
+  @MinLength(6)
+  code!: string;
+}

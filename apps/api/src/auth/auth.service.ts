@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { MfaService } from './mfa.service';
 import { prisma } from '@ace/database';
 import { generateUniqueSlug } from '../common/slug';
 import { UserRole, IndustryType } from '@ace/shared-types';
@@ -24,7 +25,7 @@ function sha256(value: string): string {
 
 @Injectable()
 export class AuthService {
-  constructor(private jwtService: JwtService) {}
+  constructor(private jwtService: JwtService, private mfa: MfaService) {}
 
   /**
    * Sends an email via Resend, returning whether it actually went out.
@@ -184,6 +185,46 @@ export class AuthService {
       });
     }
 
+    // ── Second factor (PRD §17) ─────────────────────────────────────────────
+    // The password was right; a session still needs the code. What comes back
+    // is a ten-minute step token that cannot be used as an access token.
+    if (user.mfaEnabledAt) {
+      return { mfaRequired: true, mfaToken: this.mfa.stepToken(user, 'mfa-login') };
+    }
+    if ((user.role === 'OWNER' || user.role === 'ADMIN') && user.organization.requireAdminMfa) {
+      return { mfaSetupRequired: true, mfaToken: this.mfa.stepToken(user, 'mfa-setup') };
+    }
+
+    return this.sessionFor(user);
+  }
+
+  /** Exchange a step token and a code for a session. A wrong code counts toward lockout. */
+  async completeMfaLogin(mfaToken: string, code: string) {
+    const user = await this.mfa.userFromStepToken(mfaToken, 'mfa-login');
+    if (!(await this.mfa.consumeCode(user, code))) {
+      await this.registerFailedLogin(user.id, user.failedLoginAttempts);
+      throw new UnauthorizedException('That code is not right, or has already been used.');
+    }
+    if (user.failedLoginAttempts > 0) {
+      await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+    }
+    return this.sessionFor(user);
+  }
+
+  /** Enrolment for an administrator their agency requires to have MFA, before any session exists. */
+  async beginRequiredEnrolment(mfaToken: string) {
+    const user = await this.mfa.userFromStepToken(mfaToken, 'mfa-setup');
+    return this.mfa.beginEnrolment(user.id);
+  }
+
+  async completeRequiredEnrolment(mfaToken: string, code: string) {
+    const user = await this.mfa.userFromStepToken(mfaToken, 'mfa-setup');
+    const done = await this.mfa.completeEnrolment(user.id, code);
+    const fresh = await prisma.user.findUnique({ where: { id: user.id }, include: { organization: true } });
+    return { ...(await this.sessionFor(fresh!)), recoveryCodes: done.recoveryCodes };
+  }
+
+  private async sessionFor(user: any) {
     const tokens = this.generateTokens(user, user.tokenVersion);
 
     const response: any = {

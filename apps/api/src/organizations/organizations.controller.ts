@@ -61,6 +61,7 @@ export class OrganizationsController {
     @Body() body: {
       name?: string; aiPersonaPrompt?: string; welcomeMessage?: string; phone?: string;
       emergencyContacts?: string | null;
+      requireAdminMfa?: boolean;
       logoUrl?: string; webhookUrl?: string; enabledWebhookEvents?: string[];
       payoutBankName?: string; payoutAccountName?: string; payoutAccountNumber?: string; payoutUssdCode?: string;
       defaultLanguage?: string;

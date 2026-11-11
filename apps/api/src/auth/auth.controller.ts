@@ -3,6 +3,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthUser } from '@ace/shared-types';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { MfaService } from './mfa.service';
 import {
   RegisterDto,
   LoginDto,
@@ -13,6 +14,9 @@ import {
   ResetPasswordDto,
   SetupAccountDto,
   ChangePasswordDto,
+  MfaLoginDto,
+  MfaStepTokenDto,
+  MfaCodeDto,
 } from './auth.dto';
 
 /**
@@ -38,7 +42,7 @@ import {
 @Throttle({ default: { limit: 60, ttl: 60_000 } })
 @Controller('api/auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService, private readonly mfa: MfaService) {}
 
   // Account creation writes two rows and sends an email — abuse is costly.
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -78,6 +82,52 @@ export class AuthController {
   @Post('login')
   async login(@Body() body: LoginDto) {
     return this.authService.login(body.email, body.password);
+  }
+
+  /** Second step of sign-in: the code from the authenticator (or a recovery code). */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/verify')
+  async mfaVerify(@Body() body: MfaLoginDto) {
+    return this.authService.completeMfaLogin(body.mfaToken, body.code);
+  }
+
+  /** An administrator whose agency requires MFA, enrolling before they have a session. */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/enrol/setup')
+  async mfaEnrolSetup(@Body() body: MfaStepTokenDto) {
+    return this.authService.beginRequiredEnrolment(body.mfaToken);
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/enrol/enable')
+  async mfaEnrolEnable(@Body() body: MfaLoginDto) {
+    return this.authService.completeRequiredEnrolment(body.mfaToken, body.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('mfa/status')
+  async mfaStatus(@Req() req: { user: AuthUser }) {
+    return this.mfa.status(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/setup')
+  async mfaSetup(@Req() req: { user: AuthUser }) {
+    return this.mfa.beginEnrolment(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/enable')
+  async mfaEnable(@Req() req: { user: AuthUser }, @Body() body: MfaCodeDto) {
+    return this.mfa.completeEnrolment(req.user.userId, body.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/disable')
+  async mfaDisable(@Req() req: { user: AuthUser }, @Body() body: MfaCodeDto) {
+    return this.mfa.disable(req.user.userId, body.code);
   }
 
   @Post('refresh')

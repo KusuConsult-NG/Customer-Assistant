@@ -323,6 +323,8 @@ export class OrganizationsService {
       welcomeMessage?: string;
       /** One per line, read verbatim after 112 in the emergency reply (PRD §11). */
       emergencyContacts?: string | null;
+      /** Owners/admins must enrol in MFA before getting a session (PRD §17). */
+      requireAdminMfa?: boolean;
       phone?: string;
       logoUrl?: string;
       webhookUrl?: string;
@@ -425,6 +427,7 @@ export class OrganizationsService {
         ...(cleanName !== undefined && { name: cleanName }),
         ...(data.aiPersonaPrompt !== undefined && { aiPersonaPrompt: data.aiPersonaPrompt }),
         ...(data.welcomeMessage !== undefined && { welcomeMessage: data.welcomeMessage }),
+        ...(typeof data.requireAdminMfa === 'boolean' && { requireAdminMfa: data.requireAdminMfa }),
         ...(data.emergencyContacts !== undefined && {
           emergencyContacts: (data.emergencyContacts ?? '').trim().slice(0, 2000) || null,
         }),

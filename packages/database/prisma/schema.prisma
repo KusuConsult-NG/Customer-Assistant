@@ -272,6 +272,8 @@ model Organization {
   callbackRequests    CallbackRequest[]
   budgetDocuments     BudgetDocument[]
   governmentProjects  GovernmentProject[]
+  /// Owners and admins must enrol in MFA before they get a session (PRD §17).
+  requireAdminMfa     Boolean             @default(false)
 
   @@map("organizations")
 }
@@ -327,6 +329,17 @@ model User {
   /// Set for an MDA liaison officer (PRD §15): they see only cases referred to
   /// this MDA and cannot read any other institution's. Null for State staff.
   mdaName               String?
+
+  // ── Multi-factor authentication (PRD §17) ──────────────────────────────────
+  /// TOTP secret, encrypted with ENCRYPTION_KEY like every provider credential.
+  mfaSecret         String?
+  /// Set during enrolment until the first code proves the app has it.
+  mfaPendingSecret  String?
+  mfaEnabledAt      DateTime?
+  /// The last time-step accepted, so a code cannot be replayed in its window.
+  mfaLastStep       Int?
+  /// SHA-256 of each unused recovery code. Spent codes are removed.
+  mfaRecoveryHashes String[]  @default([])
 
   @@index([organizationId])
   @@index([passwordResetToken])
