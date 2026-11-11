@@ -381,6 +381,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                         {section('Administration', [
                           link('/services', <Briefcase className="w-4 h-4" />, 'Services & Locations'),
+                          link('/budget', <Landmark className="w-4 h-4" />, 'Budget & Projects'),
                           link('/white-label', <Building2 className="w-4 h-4" />, 'Branding & White Label'),
                           link('/settings', <Settings className="w-4 h-4" />, 'System Settings'),
                         ])}

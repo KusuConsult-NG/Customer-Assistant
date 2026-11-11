@@ -312,6 +312,74 @@ export const api = {
    * where it sends them. Reading is open to any member; writing is OWNER/ADMIN
    * and the API enforces that, not this.
    */
+  budget: {
+    documents: async () => {
+      const res = await fetch(`${API_URL}/api/budget/documents`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    createDocument: async (body: {
+      title: string; documentType: string; fiscalYear: number; sourceUrl?: string;
+      reportingPeriod?: string; declaredTotal?: string; notes?: string;
+    }) => {
+      const res = await fetch(`${API_URL}/api/budget/documents`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify(body),
+      });
+      return handleResponse(res);
+    },
+    importLines: async (id: string, csv: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/lines`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify({ csv }),
+      });
+      return handleResponse(res);
+    },
+    validation: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/validation`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    approve: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/approve`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+    withdraw: async (id: string, reason: string) => {
+      const res = await fetch(`${API_URL}/api/budget/documents/${id}/withdraw`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify({ reason }),
+      });
+      return handleResponse(res);
+    },
+    facets: async () => {
+      const res = await fetch(`${API_URL}/api/budget/facets`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    query: async (q: { year: number; stage: string; mda?: string; sector?: string }) => {
+      const params = new URLSearchParams({ year: String(q.year), stage: q.stage });
+      if (q.mda) params.set('mda', q.mda);
+      if (q.sector) params.set('sector', q.sector);
+      const res = await fetch(`${API_URL}/api/budget/query?${params}`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    projects: async () => {
+      const res = await fetch(`${API_URL}/api/budget/projects`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    importProjects: async (csv: string) => {
+      const res = await fetch(`${API_URL}/api/budget/projects/import`, {
+        method: "POST", headers: getHeaders(), body: JSON.stringify({ csv }),
+      });
+      return handleResponse(res);
+    },
+    approveProject: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/projects/${id}/approve`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+    observations: async () => {
+      const res = await fetch(`${API_URL}/api/budget/observations`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
+    markReferred: async (id: string) => {
+      const res = await fetch(`${API_URL}/api/budget/observations/${id}/referred`, { method: "POST", headers: getHeaders() });
+      return handleResponse(res);
+    },
+  },
   catalogue: {
     lgas: async () => {
       const res = await fetch(`${API_URL}/api/catalogue/lgas`, { headers: getHeaders() });

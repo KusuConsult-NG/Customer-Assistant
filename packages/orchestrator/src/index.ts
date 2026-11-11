@@ -51,6 +51,8 @@ import { chatCompletionsUrl, embeddingsUrl, llmConfig } from './llm';
 
 export * from './llm';
 import { detectEmergency, emergencyReply } from './emergency';
+import { answerBudgetQuestion, answerProjectQuestion, type StructuredAnswer } from './budget-answers';
+export * from './budget-answers';
 export * from './emergency';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1482,6 +1484,33 @@ export class ConversationOrchestrator {
       } catch (err) {
         return this.toolFailureReply('REQUEST_QUOTATION', err, lang);
       }
+    }
+
+    // ── 9b. Budget and project questions (PRD §03, §04) ─────────────────────
+    //
+    // Answered from the structured register, never from the model: the figure
+    // and its source are read off approved rows and the sentence is assembled
+    // from them. Above the ticket branch so "the road project in Bokkos was
+    // abandoned" is recorded against the project, not as a generic complaint.
+    // Returns null — and changes nothing — for an agency with no budget data.
+    try {
+      const structured: StructuredAnswer | null =
+        (await answerProjectQuestion(prisma, context.organizationId, cleanInput, (context as any).contactId ?? null, context.channel)) ??
+        (await answerBudgetQuestion(prisma, context.organizationId, cleanInput));
+      if (structured) {
+        return {
+          replyText: structured.replyText,
+          intentDetected: structured.intent,
+          confidenceScore: 1.0,
+          shouldHandoff: structured.needsHuman,
+          ...(structured.needsHuman ? { handoffReason: HandoffReason.COMPLEX_QUERY } : {}),
+          toolCallsExecuted: [{ toolName: 'budget_project_register', result: structured.toolResult ?? null }],
+        };
+      }
+    } catch (err) {
+      // PRD §20 "knowledge or API failure: do not guess". A figure question
+      // that could not be checked is told so, never sent to the model to answer.
+      return this.toolFailureReply('BUDGET_ANSWER', err, lang);
     }
 
     // ── 10. Tool: Support Ticket ───────────────────────────────────────────────

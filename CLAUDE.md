@@ -271,6 +271,15 @@ The live transfer to a forwarding number was built for Infobip and then removed 
 
 **WhatsApp delivery is tracked on the message** (`delivery-status.ts`). Meta's sent/delivered/read/failed receipts were logged and dropped. The reply's `wamid` is now written to `Message.externalId` and receipts update `metadata.delivery`. Receipts arrive out of order, so status only moves forward (a late `delivered` cannot un-read a message); `failed` always records, with Meta's reason.
 
+**Budget and project figures come from approved rows, never from the model** (`packages/database/src/budget.ts`, `packages/orchestrator/src/budget-answers.ts`, `apps/api/src/budget`, `/budget`; PRD §03, §04). A budget or project question is parsed deterministically (year, stage, MDA or sector, LGA), and the reply is assembled from the row's own fields and source. The LLM never sees this path. Rules, each pinned by `budget-intelligence.spec.ts`:
+- **Decimal(20,2), never Float.** Summed and compared as `Prisma.Decimal`; `parseAmount` refuses `1.2e9`, `500m`, `1,00,000` and anything with more than two decimals rather than guessing.
+- **Stage is never mixed.** PROPOSED / APPROVED / REVISED / RELEASED / ACTUAL_EXPENDITURE are separate rows; "how much was spent" never returns an allocation. Every allocation answer says it is not spending.
+- **One document per answer, never a sum across documents.** Two approved documents that agree give the figure once (citing both); two that disagree give NO figure, hand off, and say so — `kind: 'conflict'`.
+- **Only APPROVED documents answer; the uploader cannot approve** (403), and a document whose lines do not add up to its own `declaredTotal` cannot be approved by anyone. Lines change only while DRAFT; a correction is withdraw-and-reupload, audited with a reason.
+- **"Budget for X" where X is in no document asks which body** rather than answering with the State total — a true figure for the wrong question.
+- Returns null (unchanged behaviour) for an agency that has loaded no budget data.
+- **Citizen observations about a project** ("the road was abandoned") are a `ProjectObservation`, never a change to the project's status, and are referred from the dashboard. A project cannot be published without a source.
+
 **Socket.IO multi-pod fan-out**: `RedisSocketIoAdapter` (an `IoAdapter` subclass) must be registered in `main.ts` **before** `app.listen()` — the adapter is applied inside `createIOServer()` when Nest bootstraps the gateways. Attaching after listen does nothing (this exact bug shipped once).
 
 **Document ingestion**: uploads go to Supabase Storage (path, not URL, stored in `storageUrl`), then a BullMQ job on Redis; `DocumentWorkerHost` runs the worker inside the API process when `REDIS_URL` is set. Extraction is mime-typed (pdf-parse / mammoth / UTF-8) — binary types must never be decoded as UTF-8 and indexed. Without Redis, only plain-text types are inline-indexed; binary uploads are honestly marked FAILED. Deleting a document must also delete its Qdrant points, or the deleted knowledge keeps answering in RAG.

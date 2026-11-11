@@ -56,6 +56,7 @@ export const SCREENS: Record<string, { view: Role[]; write: Role[]; label: strin
   '/callbacks':           { view: ALL,    write: DESK,   label: 'Callback Queue' },
   '/agent-provisioning':  { view: ADMINS, write: ADMINS, label: 'Agent Provisioning' },
   '/services':            { view: ALL,    write: ADMINS, label: 'Services & Locations' },
+  '/budget':              { view: ALL,    write: ADMINS, label: 'Budget & Projects' },
   '/white-label':         { view: ADMINS, write: ADMINS, label: 'Branding & White Label' },
   '/settings':            { view: ALL,    write: ADMINS, label: 'System Settings' },
 };

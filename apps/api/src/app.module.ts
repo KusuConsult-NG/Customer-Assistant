@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { PlatformModule } from './platform/platform.module';
 import { CatalogueModule } from './catalogue/catalogue.module';
+import { BudgetModule } from './budget/budget.module';
 import { CrmModule } from './crm/crm.module';
 import { TelephonyModule } from './telephony/telephony.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
@@ -51,6 +52,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     OrganizationsModule,
     PlatformModule,
     CatalogueModule,
+    BudgetModule,
     CrmModule,
     DiagnosticsModule,
     TelephonyModule,
