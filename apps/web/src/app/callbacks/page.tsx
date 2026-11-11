@@ -59,7 +59,7 @@ type Callback = {
 };
 
 const ATTEMPT_OUTCOMES: Array<[string, string]> = [
-  ['REACHED', 'Reached them'],
+  ['REACHED', 'They answered'],
   ['NO_ANSWER', 'No answer'],
   ['BUSY', 'Line busy'],
   ['VOICEMAIL', 'Voicemail'],
