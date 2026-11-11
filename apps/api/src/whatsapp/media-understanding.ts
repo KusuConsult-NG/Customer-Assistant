@@ -33,6 +33,7 @@
  */
 import { chatCompletionsUrl, llmConfig } from '@ace/orchestrator';
 import { extractText } from '../knowledge/document.worker';
+import { deepgramModel } from '../telephony/voice-ai.service';
 
 export type MediaKind = 'audio' | 'image' | 'document';
 
@@ -116,6 +117,8 @@ export function validateMedia(kind: MediaKind, bytes: Buffer, mime: string | nul
 
 type Fetch = typeof fetch;
 
+export const DEEPGRAM_PRERECORDED_URL = 'https://api.deepgram.com/v1/listen';
+
 /** Deepgram pre-recorded transcription. */
 export async function transcribeAudio(
   bytes: Buffer,
@@ -125,8 +128,12 @@ export async function transcribeAudio(
   const key = process.env.DEEPGRAM_API_KEY;
   if (!key) return { ok: false, kind: 'audio', reason: 'not_configured', detail: 'DEEPGRAM_API_KEY is not set' };
   try {
+    // The PRE-RECORDED endpoint (https, a whole file), not the streaming one
+    // the phone line opens over wss. Same model setting as the phone line, so
+    // DEEPGRAM_MODEL changes how every citizen is heard, not half of them.
+    const params = new URLSearchParams({ model: deepgramModel(), smart_format: 'true', detect_language: 'true' });
     const res = await fetchImpl(
-      'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&detect_language=true',
+      `${DEEPGRAM_PRERECORDED_URL}?${params}`,
       {
         method: 'POST',
         headers: { Authorization: `Token ${key}`, 'Content-Type': baseMime(mime) },
