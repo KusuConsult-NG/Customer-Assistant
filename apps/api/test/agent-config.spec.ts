@@ -349,6 +349,13 @@ describe('Agent definition', () => {
     expect(placeholders.organization_name).toBe(ORG.name);
   });
 
+  // Without 'audio' the agent never spoke on an inbound SIP call: no greeting,
+  // no reply. Adding it is what made the first real toll-free call work.
+  it("streams the agent's audio, or inbound calls are silent", () => {
+    const def = agentDefinitionFor(ORG, ['t1']);
+    expect(def.conversationConfig.conversation.clientEvents).toContain('audio');
+  });
+
   it('refuses to build an agent for an organization with no timezone', () => {
     expect(() => agentDefinitionFor({ ...ORG, timezone: '' }, ['t1'])).toThrow(/timezone/i);
   });

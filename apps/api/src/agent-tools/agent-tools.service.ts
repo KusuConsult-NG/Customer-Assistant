@@ -25,6 +25,7 @@
  * in as organizationId — never read from the request body.
  */
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { relevantPassage } from './relevant-passage';
 import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
@@ -838,11 +839,16 @@ export class AgentToolsService {
       }
 
       // Knowledge base fallback — strip markdown before speaking
+      // The passage that answers the question, not the first 500 characters
+      // of whichever document ranked first. See relevant-passage.ts.
       const results = await this.knowledge.searchPlayground(organizationId, q).catch(() => null);
-      const top = Array.isArray(results) ? results[0] : null;
-      if (top?.content) {
-        const spoken = stripMd(String(top.content)).slice(0, 500);
-        return { ok: true, speak: spoken, data: { source: 'knowledge' } };
+      const contents = (Array.isArray(results) ? results : [])
+        .slice(0, 3)
+        .map((r: any) => (r?.content ? stripMd(String(r.content)) : ''))
+        .filter(Boolean);
+      const passage = relevantPassage(contents, q);
+      if (passage) {
+        return { ok: true, speak: passage, data: { source: 'knowledge' } };
       }
 
       return {

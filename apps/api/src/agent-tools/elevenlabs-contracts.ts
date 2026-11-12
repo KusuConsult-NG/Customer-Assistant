@@ -251,7 +251,11 @@ export function agentDefinition(spec: AgentSpec) {
       },
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,
-        clientEvents: ['interruption', 'agent_response', 'user_transcript'],
+        // 'audio' MUST be here. Without it the agent produced no greeting and
+        // no reply on any inbound SIP call (agent_message_count 0, zero TTS),
+        // while the identical agent spoke to a direct websocket client. The
+        // first call after adding it ran three minutes with tools answering.
+        clientEvents: ['audio', 'interruption', 'agent_response', 'user_transcript'],
       },
     },
   };
