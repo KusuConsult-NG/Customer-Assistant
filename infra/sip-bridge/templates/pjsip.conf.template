@@ -59,7 +59,8 @@ type = endpoint
 transport = transport-udp
 context = from-alphatech
 disallow = all
-allow = ulaw,alaw,g722
+; μ-law first (what Alphatech sends); A-law kept only as a fallback.
+allow = ulaw,alaw
 aors = alphatech
 outbound_auth = alphatech-auth
 from_user = ${ALPHATECH_EXTENSION}
@@ -97,7 +98,12 @@ type = endpoint
 transport = transport-tcp
 context = from-elevenlabs
 disallow = all
-allow = ulaw,alaw,g722
+; μ-law ONLY, end to end. Offering g722 too let ElevenLabs pick G.722 (RTP
+; type 9), so every packet was transcoded μ-law ↔ G.722 in Asterisk: packets
+; flowed both ways on time and the audio decoded as silence — the caller heard
+; nothing and the agent transcribed ~1s of an 11s call. Alphatech sends μ-law
+; and the agent outputs ulaw_8000, so μ-law throughout means no transcoding.
+allow = ulaw
 aors = elevenlabs
 outbound_auth = elevenlabs-auth
 direct_media = no
