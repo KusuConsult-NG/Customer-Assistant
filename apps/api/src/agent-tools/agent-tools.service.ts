@@ -156,7 +156,7 @@ export class AgentToolsService {
       }
 
       const now = new Date();
-      const [upcoming, openCallback, openTickets] = await Promise.all([
+      const [upcoming, openCallback, openTickets, pastCalls] = await Promise.all([
         // Only a booking that is still standing and still ahead of us. A
         // cancelled or past one read out as "your appointment" sends somebody
         // to an office on a day nobody expects them.
@@ -186,12 +186,29 @@ export class AgentToolsService {
             status: { in: ['OPEN', 'IN_PROGRESS', 'PENDING_CUSTOMER'] as any },
           },
         }),
+        prisma.callLog.findMany({
+          where: { organizationId, contactId: contact.id },
+          orderBy: { startedAt: 'desc' },
+          take: 2,
+          select: { startedAt: true, summary: true, durationSeconds: true },
+        }),
       ]);
+
+      const recentCallSummary = pastCalls
+        .map((c) => c.summary?.trim())
+        .filter(Boolean)
+        .join('; ');
 
       // A name of ours is not a name to greet somebody with. `fullName` on the
       // record is still returned so the agent can ask for the real one.
       const ours = isPlaceholderContactName(contact.fullName);
-      const sentences: string[] = [ours ? 'Welcome back.' : `Welcome back, ${contact.fullName}.`];
+      const sentences: string[] = [
+        ours
+          ? "Welcome! I don't have your name on file yet — may I know who I have the pleasure of speaking with?"
+          : recentCallSummary
+            ? `Welcome back, ${contact.fullName}! Last time you contacted us, you asked about ${recentCallSummary.slice(0, 100)}. How can I assist you with Plateau State services today?`
+            : `Welcome back, ${contact.fullName}! How can I assist you with Plateau State services today?`
+      ];
 
       if (upcoming) {
         sentences.push(
@@ -216,12 +233,15 @@ export class AgentToolsService {
         ok: true,
         speak: sentences.join(' '),
         data: {
-          known: true,
+          known: !ours,
           contactId: contact.id,
-          fullName: contact.fullName,
-          // So the agent knows to ask rather than greet them as "Caller".
+          fullName: ours ? null : contact.fullName,
           nameIsPlaceholder: ours,
           preferredLanguage: contact.preferredLanguage ?? null,
+          recentCallSummary: recentCallSummary || null,
+          prompt: ours
+            ? 'The caller is not yet profiled by name. Warmly ask for their name and call update-caller-profile once they provide it.'
+            : `The caller is ${contact.fullName}. Refer to them by name throughout the call.`,
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,
@@ -244,6 +264,75 @@ export class AgentToolsService {
       };
     } catch (e) {
       return this.failed('lookup_customer', e);
+    }
+  }
+
+  /**
+   * Save or update the caller's identity (full name, LGA, language) in their contact record.
+   */
+  async updateCallerProfile(
+    organizationId: string,
+    body: {
+      phoneNumber: string;
+      fullName?: string;
+      lga?: string;
+      preferredLanguage?: string;
+      notes?: string;
+    }
+  ): Promise<ToolResult> {
+    try {
+      const phone = (body?.phoneNumber || '').trim();
+      const rawName = (body?.fullName || '').trim();
+      if (!phone) {
+        return { ok: false, speak: 'No phone number was provided.', data: {} };
+      }
+
+      const contact = await ensureContactForPhone(prisma, organizationId, phone, rawName);
+      if (!contact) {
+        return { ok: false, speak: 'Could not resolve a contact record for this number.', data: {} };
+      }
+
+      const updateData: any = {};
+      if (rawName && !isPlaceholderContactName(rawName)) {
+        updateData.fullName = rawName;
+      }
+      if (body.lga?.trim()) {
+        updateData.city = body.lga.trim();
+      }
+      if (body.preferredLanguage?.trim()) {
+        updateData.preferredLanguage = body.preferredLanguage.trim();
+      }
+      if (body.notes?.trim()) {
+        const prevMeta = (contact.metadata as Record<string, any>) || {};
+        updateData.metadata = {
+          ...prevMeta,
+          lastInquiryNote: body.notes.trim(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      const updated = await prisma.contact.update({
+        where: { id: contact.id },
+        data: updateData,
+      });
+
+      const savedName = updated.fullName && !isPlaceholderContactName(updated.fullName) ? updated.fullName : null;
+      const speak = savedName
+        ? `Thank you, ${savedName}. I have saved your details.`
+        : 'Thank you. I have saved your details.';
+
+      return {
+        ok: true,
+        speak,
+        data: {
+          contactId: updated.id,
+          fullName: updated.fullName,
+          lga: updated.city,
+          preferredLanguage: updated.preferredLanguage,
+        },
+      };
+    } catch (e) {
+      return this.failed('update_caller_profile', e);
     }
   }
 

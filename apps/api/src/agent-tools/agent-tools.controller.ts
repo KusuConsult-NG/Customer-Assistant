@@ -40,6 +40,21 @@ export class AgentToolsController {
     return this.tools.lookupCustomer(this.org(req), body?.phoneNumber ?? '');
   }
 
+  @Post('update-caller-profile')
+  updateCallerProfile(
+    @Req() req: AgentRequest,
+    @Body()
+    body: {
+      phoneNumber: string;
+      fullName?: string;
+      lga?: string;
+      preferredLanguage?: string;
+      notes?: string;
+    }
+  ): Promise<ToolResult> {
+    return this.tools.updateCallerProfile(this.org(req), body);
+  }
+
   @Post('book-appointment')
   bookAppointment(
     @Req() req: AgentRequest,

@@ -728,6 +728,45 @@ export class ElevenLabsWebhookService {
     if (contact) {
       const firstName = contact.fullName?.split(' ')[0] || 'there';
       sendPostCallLink(contact.id, customerNumber, firstName, organizationId, correlationId).catch(() => {});
+
+      // Mirror voice calls into Conversation and Message tables so they appear in Conversations & Agent Console
+      if (Array.isArray(data.transcript) && data.transcript.length > 0) {
+        try {
+          const conversation = await this.conversationFor(organizationId, contact.id, ChannelType.VOICE);
+          let written = 0;
+          const turns = data.transcript;
+          for (let i = 0; i < turns.length; i++) {
+            const turn = turns[i];
+            const content = turn?.message?.trim();
+            if (!content) continue;
+            try {
+              await prisma.message.create({
+                data: {
+                  conversationId: conversation.id,
+                  sender: turn.role === 'user' ? MessageSender.CUSTOMER : MessageSender.AI,
+                  content,
+                  externalId: `${data.conversation_id}:${i}`,
+                  metadata: {
+                    elevenLabsConversationId: data.conversation_id,
+                    timeInCallSecs: turn.time_in_call_secs ?? null,
+                  },
+                },
+              });
+              written++;
+            } catch (err: any) {
+              if (err?.code === 'P2002') continue;
+            }
+          }
+          if (written > 0) {
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { lastMessageAt: startedAt },
+            });
+          }
+        } catch (convErr: any) {
+          log.warn('elevenlabs_voice_conversation_mirror_failed', { error: convErr.message, callSid });
+        }
+      }
     }
 
     return { handled: true, kind: 'voice', organizationId, reference: callSid };
@@ -843,8 +882,11 @@ export class ElevenLabsWebhookService {
     return ensureContactForPhone(prisma, organizationId, phoneNumber, fullName);
   }
 
-  private async conversationFor(organizationId: string, contactId: string) {
-    const channel = ChannelType.WHATSAPP;
+  private async conversationFor(
+    organizationId: string,
+    contactId: string,
+    channel: ChannelType = ChannelType.WHATSAPP
+  ) {
     const existing = await prisma.conversation.findFirst({
       where: { organizationId, contactId, channel },
     });

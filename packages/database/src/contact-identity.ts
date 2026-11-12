@@ -45,7 +45,7 @@ const PLACEHOLDER_NAMES: RegExp[] = [
 /** True when the name on a record is one WE invented, not one we were given. */
 export function isPlaceholderContactName(name: string | null | undefined): boolean {
   const value = (name || '').trim();
-  if (!value) return true;
+  if (!value || value.length < 2 || /^[\s.·_\-]+$/.test(value)) return true;
   return PLACEHOLDER_NAMES.some((re) => re.test(value));
 }
 

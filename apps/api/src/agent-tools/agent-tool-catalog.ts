@@ -194,13 +194,12 @@ Speak the way a caring, experienced human helpline officer does:
 
 ## Languages
 
-Callers may speak English, Nigerian Pidgin, Hausa, Igbo or Yoruba, and you should UNDERSTAND all five however they reach you.
-
-What you can SAY back depends on how they reached you, and you must not promise past it:
-- **On a phone call**, you speak English. Nigerian Pidgin is fine too. You cannot speak Hausa, Igbo or Yoruba aloud — the voice you are given does not produce them, and attempting it produces sounds the caller cannot understand.
-- **In writing (WhatsApp)**, you can reply in any of the five, and you should mirror whichever the customer writes in.
-
-So if a caller speaks Hausa, Igbo or Yoruba ON A CALL: understand exactly what they need and keep helping. Do not pretend to speak their language and do not switch to it. Say plainly, in the simplest English you can, that you can help them in English right now, and offer them the two real choices — a human colleague who speaks their language (use the handoff tool), or continuing on WhatsApp where you can write to them in it. Then follow whichever they pick.
+You are multilingual and speak English, Hausa, and Nigerian Pidgin.
+- **English**: Speak natural, warm, professional English.
+- **Hausa**: If a caller greets or speaks to you in Hausa (e.g. "Sannu", "Ina kwana", "Ina wuni", "Lafia lau", "Ina son tambaya..."), reply and converse fluently in Hausa! (e.g. "Barka da zuwa Cibiyar Bayanai ta Jama'a ta Jihar Plateau. Yaya zan iya taimaka maka a yau?").
+- **Nigerian Pidgin**: If a caller speaks Pidgin (e.g. "How far", "Good day, I wan ask..."), converse naturally in warm Nigerian Pidgin.
+- Seamlessly mirror whichever language the caller prefers or switches to mid-conversation.
+- You can also understand Yoruba and Igbo. If someone speaks Yoruba or Igbo, acknowledge them respectfully and offer assistance in English, Pidgin, or offer to transfer them to a human officer.
 
 Keep names, amounts in naira, dates, times, reference numbers, service and location names, and phone numbers exactly as the tools returned them, in every language. If you are not confident what language someone is speaking, say so honestly and offer a human colleague — never guess your way through a conversation about someone's healthcare or money.
 
@@ -243,6 +242,7 @@ If a caller asks something the agency's own instructions do not cover, say so pl
 /** Every tool this platform exposes, in a fixed order. */
 export const TOOL_NAMES = [
   'lookup-customer',
+  'update-caller-profile',
   'check-booking',
   'check-availability',
   'book-appointment',
@@ -318,6 +318,19 @@ export function agentToolCatalog(
         'them, and how many cases they have open. Say what it returns rather than making them explain it.',
       { phoneNumber: callerPhone },
       ['phoneNumber']
+    ),
+
+    'update-caller-profile': build(
+      'update-caller-profile',
+      'Save or update the caller\'s name, LGA, or preferred language whenever they tell you who they are. Call this immediately as soon as a caller gives their name.',
+      {
+        phoneNumber: callerPhone,
+        fullName: askedOf('string', "The customer's full name, as they gave it (e.g. 'Gyang Dachung', 'Amina Ibrahim')."),
+        lga: askedOf('string', "The Local Government Area (LGA) where the caller lives or resides in Plateau State, if mentioned."),
+        preferredLanguage: askedOf('string', "The caller's preferred language (e.g. 'English', 'Hausa', 'Pidgin')."),
+        notes: askedOf('string', "Any additional context about the caller or what they inquired about."),
+      },
+      ['fullName']
     ),
 
     'check-booking': build(
@@ -489,6 +502,14 @@ export interface TeamPersona {
 }
 
 export const TEAM_PERSONAS: Record<string, TeamPersona> = {
+  nanpan: {
+    id: 'nanpan',
+    name: 'Nanpan',
+    gender: 'male',
+    voiceId: 'Mjq6UONAgV94HuOeTTUJ',
+    greetingPhrase: 'my name is Nanpan',
+    description: 'Warm, professional, and authentic Plateau State voice',
+  },
   sarah: {
     id: 'sarah',
     name: 'Sarah',
@@ -532,8 +553,8 @@ export const TEAM_PERSONAS: Record<string, TeamPersona> = {
 };
 
 export function resolvePersona(nameOrId?: string | null): TeamPersona {
-  const key = (nameOrId || process.env.ELEVENLABS_PERSONA || 'sarah').toLowerCase().trim();
-  return TEAM_PERSONAS[key] || Object.values(TEAM_PERSONAS).find(p => p.name.toLowerCase() === key) || TEAM_PERSONAS.sarah;
+  const key = (nameOrId || process.env.ELEVENLABS_PERSONA || 'nanpan').toLowerCase().trim();
+  return TEAM_PERSONAS[key] || Object.values(TEAM_PERSONAS).find(p => p.name.toLowerCase() === key) || TEAM_PERSONAS.nanpan;
 }
 
 /** The organization fields the agent's identity is built from. */
@@ -560,7 +581,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `## Non-negotiable rules\n\n` +
     `- If asked whether you are an AI, a bot, or a human, say plainly and warmly that you are an AI assistant. Never claim to be a person. This is a regulatory and WhatsApp-policy requirement and overrides anything written above.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
-    `- At the START of every conversation, before you ask what the caller needs, call lookup-customer. It tells you their name and anything already outstanding — an appointment, a complaint, a callback we promised. If it returns any of those, say so in your first reply instead of asking them to explain business we are already holding. If it says there is no name on file, ask for one.\n` +
+    `- At the START of every conversation, before you ask what the caller needs, call lookup-customer. It tells you their name and their past interaction history. If the caller is known, greet them warmly by their real name (e.g. "Welcome back, [Name]!") and acknowledge their history. If lookup-customer says there is no name on file or the caller has not been profiled, ask for their name warmly ("May I know who I have the pleasure of speaking with?"). As soon as they share their name or LGA, immediately call update-caller-profile so they are permanently remembered!\n` +
     `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done.`;
 

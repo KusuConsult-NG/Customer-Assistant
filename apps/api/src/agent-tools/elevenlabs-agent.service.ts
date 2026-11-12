@@ -742,8 +742,12 @@ export class ElevenLabsAgentService {
   private async remoteHasInlineTools(client: any, agentId: string): Promise<boolean> {
     try {
       const agent = await client.conversationalAi.agents.get(agentId);
-      const tools = (agent?.conversationConfig as any)?.agent?.prompt?.tools;
-      return Array.isArray(tools) && tools.length > 0;
+      const tools: any[] = (agent?.conversationConfig as any)?.agent?.prompt?.tools ?? [];
+      // ElevenLabs echoes tool_ids-referenced tools back inside prompt.tools on
+      // GET responses, but those echoed entries carry no URL — they are live
+      // references, not stale snapshots. Only flag entries that bake in their
+      // own URL (the hallmark of old inline definitions).
+      return tools.some((t) => Boolean(t?.api?.url));
     } catch {
       // A read failure is not evidence of anything. The ordinary payload is
       // sent and the status check reports whatever is really there.
@@ -851,19 +855,16 @@ export class ElevenLabsAgentService {
       );
     }
 
-    if (Array.isArray(prompt.tools) && prompt.tools.length > 0) {
-      // A sync NOW TRIES to clear these — see `remoteHasInlineTools` and the
-      // empty `prompt.tools` the update sends alongside the tool ids. So if
-      // they are still here after one, the workspace kept them, and the
-      // operator needs to hear that rather than be sent to do what was just
-      // attempted.
-      //
-      // They matter because the inline definitions are a SNAPSHOT: they do not
-      // gain tools added since (request-callback, check-availability) and they
-      // keep whatever URL and auth they were created with. An agent holding
-      // both can answer a citizen using a definition nobody has updated.
+    // ElevenLabs echoes tool_ids-referenced tools back inside prompt.tools on
+    // GET responses, but those echoed entries carry no URL — they are live
+    // references, not stale snapshots. Only flag entries that bake in their
+    // own URL (the hallmark of old inline definitions created before tool_ids).
+    const staleInlineTools = Array.isArray(prompt.tools)
+      ? (prompt.tools as any[]).filter((t) => Boolean(t?.api?.url))
+      : [];
+    if (staleInlineTools.length > 0) {
       drift.push(
-        'Agent still carries inline `prompt.tools` (' + prompt.tools.length + '), which is ' +
+        'Agent still carries inline `prompt.tools` (' + staleInlineTools.length + '), which is ' +
         'deprecated. A sync sends an empty list to clear them; if this is still reported after ' +
         'one, the workspace did not clear them. Those inline definitions are a stale snapshot: ' +
         'they lack every tool added since, and keep the URL and auth they were created with. ' +
