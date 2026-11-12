@@ -699,9 +699,11 @@ export class ElevenLabsWebhookService {
       summary: data.analysis?.transcript_summary || null,
       startedAt,
       endedAt: new Date(startedAt.getTime() + durationSeconds * 1000),
-      // The carrier really is Twilio — ElevenLabs answers the number using the
-      // tenant's own Twilio credentials, it does not replace the carrier.
-      provider: 'TWILIO' as const,
+      // Whichever carrier actually delivered the call. A Twilio number is
+      // answered with the tenant's own Twilio credentials, so Twilio is the
+      // carrier. A SIP-trunk call (the toll-free line) never touched Twilio —
+      // filing it as TWILIO sends whoever investigates it to the wrong console.
+      provider: (call.type === 'sip_trunking' ? 'SIP_TRUNK' : 'TWILIO') as 'SIP_TRUNK' | 'TWILIO',
     };
 
     // Upsert rather than create: a redelivery must not raise, and a CallLog may

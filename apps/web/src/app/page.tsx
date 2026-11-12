@@ -66,18 +66,27 @@ export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
   const [dashboardData, setDashboardData] = useState<any>(null);
 
-  const fetchAll = async () => {
+  const fetchAll = async (attempt = 0) => {
     const token = localStorage.getItem('ace_token');
     if (!token) { setLoading(false); return; }
     setLoading(true);
 
+    // 45 seconds, not 8. The API runs on a host that puts it to sleep when
+    // idle, and waking it takes longer than eight seconds — so the FIRST visit
+    // after a quiet spell aborted every request and the page reported "figures
+    // unavailable" for an API that was healthy and simply starting.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    let dashboardStatus: number | 'unreachable' | null = null;
 
     const safeFetch = (url: string, opts: RequestInit = {}) =>
       fetch(url, { ...opts, signal: controller.signal })
         .then(r => r.ok ? r.json() : null)
         .catch(() => null);
+    const dashboardFetch = (url: string, opts: RequestInit = {}) =>
+      fetch(url, { ...opts, signal: controller.signal })
+        .then(r => { dashboardStatus = r.status; return r.ok ? r.json() : null; })
+        .catch(() => { dashboardStatus = 'unreachable'; return null; });
 
     try {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -91,7 +100,7 @@ export default function DashboardPage() {
         api.knowledge.getDocuments().catch(() => null),
         api.telephony.getCallLogs().catch(() => null),
         safeFetch(`${API_URL}/api/organizations/me`, { headers }),
-        safeFetch(`${API_URL}/api/analytics/dashboard?period=${timeRange}`, { headers }),
+        dashboardFetch(`${API_URL}/api/analytics/dashboard?period=${timeRange}`, { headers }),
       ]);
 
       clearTimeout(timeout);
@@ -129,9 +138,22 @@ export default function DashboardPage() {
       // CRM list calls are capped at one page. If it did not answer, nothing on
       // this page is known, and the page says so rather than showing zeros.
       if (!dashboard) {
-        setLoadError(
-          'The dashboard figures could not be loaded, so none of the numbers below are current.'
-        );
+        // Say WHY. An expired session, a server still waking and a real fault
+        // each need a different response from the officer looking at this.
+        if (dashboardStatus === 401) {
+          setLoadError('Your session has expired. Sign in again to see the current figures.');
+        } else if (dashboardStatus === 'unreachable' && attempt === 0) {
+          // Most often the server waking up: try once more before reporting.
+          setLoadError('The server is starting up. Trying again…');
+          setTimeout(() => void fetchAll(1), 3_000);
+          return;
+        } else {
+          setLoadError(
+            dashboardStatus === 'unreachable'
+              ? 'The server did not answer, so none of the numbers below are current.'
+              : `The dashboard figures could not be loaded (error ${dashboardStatus}), so none of the numbers below are current.`
+          );
+        }
       } else {
         setLoadError(null);
       }
@@ -237,14 +259,14 @@ export default function DashboardPage() {
 
   // Math.max(...[]) is -Infinity, which turns every bar height into -0.
   const maxVal = weeklyData.length
-    ? Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, d.web, 1)))
+    ? Math.max(...weeklyData.map((d: WeeklyDataPoint) => Math.max(d.whatsapp, d.voice, 1)))
     : 1;
   // A week of real-but-all-zero days is still nothing to look at. The API
   // returns seven labelled days from the moment an account exists, so the
   // "no activity" message never appeared — a new operator saw an axis with
   // seven invisible bars and no explanation of why the chart looked broken.
   const hasChartActivity = weeklyData.some(
-    (d: WeeklyDataPoint) => d.whatsapp > 0 || d.voice > 0 || d.web > 0
+    (d: WeeklyDataPoint) => d.whatsapp > 0 || d.voice > 0
   );
   // Use the value the API computes (resolved tickets / total tickets) rather than
   // deriving one from conversations minus open tickets — two unrelated populations,
@@ -287,7 +309,7 @@ export default function DashboardPage() {
               {loadError ?? `Shown as "—": ${unavailable.join(', ')}. Everything else on this page is current.`}
             </p>
             <button
-              onClick={fetchAll}
+              onClick={() => void fetchAll()}
               className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 dark:border-amber-500/50 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-500/15"
             >
               <RefreshCw className="w-3.5 h-3.5" /> Try again
@@ -316,7 +338,7 @@ export default function DashboardPage() {
             <button onClick={() => setTimeRange('90d')} className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${timeRange === '90d' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>90d</button>
           </div>
           <button
-            onClick={fetchAll}
+            onClick={() => void fetchAll()}
             className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors shadow-sm"
             title="Refresh Data"
           >
@@ -337,17 +359,17 @@ export default function DashboardPage() {
         <KpiCard
           title="Total Citizens"
           value={num(stats.contacts)}
-          subtitle="Registered Beneficiaries"
+          subtitle="Citizens who have contacted the agency"
           icon={<Users className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
           badge={`${timeRange} active`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
         <KpiCard
-          title="Enrolment Inquiries"
-          value={num(stats.leads)}
-          subtitle="Prospective registrations"
+          title="Open Cases"
+          value={num(stats.openTickets)}
+          subtitle="Complaints and requests awaiting resolution"
           icon={<Activity className="w-5 h-5 text-purple-700 dark:text-purple-400" />}
-          badge={`${num(stats.openTickets)} open tickets`}
+          badge="Needs action"
           badgeColor="bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-500/20"
         />
         <KpiCard
@@ -358,18 +380,17 @@ export default function DashboardPage() {
           badge={`${timeRange} calls`}
           badgeColor="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
         />
-        {/* This card read "Premiums Collected — Informal sector & contributions"
-            over the sum of every Deal.amount in the CRM, at any stage. The
-            platform collects no payments at all, so there was no collected
-            figure for it to show: it named money the State had not taken, in
-            naira, on the first screen an officer sees. It reports the open
-            pipeline it was always actually summing. */}
+        {/* This slot held "Open Pipeline" — the naira value of sales deals —
+            and a "conversion rate", both inherited from the commercial CRM
+            this platform was built from. A citizen information centre has no
+            deals to close; the slot shows the WhatsApp conversations it does
+            have. */}
         <KpiCard
-          title="Open Pipeline"
-          value={stats.pipelineValue === null ? '—' : `₦${stats.pipelineValue.toLocaleString()}`}
-          subtitle="Total value of recorded deals — not money received"
-          icon={<DollarSign className="w-5 h-5 text-amber-700 dark:text-amber-400" />}
-          badge={stats.conversionRate === null ? 'Conversion unknown' : `${stats.conversionRate}% conv. rate`}
+          title="Conversations"
+          value={num(stats.conversations)}
+          subtitle="WhatsApp threads with citizens"
+          icon={<MessageSquareText className="w-5 h-5 text-amber-700 dark:text-amber-400" />}
+          badge={`${timeRange} threads`}
           badgeColor="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"
         />
       </div>
@@ -382,9 +403,9 @@ export default function DashboardPage() {
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-indigo-700 dark:text-indigo-400" />
-                Omnichannel Conversation Volume
+                Conversation Volume
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Interaction volume broken down by channel across 7 days</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">WhatsApp and phone, by day, across 7 days</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
@@ -392,9 +413,6 @@ export default function DashboardPage() {
               </span>
               <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
                 <span className="w-2.5 h-2.5 rounded-full bg-purple-500" /> Voice AI
-              </span>
-              <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> WebChat
               </span>
             </div>
           </div>
@@ -427,11 +445,6 @@ export default function DashboardPage() {
                     className="w-1.5 bg-purple-500 rounded-t-sm transition-all group-hover:bg-purple-400"
                     style={{ height: `${(d.voice / maxVal) * 100}%` }}
                     title={`Voice AI: ${d.voice}`}
-                  />
-                  <div
-                    className="w-1.5 bg-emerald-500 rounded-t-sm transition-all group-hover:bg-emerald-400"
-                    style={{ height: `${(d.web / maxVal) * 100}%` }}
-                    title={`WebChat: ${d.web}`}
                   />
                 </div>
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{d.day}</span>
@@ -483,12 +496,6 @@ export default function DashboardPage() {
                 ? 'No messages recorded yet'
                 : `${aiReplyRate}% of all replies handled by the AI assistant`}
               color="bg-brand-600"
-            />
-            <ProgressMetric
-              label="Knowledge Retrieval Accuracy"
-              percentage={'N/A'}
-              value="Not measured — retrieval scoring is not instrumented"
-              color="bg-brand-600 dark:bg-brand-500"
             />
             <ProgressMetric
               label="Human Desk Handover Rate"
@@ -554,7 +561,7 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   The call and message history could not be loaded. This is not a quiet day — it is unknown.
                 </p>
-                <button onClick={fetchAll} className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                <button onClick={() => void fetchAll()} className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300">
                   <RefreshCw className="w-3.5 h-3.5" /> Try again
                 </button>
               </div>
