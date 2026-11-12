@@ -32,7 +32,7 @@
  * at once and both would pass the check.
  */
 import { Injectable } from '@nestjs/common';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, openUploadUrl, ensureContactForPhone } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, openUploadUrl, ensureContactForPhone, isPlaceholderContactName } from '@ace/database';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
@@ -361,6 +361,10 @@ export interface PostCallPayload {
       role?: string;
       message?: string | null;
       time_in_call_secs?: number;
+      tool_calls?: Array<{
+        tool_name?: string;
+        params_as_json?: string;
+      }>;
     }>;
     metadata?: {
       start_time_unix_secs?: number;
@@ -726,6 +730,37 @@ export class ElevenLabsWebhookService {
     // register-enrollee tool call, send the link via SMS now that the call
     // is confirmed ended and the phone number is verified.
     if (contact) {
+      // Extract any update-caller-profile tool call args from transcript as a post-call safety net
+      if (Array.isArray(data.transcript)) {
+        try {
+          const profileUpdates: Record<string, any> = {};
+          const metaUpdates: Record<string, any> = {};
+          for (const turn of data.transcript) {
+            for (const tc of turn?.tool_calls ?? []) {
+              if (tc?.tool_name?.endsWith('update-caller-profile') && tc.params_as_json) {
+                const parsed = JSON.parse(tc.params_as_json);
+                if (parsed.fullName?.trim() && !isPlaceholderContactName(parsed.fullName.trim())) {
+                  profileUpdates.fullName = parsed.fullName.trim();
+                }
+                if (parsed.lga?.trim()) profileUpdates.city = parsed.lga.trim();
+                if (parsed.homeAddress?.trim()) profileUpdates.address = parsed.homeAddress.trim();
+                if (parsed.preferredLanguage?.trim()) profileUpdates.preferredLanguage = parsed.preferredLanguage.trim();
+                if (parsed.occupation?.trim()) metaUpdates.occupation = parsed.occupation.trim();
+              }
+            }
+          }
+          if (Object.keys(metaUpdates).length > 0) {
+            const prevMeta = (contact.metadata as Record<string, any>) || {};
+            profileUpdates.metadata = { ...prevMeta, ...metaUpdates, updatedAt: new Date().toISOString() };
+          }
+          if (Object.keys(profileUpdates).length > 0) {
+            await prisma.contact.update({ where: { id: contact.id }, data: profileUpdates });
+          }
+        } catch (profErr: any) {
+          log.warn('elevenlabs_post_call_profile_sync_failed', { error: profErr.message, callSid });
+        }
+      }
+
       const firstName = contact.fullName?.split(' ')[0] || 'there';
       sendPostCallLink(contact.id, customerNumber, firstName, organizationId, correlationId).catch(() => {});
 

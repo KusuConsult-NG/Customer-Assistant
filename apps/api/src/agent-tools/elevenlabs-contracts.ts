@@ -198,9 +198,21 @@ export function agentDefinition(spec: AgentSpec) {
           : {}),
         prompt: {
           prompt: spec.systemPrompt,
-          llm: spec.llm ?? 'gpt-4o-mini',
+          llm: spec.llm ?? 'gpt-4o',
           toolIds: spec.toolIds,
           timezone: spec.timezone,
+          builtInTools: {
+            languageDetection: {
+              type: 'system' as const,
+              name: 'language_detection',
+              description:
+                'Switch the conversation language when the caller speaks or requests Hausa (ha) or English (en). Call this immediately whenever the caller greets in Hausa, speaks Hausa, or chooses Hausa as their preferred language.',
+              params: {
+                systemToolType: 'language_detection' as const,
+                onlyAtConversationStart: false,
+              },
+            },
+          },
           // See `clearInlineTools`. Emitted ONLY as an empty array, never with
           // definitions in it.
           ...(spec.clearInlineTools ? { tools: [] as never[] } : {}),
@@ -223,12 +235,33 @@ export function agentDefinition(spec: AgentSpec) {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
         // eleven_v3_conversational: supports 74 languages natively including Hausa, English, and multilingual conversational speech over telephony.
         modelId: 'eleven_v3_conversational',
+        supportedVoices: [
+          {
+            label: 'Hausa Native',
+            voiceId: '9wJXRg0I6YvgLFAP3g7J',
+            description: 'Use this native Northern Nigerian Hausa voice whenever speaking in Hausa.',
+            language: 'ha',
+          },
+        ],
         // ulaw_8000 = G.711 μ-law 8kHz — the universal format for telephony / PSTN networks.
         agentOutputAudioFormat: 'ulaw_8000',
         stability: 0.5,
         similarityBoost: 0.8,
         speed: 1.0,
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
+      },
+      languagePresets: {
+        ha: {
+          overrides: {
+            agent: {
+              firstMessage:
+                'Sannu! Barka da zuwa Cibiyar Bayanai ta Jihar Plateau. Sunana Nanpan. Da me zan iya taimaka maka a yau?',
+            },
+            tts: {
+              voiceId: '9wJXRg0I6YvgLFAP3g7J',
+            },
+          },
+        },
       },
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,

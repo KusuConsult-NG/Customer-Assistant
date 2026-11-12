@@ -145,7 +145,7 @@ export class AgentToolsService {
     try {
       const contact = await prisma.contact.findFirst({
         where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
-        select: { id: true, fullName: true, email: true, preferredLanguage: true },
+        select: { id: true, fullName: true, email: true, city: true, address: true, preferredLanguage: true, metadata: true },
       });
       if (!contact) {
         return {
@@ -229,6 +229,8 @@ export class AgentToolsService {
         );
       }
 
+      const occupation = ((contact.metadata as Record<string, any>)?.occupation as string) ?? null;
+
       return {
         ok: true,
         speak: sentences.join(' '),
@@ -237,11 +239,18 @@ export class AgentToolsService {
           contactId: contact.id,
           fullName: ours ? null : contact.fullName,
           nameIsPlaceholder: ours,
+          lga: contact.city ?? null,
+          homeAddress: contact.address ?? null,
+          occupation,
           preferredLanguage: contact.preferredLanguage ?? null,
           recentCallSummary: recentCallSummary || null,
           prompt: ours
-            ? 'The caller is not yet profiled by name. Warmly ask for their name and call update-caller-profile once they provide it.'
-            : `The caller is ${contact.fullName}. Refer to them by name throughout the call.`,
+            ? 'The caller is a new caller and not yet profiled. Collect their 5 profile details one question at a time: (1) full name, (2) LGA, (3) home/street address, (4) occupation, and (5) preferred language (English, Hausa, or Pidgin). Once collected, call update-caller-profile and immediately switch to their chosen language!'
+            : `The caller is ${contact.fullName}. Refer to them by name throughout the call.${
+                contact.preferredLanguage
+                  ? ` Their preferred language is ${contact.preferredLanguage} — speak to them in ${contact.preferredLanguage} (if Hausa, call language_detection with 'ha' and speak natural Hausa; if Pidgin, speak natural Nigerian Pidgin).`
+                  : ''
+              }`,
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,
@@ -330,9 +339,27 @@ export class AgentToolsService {
       });
 
       const savedName = updated.fullName && !isPlaceholderContactName(updated.fullName) ? updated.fullName : null;
-      const speak = savedName
-        ? `I've got that — thank you, ${savedName}!`
-        : 'Got it, thank you!';
+      const langNorm = (updated.preferredLanguage || '').trim().toLowerCase();
+      let speak: string;
+      let languageInstruction: string | undefined;
+
+      if (langNorm.startsWith('ha')) {
+        speak = savedName
+          ? `Toh madalla, ${savedName}! Na adana bayanan ka. Daga yanzu za mu ci gaba da Hausa. Da me zan iya taimaka maka a yau?`
+          : 'Toh madalla! Na adana bayanan ka. Da me zan iya taimaka maka a yau?';
+        languageInstruction =
+          "CRITICAL: The caller chose Hausa. Immediately call language_detection with 'ha' and speak 100% in natural Northern Nigerian Hausa for the rest of the conversation!";
+      } else if (langNorm.includes('pidgin') || langNorm === 'pcm') {
+        speak = savedName
+          ? `Correct, ${savedName}! I don save your details well well. Na Pidgin we go take talk now. Wetin you wan make I help you with today?`
+          : 'Correct! I don save your details well well. Wetin you wan make I help you with today?';
+        languageInstruction =
+          'CRITICAL: The caller chose Nigerian Pidgin. Immediately switch to warm, authentic Nigerian Pidgin for the rest of the conversation!';
+      } else {
+        speak = savedName
+          ? `Thank you so much, ${savedName}! I've saved your details. How can I help you today?`
+          : "Thank you! I've saved your details. How can I help you today?";
+      }
 
       return {
         ok: true,
@@ -344,6 +371,7 @@ export class AgentToolsService {
           address: updated.address,
           occupation: (updated.metadata as any)?.occupation ?? null,
           preferredLanguage: updated.preferredLanguage,
+          ...(languageInstruction ? { instruction: languageInstruction } : {}),
         },
       };
     } catch (e) {
