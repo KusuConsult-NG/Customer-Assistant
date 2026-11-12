@@ -1,0 +1,4 @@
+; Media ports. Open these as UDP in the cloud firewall (setup.sh opens them in ufw).
+[general]
+rtpstart = 10000
+rtpend = 20000

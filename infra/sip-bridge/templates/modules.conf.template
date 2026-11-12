@@ -1,0 +1,12 @@
+; Load only what the bridge needs: smaller attack surface, faster start.
+[modules]
+autoload = yes
+noload = chan_sip.so
+noload = chan_iax2.so
+noload = chan_skinny.so
+noload = chan_mgcp.so
+noload = chan_unistim.so
+noload = cdr_radius.so
+noload = cel_radius.so
+noload = res_phoneprov.so
+noload = res_pjsip_phoneprov_provider.so

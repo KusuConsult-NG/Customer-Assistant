@@ -165,6 +165,16 @@ export interface AgentSpec {
    * — the caller re-reads the agent and reports what is actually there.
    */
   clearInlineTools?: boolean;
+  /**
+   * Defaults for every `{{variable}}` the prompt or first message uses.
+   *
+   * REQUIRED IN PRACTICE for inbound calls. Outbound calls and the browser SDK
+   * pass dynamic variables per conversation; an inbound SIP or Twilio call
+   * passes NONE. An agent whose prompt names `{{organization_name}}` with no
+   * placeholder answered every toll-free call, transcribed the caller, and
+   * then said nothing at all: no greeting, no LLM call, zero TTS characters.
+   */
+  dynamicVariablePlaceholders?: Record<string, string>;
 }
 
 /** Build the request for `conversationalAi.agents.create`. */
@@ -183,6 +193,9 @@ export function agentDefinition(spec: AgentSpec) {
       agent: {
         firstMessage: spec.firstMessage,
         language: spec.language ?? 'en',
+        ...(spec.dynamicVariablePlaceholders
+          ? { dynamicVariables: { dynamicVariablePlaceholders: spec.dynamicVariablePlaceholders } }
+          : {}),
         prompt: {
           prompt: spec.systemPrompt,
           llm: spec.llm ?? 'gpt-4o-mini',
@@ -238,7 +251,11 @@ export function agentDefinition(spec: AgentSpec) {
       },
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,
-        clientEvents: ['interruption', 'agent_response', 'user_transcript'],
+        // 'audio' MUST be here. Without it the agent produced no greeting and
+        // no reply on any inbound SIP call (agent_message_count 0, zero TTS),
+        // while the identical agent spoke to a direct websocket client. The
+        // first call after adding it ran three minutes with tools answering.
+        clientEvents: ['audio', 'interruption', 'agent_response', 'user_transcript'],
       },
     },
   };

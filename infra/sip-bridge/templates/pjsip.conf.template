@@ -1,0 +1,116 @@
+; ─────────────────────────────────────────────────────────────────────────────
+; SIP bridge: Alphatech PBX (registers as extension ${ALPHATECH_EXTENSION})
+;             → ElevenLabs agent (sip.rtc.elevenlabs.io, TCP)
+;
+; Why this exists: Alphatech's PBX will not forward calls to an outside SIP
+; address. It only delivers calls to a device registered as an extension.
+; ElevenLabs cannot register to a PBX — it only receives INVITEs. This server
+; is the device that registers, and it passes every call straight on.
+; Rendered by setup.sh — edit the template, not the rendered file.
+; ─────────────────────────────────────────────────────────────────────────────
+
+[global]
+type = global
+user_agent = PlateauCitizenCare-Bridge
+
+; Alphatech speaks UDP; ElevenLabs wants TCP (UDP is test-only there).
+[transport-udp]
+type = transport
+protocol = udp
+bind = 0.0.0.0:5060
+external_media_address = ${PUBLIC_IP}
+external_signaling_address = ${PUBLIC_IP}
+
+[transport-tcp]
+type = transport
+protocol = tcp
+bind = 0.0.0.0:5060
+external_media_address = ${PUBLIC_IP}
+external_signaling_address = ${PUBLIC_IP}
+
+; ── Alphatech: we register as extension ${ALPHATECH_EXTENSION} ──────────────
+[alphatech-auth]
+type = auth
+auth_type = userpass
+username = ${ALPHATECH_EXTENSION}
+password = ${ALPHATECH_PASSWORD}
+
+[alphatech-reg]
+type = registration
+transport = transport-udp
+outbound_auth = alphatech-auth
+server_uri = sip:${ALPHATECH_HOST}
+client_uri = sip:${ALPHATECH_EXTENSION}@${ALPHATECH_HOST}
+contact_user = ${ALPHATECH_EXTENSION}
+expiration = 300
+retry_interval = 30
+forbidden_retry_interval = 300
+max_retries = 10000
+line = yes
+endpoint = alphatech
+
+[alphatech]
+type = aor
+contact = sip:${ALPHATECH_HOST}
+qualify_frequency = 60
+
+[alphatech]
+type = endpoint
+transport = transport-udp
+context = from-alphatech
+disallow = all
+; μ-law first (what Alphatech sends); A-law kept only as a fallback.
+allow = ulaw,alaw
+aors = alphatech
+outbound_auth = alphatech-auth
+from_user = ${ALPHATECH_EXTENSION}
+direct_media = no
+rtp_symmetric = yes
+force_rport = yes
+rewrite_contact = yes
+dtmf_mode = rfc4733
+; Trust the caller ID the PBX sends (the citizen's number) — needed for callbacks.
+trust_id_inbound = yes
+send_pai = yes
+
+; Matched by IP, not hostname: if a DNS lookup fails at load, Asterisk drops
+; the whole identify object and Alphatech's calls go unrecognised. (Calls to
+; our registered contact are also matched by `line = yes` above.)
+[alphatech-identify]
+type = identify
+endpoint = alphatech
+match = ${ALPHATECH_IP}
+
+; ── ElevenLabs: where every call is sent ───────────────────────────────────
+[elevenlabs-auth]
+type = auth
+auth_type = userpass
+username = ${ELEVENLABS_SIP_USERNAME}
+password = ${ELEVENLABS_SIP_PASSWORD}
+
+[elevenlabs]
+type = aor
+contact = sip:${ELEVENLABS_SIP_HOST}:5060\;transport=tcp
+qualify_frequency = 0
+
+[elevenlabs]
+type = endpoint
+transport = transport-tcp
+context = from-elevenlabs
+disallow = all
+; μ-law ONLY, end to end. Offering g722 too let ElevenLabs pick G.722 (RTP
+; type 9), so every packet was transcoded μ-law ↔ G.722 in Asterisk: packets
+; flowed both ways on time and the audio decoded as silence — the caller heard
+; nothing and the agent transcribed ~1s of an 11s call. Alphatech sends μ-law
+; and the agent outputs ulaw_8000, so μ-law throughout means no transcoding.
+allow = ulaw
+aors = elevenlabs
+outbound_auth = elevenlabs-auth
+direct_media = no
+rtp_symmetric = yes
+force_rport = yes
+rewrite_contact = yes
+dtmf_mode = rfc4733
+send_pai = yes
+send_rpid = yes
+trust_id_outbound = yes
