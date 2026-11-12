@@ -268,7 +268,7 @@ export class AgentToolsService {
   }
 
   /**
-   * Save or update the caller's identity (full name, LGA, language) in their contact record.
+   * Save or update the caller's identity (name, LGA, address, occupation, language) in their contact record.
    */
   async updateCallerProfile(
     organizationId: string,
@@ -276,6 +276,8 @@ export class AgentToolsService {
       phoneNumber: string;
       fullName?: string;
       lga?: string;
+      homeAddress?: string;
+      occupation?: string;
       preferredLanguage?: string;
       notes?: string;
     }
@@ -292,6 +294,9 @@ export class AgentToolsService {
         return { ok: false, speak: 'Could not resolve a contact record for this number.', data: {} };
       }
 
+      const prevMeta = (contact.metadata as Record<string, any>) || {};
+      const metaUpdates: Record<string, any> = {};
+
       const updateData: any = {};
       if (rawName && !isPlaceholderContactName(rawName)) {
         updateData.fullName = rawName;
@@ -299,14 +304,22 @@ export class AgentToolsService {
       if (body.lga?.trim()) {
         updateData.city = body.lga.trim();
       }
+      if (body.homeAddress?.trim()) {
+        updateData.address = body.homeAddress.trim();
+      }
+      if (body.occupation?.trim()) {
+        metaUpdates.occupation = body.occupation.trim();
+      }
       if (body.preferredLanguage?.trim()) {
         updateData.preferredLanguage = body.preferredLanguage.trim();
       }
       if (body.notes?.trim()) {
-        const prevMeta = (contact.metadata as Record<string, any>) || {};
+        metaUpdates.lastInquiryNote = body.notes.trim();
+      }
+      if (Object.keys(metaUpdates).length > 0) {
         updateData.metadata = {
           ...prevMeta,
-          lastInquiryNote: body.notes.trim(),
+          ...metaUpdates,
           updatedAt: new Date().toISOString(),
         };
       }
@@ -318,8 +331,8 @@ export class AgentToolsService {
 
       const savedName = updated.fullName && !isPlaceholderContactName(updated.fullName) ? updated.fullName : null;
       const speak = savedName
-        ? `Thank you, ${savedName}. I have saved your details.`
-        : 'Thank you. I have saved your details.';
+        ? `I've got that — thank you, ${savedName}!`
+        : 'Got it, thank you!';
 
       return {
         ok: true,
@@ -328,6 +341,8 @@ export class AgentToolsService {
           contactId: updated.id,
           fullName: updated.fullName,
           lga: updated.city,
+          address: updated.address,
+          occupation: (updated.metadata as any)?.occupation ?? null,
           preferredLanguage: updated.preferredLanguage,
         },
       };

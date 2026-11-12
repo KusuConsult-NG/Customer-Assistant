@@ -48,6 +48,8 @@ export class AgentToolsController {
       phoneNumber: string;
       fullName?: string;
       lga?: string;
+      homeAddress?: string;
+      occupation?: string;
       preferredLanguage?: string;
       notes?: string;
     }
