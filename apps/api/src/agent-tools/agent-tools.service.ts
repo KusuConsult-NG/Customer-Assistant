@@ -199,16 +199,36 @@ export class AgentToolsService {
         .filter(Boolean)
         .join('; ');
 
-      // A name of ours is not a name to greet somebody with. `fullName` on the
-      // record is still returned so the agent can ask for the real one.
+      const occupation = ((contact.metadata as Record<string, any>)?.occupation as string) ?? null;
       const ours = isPlaceholderContactName(contact.fullName);
-      const sentences: string[] = [
-        ours
-          ? "Welcome! I don't have your name on file yet — may I know who I have the pleasure of speaking with?"
-          : recentCallSummary
-            ? `Welcome back, ${contact.fullName}! Last time you contacted us, you asked about ${recentCallSummary.slice(0, 100)}. How can I assist you with Plateau State services today?`
-            : `Welcome back, ${contact.fullName}! How can I assist you with Plateau State services today?`
-      ];
+      const prefLang = (contact.preferredLanguage || '').trim().toLowerCase();
+
+      let greetingSentence: string;
+      if (ours) {
+        greetingSentence = recentCallSummary
+          ? 'Welcome back! Let me check our notes from your previous call and help you right away.'
+          : "Welcome! I don't have your name on file yet — may I know who I have the pleasure of speaking with?";
+      } else if (prefLang.startsWith('ha')) {
+        greetingSentence = `Barka da dawowa, ${contact.fullName}${contact.city ? ` daga ${contact.city}` : ''}! Da me zan iya taimaka maka a yau?`;
+      } else if (prefLang.includes('pidgin') || prefLang === 'pcm') {
+        greetingSentence = `Welcome back, ${contact.fullName}! How body today? Wetin you wan make I help you with today?`;
+      } else if (prefLang.startsWith('yo')) {
+        greetingSentence = `E kaabo pada, ${contact.fullName}! Bawo ni mo se le ran yin lowo loni?`;
+      } else if (prefLang.startsWith('ig')) {
+        greetingSentence = `Nnoo, ${contact.fullName}! Kedu ka m ga-esi nyere gi aka taa?`;
+      } else if (prefLang.includes('berom')) {
+        greetingSentence = `Sho, mwin sho ${contact.fullName}! Welcome back! How can I help you today?`;
+      } else if (prefLang.includes('ngas') || prefLang.includes('angas')) {
+        greetingSentence = `Mwa gi, ${contact.fullName}! Kwaram! Welcome back — how can I help you today?`;
+      } else if (prefLang.includes('mwag') || prefLang.includes('mangu')) {
+        greetingSentence = `Wu na, ${contact.fullName}! Shagal! Welcome back — how can I help you today?`;
+      } else if (prefLang.includes('tarok')) {
+        greetingSentence = `Mbin, i kat ${contact.fullName}! Umi! Welcome back — how can I help you today?`;
+      } else {
+        greetingSentence = `Welcome back, ${contact.fullName}! How can I assist you with Plateau State services today?`;
+      }
+
+      const sentences: string[] = [greetingSentence];
 
       if (upcoming) {
         sentences.push(
@@ -221,15 +241,13 @@ export class AgentToolsService {
           `${callbackReference(openCallback.id)}, ${openCallback.promisedText.toLowerCase()}.`
         );
       }
-      if (openTickets > 0) {
+      if (openTickets > 0 && !prefLang.startsWith('ha')) {
         sentences.push(
           openTickets === 1
             ? 'You have one open case with us as well.'
             : `You have ${openTickets} open cases with us as well.`
         );
       }
-
-      const occupation = ((contact.metadata as Record<string, any>)?.occupation as string) ?? null;
 
       return {
         ok: true,
@@ -245,12 +263,10 @@ export class AgentToolsService {
           preferredLanguage: contact.preferredLanguage ?? null,
           recentCallSummary: recentCallSummary || null,
           prompt: ours
-            ? 'The caller is a new caller and not yet profiled. Collect their 5 profile details one question at a time: (1) full name, (2) LGA, (3) home/street address, (4) occupation, and (5) preferred language (English, Hausa, or Pidgin). Once collected, call update-caller-profile and immediately switch to their chosen language!'
-            : `The caller is ${contact.fullName}. Refer to them by name throughout the call.${
-                contact.preferredLanguage
-                  ? ` Their preferred language is ${contact.preferredLanguage} — speak to them in ${contact.preferredLanguage} (if Hausa, call language_detection with 'ha' and speak natural Hausa; if Pidgin, speak natural Nigerian Pidgin).`
-                  : ''
-              }`,
+            ? recentCallSummary
+              ? `NOTE: Although the contact record still has a placeholder name, recentCallSummary contains details from their previous call: "${recentCallSummary}". Use any name/details mentioned in recentCallSummary, DO NOT claim their details are missing, and call update-caller-profile to save them!`
+              : 'The caller is a new caller and not yet profiled. Collect their 5 profile details one question at a time: (1) full name, (2) LGA, (3) home/street address, (4) occupation, and (5) preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or Plateau language). Once collected, call update-caller-profile and immediately switch to their chosen language!'
+            : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Refer to ${contact.fullName} by name and speak in ${contact.preferredLanguage ?? 'English'} immediately (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa).`,
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,
@@ -355,6 +371,27 @@ export class AgentToolsService {
           : 'Correct! I don save your details well well. Wetin you wan make I help you with today?';
         languageInstruction =
           'CRITICAL: The caller chose Nigerian Pidgin. Immediately switch to warm, authentic Nigerian Pidgin for the rest of the conversation!';
+      } else if (langNorm.startsWith('yo')) {
+        speak = savedName
+          ? `E se pupo, ${savedName}! Mo ti fi oruko ati alaye yin pamo. Lati isinsinyi lo, ede Yoruba ni a o ma fi soro. Bawo ni mo se le ran yin lowo loni?`
+          : 'E se pupo! Mo ti fi alaye yin pamo. Bawo ni mo se le ran yin lowo loni?';
+        languageInstruction =
+          'CRITICAL: The caller chose Yoruba. Immediately switch to warm, natural conversational Yoruba for the rest of the conversation!';
+      } else if (langNorm.startsWith('ig')) {
+        speak = savedName
+          ? `Daalu nke ukwuu, ${savedName}! Echekwara m nkowa gi niile. Site ugbua gawa, anyi ga-asu Igbo. Kedu ka m ga-esi nyere gi aka taa?`
+          : 'Daalu nke ukwuu! Echekwara m nkowa gi. Kedu ka m ga-esi nyere gi aka taa?';
+        languageInstruction =
+          'CRITICAL: The caller chose Igbo. Immediately switch to warm, natural conversational Igbo for the rest of the conversation!';
+      } else if (
+        /berom|ngas|angas|mwag|tarok|goemai|afizere|izere|irigwe|bache|rukuba|ron|kulere|mupun|mushere|pyem|bogghom|pan|kofyar|montol/.test(
+          langNorm
+        )
+      ) {
+        speak = savedName
+          ? `Thank you so much, ${savedName}! I have saved your details and your Plateau heritage language (${updated.preferredLanguage}). How can I assist you today?`
+          : `Thank you! I have saved your details and your Plateau language preference (${updated.preferredLanguage}). How can I assist you today?`;
+        languageInstruction = `The caller selected the Plateau State indigenous language ${updated.preferredLanguage}. Warmly use ${updated.preferredLanguage} greetings and expressions alongside clear Hausa, Pidgin, or Nigerian English so every detail is crystal clear!`;
       } else {
         speak = savedName
           ? `Thank you so much, ${savedName}! I've saved your details. How can I help you today?`
