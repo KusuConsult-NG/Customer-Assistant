@@ -35,6 +35,7 @@ describe('voice readiness', () => {
   let app: INestApplication;
   let orgId: string;
   let ownerToken: string;
+  let operatorToken: string;
   let agentToken: string;
 
   jest.setTimeout(60000);
@@ -90,13 +91,13 @@ describe('voice readiness', () => {
     });
     orgId = org.id;
 
-    const mkUser = async (role: 'OWNER' | 'AGENT') => {
+    const mkUser = async (role: 'OWNER' | 'AGENT', isPlatformAdmin = false) => {
       const email = `${role.toLowerCase()}.${randomBytes(4).toString('hex')}@readiness.test`;
       const password = 'ReadinessPassw0rd!';
       await prisma.user.create({
         data: {
           organizationId: orgId, email, fullName: `${role} tester`, role,
-          passwordHash: await bcrypt.hash(password, 10),
+          passwordHash: await bcrypt.hash(password, 10), isPlatformAdmin,
         },
       });
       const login = await request(app.getHttpServer()).post('/api/auth/login').send({ email, password });
@@ -104,6 +105,9 @@ describe('voice readiness', () => {
       return login.body.accessToken as string;
     };
     ownerToken = await mkUser('OWNER');
+    // The full report is for platform operators; an agency owner gets plain
+    // wording (see agency-audience.ts and the last test below).
+    operatorToken = await mkUser('OWNER', true);
     agentToken = await mkUser('AGENT');
   });
 
@@ -131,7 +135,7 @@ describe('voice readiness', () => {
     globalThis.fetch = realFetch;
   });
 
-  const get = (token = ownerToken) =>
+  const get = (token = operatorToken) =>
     request(app.getHttpServer()).get('/api/telephony/voice-readiness').set('Authorization', `Bearer ${token}`);
 
   const check = (body: any, id: string) => body.checks.find((c: any) => c.id === id);
@@ -370,5 +374,21 @@ describe('voice readiness', () => {
       // report may say a call will connect and be answered.
       expect(body.state).toBe('ready');
     });
+  });
+
+  // The deployment's configuration is not the agency's business: an agency
+  // owner sees every check in the same state, in plain words, with no server
+  // variable names, internal URLs or log event names.
+  it('gives an agency owner the same states without the platform internals', async () => {
+    process.env.API_BASE_URL = 'http://localhost:4000';
+    delete process.env.ELEVENLABS_API_KEY;
+    const operator = (await get(operatorToken)).body;
+    const owner = (await get(ownerToken)).body;
+    expect(owner.state).toBe(operator.state);
+    expect(owner.checks.map((c: any) => [c.id, c.state])).toEqual(operator.checks.map((c: any) => [c.id, c.state]));
+    const platform = owner.checks.filter((c: any) => ['api_base_url', 'tts', 'stt', 'synthesis', 'engine', 'deployment_carrier'].includes(c.id));
+    expect(JSON.stringify(platform)).not.toMatch(/[A-Z]{3,}_[A-Z_]{3,}|localhost|TwiML/);
+    expect(owner.note).toBeUndefined();
+    expect(JSON.stringify(operator)).toMatch(/API_BASE_URL|ELEVENLABS_API_KEY/);
   });
 });

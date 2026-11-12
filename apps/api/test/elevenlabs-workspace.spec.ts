@@ -86,17 +86,26 @@ describe('the ElevenLabs workspace boundary', () => {
       // The whole point. Silently continuing here is the failure being fixed:
       // the tenant would run in a workspace holding everybody else's numbers,
       // WhatsApp lines and transcripts, and nothing would look wrong.
-      expect(() => api.workspaceFor(orgId, null)).toThrow(/share a workspace with every other/i);
+      expect(() => api.workspaceFor(orgId, null)).toThrow(/share phone numbers, WhatsApp lines and call transcripts with every other agency/i);
     });
 
-    it('names both ways out, because an operator will not know the second exists', () => {
+    // The agency is told what IT can do; the deployment-level way out and the
+    // organization id are for the operator, so they go to the log. Agency
+    // staff read this refusal on the Agent Provisioning screen.
+    it('tells the agency what it can do, and the operator the rest, in the log', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         api.workspaceFor(orgId, null);
         throw new Error('expected a refusal');
       } catch (err: any) {
-        expect(err.message).toMatch(/agent-provisioning\/credentials/);
-        expect(err.message).toMatch(/ELEVENLABS_ALLOW_SHARED_WORKSPACE/);
-        expect(err.message).toContain(orgId);
+        expect(err.message).toMatch(/under Credentials on this page/);
+        expect(err.message).not.toMatch(/ELEVENLABS_ALLOW_SHARED_WORKSPACE/);
+        expect(err.message).not.toContain(orgId);
+        const logged = warn.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(logged).toMatch(/ELEVENLABS_ALLOW_SHARED_WORKSPACE/);
+        expect(logged).toContain(orgId);
+      } finally {
+        warn.mockRestore();
       }
     });
 
@@ -121,7 +130,7 @@ describe('the ElevenLabs workspace boundary', () => {
 
     it('still refuses when there is no shared key to fall back to either', () => {
       delete process.env.ELEVENLABS_API_KEY;
-      expect(() => api.workspaceFor(orgId, null)).toThrow(/ELEVENLABS_API_KEY is unset/i);
+      expect(() => api.workspaceFor(orgId, null)).toThrow(/no ElevenLabs workspace yet/i);
     });
 
     /**

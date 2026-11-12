@@ -59,8 +59,12 @@ export class ElevenLabsApi {
 
     const shared = process.env.ELEVENLABS_API_KEY;
     if (!shared) {
+      // The operator detail (which env var, which org) goes to the log. The
+      // response is read by agency staff on the Agent Provisioning screen, who
+      // were being shown a server variable name and their agency's database id.
+      this.log.warn(`no_elevenlabs_key org=${organizationId} — no tenant key and ELEVENLABS_API_KEY is unset`);
       throw new BadRequestException(
-        `No ElevenLabs API key is configured for this organization, and ELEVENLABS_API_KEY is unset. Organization: ${organizationId}.`
+        'This agency has no ElevenLabs workspace yet. Add its ElevenLabs API key under Credentials on this page.'
       );
     }
     if (!sharedWorkspaceAllowed()) throw sharedWorkspaceRefusal(organizationId);

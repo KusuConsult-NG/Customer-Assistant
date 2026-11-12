@@ -25,6 +25,7 @@ describe('provider health', () => {
   let app: INestApplication;
   let orgId: string;
   let ownerToken: string;
+  let operatorToken: string;
   let agentToken: string;
 
   jest.setTimeout(60000);
@@ -106,19 +107,22 @@ describe('provider health', () => {
     });
     orgId = org.id;
 
-    const mk = async (role: 'OWNER' | 'AGENT') => {
+    const mk = async (role: 'OWNER' | 'AGENT', isPlatformAdmin = false) => {
       const email = `prov.${role.toLowerCase()}.${randomBytes(4).toString('hex')}@prov.test`;
       const password = 'ProviderPassw0rd!';
       await prisma.user.create({
         data: {
           organizationId: orgId, email, fullName: `${role}`, role,
-          passwordHash: await bcrypt.hash(password, 10), emailVerifiedAt: new Date(),
+          passwordHash: await bcrypt.hash(password, 10), isPlatformAdmin, emailVerifiedAt: new Date(),
         },
       });
       const res = await request(app.getHttpServer()).post('/api/auth/login').send({ email, password });
       return res.body.accessToken as string;
     };
     ownerToken = await mk('OWNER');
+    // The full report is for platform operators; an agency owner gets plain
+    // wording (see agency-audience.ts and the last test below).
+    operatorToken = await mk('OWNER', true);
     agentToken = await mk('AGENT');
   });
 
@@ -166,7 +170,7 @@ describe('provider health', () => {
     globalThis.fetch = realFetch;
   });
 
-  const get = (token = ownerToken) =>
+  const get = (token = operatorToken) =>
     request(app.getHttpServer()).get('/api/diagnostics/providers').set('Authorization', `Bearer ${token}`);
 
   const find = (body: any, id: string) => body.providers.find((p: any) => p.id === id);

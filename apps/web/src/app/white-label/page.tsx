@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { API_URL, apiFetch } from '@/lib/api';
 // The ONE list, shared with the dispatcher that sends these.
 //
@@ -69,14 +70,11 @@ export default function WhiteLabelPage() {
   const [companyName, setCompanyName] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#3b82f6');
   const [secondaryColor, setSecondaryColor] = useState('#8b5cf6');
-  const [customDomain, setCustomDomain] = useState('');
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // Webhook state
   const [webhookUrl, setWebhookUrl] = useState('');
   const [enabledEvents, setEnabledEvents] = useState<string[]>([]);
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [generatingKey, setGeneratingKey] = useState(false);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('ace_token') : '';
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -95,7 +93,6 @@ export default function WhiteLabelPage() {
         setCompanyName(data.name || '');
         setPrimaryColor(data.primaryColor || '#3b82f6');
         setSecondaryColor(data.secondaryColor || '#8b5cf6');
-        setCustomDomain(data.customDomain || '');
         setWebhookUrl(data.webhookUrl || '');
         setEnabledEvents(data.enabledWebhookEvents || []);
         if (data.logoUrl) setLogoPreview(data.logoUrl);
@@ -119,7 +116,7 @@ export default function WhiteLabelPage() {
     try {
       const res = await apiFetch(`${API_URL}/api/organizations/settings`, {
         method: 'PATCH', headers: authHeaders,
-        body: JSON.stringify({ name: companyName, primaryColor, secondaryColor, customDomain }),
+        body: JSON.stringify({ name: companyName, primaryColor, secondaryColor }),
       });
       // Read the reason. `throw new Error()` discarded the body, so a refusal
       // the API explained in full — an agency name that is a placeholder, for
@@ -184,8 +181,6 @@ export default function WhiteLabelPage() {
     reader.readAsDataURL(file);
   };
 
-  const apiKey = org?.apiKey || 'sk-ace-••••••••••••••••••••••••••••••';
-  const maskedKey = showApiKey ? apiKey : apiKey.replace(/sk-ace-.{20,}/, (m: string) => 'sk-ace-' + '•'.repeat(m.length - 7));
 
   // This screen exists to CHANGE things, so a member who cannot change
   // anything here is told so instead of being shown the controls and
@@ -245,14 +240,6 @@ export default function WhiteLabelPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelCls}>Custom Domain</label>
-                  <div className="relative">
-                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    <input type="text" value={customDomain} onChange={e => setCustomDomain(e.target.value)} className={`${inputCls} pl-10`} placeholder="app.yourcompany.com" />
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Point your domain's CNAME to <code className="text-blue-700 dark:text-blue-400">platform.ace-ai.io</code> then enter it here.</p>
-                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -282,44 +269,21 @@ export default function WhiteLabelPage() {
               </form>
             </div>
 
-            {/* API Key */}
-            <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                <Key className="w-4 h-4 text-amber-700 dark:text-amber-400" />
-                <h3 className="font-semibold text-slate-900 dark:text-white">API Access</h3>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                  <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  Keep your API key secret. Never expose it in client-side code.
-                </div>
-                <div>
-                  <label className={labelCls}>Your API Key</label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 font-mono text-sm text-slate-700 dark:text-slate-300 overflow-hidden">
-                      {maskedKey}
-                    </div>
-                    <button
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all"
-                    >
-                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const ok = await copyToClipboard(apiKey);
-                        if (ok) showToast('API key copied to clipboard!');
-                        else showToast('Failed to copy API key', 'error');
-                      }}
-                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 transition-all flex items-center gap-1 font-semibold text-xs"
-                      title="Copy API Key"
-                    >
-                      <Copy className="w-4 h-4" /> Copy
-                    </button>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Use this key in the <code className="text-brand-700 dark:text-brand-300">Authorization: Bearer ace_live_pk_...</code> header to call the platform REST API.
+            {/* API key: issued at Settings, where it is real.
+                This card showed "sk-ace-••••" with Show and Copy buttons. The
+                organization has no apiKey field, so it was ALWAYS that
+                placeholder: Copy put a fake key on the clipboard, and had a
+                real key ever been returned it would have been shown in full,
+                because the mask only matched the fake prefix. Keys are
+                generated, and shown once, at Settings → API Key. */}
+            <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex items-start gap-3">
+              <Key className="w-4 h-4 mt-0.5 text-amber-700 dark:text-amber-400 shrink-0" />
+              <div className="text-sm text-slate-700 dark:text-slate-300 space-y-1">
+                <p className="font-semibold text-slate-900 dark:text-white">API Access</p>
+                <p>
+                  API keys are issued at{' '}
+                  <Link href="/settings" className="font-semibold text-brand-700 dark:text-brand-300 underline">System Settings → API Key</Link>.
+                  A key is shown once, when it is generated, and stored only in a form that cannot be read back.
                 </p>
               </div>
             </div>
@@ -469,32 +433,10 @@ export default function WhiteLabelPage() {
                         <code className="text-slate-600 dark:text-slate-400">{secondaryColor}</code>
                       </div>
                     </div>
-                    {customDomain && (
-                      <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-                        <span>Custom Domain</span>
-                        <code className="text-blue-700 dark:text-blue-400">{customDomain}</code>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
 
-              {/* API docs link */}
-              <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-4 h-4 text-amber-700 dark:text-amber-400" />
-                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Developer Docs</h4>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Full REST API reference with request/response examples.</p>
-                <a
-                  href={`${API_URL}/api`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:bg-slate-800 transition-all"
-                >
-                  <Key className="w-3.5 h-3.5" /> View API Reference
-                </a>
-              </div>
             </div>
           </div>
         </div>
