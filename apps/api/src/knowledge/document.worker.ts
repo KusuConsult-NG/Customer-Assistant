@@ -40,7 +40,7 @@
  */
 
 import { Worker, Job } from 'bullmq';
-import { stopOnRedisQuota } from '../common/redis-quota';
+import { reportRedisQuotaOnce } from '../common/redis-quota';
 import { embeddingsUrl, llmConfig } from '@ace/orchestrator';
 
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
@@ -448,9 +448,10 @@ export function startDocumentWorker(redisUrl: string): Worker<DocumentJob> {
     }));
   });
 
-  // A spent Redis quota is not transient: stop rather than retry into it.
-  const quota = stopOnRedisQuota(worker, 'DocumentWorker', (m) =>
-    console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_quota_stopped', error: m })));
+  // A spent Redis quota: say so once, not seven times a second. Never close
+  // the worker here: see redis-quota.ts for the crash that caused.
+  const quota = reportRedisQuotaOnce('DocumentWorker', (m) =>
+    console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_quota_exhausted', error: m })));
   worker.on('error', (err: Error) => {
     if (quota(err)) return;
     console.error(JSON.stringify({ level: 'error', service: 'DocumentWorker', event: 'worker_error', error: err.message }));

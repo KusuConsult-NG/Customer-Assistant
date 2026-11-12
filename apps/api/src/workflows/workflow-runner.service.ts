@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { stopOnRedisQuota } from '../common/redis-quota';
+import { reportRedisQuotaOnce } from '../common/redis-quota';
 import { Worker } from 'bullmq';
 import { prisma } from '@ace/database';
 import { AceLogger } from '../config/logger';
@@ -108,8 +108,9 @@ export class WorkflowRunnerService implements OnModuleInit, OnModuleDestroy {
         }
       });
 
-      // A spent Redis quota is not transient: stop rather than retry into it.
-      const quota = stopOnRedisQuota(this.worker, 'WorkflowRunner', (m) => log.error('workflow_worker_quota_stopped', new Error(m)));
+      // A spent Redis quota: say so once, not seven times a second. Never close
+  // the worker here: see redis-quota.ts for the crash that caused.
+      const quota = reportRedisQuotaOnce('WorkflowRunner', (m) => log.error('workflow_worker_quota_exhausted', new Error(m)));
       this.worker.on('error', (err) => {
         if (quota(err)) return;
         log.error('workflow_worker_error', err as Error);
