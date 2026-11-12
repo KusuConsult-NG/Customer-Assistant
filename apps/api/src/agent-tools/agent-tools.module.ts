@@ -15,6 +15,7 @@ import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
 import { ElevenLabsWebhookController } from './elevenlabs-webhook.controller';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
 import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
+import { ElevenLabsCallSyncService } from './elevenlabs-call-sync.service';
 
 /**
  * Everything to do with a hosted conversational agent (ElevenLabs Agents):
@@ -52,6 +53,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
     ElevenLabsOutboundService,
     ElevenLabsTakeoverService,
     ElevenLabsWebhookService,
+    ElevenLabsCallSyncService,
     MissedCallFollowUpService,
   ],
   exports: [
