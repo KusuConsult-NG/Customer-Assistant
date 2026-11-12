@@ -192,15 +192,34 @@ describe('Infobip callbacks dialled from the browser', () => {
       expect(res.body.blocked.join(' ')).toMatch(/no phone line/i);
     });
 
-    it('names each missing variable rather than offering a button that always fails', async () => {
+    it('names each missing variable to a platform operator rather than offering a button that always fails', async () => {
       setEnv('INFOBIP_API_KEY', undefined);
       setEnv('INFOBIP_BASE_URL', undefined);
+      // Read from the database on every request, so this takes effect at once.
+      await prisma.user.update({ where: { id: agency.userId }, data: { isPlatformAdmin: true } });
       try {
         const res = await as(agency).get('/api/callbacks/dialling');
         expect(res.body.mode).toBe('officer-browser');
         expect(res.body.ready).toBe(false);
         expect(res.body.blocked.join(' ')).toMatch(/INFOBIP_BASE_URL/);
         expect(res.body.blocked.join(' ')).toMatch(/INFOBIP_API_KEY/);
+      } finally {
+        await prisma.user.update({ where: { id: agency.userId }, data: { isPlatformAdmin: false } });
+        setEnv('INFOBIP_API_KEY', 'ib_cb_test_key');
+        setEnv('INFOBIP_BASE_URL', IB);
+      }
+    });
+
+    // Every officer reads this notice on the Callback Queue; server variable
+    // names are not theirs to act on.
+    it('tells an officer the same thing in plain words, with no server variable names', async () => {
+      setEnv('INFOBIP_API_KEY', undefined);
+      setEnv('INFOBIP_BASE_URL', undefined);
+      try {
+        const res = await as(agency).get('/api/callbacks/dialling');
+        expect(res.body.ready).toBe(false);
+        expect(res.body.blocked.join(' ')).not.toMatch(/INFOBIP_/);
+        expect(res.body.blocked.join(' ')).toMatch(/State platform team/);
       } finally {
         setEnv('INFOBIP_API_KEY', 'ib_cb_test_key');
         setEnv('INFOBIP_BASE_URL', IB);

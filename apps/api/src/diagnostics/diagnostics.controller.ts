@@ -4,6 +4,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthUser } from '@ace/shared-types';
 import { ProviderHealthService } from './provider-health.service';
+import { isPlatformOperator, providerHealthForAgency } from '../common/agency-audience';
 
 /**
  * Whether the providers this platform depends on actually answer.
@@ -25,6 +26,9 @@ export class DiagnosticsController {
   @Roles('OWNER', 'ADMIN')
   @Get('providers')
   async providerHealth(@Req() req: { user: AuthUser }) {
-    return this.providers.check(req.user.organizationId);
+    const report = await this.providers.check(req.user.organizationId);
+    // Raw provider refusals and server variable names are for platform
+    // operators. An agency sees the same states, in plain words.
+    return isPlatformOperator(req.user) ? report : providerHealthForAgency(report);
   }
 }

@@ -7,6 +7,7 @@ import { InfobipVoiceService } from './infobip/infobip-voice.service';
 import { InfobipCallsService, InfobipEvent } from './infobip/infobip-calls.service';
 import { BrowserCallingService, RING_SECONDS } from './browser-calling.service';
 import { TelephonyService } from './telephony.service';
+import { isPlatformOperator, voiceReadinessForAgency } from '../common/agency-audience';
 import { VoiceReadinessService } from './voice-readiness.service';
 import { CallbackDispatcherService } from './callback-dispatcher.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -42,7 +43,10 @@ export class TelephonyController {
   @Roles('OWNER', 'ADMIN')
   @Get('voice-readiness')
   async voiceReadinessReport(@Req() req: { user: AuthUser }) {
-    return this.voiceReadiness.forOrganization(req.user.organizationId);
+    const report = await this.voiceReadiness.forOrganization(req.user.organizationId);
+    // Server variable names, internal URLs and log event names are for the
+    // people who run the platform, not for every agency admin.
+    return isPlatformOperator(req.user) ? report : voiceReadinessForAgency(report);
   }
 
   /**

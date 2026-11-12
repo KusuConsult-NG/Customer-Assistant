@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException,
   ConflictException, BadGatewayException,
 } from '@nestjs/common';
+import { isPlatformOperator } from '../common/agency-audience';
 import { prisma, callbackReference, normalizePhoneNumber, phoneNumberVariants, outboundContactHoursFrom, nextServiceTime, nextAttemptAt } from '@ace/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -94,7 +95,14 @@ export class CallbacksController {
     const blocked: string[] = [];
     if (!this.infobip.baseUrl()) blocked.push('INFOBIP_BASE_URL is not set (or is not https).');
     if (!process.env.INFOBIP_API_KEY?.trim()) blocked.push('INFOBIP_API_KEY is not set.');
-    return { mode: 'officer-browser' as const, line: line.phoneNumber, ready: blocked.length === 0, blocked };
+    // Every officer reads this notice on the Callback Queue. Server variable
+    // names are for the platform operators who can set them; an officer is
+    // told what they can do about it, which is ask.
+    const shown =
+      blocked.length === 0 || isPlatformOperator(req.user)
+        ? blocked
+        : ['Calling from the browser is not set up on this platform yet. Contact the State platform team.'];
+    return { mode: 'officer-browser' as const, line: line.phoneNumber, ready: blocked.length === 0, blocked: shown };
   }
 
   /** The queue, newest promise first, scoped to the caller's own agency. */

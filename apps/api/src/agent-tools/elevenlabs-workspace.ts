@@ -57,10 +57,15 @@ export function sharedWorkspaceAllowed(): boolean {
  * two ways forward with very different consequences.
  */
 export function sharedWorkspaceRefusal(organizationId: string): BadRequestException {
+  // Read by agency staff, so it names what THEY can do. The deployment-level
+  // alternative (ELEVENLABS_ALLOW_SHARED_WORKSPACE=1) and the organization id
+  // are for the operator, and go to the log instead of the screen.
+  console.warn(
+    `shared_workspace_refused org=${organizationId} — no tenant key; ELEVENLABS_ALLOW_SHARED_WORKSPACE is not set`
+  );
   return new BadRequestException(
-    `This organization has no ElevenLabs API key of its own, so it would have to share a workspace with every other tenant — including their phone numbers, WhatsApp lines and conversation transcripts. ` +
-      `Give it its own key (POST /api/agent-provisioning/credentials), or, if this deployment genuinely serves one tenant, set ELEVENLABS_ALLOW_SHARED_WORKSPACE=1. ` +
-      `Organization: ${organizationId}.`
+    'This agency has no ElevenLabs API key of its own. Add one under Credentials on this page. ' +
+      'Without its own workspace it would share phone numbers, WhatsApp lines and call transcripts with every other agency, so it is refused.'
   );
 }
 

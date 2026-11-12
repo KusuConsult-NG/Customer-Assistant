@@ -36,10 +36,9 @@ const UnreadableCredentials = ({ fields, what }: { fields?: string[]; what: stri
         decrypted
       </p>
       <p className="mt-1 text-xs text-red-700 dark:text-red-400">
-        {fields.join(', ')} — shown as •••• above, but unreadable. ENCRYPTION_KEY is not the key that
-        wrote {fields.length === 1 ? 'it' : 'them'}. Either set the original key as
-        ENCRYPTION_KEY_PREVIOUS, or enter {fields.length === 1 ? 'a fresh value' : 'fresh values'} here
-        and save — saving re-encrypts with the current key.
+        {fields.join(', ')} — shown as •••• above, but unreadable: {fields.length === 1 ? 'it was' : 'they were'} saved
+        under a key this platform no longer holds. Enter {fields.length === 1 ? 'a fresh value' : 'fresh values'} here
+        and save, or ask the State platform team to restore the previous key.
       </p>
       <p className="mt-1 text-xs text-red-600 dark:text-red-400">
         Until then this line does not work, whatever the rest of this page shows.

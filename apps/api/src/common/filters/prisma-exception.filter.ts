@@ -1,3 +1,5 @@
+import { randomBytes } from 'crypto';
+import { errorBodyForAudience, isPlatformOperator } from '../agency-audience';
 import {
   ArgumentsHost,
   Catch,
@@ -36,7 +38,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     // Anything already expressed as an HTTP exception passes through untouched.
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
-      return res.status(status).json(exception.getResponse());
+      return res.status(status).json(this.forAudience(host, exception.getResponse()));
     }
 
     const message: string = exception?.message ?? '';
@@ -91,7 +93,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     // appears in it, and a test asserts that.
     if (exception instanceof SecretUnreadableError) {
       this.logger.error(`Unreadable stored credential — returning 503: ${message}`, exception?.stack);
-      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json(this.forAudience(host, {
         statusCode: HttpStatus.SERVICE_UNAVAILABLE,
         error: 'Service Unavailable',
         message,
@@ -99,7 +101,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
           'This deployment holds a credential it cannot decrypt. Check ENCRYPTION_KEY is the key that ' +
           'wrote it; if it was rotated, set the previous key as ENCRYPTION_KEY_PREVIOUS. ' +
           'Run `npm run secrets:encrypt` to report which rows are affected across every model.',
-      });
+      }));
     }
 
     // ── Capacity: retryable ────────────────────────────────────────────────
@@ -160,5 +162,23 @@ export class PrismaExceptionFilter implements ExceptionFilter {
       error: 'Internal Server Error',
       message: 'An unexpected error occurred.',
     });
+  }
+
+  /**
+   * Operator wording (server variable names, internal hosts, maintenance
+   * commands) is for platform operators. Everyone else gets a plain message
+   * and a reference; the original goes to the log under that reference.
+   */
+  private forAudience(host: ArgumentsHost, body: unknown): unknown {
+    const req = host.switchToHttp().getRequest<{ user?: { isPlatformAdmin?: boolean }; method?: string; url?: string }>();
+    const { body: shown, reference } = errorBodyForAudience(body, isPlatformOperator(req?.user), () =>
+      randomBytes(4).toString('hex'),
+    );
+    if (reference) {
+      this.logger.warn(
+        `operator_detail_withheld ref=${reference} ${req?.method ?? ''} ${req?.url ?? ''} original=${JSON.stringify(body)}`,
+      );
+    }
+    return shown;
   }
 }
