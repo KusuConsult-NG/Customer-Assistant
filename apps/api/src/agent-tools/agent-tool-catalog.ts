@@ -618,6 +618,9 @@ export function agentDefinitionFor(
     toolIds,
     timezone: org.timezone,
     pronunciationDictionaryLocators,
+    // Inbound calls supply no variables, so the prompt's {{organization_name}}
+    // must have a default or the agent never speaks. See AgentSpec.
+    dynamicVariablePlaceholders: dynamicVariablesFor(org, persona),
     ...(options?.clearInlineTools ? { clearInlineTools: true } : {}),
   });
 }

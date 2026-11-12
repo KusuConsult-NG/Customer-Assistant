@@ -331,6 +331,24 @@ describe('Agent definition', () => {
     expect(def.conversationConfig.agent.prompt.toolIds).toEqual(['t1', 't2']);
   });
 
+  // An inbound SIP/Twilio call passes NO dynamic variables. Without a default,
+  // a prompt naming {{organization_name}} left the agent mute on every call:
+  // caller transcribed, no greeting, no LLM call. Every {{variable}} the prompt
+  // or first message uses must therefore carry a placeholder.
+  it('gives every {{variable}} in the prompt a default, because inbound calls supply none', () => {
+    const def = agentDefinitionFor(ORG, ['t1']) as any;
+    const agent = def.conversationConfig.agent;
+    const used = new Set(
+      [...`${agent.prompt.prompt}\n${agent.firstMessage}`.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)]
+        .map((m) => m[1])
+        .filter((n) => !n.startsWith('system__')),
+    );
+    expect(used.size).toBeGreaterThan(0);
+    const placeholders = agent.dynamicVariables?.dynamicVariablePlaceholders ?? {};
+    for (const name of used) expect(placeholders[name]).toBeTruthy();
+    expect(placeholders.organization_name).toBe(ORG.name);
+  });
+
   it('refuses to build an agent for an organization with no timezone', () => {
     expect(() => agentDefinitionFor({ ...ORG, timezone: '' }, ['t1'])).toThrow(/timezone/i);
   });
