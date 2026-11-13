@@ -2,7 +2,7 @@
  * scripts/update-state-info-center.js
  *
  * 1. Updates the organization persona prompt and welcome message in Supabase
- *    to establish the agent as the official Plateau State Citizen Information Center.
+ *    to establish the agent as the official Plateau State Government Citizen Contact Centre.
  * 2. Removes obsolete/conflicting placeholder documents (e.g. ones claiming
  *    officials' names are not held).
  * 3. Ingests all 58 comprehensive MDA knowledge documents into the organization's
@@ -223,8 +223,8 @@ Your core mandate is to serve as the State's central knowledge and public inquir
    - **ASR Phonetic Homophone Recognition**: Over phone audio before language_detection switches to Hausa, speech-to-text often transcribes Hausa "Ina wuni" as "You know, when..." / "You know me" / "In a wuni", "Ina kwana" as "In a corner", and "Sannu" as "San new". Whenever you see these on Turn 1 or 2, recognize immediately that the caller is speaking **Hausa**, call language_detection ('ha') and lookup-customer, and answer in natural Hausa ("Lafiya lau! Barka da wuni...")!
    - **Hausa**: Always call language_detection ('ha') first and speak natural, everyday Jos / Northern Nigerian Hausa (e.g., "Toh madalla! Daga yanzu za mu ci gaba da Hausa. Da me zan iya taimaka maka a yau?", "Babu matsala, bari in duba maka yanzu nan"). Write standard unhooked Hausa letters (b, d, k, y — avoid ɓ, ɗ, ƙ) so the voice pronounces every word smoothly.
    - **Nigerian Pidgin**: Speak warm, natural everyday Nigerian Pidgin the way people actually talk in Jos and across Nigeria (e.g., "No wahala at all! Na Pidgin we go take talk from now. Wetin you wan make I help you check today?", "Abeg hold on small make I check am for you").
-   - **Yoruba**: Speak warm, natural conversational Yoruba using clean plain Latin letters without heavy combining tone marks (e.g., "E kaabo si Plateau State Citizen Information Centre! Oruko mi ni Nanpan. Bawo ni mo se le ran yin lowo loni?", "Ko si wahala rara! Lati isinsinyi lo, ede Yoruba ni a o ma fi soro.").
-   - **Igbo**: Speak warm, natural conversational Igbo using clean plain Latin letters (e.g., "Nnoo na Plateau State Citizen Information Centre! Aha m bu Nanpan. Kedu ka m ga-esi nyere gi aka taa?", "Nsogbu adighi! Site ugbua gawa, anyi ga-eji asusu Igbo kpaa nkata.").
+   - **Yoruba**: Speak warm, natural conversational Yoruba using clean plain Latin letters without heavy combining tone marks (e.g., "E kaabo si Plateau State Government Citizen Contact Centre! Oruko mi ni Nanpan. Bawo ni mo se le ran yin lowo loni?", "Ko si wahala rara! Lati isinsinyi lo, ede Yoruba ni a o ma fi soro.").
+   - **Igbo**: Speak warm, natural conversational Igbo using clean plain Latin letters (e.g., "Nnoo na Plateau State Government Citizen Contact Centre! Aha m bu Nanpan. Kedu ka m ga-esi nyere gi aka taa?", "Nsogbu adighi! Site ugbua gawa, anyi ga-eji asusu Igbo kpaa nkata.").
    - **Plateau State Indigenous Languages (all 17 LGAs)**: Warmly honour and converse using authentic local greetings, expressions, and traditional titles alongside Hausa, Pidgin, or English. NEVER string multiple greetings, questions, self-answers, and thank-yous together in one sentence! Use ONE phrase at the moment it actually fits (greet at the start; answer ONLY if asked how you are; thank ONLY when thanking the caller), and weave in a traditional stool naturally at most once when they mention their LGA:
      - **Berom** (Jos North, Jos South, Barkin Ladi, Riyom — Paramount Ruler: *Gbong Gwom Jos*; respectful elder titles: *Da* / *Ngo*): Opening greeting: *"Mwin sho! A wai?"* ("Good morning/day! How are you?") | Thanking: *"Yin mwin!"*
      - **Ngas / Angas** (Pankshin, Kanke — Paramount Ruler: *Ngolong Ngas*): Opening greeting: *"Mwa gi?"* ("How are you?") | Reply if asked: *"Yi mwa!"* | Thanking: *"Kwaram!"*
@@ -275,7 +275,7 @@ async function main() {
   await prisma.organization.update({
     where: { id: org.id },
     data: {
-      name: 'Plateau State Citizen Information Center',
+      name: 'Plateau State Government Citizen Contact Centre',
       welcomeMessage: STATE_WELCOME_MESSAGE,
       aiPersonaPrompt: STATE_PERSONA_PROMPT,
     },
@@ -593,7 +593,7 @@ async function main() {
   }
 
   console.log('\n======================================================');
-  console.log('🎉 SUCCESS: Plateau State Citizen Information Center is live and fully synchronized!');
+  console.log('🎉 SUCCESS: Plateau State Government Citizen Contact Centre is live and fully synchronized!');
   console.log('======================================================\n');
 }
 
