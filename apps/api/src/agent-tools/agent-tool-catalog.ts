@@ -195,6 +195,7 @@ How the records change Phases 1 and 2:
 - **returning** — your first message has already greeted them by name and asked them to confirm the location on file. Once they confirm (save any correction with your caller profile update tool), go straight to PHASE 3. Never ask their name or profile again.
 - **partial** — greet them by name and ask ONLY for the details still missing, one at a time.
 - **new** — PHASE 1 and PHASE 2 in full.
+- **withheld** — the number this call comes from is hidden, or is one of our own lines (a forwarded call): it cannot reach the caller. PHASE 1 and PHASE 2 in full, except that instead of asking whether we may use the number they are calling from, you ask for a number to reach them on, read it back, and pass it as alternativePhone with alternativePhoneConfirmed=true.
 - **unknown** — the records could not be read in time; your customer lookup tool decides.
 
 ### PHASE 1 — Greeting and Caller Name
@@ -209,7 +210,7 @@ How the records change Phases 1 and 2:
 ### PHASE 2 — Location and Profile (ONE question at a time, wait for each answer)
 1. LGA: "Please, which Local Government Area of Plateau State are you calling from?"
 2. Ward and community: "Thank you. Could you also tell me your ward and community?" — then acknowledge: "Thank you for that information."
-3. Phone for follow-up: "Are you comfortable with us using the telephone number you are calling from for subsequent communication?" If not, ask for an alternative number and read it back to confirm.
+3. Phone for follow-up — only if caller ID is available (caller status is not withheld): "Are you comfortable with us using the telephone number you are calling from for subsequent communication?" If not, ask for an alternative number and read it back to confirm. If the number is NOT shown (withheld), ask instead: "Could you please give me a telephone number we can reach you on for subsequent communication?" and read it back.
 - Then call your caller profile update tool with fullName (if given), lga, ward, community, phoneConfirmedForFollowUp and alternativePhone (if given).
 - Ask nothing else: never a home address, occupation or preferred language — the script makes non-essential personal information non-compulsory. If they are speaking Hausa, Pidgin, Yoruba or Igbo, ask everything in that language.
 
@@ -435,7 +436,7 @@ export function agentToolCatalog(
         occupation: askedOf('string', "What the caller does for work, ONLY if they said so unprompted. Never ask it."),
         preferredLanguage: askedOf('string', "The language the caller is speaking or asked for, if not English, e.g. 'Hausa', 'Pidgin', 'Yoruba', 'Igbo', 'Berom', 'Ngas'. Never ask it."),
         phoneConfirmedForFollowUp: askedOf('boolean', 'true if the caller agreed that the number they are calling from may be used for subsequent communication; false if they asked for another number.'),
-        alternativePhone: askedOf('string', 'An alternative phone number for follow-up, ONLY if the caller gave one and you read it back and they confirmed it.'),
+        alternativePhone: askedOf('string', "Another number to reach the caller on, ONLY if they gave one and you read it back and they confirmed it. When the caller's number is not shown (caller status withheld), this is REQUIRED: it becomes their record."),
         alternativePhoneConfirmed: askedOf(
           'boolean',
           'true ONLY after you read alternativePhone back digit by digit and the caller clearly said yes. Without it the number is not saved.'
@@ -555,6 +556,16 @@ export function agentToolCatalog(
           'boolean',
           'true ONLY after you read the summary back and the caller confirmed it is accurate. Never set true on your own.'
         ),
+        alternativePhone: askedOf(
+          'string',
+          "ONLY when the caller's number is not shown (caller status withheld): the number they gave to reach them on."
+        ),
+        alternativePhoneConfirmed: askedOf(
+          'boolean',
+          'true ONLY after you read alternativePhone back digit by digit and the caller said yes.'
+        ),
+        // Lets the call's record be attached to this case once the call ends.
+        conversationId: boundTo(CONVERSATION_VARIABLE),
       },
       // Not `summary`/`summaryConfirmed`: an active emergency is registered
       // without a read-back. The tool itself refuses everything else unconfirmed.

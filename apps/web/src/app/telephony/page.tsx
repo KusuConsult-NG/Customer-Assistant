@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, API_URL, apiFetch } from '@/lib/api';
+import { CallRecordingPlayer } from '@/components/CallRecordingPlayer';
 import { RoleNotice } from '@/components/RoleNotice';
 import {
   PhoneCall, Sparkles, Phone, CheckCircle, AlertCircle, Radio, ShieldCheck,
@@ -67,9 +68,12 @@ interface CallLog {
   durationSeconds?: number;
   status: 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
   recordingUrl?: string;
+  /** Set by the API: whether this call's audio can be fetched (GET /api/calls/:id/recording). */
+  recordingPlayable?: boolean;
   transcript?: string;
   sentiment?: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
-  createdAt: string;
+  /** When the call began. CallLog has no createdAt: reading one showed "—" for every call. */
+  startedAt?: string;
 }
 
 /**
@@ -463,7 +467,8 @@ export default function TelephonyPage() {
                     </span>
                   </td>
                   <td className="px-5 py-4 text-xs font-mono text-slate-500 dark:text-slate-400">
-                    {Math.round((log.durationSeconds || 0) / 60)}m {(log.durationSeconds || 0) % 60}s
+                    {/* floor, not round: a 30-second call is 0m 30s, not 1m 30s */}
+                    {Math.floor((log.durationSeconds || 0) / 60)}m {(log.durationSeconds || 0) % 60}s
                   </td>
                   <td className="px-5 py-4">
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -475,24 +480,10 @@ export default function TelephonyPage() {
                     </span>
                   </td>
                   <td className="px-5 py-4 text-xs text-slate-500 dark:text-slate-400">
-                    {log.createdAt ? new Date(log.createdAt).toLocaleString() : '—'}
+                    {log.startedAt ? new Date(log.startedAt).toLocaleString() : '—'}
                   </td>
                   <td className="px-5 py-4 text-right space-x-2">
-                    {log.recordingUrl ? (
-                      <button
-                        onClick={() => window.open(log.recordingUrl, '_blank')}
-                        className="px-3 py-1 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 hover:bg-purple-100 dark:bg-purple-500/20 text-xs font-semibold inline-flex items-center gap-1"
-                      >
-                        <Play className="w-3 h-3" /> Play Audio
-                      </button>
-                    ) : (
-                      <span className="group relative inline-block">
-                        <button disabled className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-500/20 text-xs font-semibold inline-flex items-center gap-1 cursor-not-allowed">
-                          <Play className="w-3 h-3" /> Play Audio
-                        </button>
-                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 text-[10px] text-slate-900 dark:text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition-opacity">No recording available</span>
-                      </span>
-                    )}
+                    <CallRecordingPlayer callId={log.id} playable={log.recordingPlayable} />
                     <button
                       onClick={() => setSelectedCall(log)}
                       className="px-3 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 hover:bg-blue-100 dark:bg-blue-500/20 text-xs font-semibold inline-flex items-center gap-1"

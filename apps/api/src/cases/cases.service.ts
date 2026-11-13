@@ -9,6 +9,8 @@ import {
   type Actor,
   type CaseStageName,
 } from '@ace/database';
+import { CALL_RECORDED_EVENT, callLogIdFrom } from '../common/call-case-link';
+import { recordingPlayable } from '../common/call-recording';
 import type { AuthUser } from '@ace/shared-types';
 
 const OPEN_STAGES: CaseStageName[] = ['RECEIVED', 'CLASSIFIED', 'ASSIGNED', 'UNDER_REVIEW', 'ACTION_IN_PROGRESS', 'REOPENED'];
@@ -115,7 +117,45 @@ export class CasesService {
       },
     });
     if (!c) throw new NotFoundException('Case not found.');
-    return this.present(user, c);
+    return { ...this.present(user, c), calls: await this.callsFor(user, c) };
+  }
+
+  /**
+   * The call record(s) this case was opened on — what the State's script asks
+   * case management to keep alongside the case. Read live from the call log
+   * the case's CALL_RECORDED events name (common/call-case-link.ts), so a
+   * citizen's erasure, which empties the call log, empties this too.
+   *
+   * Withheld exactly where the reporter is: a transcript of an anonymous
+   * report says who made it, and a liaison reads the case and the referral
+   * thread, never the State's internal record of the call.
+   */
+  private async callsFor(user: AuthUser, c: { organizationId: string; isAnonymous: boolean; events?: Array<{ type: string; body: string | null }> }) {
+    const hideReporter = c.isAnonymous && (this.isLiaison(user) || !PRIVILEGED.has(user.role));
+    if (hideReporter || this.isLiaison(user)) return { withheld: true, items: [] as any[] };
+    const ids = (c.events ?? [])
+      .filter((e) => e.type === CALL_RECORDED_EVENT)
+      .map((e) => callLogIdFrom(e.body))
+      .filter((id): id is string => !!id);
+    if (!ids.length) return { withheld: false, items: [] as any[] };
+    const [rows, agent] = await Promise.all([
+      prisma.callLog.findMany({
+        where: { organizationId: c.organizationId, id: { in: ids } },
+        orderBy: { startedAt: 'asc' },
+        select: {
+          id: true, startedAt: true, durationSeconds: true, status: true, direction: true,
+          summary: true, transcript: true, recordingUrl: true, fromNumber: true,
+        },
+      }),
+      prisma.hostedAgentConfig.findUnique({ where: { organizationId: c.organizationId }, select: { agentId: true } }),
+    ]);
+    return {
+      withheld: false,
+      items: rows.map(({ recordingUrl, fromNumber, ...r }) => ({
+        ...r,
+        recordingPlayable: recordingPlayable({ recordingUrl, fromNumber, status: r.status, durationSeconds: r.durationSeconds }, !!agent?.agentId),
+      })),
+    };
   }
 
   /** Counts a supervisor watches (PRD §14, §16). */

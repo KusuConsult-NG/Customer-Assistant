@@ -318,6 +318,98 @@ describe('The Contact Centre script on the phone line', () => {
       });
     });
 
+    // ── "If caller ID is available" ───────────────────────────────────────
+    describe('a caller whose number does not show', () => {
+      // A forwarded toll-free call arrives as our own line; a withheld one as
+      // "anonymous". Neither reaches the caller, and the first must never be
+      // treated as one person who keeps calling.
+      beforeAll(async () => {
+        await prisma.contact.upsert({
+          where: { organizationId_phoneNumber: { organizationId: orgId, phoneNumber: TOLL_FREE } },
+          create: { organizationId: orgId, phoneNumber: TOLL_FREE, fullName: 'Someone Earlier', city: 'Jos North' },
+          update: { fullName: 'Someone Earlier' },
+        });
+      });
+      const ourLineRecord = () =>
+        prisma.contact.findUniqueOrThrow({ where: { organizationId_phoneNumber: { organizationId: orgId, phoneNumber: TOLL_FREE } } });
+
+      it('lookup-customer finds nobody, and says to ask for a number instead of the consent question', async () => {
+        const res = await lookup(TOLL_FREE);
+        expect(res.body.data).toMatchObject({ known: false, numberShown: false });
+        expect(res.body.data.prompt).toMatch(/^NUMBER NOT SHOWN/);
+        expect(res.body.data.prompt).toMatch(/Could you please give me a telephone number we can reach you on/);
+        expect(res.body.data.prompt).toMatch(/do not ask whether we may use the number they are calling from/);
+        expect(JSON.stringify(res.body)).not.toContain('Someone Earlier');
+      });
+
+      it('update-caller-profile saves nothing until there is a number to save it against', async () => {
+        const res = await post('update-caller-profile', { phoneNumber: 'anonymous', fullName: 'Nanret Davou', lga: 'Bokkos' });
+        expect(res.body).toMatchObject({ ok: false, data: { saved: false, numberShown: false } });
+        expect(res.body.data.instruction).toMatch(/Could you please give me a telephone number/);
+        expect(await prisma.contact.count({ where: { organizationId: orgId, fullName: 'Nanret Davou', city: 'Bokkos' } })).toBe(0);
+      });
+
+      it('saves the details against the number they gave, once read back — never against our own line', async () => {
+        const given = phone();
+        const unconfirmed = await post('update-caller-profile', { phoneNumber: TOLL_FREE, fullName: 'Pam Dung', alternativePhone: given });
+        expect(unconfirmed.body.data.numberToConfirm).toBe(given);
+
+        const res = await post('update-caller-profile', {
+          phoneNumber: TOLL_FREE,
+          fullName: 'Pam Dung',
+          lga: 'Riyom',
+          ward: 'Riyom',
+          community: 'Rim',
+          alternativePhone: given,
+          alternativePhoneConfirmed: true,
+        });
+        expect(res.body.ok).toBe(true);
+        const row = await prisma.contact.findFirstOrThrow({ where: { organizationId: orgId, phoneNumber: given } });
+        expect(row).toMatchObject({ fullName: 'Pam Dung', city: 'Riyom' });
+        // The record IS the number they gave, so that is the one to use.
+        expect(row.metadata).toMatchObject({ phoneConfirmedForFollowUp: true, alternativePhone: null });
+        expect(await ourLineRecord()).toMatchObject({ fullName: 'Someone Earlier', city: 'Jos North' });
+      });
+
+      it('create-ticket registers nothing without a number, and says what to do instead', async () => {
+        const res = await post('create-ticket', {
+          phoneNumber: TOLL_FREE,
+          subject: 'Broken borehole',
+          description: 'The borehole in our community has been broken for a month.',
+          category: 'infrastructure',
+          summary: 'A broken borehole.',
+          summaryConfirmed: true,
+        });
+        expect(res.body).toMatchObject({ ok: false, data: { filed: false, numberShown: false } });
+        expect(res.body.data.instruction).toMatch(/they may ask for their name to be kept confidential/);
+        expect(await prisma.ticket.count({ where: { organizationId: orgId, subject: 'Broken borehole' } })).toBe(0);
+      });
+
+      it('files the report against the number they gave', async () => {
+        const given = phone();
+        const res = await post('create-ticket', {
+          phoneNumber: 'anonymous',
+          fullName: 'Ladi Gyang',
+          subject: 'Broken borehole at Rim',
+          description: 'The borehole in our community has been broken for a month.',
+          category: 'infrastructure',
+          summary: 'A broken borehole at Rim.',
+          summaryConfirmed: true,
+          alternativePhone: given,
+          alternativePhoneConfirmed: true,
+        });
+        expect(res.body.ok).toBe(true);
+        const c = await prisma.ticket.findUniqueOrThrow({ where: { ticketNumber: res.body.data.ticketNumber }, include: { contact: true } });
+        expect(c.contact.phoneNumber).toBe(given);
+        expect(c.description).toMatch(new RegExp(`calling number not shown; reachable on \\${given}`));
+      });
+
+      it('the prompt asks the consent question only if caller ID is available, as the document does', () => {
+        expect(SYSTEM_PROMPT).toMatch(/only if caller ID is available \(caller status is not withheld\)/);
+        expect(SYSTEM_PROMPT).toMatch(/- \*\*withheld\*\* — the number this call comes from is hidden, or is one of our own lines/);
+      });
+    });
+
     // ── Phases 6 → 8: nothing is registered until the caller confirms ─────
     describe('create-ticket', () => {
       const report = (over: Record<string, any> = {}) => ({
@@ -593,9 +685,21 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.conversation_config_override).toBeUndefined();
       });
 
-      it('a withheld number is a new caller, not an error', async () => {
+      it('a withheld number is a caller whose number does not show, not an error', async () => {
         const res = await callStarts('anonymous').expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('new');
+        expect(res.body.dynamic_variables.caller_status).toBe('withheld');
+        expect(res.body.dynamic_variables.caller_profile).toMatch(/number not shown/);
+      });
+
+      it('a forwarded call arriving as our own number is never matched to whoever was saved against it', async () => {
+        await prisma.contact.upsert({
+          where: { organizationId_phoneNumber: { organizationId: orgId, phoneNumber: TOLL_FREE } },
+          create: { organizationId: orgId, phoneNumber: TOLL_FREE, fullName: 'Someone Earlier', city: 'Jos North' },
+          update: { fullName: 'Someone Earlier' },
+        });
+        const res = await callStarts(TOLL_FREE, TOLL_FREE).expect(200);
+        expect(res.body.dynamic_variables.caller_status).toBe('withheld');
+        expect(JSON.stringify(res.body)).not.toContain('Someone Earlier');
       });
 
       it('cannot see another agency\'s caller', async () => {

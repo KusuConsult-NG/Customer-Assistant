@@ -22,7 +22,26 @@
  * our placeholders (`Caller (···1234)`) is a NEW caller, however many calls it
  * has, and is asked again (politely, and again free to decline).
  */
-import { isPlaceholderContactName } from '@ace/database';
+import { isAgencyOwnNumber, isPlaceholderContactName } from '@ace/database';
+
+/**
+ * Whether the number a call arrived from is the CITIZEN's — the script asks
+ * "are you comfortable with us using the number you are calling from" only
+ * "if caller ID is available".
+ *
+ * It is not available in two ways that look different and mean the same:
+ * - withheld: carriers send nothing, "anonymous", "unknown" and the like;
+ * - forwarded: a local toll-free number forwarded without the caller's line
+ *   identity arrives as one of the AGENCY's own numbers.
+ * The second is the dangerous one. Treated as a caller, every citizen on the
+ * forwarded line is the same "person": one record, one name read out to the
+ * next caller as "welcome back", everybody's reports filed under it.
+ */
+export function callerNumberShown(phone: string | null | undefined, agencyNumbers: Array<string | null | undefined>): boolean {
+  const p = (phone ?? '').trim();
+  if (!p || /^(unknown|anonymous|private|restricted|withheld)$/i.test(p)) return false;
+  return !isAgencyOwnNumber(p, agencyNumbers);
+}
 
 /** The caller details the script collects, in the order it asks them. */
 export const PROFILE_FIELDS = ['fullName', 'lga', 'ward', 'community'] as const;

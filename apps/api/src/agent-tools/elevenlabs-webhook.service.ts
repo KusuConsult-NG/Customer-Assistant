@@ -33,6 +33,8 @@
  */
 import { Injectable } from '@nestjs/common';
 import { prisma, normalizePhoneNumber, phoneNumberVariants, openUploadUrl, ensureContactForPhone, isPlaceholderContactName } from '@ace/database';
+import { CALL_RECORDED_EVENT, callRecordedBody, callReferenceText } from '../common/call-case-link';
+import { elevenLabsRecordingRef, isErasedCall } from '../common/call-recording';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
@@ -357,6 +359,8 @@ export interface PostCallPayload {
     agent_id?: string;
     conversation_id?: string;
     status?: string;
+    /** Whether ElevenLabs holds audio for this conversation. Absent on older payloads. */
+    has_audio?: boolean;
     transcript?: Array<{
       role?: string;
       message?: string | null;
@@ -611,7 +615,7 @@ export class ElevenLabsWebhookService {
         : new Date();
 
     const contact = customerNumber
-      ? await this.contactFor(organizationId, customerNumber)
+      ? await this.contactFor(organizationId, customerNumber, undefined, await this.agencyNumbers(organizationId, agentNumber))
       : null;
 
     const row = {
@@ -686,9 +690,20 @@ export class ElevenLabsWebhookService {
       : new Date();
     const durationSeconds = Math.max(0, Math.round(meta.call_duration_secs ?? 0));
 
+    // Our own numbers are never the citizen: a forwarded call arrives as one,
+    // and filing it would merge every caller on that line into one record.
     const contact = customerNumber
-      ? await this.contactFor(organizationId, customerNumber)
+      ? await this.contactFor(organizationId, customerNumber, undefined, await this.agencyNumbers(organizationId, agentNumber))
       : null;
+
+    // A call whose citizen asked for their data to be erased stays erased: a
+    // redelivered webhook must not write the transcript (or the recording)
+    // back onto it.
+    const prior = await prisma.callLog.findUnique({ where: { callSid }, select: { fromNumber: true } });
+    if (prior && isErasedCall(prior)) {
+      log.info('elevenlabs_call_skipped_erased', { correlationId, organizationId, callSid });
+      return { handled: true, kind: 'voice', organizationId, reference: callSid };
+    }
 
     const transcript = this.renderTranscript(data.transcript ?? []);
     const common = {
@@ -701,6 +716,10 @@ export class ElevenLabsWebhookService {
       durationSeconds,
       transcript: transcript || null,
       summary: data.analysis?.transcript_summary || null,
+      // Where ElevenLabs keeps this call's audio, so it can be played back.
+      ...(data.conversation_id && data.has_audio !== false
+        ? { recordingUrl: elevenLabsRecordingRef(data.conversation_id) }
+        : {}),
       startedAt,
       endedAt: new Date(startedAt.getTime() + durationSeconds * 1000),
       // Whichever carrier actually delivered the call. A Twilio number is
@@ -712,11 +731,17 @@ export class ElevenLabsWebhookService {
 
     // Upsert rather than create: a redelivery must not raise, and a CallLog may
     // already exist for this SID if anything else touched the call first.
-    await prisma.callLog.upsert({
+    const callLog = await prisma.callLog.upsert({
       where: { callSid },
       create: { callSid, ...common },
       update: common,
     });
+
+    if (data.conversation_id) {
+      await this.attachToCases(organizationId, data.conversation_id, callLog).catch((err: any) =>
+        log.warn('elevenlabs_call_case_link_failed', { correlationId, callSid, error: err?.message })
+      );
+    }
 
     log.info('elevenlabs_call_ingested', {
       correlationId,
@@ -913,8 +938,65 @@ export class ElevenLabsWebhookService {
    * the placeholder name with the name the caller gave on the call whose
    * transcript this is ingesting.
    */
-  private async contactFor(organizationId: string, phoneNumber: string, fullName?: string) {
-    return ensureContactForPhone(prisma, organizationId, phoneNumber, fullName);
+  private async contactFor(
+    organizationId: string,
+    phoneNumber: string,
+    fullName?: string,
+    agencyNumbers?: Array<string | null | undefined>
+  ) {
+    return ensureContactForPhone(prisma, organizationId, phoneNumber, fullName, agencyNumbers);
+  }
+
+  /** The agency's own lines, plus the line this call used — never a citizen's number. */
+  private async agencyNumbers(organizationId: string, agentNumber: string): Promise<Array<string | null>> {
+    const rows = await prisma.telephonyConfig.findMany({
+      where: { organizationId },
+      select: { phoneNumber: true, forwardingNumber: true },
+    });
+    return [agentNumber || null, ...rows.flatMap((r) => [r.phoneNumber, r.forwardingNumber])];
+  }
+
+  /**
+   * The finished call's record, attached to every case opened during it — the
+   * State's script asks for the call record and transcript to be saved in case
+   * management, and a case is opened before the call has a record to attach.
+   * See common/call-case-link.ts. Idempotent: a redelivered call adds nothing.
+   *
+   * A call that came in on a hidden or forwarded number has no contact of its
+   * own; the case's reporter is who made it, so the call is filed under them —
+   * which also puts it within reach of that citizen's erasure request.
+   */
+  private async attachToCases(
+    organizationId: string,
+    conversationId: string,
+    callLog: { id: string; contactId: string | null; durationSeconds: number }
+  ) {
+    const opened = await prisma.caseEvent.findMany({
+      where: { organizationId, type: 'CREATED', body: { contains: callReferenceText(conversationId) } },
+      select: { ticketId: true, ticket: { select: { contactId: true } } },
+    });
+    for (const { ticketId, ticket } of opened) {
+      const already = await prisma.caseEvent.findFirst({
+        where: { ticketId, type: CALL_RECORDED_EVENT, body: { startsWith: `Call recorded: ${callLog.id}` } },
+        select: { id: true },
+      });
+      if (!already) {
+        await prisma.caseEvent.create({
+          data: {
+            organizationId,
+            ticketId,
+            type: CALL_RECORDED_EVENT,
+            actorLabel: 'system:voice-agent',
+            body: callRecordedBody(callLog.id, callLog.durationSeconds),
+            internal: true,
+          },
+        });
+      }
+      if (!callLog.contactId && ticket?.contactId) {
+        await prisma.callLog.update({ where: { id: callLog.id }, data: { contactId: ticket.contactId } });
+        callLog.contactId = ticket.contactId;
+      }
+    }
   }
 
   private async conversationFor(
