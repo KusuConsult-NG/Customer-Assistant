@@ -89,6 +89,7 @@
 | Nigeria Police Force — Plateau State Command | 08032419336 | 24/7 |
 | Plateau State Emergency Management Agency (SEMA) | 08037808218 | 24/7 |
 | Operation Rainbow Security Control Room | 09064000112 | 24/7 |
+| Operation Enduring Peace (OPEP) — military joint task force, toll-free | 08000020203 | 24/7 |
 | Plateau Peace Building Agency (PPBA) | 08053939050 | Office hours |
 | Gender & Equal Opp. Commission (SGBV / Rape / Domestic Violence) | 09039491001 | 24/7 |
 | Plateau State Fire Service — Jos | 07040007283 | 24/7 |

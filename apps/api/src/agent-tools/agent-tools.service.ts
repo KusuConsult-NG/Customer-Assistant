@@ -957,18 +957,20 @@ export class AgentToolsService {
       }
 
       if (kind) {
+        // Who to call depends on what is happening. 112 leads every time: it is
+        // the one national number that reaches every service.
         const authority =
           kind === 'security'
-            ? 'For anything happening now, please call 1 1 2, Operation Rainbow control room on 0 9 0 6 4 0 0 0 1 1 2, or the Police Plateau Command on 0 8 0 3 2 4 1 9 3 3 6.'
+            ? 'The fastest route for anything happening now is 1 1 2. You can also reach Operation Enduring Peace, the joint military task force, on their toll-free line 0 8 0 0 0 0 2 0 2 0 3, and Operation Rainbow, the State early-warning and security outfit, on 0 9 0 6 4 0 0 0 1 1 2. For crimes like robbery or kidnapping, the Police Plateau Command is on 0 8 0 3 2 4 1 9 3 3 6.'
             : kind === 'fire'
-            ? 'Please call 1 1 2 or the Plateau State Fire Service on 0 7 0 4 0 0 0 7 2 8 3 right away.'
+            ? 'Please call 1 1 2 or the Plateau State Fire Service on 0 7 0 4 0 0 0 7 2 8 3 right away, and keep everyone away from the building.'
             : kind === 'disaster'
-            ? 'The Plateau State Emergency Management Agency, SEMA, handles this — their number is 0 8 0 3 7 8 0 8 2 1 8.'
+            ? 'The Plateau State Emergency Management Agency, SEMA, handles floods and disasters — their line is 0 8 0 3 7 8 0 8 2 1 8 — and 1 1 2 will also connect you.'
             : 'Please call 1 1 2 for an ambulance, or get to the nearest hospital as fast as you safely can.';
         return {
           ok: true,
           speak:
-            `I have logged this as an urgent incident report and flagged it to our team. Your reference is ${ticket.ticketNumber}. ` +
+            `You did the right thing by reporting this. I have logged it as an urgent incident and flagged it to our team, and your reference is ${ticket.ticketNumber}. ` +
             authority,
           data: {
             ticketId: ticket.id,
@@ -976,7 +978,7 @@ export class AgentToolsService {
             isEscalated: true,
             incidentKind: kind,
             instruction:
-              'Say the reference and the emergency contacts, then be human: acknowledge what they went through, make sure they are safe, and tell them honestly that you have flagged it as urgent and that the emergency services above are the fastest route for anything happening now. Do NOT promise police or a rescue response. Offer a confirmed-number callback only if they want a follow-up. Never ask them to repeat details they already gave.',
+              'Say the reference and the contacts, and give the caller CONFIDENCE the way a calm, experienced officer would: thank them for reporting, tell them their report is on record and flagged urgent with the State team, explain which agency does what (Operation Enduring Peace = military joint task force that responds to attacks and communal violence; Operation Rainbow = State early-warning/community security network that passes threats to the forces; Police = crimes such as robbery and kidnapping; Fire Service = fires; SEMA = floods/disasters; 112 = reaches all of them), remind them that reporting quickly and giving exact location is what gets help moving, and tell them to quote the reference. Be warm and steady, not scripted. Do NOT promise police, soldiers or rescue will arrive by a certain time. Offer a confirmed-number callback only if they want a follow-up. Never ask them to repeat details they already gave.',
           },
         };
       }
