@@ -68,12 +68,11 @@ const NEW_CALLER_PROMPT =
   'has not already (if they decline, say "That is perfectly fine. We can proceed with your report. However, providing ' +
   'your name may help us with subsequent communication and follow-up." and carry on — the name is optional); once ' +
   'given, say "Thank you very much, [name]. It is a pleasure speaking with you." (2) ask which Local Government Area ' +
-  'of Plateau State they are calling from; (3) ask their ward and community; (4) ask their occupation and preferred ' +
-  'language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language); (5) ask whether they are comfortable with ' +
-  'us using the number they are calling from for follow-up, and if not take another number and read it back digit by ' +
-  'digit. ONE question at a time. Call update-caller-profile with what they gave — its reply names the next question ' +
-  '— switch to their preferred language, then ask the reason for their call (PHASE 3). Never ask for a home address. ' +
-  'If they open with an active emergency, safety comes first.';
+  'of Plateau State they are calling from; (3) ask their ward and community; (4) ask whether they are comfortable ' +
+  'with us using the number they are calling from for subsequent communication, and if not take another number and ' +
+  'read it back digit by digit. ONE question at a time. Call update-caller-profile with what they gave — its reply ' +
+  'names the next question — then ask the reason for their call (PHASE 3). Never ask for a home address, occupation ' +
+  'or preferred language. Speak whatever language they speak. If they open with an active emergency, safety comes first.';
 
 /**
  * The office a case is marked for, by the category it was filed under.
@@ -720,21 +719,17 @@ export class AgentToolsService {
           : 'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.';
       }
 
-      // Phase 2 is not finished while part of the profile is missing — the
+      // Phase 2 is not finished while part of the location is missing — the
       // caller is asked for the rest before the reason for the call, so the
-      // reply hands over the NEXT question rather than moving on. The location
-      // first, as the script asks it.
+      // reply hands over the NEXT question rather than moving on.
       const profile = profileOf(updated);
       const stillNeeded = profile.missing.filter((f) => f !== 'fullName');
       const location = missingPhrase(profile, LOCATION_FIELDS);
-      const about = missingPhrase(profile, ['occupation', 'preferredLanguage']);
       const nextQuestion = !profile.values.lga
         ? 'Ask which Local Government Area of Plateau State they are calling from.'
         : location
           ? `Ask for their ${location}.`
-          : about
-            ? `Ask their ${about}${profile.values.preferredLanguage ? '' : ' (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language)'}.`
-            : !profile.followUp
+          : !profile.followUp
               ? 'Ask whether they are comfortable with us using the number they are calling from for follow-up; if not, take another number and read it back.'
               : null;
       const updatedMeta = (updated.metadata as Record<string, any>) || {};
@@ -1434,7 +1429,7 @@ export class AgentToolsService {
         return {
           ok: true,
           speak:
-            `Thank you for your patience. Your urgent report has now been registered in our system under reference number ${ticket.ticketNumber} and flagged to our team for the attention of ${routedToMda}. Please keep this number safe, as it will help you track the progress of your report. ` +
+            `Thank you for your patience. Your report has now been registered in our system as urgent and flagged to our team. Your unique reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will help you track the progress of your report. ` +
             authority,
           data: {
             ticketId: ticket.id,
@@ -1453,18 +1448,25 @@ export class AgentToolsService {
       // ticket table shows `ticketNumber` (TCK-…), that is what an officer
       // searches by, and the WhatsApp engine quotes the same column.
       //
-      // Phase 8 + Phase 10 of the Contact Centre script. "Marked for the
-      // attention of", not "directed to": nothing here sends the case to the
-      // office — an officer refers it — and the case records `responsibleMda`
-      // so what the caller was told is on the record.
-      const nameAcknowledgement = callerDisplayName ? `, ${callerDisplayName},` : '';
+      // Phase 8 then Phase 10, in the State's document's own words, with the
+      // one addition main made on purpose (e0ee9f6): the caller is asked
+      // whether there is anything else before the goodbye, so nobody is hung
+      // up on with a second matter. The office
+      // the case is marked for is RECORDED (`responsibleMda`, as the document
+      // asks of routing information) but not spoken: nothing here sends the
+      // case to that office, an officer refers it.
+      const thanks = callerDisplayName ? `Once again, thank you, ${callerDisplayName}, for` : 'Once again, thank you for';
       return {
         ok: true,
         speak:
-          `Thank you for your patience. Your report has now been registered in our system and marked for the attention of ${routedToMda}. ` +
-          `Your unique complaint reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will help you track the progress of your report and make subsequent enquiries.` +
-          (isIntegrityComplaint ? ' It has also been flagged for urgent review.' : '') +
-          ` Once again, thank you${nameAcknowledgement} for contacting the Plateau State Government Citizen Contact Centre. We appreciate your contribution towards improving governance and public service delivery across Plateau State. Is there anything else I can assist you with today, or may I go ahead and end the call?`,
+          `Thank you for your patience. Your report has now been registered in our system. ` +
+          `Your unique complaint reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will ` +
+          `help you track the progress of your report and make subsequent enquiries. ` +
+          `${thanks} contacting the Plateau State Government Citizen Contact Centre. Your report has been recorded under ` +
+          `reference number ${ticket.ticketNumber}. We appreciate your contribution towards improving governance and ` +
+          `public service delivery across Plateau State. Your voice matters, and we encourage you to continue using this ` +
+          `platform to communicate your concerns, seek information and provide feedback on government services. ` +
+          `Is there anything else I can assist you with today, or may I go ahead and end the call?`,
         data: {
           ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
@@ -1473,11 +1475,10 @@ export class AgentToolsService {
           routedToMda,
           isEscalated: isIntegrityComplaint,
           instruction:
-            'Follow PHASE 8 and PHASE 10 of the Standard Operating Script: read the reference number slowly and clearly, ' +
-            'thank the caller for their contribution towards improving governance across Plateau State, and ask if there is ' +
-            'anything else you can assist them with today or if you may end the call. Once they confirm they are done, say: ' +
-            '"Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye." ' +
-            'and invoke end_call.',
+            'Say this exactly, reading the reference number slowly and clearly — it is PHASE 8 and PHASE 10 of the ' +
+            'script — and wait for their answer. If they raise another matter, help them with it. When they are done, ' +
+            'say "Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. ' +
+            'Goodbye." and invoke end_call.',
         },
       };
     } catch (e) {

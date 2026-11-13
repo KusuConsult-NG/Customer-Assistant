@@ -7,14 +7,14 @@
  *
  *  - Phase 1: the greeting opens with the time of day and ends by asking the
  *    caller's full name — and the name is OPTIONAL.
- *  - Phase 2: the LGA, ward and community, occupation and preferred language,
- *    and whether the calling number may be used for follow-up (or another
- *    number, read back first). A home address is never asked.
+ *  - Phase 2: the LGA, ward and community, and whether the calling number may
+ *    be used for follow-up (or another number, read back first). Nothing else
+ *    is asked: no home address, occupation or preferred language.
  *  - Phase 3: follow-up questions by area — infrastructure, healthcare,
  *    education, public administration.
  *  - Phase 6 → 8: the report is read back and confirmed BEFORE it is
  *    registered (unless it is an emergency still happening), then filed as a
- *    classified, located case with a reference, marked for one office.
+ *    classified, located case with a reference and the office it belongs to.
  *  - A returning caller is greeted by name before saying a word and asked only
  *    to confirm their location.
  *
@@ -46,7 +46,7 @@ import {
   timeOfDayGreeting,
 } from '../src/agent-tools/agent-tool-catalog';
 
-const SCRIPT_FIELDS = ['fullName', 'lga', 'ward', 'community', 'occupation', 'preferredLanguage'];
+const SCRIPT_FIELDS = ['fullName', 'lga', 'ward', 'community'];
 
 /**
  * The Plateau tenant's greeting and persona live in a script that writes them
@@ -67,6 +67,11 @@ function plateauConstant(name: 'STATE_WELCOME_MESSAGE' | 'STATE_PERSONA_PROMPT')
 
 /** The questions the old flow asked, which the script no longer asks. */
 const DROPPED_QUESTIONS = [
+  /what do you do for work/i,
+  /May I also know your occupation/i,
+  /which language do you prefer we speak/i,
+  /which language would you prefer we speak/i,
+  /->\s*occupation/i,
   /where do you stay/i,
   /area or street .*do you stay/i,
   /5 (basic )?profile details/i,
@@ -114,8 +119,7 @@ describe('The Contact Centre script on the phone line', () => {
           phoneNumber: phone(),
           fullName: 'Hauwa Musa',
           city: 'Jos South',
-          preferredLanguage: 'English',
-          metadata: { ward: 'Ali Kazaure', community: 'Angwan Rogo', occupation: 'Trader', phoneConfirmedForFollowUp: true },
+          metadata: { ward: 'Ali Kazaure', community: 'Angwan Rogo', phoneConfirmedForFollowUp: true },
           ...over,
         },
       });
@@ -158,14 +162,13 @@ describe('The Contact Centre script on the phone line', () => {
 
     // ── Phases 1–2: who is calling ─────────────────────────────────────────
     describe('lookup-customer', () => {
-      it('a number never seen: the script from Phase 1, every profile question still to ask', async () => {
+      it('a number never seen: the script from Phase 1, with only name and location missing', async () => {
         const res = await lookup(phone());
         expect(res.body.data.known).toBe(false);
         expect(res.body.data.missingProfileFields).toEqual(SCRIPT_FIELDS);
         expect(res.body.data.prompt).toMatch(/the name is optional/i);
         expect(res.body.data.prompt).toMatch(/ward and community/i);
-        expect(res.body.data.prompt).toMatch(/occupation and preferred language/i);
-        expect(res.body.data.prompt).toMatch(/Never ask for a home address/);
+        expect(res.body.data.prompt).toMatch(/Never ask for a home address, occupation or preferred language/);
         expect(res.body.speak).toBe('To get started, may I kindly know your full name?');
       });
 
@@ -203,8 +206,8 @@ describe('The Contact Centre script on the phone line', () => {
         const res = await lookup(number);
         expect(res.body.data.known).toBe(true);
         expect(res.body.speak).toContain('Dachung Pam');
-        expect(res.body.data.missingProfileFields).toEqual(['ward', 'community', 'occupation', 'preferredLanguage']);
-        expect(res.body.data.prompt).toMatch(/ask ONLY for what is missing \(ward, community, occupation and preferred language\), one question at a time with the location first/);
+        expect(res.body.data.missingProfileFields).toEqual(['ward', 'community']);
+        expect(res.body.data.prompt).toMatch(/ask ONLY for what is missing \(ward and community\)/);
         expect(res.body.data.prompt).not.toMatch(/^NEW CALLER/);
       });
 
@@ -221,7 +224,7 @@ describe('The Contact Centre script on the phone line', () => {
     });
 
     describe('update-caller-profile', () => {
-      it('saves the LGA in the State\'s spelling and the rest of Phase 2, then hands over to Phase 3', async () => {
+      it('saves the LGA in the State\'s spelling, the ward and community, and hands over to Phase 3', async () => {
         const number = phone();
         const res = await post('update-caller-profile', {
           phoneNumber: number,
@@ -229,8 +232,6 @@ describe('The Contact Centre script on the phone line', () => {
           lga: 'jos north',
           ward: 'Ali Kazaure',
           community: 'Angwan Rogo',
-          occupation: 'Farmer',
-          preferredLanguage: 'English',
           phoneConfirmedForFollowUp: 'yes',
         });
         expect(res.body.ok).toBe(true);
@@ -238,15 +239,27 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.data.instruction).toBeUndefined();
         const row = await prisma.contact.findFirst({ where: { organizationId: orgId, phoneNumber: number } });
         expect(row?.city).toBe('Jos North');
-        expect(row?.metadata).toMatchObject({
-          ward: 'Ali Kazaure',
-          community: 'Angwan Rogo',
-          occupation: 'Farmer',
-          phoneConfirmedForFollowUp: true,
-        });
+        expect(row?.metadata).toMatchObject({ ward: 'Ali Kazaure', community: 'Angwan Rogo', phoneConfirmedForFollowUp: true });
       });
 
-      it('with the location complete, asks occupation and language next — not the reason for the call yet', async () => {
+      it('still saves an occupation or language a caller volunteers — it is never asked', async () => {
+        const number = phone();
+        const res = await post('update-caller-profile', {
+          phoneNumber: number,
+          lga: 'Mangu',
+          ward: 'Mangu Halle',
+          community: 'Mangu Town',
+          occupation: 'Farmer',
+          preferredLanguage: 'Hausa',
+          phoneConfirmedForFollowUp: true,
+        });
+        expect(res.body.data.stillMissing).toEqual([]);
+        const row = await prisma.contact.findFirst({ where: { organizationId: orgId, phoneNumber: number } });
+        expect(row?.preferredLanguage).toBe('Hausa');
+        expect(row?.metadata).toMatchObject({ occupation: 'Farmer' });
+      });
+
+      it('with the location complete, asks about the follow-up number next — nothing else', async () => {
         const res = await post('update-caller-profile', {
           phoneNumber: phone(),
           fullName: 'Pam Dung',
@@ -255,7 +268,8 @@ describe('The Contact Centre script on the phone line', () => {
           community: 'Rim',
         });
         expect(res.body.speak).toBe('');
-        expect(res.body.data.instruction).toMatch(/Next: Ask their occupation and preferred language \(English, Hausa, Pidgin/);
+        expect(res.body.data.instruction).toMatch(/Next: Ask whether they are comfortable with us using the number they are calling from/);
+        expect(res.body.data.instruction).not.toMatch(/occupation|language/i);
       });
 
       it('works without a name — the script says the name is optional', async () => {
@@ -269,6 +283,9 @@ describe('The Contact Centre script on the phone line', () => {
         });
         expect(res.body.ok).toBe(true);
         expect(res.body.data.fullName).toBeNull();
+        // The location they gave is not asked for again because the name is absent.
+        expect(res.body.data.stillMissing).toEqual([]);
+        expect(res.body.data.instruction).toBeUndefined();
         const row = await prisma.contact.findFirst({ where: { organizationId: orgId, phoneNumber: number } });
         expect(row?.city).toBe('Pankshin');
       });
@@ -338,11 +355,19 @@ describe('The Contact Centre script on the phone line', () => {
         const ref = res.body.data.ticketNumber;
         expect(res.body.speak).toContain(`Your unique complaint reference number is ${ref}`);
         expect(res.body.speak).toMatch(/Please keep this number safe/);
-        // Phase 8 says which office, and only what was done: marked, not sent.
-        expect(res.body.speak).toMatch(/marked for the attention of Plateau State Ministry of Works/);
-        expect(res.body.speak).not.toMatch(/directed to|routed to/);
-        // Phase 10.
-        expect(res.body.speak).toMatch(/Once again, thank you, Nanret Davou, for contacting/);
+        // Phase 8 in the document's words, and nothing more: the office is
+        // recorded on the case, not announced.
+        expect(res.body.speak).toMatch(
+          /^Thank you for your patience\. Your report has now been registered in our system\. Your unique complaint reference number is /
+        );
+        expect(res.body.speak).not.toMatch(/directed to|routed to|marked for|attention of|Ministry/);
+        // Phase 10, then the question main added so nobody is hung up on.
+        expect(res.body.speak).toContain(
+          `Once again, thank you, Nanret Davou, for contacting the Plateau State Government Citizen Contact Centre. ` +
+            `Your report has been recorded under reference number ${ref}.`
+        );
+        expect(res.body.speak).toMatch(/Your voice matters/);
+        expect(res.body.speak).toMatch(/Is there anything else I can assist you with today, or may I go ahead and end the call\?$/);
 
         const c = await caseFor(ref);
         expect(c).toMatchObject({
@@ -377,8 +402,8 @@ describe('The Contact Centre script on the phone line', () => {
           report({ description: 'The bridge is collapsing right now and two people are trapped.', isOngoing: true })
         );
         expect(res.body.data.incidentKind).toBe('disaster');
-        expect(res.body.speak).toMatch(/Your urgent report has now been registered/);
-        expect(res.body.speak).toMatch(/Emergency Management Agency \(SEMA\)/);
+        expect(res.body.speak).toMatch(/Your report has now been registered in our system as urgent/);
+        expect(res.body.speak).toMatch(/Emergency Management Agency, SEMA/);
         expect(res.body.speak).toMatch(/1 1 2/);
       });
 
@@ -421,7 +446,7 @@ describe('The Contact Centre script on the phone line', () => {
 
       it('an office the caller names is the one the case is marked for', async () => {
         const res = await post('create-ticket', report({ targetMda: 'Plateau State Water Board' }));
-        expect(res.body.speak).toMatch(/marked for the attention of Plateau State Water Board/);
+        expect(res.body.data.routedToMda).toBe('Plateau State Water Board');
         expect((await caseFor(res.body.data.ticketNumber))?.responsibleMda).toBe('Plateau State Water Board');
       });
 
@@ -488,14 +513,14 @@ describe('The Contact Centre script on the phone line', () => {
         await callStarts(phone(), TOLL_FREE, null).expect(401);
       });
 
-      it('a number never seen: status new, every profile question still to ask', async () => {
+      it('a number never seen: status new, missing only name and location', async () => {
         const res = await callStarts(phone()).expect(200);
         expect(res.body.type).toBe('conversation_initiation_client_data');
         expect(res.body.dynamic_variables).toMatchObject({
           organization_name: 'Profiling Test Centre',
           caller_status: 'new',
           caller_name: 'not on file',
-          caller_missing_fields: 'full name, LGA, ward, community, occupation, preferred language',
+          caller_missing_fields: 'full name, LGA, ward, community',
         });
         // This agency's greeting asks for no time of day, so there is nothing to override.
         expect(res.body.conversation_config_override).toBeUndefined();
@@ -516,7 +541,8 @@ describe('The Contact Centre script on the phone line', () => {
           caller_name: 'Hauwa Musa',
           caller_missing_fields: 'none',
         });
-        expect(res.body.dynamic_variables.caller_profile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; occupation: Trader; preferred language: English/);
+        expect(res.body.dynamic_variables.caller_profile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
+        expect(res.body.dynamic_variables.caller_profile).not.toMatch(/occupation|language/);
         const first = res.body.conversation_config_override.agent.first_message;
         expect(first).toMatch(/^Good (morning|afternoon|evening), Hauwa Musa, and welcome back to Profiling Test Centre\./);
         expect(first).toMatch(/Are you still calling from Angwan Rogo, Ali Kazaure ward, Jos South\?$/);
@@ -531,16 +557,10 @@ describe('The Contact Centre script on the phone line', () => {
         );
       });
 
-      it('known by name and place but not occupation: confirms the place, and never asks a "ward" they gave', async () => {
-        const c = await known({ preferredLanguage: null, metadata: { ward: 'Ali Kazaure', community: 'Angwan Rogo' } });
+      it('a caller who never gave an occupation or language is still a returning caller', async () => {
+        const c = await known({ preferredLanguage: null });
         const res = await callStarts(c.phoneNumber).expect(200);
-        expect(res.body.dynamic_variables).toMatchObject({
-          caller_status: 'partial',
-          caller_missing_fields: 'occupation, preferred language',
-        });
-        const first = res.body.conversation_config_override.agent.first_message;
-        expect(first).toMatch(/Are you still calling from Angwan Rogo, Ali Kazaure ward, Jos South\?$/);
-        expect(first).not.toMatch(/occupation|ward and/);
+        expect(res.body.dynamic_variables).toMatchObject({ caller_status: 'returning', caller_missing_fields: 'none' });
       });
 
       it('known by name and LGA only: asked for the ward and community, in words', async () => {
@@ -672,8 +692,6 @@ describe('The Contact Centre script on the phone line', () => {
           lga: 'Bokkos',
           ward: 'Mushere',
           community: 'Mushere Central',
-          occupation: 'Teacher',
-          preferredLanguage: 'Hausa',
           phoneConfirmedForFollowUp: true,
         });
 
