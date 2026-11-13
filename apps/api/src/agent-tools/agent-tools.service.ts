@@ -151,13 +151,13 @@ export class AgentToolsService {
         return {
           ok: true,
           speak:
-            "Welcome! Since this is your first time calling us, let me quickly register your caller details — may I have your full name please?",
+            "Thank you for calling the Plateau State Government Citizen Contact Centre. To get started, may I kindly know your full name?",
           data: {
             known: false,
             profileComplete: false,
-            missingProfileFields: ['fullName', 'lga', 'homeAddress', 'occupation', 'preferredLanguage'],
+            missingProfileFields: ['fullName', 'lga', 'ward', 'community', 'occupation', 'preferredLanguage', 'phoneConfirmedForFollowUp'],
             prompt:
-              'NEW CALLER (NOT YET PROFILED) — MANDATORY 5-QUESTION ONBOARDING: You MUST collect the caller\'s 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and say: "I will help you with that right away! Since this is your first time calling us, let me quickly take your details first — may I have your full name please?" Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!',
+              'NEW CALLER (NOT YET PROFILED) — FOLLOW PHASE 1 & PHASE 2 OF THE STANDARD OPERATING SCRIPT: (1) If the caller just gave their name in response to your greeting, say: "Thank you very much, [Caller\'s Name]. It is a pleasure speaking with you." (If they had not yet given their name, ask: "To get started, may I kindly know your full name?"; if they decline to give their name, say: "That is perfectly fine. We can proceed with your report. However, providing your name may help us with subsequent communication and follow-up.") (2) Next, collect their location and profile ONE QUESTION AT A TIME: first ask "Please, which Local Government Area of Plateau State are you calling from?"; second ask "Thank you. Could you also tell me your ward and community?"; third ask their occupation and preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language); fourth ask "Are you comfortable with us using the telephone number you are calling from for subsequent communication?" (if not, take their alternative number). (3) Call update-caller-profile with all collected details, switch to their preferred language, and proceed to Phase 3 ("Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.")!',
           },
         };
       }
@@ -206,32 +206,37 @@ export class AgentToolsService {
         .filter(Boolean)
         .join('; ');
 
-      const occupation = ((contact.metadata as Record<string, any>)?.occupation as string) ?? null;
+      const contactMeta = (contact.metadata as Record<string, any>) || {};
+      const occupation = (contactMeta.occupation as string) ?? null;
+      const ward = (contactMeta.ward as string) ?? null;
+      const community = (contactMeta.community as string) ?? null;
+      const alternativePhone = (contactMeta.alternativePhone as string) ?? null;
+      const phoneConfirmedForFollowUp = contactMeta.phoneConfirmedForFollowUp ?? null;
       const ours = isPlaceholderContactName(contact.fullName);
       const prefLang = (contact.preferredLanguage || '').trim().toLowerCase();
 
       let greetingSentence: string;
       if (ours) {
         greetingSentence =
-          "Welcome! Since I don't have your profile details on file yet, may I quickly have your full name please?";
+          "Thank you for calling the Plateau State Government Citizen Contact Centre. To get started, may I kindly know your full name?";
       } else if (prefLang.startsWith('ha')) {
-        greetingSentence = `Barka da dawowa, ${contact.fullName}${contact.city ? ` daga ${contact.city}` : ''}! Da me zan iya taimaka maka a yau?`;
+        greetingSentence = `Barka da dawowa, ${contact.fullName}${contact.city ? ` daga ${contact.city}` : ''}! Ta yaya Gwamnatin Jihar Plateau za ta taimaka maka a yau?`;
       } else if (prefLang.includes('pidgin') || prefLang === 'pcm') {
-        greetingSentence = `Welcome back, ${contact.fullName}! How body today? Wetin you wan make I help you with today?`;
+        greetingSentence = `Welcome back, ${contact.fullName}! How body today? Wetin you wan make Plateau State Government help you with today?`;
       } else if (prefLang.startsWith('yo')) {
-        greetingSentence = `E kaabo pada, ${contact.fullName}! Bawo ni mo se le ran yin lowo loni?`;
+        greetingSentence = `E kaabo pada, ${contact.fullName}! Bawo ni Ijoba Ipinle Plateau se le ran yin lowo loni?`;
       } else if (prefLang.startsWith('ig')) {
-        greetingSentence = `Nnoo, ${contact.fullName}! Kedu ka m ga-esi nyere gi aka taa?`;
+        greetingSentence = `Nnoo, ${contact.fullName}! Kedu ka Goomenti Plateau State ga-esi nyere gi aka taa?`;
       } else if (prefLang.includes('berom')) {
-        greetingSentence = `Sho, mwin sho ${contact.fullName}! Welcome back! How can I help you today?`;
+        greetingSentence = `Mwin sho, ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
       } else if (prefLang.includes('ngas') || prefLang.includes('angas')) {
-        greetingSentence = `Mwa gi, ${contact.fullName}! Kwaram! Welcome back — how can I help you today?`;
+        greetingSentence = `Mwa gi, ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
       } else if (prefLang.includes('mwag') || prefLang.includes('mangu')) {
-        greetingSentence = `Wu na, ${contact.fullName}! Shagal! Welcome back — how can I help you today?`;
+        greetingSentence = `Wu na, ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
       } else if (prefLang.includes('tarok')) {
-        greetingSentence = `Mbin, i kat ${contact.fullName}! Umi! Welcome back — how can I help you today?`;
+        greetingSentence = `Mbin, i kat ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
       } else {
-        greetingSentence = `Welcome back, ${contact.fullName}! How can I assist you with Plateau State services today?`;
+        greetingSentence = `Thank you very much, ${contact.fullName}. It is a pleasure speaking with you again. Now, how may the Plateau State Government assist you today?`;
       }
 
       const sentences: string[] = [greetingSentence];
@@ -264,15 +269,19 @@ export class AgentToolsService {
           fullName: ours ? null : contact.fullName,
           nameIsPlaceholder: ours,
           lga: contact.city ?? null,
+          ward,
+          community,
           homeAddress: contact.address ?? null,
           occupation,
           preferredLanguage: contact.preferredLanguage ?? null,
+          alternativePhone,
+          phoneConfirmedForFollowUp,
           recentCallSummary: recentCallSummary || null,
           prompt: ours
-            ? 'NEW / UNPROFILED CALLER — MANDATORY 5-QUESTION ONBOARDING: This caller still has a placeholder name ("Caller (...) ") and is NOT profiled yet! You MUST collect their 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and ask for their full name first. Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!'
+            ? 'NEW / UNPROFILED CALLER — FOLLOW PHASE 1 & PHASE 2 OF THE STANDARD OPERATING SCRIPT: This caller still has a placeholder name ("Caller (...) ") and is NOT profiled yet! (1) If the caller just gave their name in response to your greeting, say: "Thank you very much, [Caller\'s Name]. It is a pleasure speaking with you." (If not, ask: "To get started, may I kindly know your full name?"; if they decline, say: "That is perfectly fine. We can proceed with your report. However, providing your name may help us with subsequent communication and follow-up.") (2) Collect their location and profile ONE QUESTION AT A TIME: first ask "Please, which Local Government Area of Plateau State are you calling from?"; second ask "Thank you. Could you also tell me your ward and community?"; third ask their occupation and preferred language; fourth ask "Are you comfortable with us using the telephone number you are calling from for subsequent communication?". (3) Call update-caller-profile and then proceed to Phase 3!'
             : !contact.city || !contact.address || !occupation || !contact.preferredLanguage
-              ? `PARTIALLY PROFILED CALLER: Name on file is "${contact.fullName}", LGA="${contact.city ?? 'MISSING'}", Address="${contact.address ?? 'MISSING'}", Occupation="${occupation ?? 'MISSING'}", PreferredLanguage="${contact.preferredLanguage ?? 'MISSING'}". Greet ${contact.fullName} by name, then collect any MISSING profile fields one question at a time (LGA, home address, occupation, preferred language) and call update-caller-profile to complete their profile!`
-              : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Refer to ${contact.fullName} by name and speak in ${contact.preferredLanguage ?? 'English'} immediately (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa).`,
+              ? `PARTIALLY PROFILED CALLER: Name on file is "${contact.fullName}", LGA="${contact.city ?? 'MISSING'}", Ward="${ward ?? 'MISSING'}", Community/Address="${contact.address ?? 'MISSING'}", Occupation="${occupation ?? 'MISSING'}", PreferredLanguage="${contact.preferredLanguage ?? 'MISSING'}". Greet ${contact.fullName} warmly by name ("Thank you very much, ${contact.fullName}. It is a pleasure speaking with you."), collect any MISSING profile fields one question at a time (LGA, ward and community, occupation, preferred language, and phone confirmation for follow-up), call update-caller-profile, and proceed to Phase 3!`
+              : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Ward="${ward ?? 'N/A'}", Community/Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Greet ${contact.fullName} by name in ${contact.preferredLanguage ?? 'English'} (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa) and proceed directly to Phase 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call.")!`,
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,
@@ -299,7 +308,7 @@ export class AgentToolsService {
   }
 
   /**
-   * Save or update the caller's identity (name, LGA, address, occupation, language) in their contact record.
+   * Save or update the caller's identity (name, LGA, ward, community, address, occupation, language, follow-up phone) in their contact record.
    */
   async updateCallerProfile(
     organizationId: string,
@@ -307,9 +316,13 @@ export class AgentToolsService {
       phoneNumber: string;
       fullName?: string;
       lga?: string;
+      ward?: string;
+      community?: string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
+      alternativePhone?: string;
+      phoneConfirmedForFollowUp?: boolean | string;
       notes?: string;
     }
   ): Promise<ToolResult> {
@@ -335,14 +348,40 @@ export class AgentToolsService {
       if (body.lga?.trim()) {
         updateData.city = body.lga.trim();
       }
-      if (body.homeAddress?.trim()) {
-        updateData.address = body.homeAddress.trim();
+      if (body.ward?.trim()) {
+        metaUpdates.ward = body.ward.trim();
+      }
+      if (body.community?.trim()) {
+        metaUpdates.community = body.community.trim();
+      }
+      const composedAddress = [
+        body.homeAddress?.trim(),
+        body.community?.trim() && !body.homeAddress?.toLowerCase().includes(body.community.trim().toLowerCase())
+          ? body.community.trim()
+          : null,
+        body.ward?.trim() && !body.homeAddress?.toLowerCase().includes(body.ward.trim().toLowerCase())
+          ? `Ward: ${body.ward.trim()}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      if (composedAddress) {
+        updateData.address = composedAddress;
       }
       if (body.occupation?.trim()) {
         metaUpdates.occupation = body.occupation.trim();
       }
       if (body.preferredLanguage?.trim()) {
         updateData.preferredLanguage = body.preferredLanguage.trim();
+      }
+      if (body.alternativePhone?.trim()) {
+        metaUpdates.alternativePhone = body.alternativePhone.trim();
+      }
+      if (body.phoneConfirmedForFollowUp !== undefined) {
+        metaUpdates.phoneConfirmedForFollowUp =
+          body.phoneConfirmedForFollowUp === true ||
+          String(body.phoneConfirmedForFollowUp).toLowerCase() === 'true' ||
+          String(body.phoneConfirmedForFollowUp).toLowerCase() === 'yes';
       }
       if (body.notes?.trim()) {
         metaUpdates.lastInquiryNote = body.notes.trim();
@@ -367,26 +406,26 @@ export class AgentToolsService {
 
       if (langNorm.startsWith('ha')) {
         speak = savedName
-          ? `Toh madalla, ${savedName}! Na adana bayanan ka. Daga yanzu za mu ci gaba da Hausa. Da me zan iya taimaka maka a yau?`
-          : 'Toh madalla! Na adana bayanan ka. Da me zan iya taimaka maka a yau?';
+          ? `Na gode da bayar da wadannan bayanai, ${savedName}. Yanzu, ta yaya Gwamnatin Jihar Plateau za ta taimaka maka a yau? Dan Allah fadi dalilin kiran ka.`
+          : 'Na gode da bayar da wadannan bayanai. Yanzu, ta yaya Gwamnatin Jihar Plateau za ta taimaka maka a yau? Dan Allah fadi dalilin kiran ka.';
         languageInstruction =
           "CRITICAL: The caller chose Hausa. Immediately call language_detection with 'ha' and speak 100% in natural Northern Nigerian Hausa for the rest of the conversation!";
       } else if (langNorm.includes('pidgin') || langNorm === 'pcm') {
         speak = savedName
-          ? `Correct, ${savedName}! I don save your details well well. Na Pidgin we go take talk now. Wetin you wan make I help you with today?`
-          : 'Correct! I don save your details well well. Wetin you wan make I help you with today?';
+          ? `Thank you well well for those details, ${savedName}! Now, how Plateau State Government fit take help you today? Abeg talk wetin make you call.`
+          : 'Thank you well well for those details! Now, how Plateau State Government fit take help you today? Abeg talk wetin make you call.';
         languageInstruction =
           'CRITICAL: The caller chose Nigerian Pidgin. Immediately switch to warm, authentic Nigerian Pidgin for the rest of the conversation!';
       } else if (langNorm.startsWith('yo')) {
         speak = savedName
-          ? `E se pupo, ${savedName}! Mo ti fi oruko ati alaye yin pamo. Lati isinsinyi lo, ede Yoruba ni a o ma fi soro. Bawo ni mo se le ran yin lowo loni?`
-          : 'E se pupo! Mo ti fi alaye yin pamo. Bawo ni mo se le ran yin lowo loni?';
+          ? `E se pupo fun awon alaye wonyi, ${savedName}! Bayi, bawo ni Ijoba Ipinle Plateau se le ran yin lowo loni? E jowo e so idi ti e fi pe.`
+          : 'E se pupo fun awon alaye wonyi! Bayi, bawo ni Ijoba Ipinle Plateau se le ran yin lowo loni? E jowo e so idi ti e fi pe.';
         languageInstruction =
           'CRITICAL: The caller chose Yoruba. Immediately switch to warm, natural conversational Yoruba for the rest of the conversation!';
       } else if (langNorm.startsWith('ig')) {
         speak = savedName
-          ? `Daalu nke ukwuu, ${savedName}! Echekwara m nkowa gi niile. Site ugbua gawa, anyi ga-asu Igbo. Kedu ka m ga-esi nyere gi aka taa?`
-          : 'Daalu nke ukwuu! Echekwara m nkowa gi. Kedu ka m ga-esi nyere gi aka taa?';
+          ? `Daalu nke ukwuu maka nkowa ndia, ${savedName}! Ugbu a, kedu ka Goomenti Plateau State ga-esi nyere gi aka taa? Biko kwuo ihe mere i ji kpọọ.`
+          : 'Daalu nke ukwuu maka nkowa ndia! Ugbu a, kedu ka Goomenti Plateau State ga-esi nyere gi aka taa? Biko kwuo ihe mere i ji kpọọ.';
         languageInstruction =
           'CRITICAL: The caller chose Igbo. Immediately switch to warm, natural conversational Igbo for the rest of the conversation!';
       } else if (
@@ -395,15 +434,16 @@ export class AgentToolsService {
         )
       ) {
         speak = savedName
-          ? `Thank you so much, ${savedName}! I have saved your details and your Plateau heritage language (${updated.preferredLanguage}). How can I assist you today?`
-          : `Thank you! I have saved your details and your Plateau language preference (${updated.preferredLanguage}). How can I assist you today?`;
+          ? `Thank you for providing those details, ${savedName}. Now, how may the Plateau State Government assist you today? Please state the reason for your call.`
+          : 'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.';
         languageInstruction = `The caller selected the Plateau State indigenous language ${updated.preferredLanguage}. Warmly use ${updated.preferredLanguage} greetings and expressions alongside clear Hausa, Pidgin, or Nigerian English so every detail is crystal clear!`;
       } else {
         speak = savedName
-          ? `Thank you so much, ${savedName}! I've saved your details. How can I help you today?`
-          : "Thank you! I've saved your details. How can I help you today?";
+          ? `Thank you for providing those details, ${savedName}. Now, how may the Plateau State Government assist you today? Please state the reason for your call.`
+          : 'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.';
       }
 
+      const updatedMeta = (updated.metadata as Record<string, any>) || {};
       return {
         ok: true,
         speak,
@@ -411,9 +451,13 @@ export class AgentToolsService {
           contactId: updated.id,
           fullName: updated.fullName,
           lga: updated.city,
+          ward: updatedMeta.ward ?? null,
+          community: updatedMeta.community ?? null,
           address: updated.address,
-          occupation: (updated.metadata as any)?.occupation ?? null,
+          occupation: updatedMeta.occupation ?? null,
           preferredLanguage: updated.preferredLanguage,
+          alternativePhone: updatedMeta.alternativePhone ?? null,
+          phoneConfirmedForFollowUp: updatedMeta.phoneConfirmedForFollowUp ?? null,
           ...(languageInstruction ? { instruction: languageInstruction } : {}),
         },
       };
@@ -898,14 +942,29 @@ export class AgentToolsService {
       description: string;
       category?: string;
       location?: string;
+      lga?: string;
+      ward?: string;
+      targetMda?: string;
       occurredAt?: string;
+      impact?: string;
+      previouslyReported?: string;
+      additionalEvidence?: string;
+      summaryConfirmed?: boolean | string;
       isOngoing?: boolean | string;
       victimsOrInjuries?: string;
     }
   ): Promise<ToolResult> {
     try {
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
-      const text = `${input.subject} ${input.description} ${input.category ?? ''} ${input.victimsOrInjuries ?? ''}`.toLowerCase();
+      const contactMeta = (contact.metadata as Record<string, any>) || {};
+      const resolvedLga = input.lga?.trim() || contact.city || null;
+      const resolvedWard = input.ward?.trim() || (contactMeta.ward as string) || null;
+      const followUpPhone = (contactMeta.alternativePhone as string) || input.phoneNumber;
+      const callerDisplayName =
+        input.fullName?.trim() ||
+        (!isPlaceholderContactName(contact.fullName) ? contact.fullName : null);
+
+      const text = `${input.subject} ${input.description} ${input.category ?? ''} ${input.targetMda ?? ''} ${input.victimsOrInjuries ?? ''}`.toLowerCase();
 
       // ── Incident / emergency triage ───────────────────────────────────────
       // A citizen reporting an attack, fire, flood or injury needs two things a
@@ -926,6 +985,46 @@ export class AgentToolsService {
         : null;
       const ongoing = input.isOngoing === true || String(input.isOngoing).toLowerCase() === 'true';
 
+      // Sector classification & automatic MDA case routing (Phase 8 of Standard Operating Script)
+      const INFRASTRUCTURE = /\broad\b|bridge|pothole|drainage|streetlight|water supply|pipe|transformer|electricity|power|construction|culvert|infrastructure/i;
+      const HEALTHCARE = /hospital|clinic|health|doctor|nurse|medicine|drug|plaschema|enrollee|ward|patient|maternity|pharmacy/i;
+      const EDUCATION = /school|teacher|student|pupil|classroom|university|polytechnic|college|subeb|scholarship|education/i;
+      const PUBLIC_ADMIN = /ministry|civil serv|pension|salary|tax|revenue|psirs|certificate|permit|land|plagis|jmdb|office|bribe|extortion|staff/i;
+
+      const sector = kind
+        ? `Emergency (${kind})`
+        : input.category?.trim()
+        ? input.category.trim()
+        : INFRASTRUCTURE.test(text)
+        ? 'Infrastructure'
+        : HEALTHCARE.test(text)
+        ? 'Healthcare'
+        : EDUCATION.test(text)
+        ? 'Education'
+        : PUBLIC_ADMIN.test(text)
+        ? 'Public Administration'
+        : 'General Public Service';
+
+      const routedToMda =
+        input.targetMda?.trim() ||
+        (kind === 'security'
+          ? 'Operation Enduring Peace / Operation Rainbow / Nigeria Police Force (Plateau Command)'
+          : kind === 'fire'
+          ? 'Plateau State Fire Service'
+          : kind === 'disaster'
+          ? 'Plateau State Emergency Management Agency (SEMA)'
+          : kind === 'medical'
+          ? 'Plateau State Ministry of Health / Emergency Medical Services'
+          : INFRASTRUCTURE.test(text)
+          ? 'Plateau State Ministry of Works / Jos Metropolitan Development Board (JMDB)'
+          : HEALTHCARE.test(text)
+          ? 'Plateau State Ministry of Health / PLASCHEMA'
+          : EDUCATION.test(text)
+          ? 'Plateau State Ministry of Education / SUBEB'
+          : PUBLIC_ADMIN.test(text)
+          ? 'Office of the Head of Civil Service / Relevant Supervised MDA'
+          : 'Plateau State Ministry of Information and Communication (Central Citizen Desk)');
+
       // A citizen reporting that they were asked for money, refused service or
       // mistreated is a service-integrity complaint at ANY agency, not only a
       // hospital — so the escalation is kept and only the health-specific
@@ -941,13 +1040,28 @@ export class AgentToolsService {
         ? `[INTEGRITY ESCALATION] ${input.subject}`
         : input.subject;
 
+      const summaryConfirmedFlag =
+        input.summaryConfirmed === undefined
+          ? null
+          : input.summaryConfirmed === true ||
+            String(input.summaryConfirmed).toLowerCase() === 'true' ||
+            String(input.summaryConfirmed).toLowerCase() === 'yes';
+
       const details = [
         input.description,
-        input.location ? `Location: ${input.location}` : null,
-        input.occurredAt ? `When: ${input.occurredAt}` : null,
+        `Sector / Classification: ${sector}`,
+        `Routed to MDA: ${routedToMda}`,
+        resolvedLga ? `LGA: ${resolvedLga}` : null,
+        resolvedWard ? `Ward: ${resolvedWard}` : null,
+        input.location ? `Location / Community: ${input.location}` : null,
+        input.occurredAt ? `When occurred / noticed: ${input.occurredAt}` : null,
+        input.impact ? `Impact on movement/residents/services: ${input.impact}` : null,
+        input.previouslyReported ? `Previously reported: ${input.previouslyReported}` : null,
+        input.additionalEvidence ? `Additional information / evidence: ${input.additionalEvidence}` : null,
+        summaryConfirmedFlag !== null ? `Caller confirmed summary before registration: ${summaryConfirmedFlag ? 'YES' : 'NO'}` : null,
         kind ? `Still ongoing: ${ongoing ? 'YES' : 'no / unknown'}` : null,
         input.victimsOrInjuries ? `Victims / injuries: ${input.victimsOrInjuries}` : null,
-        `Reported by phone: ${input.phoneNumber}`,
+        `Reported by phone: ${input.phoneNumber}${followUpPhone !== input.phoneNumber ? ` (Follow-up phone: ${followUpPhone})` : ''}`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -984,11 +1098,13 @@ export class AgentToolsService {
         return {
           ok: true,
           speak:
-            `You did the right thing by reporting this. I have logged it as an urgent incident and flagged it to our team, and your reference is ${ticket.ticketNumber}. ` +
+            `Thank you for your patience. Your urgent report has now been registered in our system under reference number ${ticket.ticketNumber} and routed to ${routedToMda}. Please keep this number safe, as it will help you track the progress of your report. ` +
             authority,
           data: {
             ticketId: ticket.id,
             ticketNumber: ticket.ticketNumber,
+            sector,
+            routedToMda,
             isEscalated: true,
             incidentKind: kind,
             instruction:
@@ -997,21 +1113,23 @@ export class AgentToolsService {
         };
       }
 
-      // `ticket.ticketNumber`, not `ticket.id.slice(0, 8)`.
-      //
-      // The dashboard's ticket table shows `ticketNumber` (TCK-…) and that is
-      // what an officer searches by; the orchestrator quotes the same column on
-      // WhatsApp. This read out the first eight characters of a uuid instead —
-      // a reference the citizen was told to keep that matches NOTHING any
-      // officer can look up, for the same complaint that WhatsApp references
-      // correctly. Two engines, one complaint, two references, one of them
-      // useless.
+      // Phase 8 + Phase 10 Standard Operating Script response
+      const nameAcknowledgement = callerDisplayName ? `, ${callerDisplayName},` : '';
       return {
         ok: true,
-        speak: isIntegrityComplaint
-          ? `I have logged this as an urgent complaint for review. Your reference number is ${ticket.ticketNumber} — please keep it. Someone will look into this as a priority and come back to you on this number.`
-          : `I have logged this for our team. Your reference is ${ticket.ticketNumber}, and someone will come back to you on this number.`,
-        data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, isEscalated: isIntegrityComplaint },
+        speak:
+          `Thank you for your patience. Your report has now been registered in our system and directed to ${routedToMda}. ` +
+          `Your unique complaint reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will help you track the progress of your report and make subsequent enquiries. ` +
+          `Once again, thank you${nameAcknowledgement} for contacting the Plateau State Government Citizen Contact Centre. We appreciate your contribution towards improving governance and public service delivery across Plateau State. Is there anything else I can assist you with today, or may I go ahead and end the call?`,
+        data: {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          sector,
+          routedToMda,
+          isEscalated: isIntegrityComplaint,
+          instruction:
+            'Follow PHASE 8 and PHASE 10 of the Standard Operating Script: state the unique complaint reference number clearly, confirm that the report has been directed to the appropriate government office, thank the caller for their contribution towards improving governance across Plateau State, and ask if there is anything else you can assist them with today or if you may end the call. Once they confirm they are done, say: "Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye." and invoke end_call.',
+        },
       };
     } catch (e) {
       return this.failed('create_ticket', e);

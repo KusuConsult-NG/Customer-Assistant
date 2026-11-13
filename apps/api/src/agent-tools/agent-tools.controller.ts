@@ -48,9 +48,13 @@ export class AgentToolsController {
       phoneNumber: string;
       fullName?: string;
       lga?: string;
+      ward?: string;
+      community?: string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
+      alternativePhone?: string;
+      phoneConfirmedForFollowUp?: boolean | string;
       notes?: string;
     }
   ): Promise<ToolResult> {
@@ -118,10 +122,17 @@ export class AgentToolsController {
       subject: string;
       description: string;
       category?: string;
+      lga?: string;
+      ward?: string;
       location?: string;
+      targetMda?: string;
       occurredAt?: string;
       isOngoing?: boolean | string;
       victimsOrInjuries?: string;
+      impact?: string;
+      previouslyReported?: string;
+      additionalEvidence?: string;
+      summaryConfirmed?: boolean | string;
     }
   ): Promise<ToolResult> {
     return this.tools.createTicket(this.org(req), body);

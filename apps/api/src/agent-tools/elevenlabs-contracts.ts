@@ -350,7 +350,7 @@ export function agentDefinition(spec: AgentSpec) {
           overrides: {
             agent: {
               firstMessage:
-                'Sannu! Barka da zuwa Cibiyar Bayanai ta Jihar Plateau. Sunana Nanpan. Da me zan iya taimaka maka a yau?',
+                "Barka da zuwa Cibiyar Tuntubar Jama'a ta Gwamnatin Jihar Plateau. Na gode da kiran ka. Sunana Nanpan, kuma ni mataimaki ne na zamani daga Ma'aikatar Yada Labarai. Ina nan domin in saurare ka, kuma in taimaka maka da tambayoyi, korafe-korafe, bukatu da ra'ayoyi game da ayyukan gwamnati a fadin Jihar Plateau. Don mu fara, dan Allah zan iya sanin cikakken sunan ka?",
             },
             tts: {
               voiceId: '9wJXRg0I6YvgLFAP3g7J',
