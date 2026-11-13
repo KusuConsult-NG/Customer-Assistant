@@ -150,8 +150,15 @@ export class AgentToolsService {
       if (!contact) {
         return {
           ok: true,
-          speak: "I don't have you on file yet — could I take your name?",
-          data: { known: false },
+          speak:
+            "Welcome! Since this is your first time calling us, let me quickly register your caller details — may I have your full name please?",
+          data: {
+            known: false,
+            profileComplete: false,
+            missingProfileFields: ['fullName', 'lga', 'homeAddress', 'occupation', 'preferredLanguage'],
+            prompt:
+              'NEW CALLER (NOT YET PROFILED) — MANDATORY 5-QUESTION ONBOARDING: You MUST collect the caller\'s 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and say: "I will help you with that right away! Since this is your first time calling us, let me quickly take your details first — may I have your full name please?" Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!',
+          },
         };
       }
 
@@ -205,9 +212,8 @@ export class AgentToolsService {
 
       let greetingSentence: string;
       if (ours) {
-        greetingSentence = recentCallSummary
-          ? 'Welcome back! Let me check our notes from your previous call and help you right away.'
-          : "Welcome! I don't have your name on file yet — may I know who I have the pleasure of speaking with?";
+        greetingSentence =
+          "Welcome! Since I don't have your profile details on file yet, may I quickly have your full name please?";
       } else if (prefLang.startsWith('ha')) {
         greetingSentence = `Barka da dawowa, ${contact.fullName}${contact.city ? ` daga ${contact.city}` : ''}! Da me zan iya taimaka maka a yau?`;
       } else if (prefLang.includes('pidgin') || prefLang === 'pcm') {
@@ -263,10 +269,10 @@ export class AgentToolsService {
           preferredLanguage: contact.preferredLanguage ?? null,
           recentCallSummary: recentCallSummary || null,
           prompt: ours
-            ? recentCallSummary
-              ? `NOTE: Although the contact record still has a placeholder name, recentCallSummary contains details from their previous call: "${recentCallSummary}". Use any name/details mentioned in recentCallSummary, DO NOT claim their details are missing, and call update-caller-profile to save them!`
-              : 'The caller is a new caller and not yet profiled. Collect their 5 profile details one question at a time: (1) full name, (2) LGA, (3) home/street address, (4) occupation, and (5) preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or Plateau language). Once collected, call update-caller-profile and immediately switch to their chosen language!'
-            : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Refer to ${contact.fullName} by name and speak in ${contact.preferredLanguage ?? 'English'} immediately (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa).`,
+            ? 'NEW / UNPROFILED CALLER — MANDATORY 5-QUESTION ONBOARDING: This caller still has a placeholder name ("Caller (...) ") and is NOT profiled yet! You MUST collect their 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and ask for their full name first. Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!'
+            : !contact.city || !contact.address || !occupation || !contact.preferredLanguage
+              ? `PARTIALLY PROFILED CALLER: Name on file is "${contact.fullName}", LGA="${contact.city ?? 'MISSING'}", Address="${contact.address ?? 'MISSING'}", Occupation="${occupation ?? 'MISSING'}", PreferredLanguage="${contact.preferredLanguage ?? 'MISSING'}". Greet ${contact.fullName} by name, then collect any MISSING profile fields one question at a time (LGA, home address, occupation, preferred language) and call update-caller-profile to complete their profile!`
+              : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Refer to ${contact.fullName} by name and speak in ${contact.preferredLanguage ?? 'English'} immediately (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa).`,
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,

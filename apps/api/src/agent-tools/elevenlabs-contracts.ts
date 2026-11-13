@@ -105,7 +105,7 @@ export interface WebhookToolSpec {
  * `prompt.toolIds` — see finding 1.
  */
 export function webhookTool(spec: WebhookToolSpec): ElevenLabs.ToolRequestModel {
-  const timeout = spec.timeoutSecs ?? 10;
+  const timeout = spec.timeoutSecs ?? 25;
   if (timeout < 5 || timeout > 300) {
     throw new Error(`responseTimeoutSecs must be between 5 and 300, got ${timeout}`);
   }
