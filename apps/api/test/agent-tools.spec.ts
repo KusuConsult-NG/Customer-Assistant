@@ -589,6 +589,8 @@ describe('Agent tools', () => {
         fullName: 'Has A Complaint',
         subject: 'Bin not collected',
         description: 'Three weeks now',
+        summary: 'Refuse has not been collected for three weeks.',
+        summaryConfirmed: true,
       }).expect(201);
       // The reference the citizen is told must be the one an officer can
       // search: the dashboard's ticket table shows `ticketNumber`.
@@ -636,6 +638,8 @@ describe('Agent tools', () => {
         phoneNumber: 'anonymous',
         subject: 'Withheld',
         description: 'No number',
+        summary: 'A report from a withheld number.',
+        summaryConfirmed: true,
       }).expect(201);
 
       expect(res.body.ok).toBe(false);

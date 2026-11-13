@@ -68,6 +68,11 @@ export class AgentToolsController {
       phoneNumber: string;
       fullName?: string;
       lga?: string;
+      ward?: string;
+      community?: string;
+      followUpConsent?: boolean;
+      followUpNumber?: string;
+      followUpNumberConfirmed?: boolean;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
@@ -138,10 +143,20 @@ export class AgentToolsController {
       subject: string;
       description: string;
       category?: string;
+      lga?: string;
+      ward?: string;
+      community?: string;
       location?: string;
       occurredAt?: string;
+      institution?: string;
+      impact?: string;
+      previouslyReported?: string;
+      urgentMedicalAttention?: boolean | string;
       isOngoing?: boolean | string;
       victimsOrInjuries?: string;
+      anonymous?: boolean | string;
+      summary?: string;
+      summaryConfirmed?: boolean | string;
     }
   ): Promise<ToolResult> {
     return this.tools.createTicket(this.org(req), body);

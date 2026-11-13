@@ -7,40 +7,53 @@
  * "returning", the agent would greet somebody by name and then ask for it, or
  * welcome a stranger back. So the rule lives here and both read it.
  *
+ * ── What is asked, and why only this ────────────────────────────────────────
+ *
+ * The Contact Centre's standard operating script (Phases 1–2) identifies a
+ * caller by their name, the Local Government Area, ward and community they
+ * are calling from, and the number to reach them on. Nothing else is asked:
+ * the script is explicit that non-essential personal information is never
+ * compulsory, and an earlier version that also demanded a home address,
+ * occupation and preferred language interrogated citizens who had rung to
+ * report something. Those are still SAVED when a caller volunteers them
+ * (`update-caller-profile` accepts them), and simply no longer required.
+ *
+ * The NAME is asked but optional — a caller may decline and is still served.
  * A record is only as good as the name on it: a contact whose name is one of
- * our placeholders (`Caller (···1234)`, written when somebody rang and hung up
- * before giving it) is a NEW caller, however many calls it has.
+ * our placeholders (`Caller (···1234)`) is a NEW caller, however many calls it
+ * has, and is asked again (politely, and again free to decline).
  */
 import { isPlaceholderContactName } from '@ace/database';
 
-/** The five details collected from every new caller, in the order asked. */
-export const PROFILE_FIELDS = ['fullName', 'lga', 'homeAddress', 'occupation', 'preferredLanguage'] as const;
+/** The caller details the script collects, in the order it asks them. */
+export const PROFILE_FIELDS = ['fullName', 'lga', 'ward', 'community'] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 
 /** How each field is said to the agent. */
 const FIELD_LABELS: Record<ProfileField, string> = {
   fullName: 'full name',
   lga: 'LGA',
-  homeAddress: 'home address',
-  occupation: 'occupation',
-  preferredLanguage: 'preferred language',
+  ward: 'ward',
+  community: 'community',
 };
 
 /**
- * - `returning`: a real name and all five details — greet by name, ask nothing.
- * - `partial`: a real name, some details missing — greet by name, ask only those.
- * - `new`: no record, or only a placeholder name — collect all five.
+ * - `returning`: a real name and the whole location — greet by name, confirm
+ *   the location in one question, ask nothing else.
+ * - `partial`: a real name, part of the location missing — greet by name, ask
+ *   only for what is missing.
+ * - `new`: no record, or only a placeholder name — the script from Phase 1.
  * - `unknown`: the records could not be read in time. NOT the same as new: the
- *   agent falls back to its lookup tool rather than interviewing somebody who
- *   may have given their details last week.
+ *   agent falls back to its lookup tool rather than starting over with
+ *   somebody who may have given their details last week.
  */
 export type ProfileStatus = 'returning' | 'partial' | 'new' | 'unknown';
 
 export interface ContactProfileFields {
   fullName: string | null;
   city: string | null;
-  address: string | null;
-  preferredLanguage: string | null;
+  address?: string | null;
+  preferredLanguage?: string | null;
   metadata: unknown;
 }
 
@@ -50,25 +63,36 @@ export interface CallerProfile {
   name: string | null;
   missing: ProfileField[];
   values: Record<ProfileField, string | null>;
+  /**
+   * Where to reach them, as they said on an earlier call: the number they are
+   * calling from (`calling number`), another number they gave, or null when it
+   * was never asked.
+   */
+  followUp: string | null;
 }
 
 const present = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const meta = (contact: ContactProfileFields | null) =>
+  ((contact?.metadata as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
 
 export function profileOf(contact: ContactProfileFields | null): CallerProfile {
   const name = contact && present(contact.fullName) && !isPlaceholderContactName(contact.fullName!)
     ? contact.fullName!.trim()
     : null;
+  const m = meta(contact);
   const values: Record<ProfileField, string | null> = {
     fullName: name,
+    // LGA lives in `city`, as it always has: every screen that shows a
+    // citizen's area reads that column.
     lga: present(contact?.city),
-    homeAddress: present(contact?.address),
-    occupation: present((contact?.metadata as Record<string, unknown> | null)?.occupation),
-    preferredLanguage: present(contact?.preferredLanguage),
+    ward: present(m.ward),
+    community: present(m.community),
   };
+  const followUp = present(m.followUpNumber) ?? (m.followUpConsent === true ? 'calling number' : null);
   const missing = PROFILE_FIELDS.filter((f) => !values[f]);
 
-  if (!name) return { status: 'new', name: null, missing: [...PROFILE_FIELDS], values };
-  return { status: missing.length === 0 ? 'returning' : 'partial', name, missing, values };
+  if (!name) return { status: 'new', name: null, missing: [...PROFILE_FIELDS], values, followUp };
+  return { status: missing.length === 0 ? 'returning' : 'partial', name, missing, values, followUp };
 }
 
 /**
@@ -88,16 +112,26 @@ export const CALLER_VARIABLE_DEFAULTS = {
 
 export type CallerVariables = Record<keyof typeof CALLER_VARIABLE_DEFAULTS, string>;
 
+/** The caller's location as one phrase: "Angwan Rogo, Ali Kazaure ward, Jos North". */
+export function locationPhrase(profile: CallerProfile): string | null {
+  const parts = [
+    profile.values.community,
+    profile.values.ward ? `${profile.values.ward} ward` : null,
+    profile.values.lga,
+  ].filter(Boolean);
+  return parts.length ? parts.join(', ') : null;
+}
+
 export function callerVariablesFor(profile: CallerProfile): CallerVariables {
   const said = (f: ProfileField) => profile.values[f] ?? 'MISSING';
   return {
     caller_status: profile.status,
     caller_name: profile.name ?? 'not on file',
     caller_profile:
-      profile.status === 'new'
+      profile.status === 'new' && !locationPhrase(profile)
         ? 'none on file'
-        : `LGA: ${said('lga')}; home address: ${said('homeAddress')}; occupation: ${said('occupation')}; ` +
-          `preferred language: ${said('preferredLanguage')}`,
+        : `LGA: ${said('lga')}; ward: ${said('ward')}; community: ${said('community')}; ` +
+          `follow-up number: ${profile.followUp ?? 'not yet agreed'}`,
     caller_missing_fields: profile.missing.length ? profile.missing.map((f) => FIELD_LABELS[f]).join(', ') : 'none',
   };
 }

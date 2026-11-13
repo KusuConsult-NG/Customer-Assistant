@@ -395,7 +395,10 @@ export function agentDefinition(spec: AgentSpec) {
           overrides: {
             agent: {
               firstMessage:
-                'Sannu! Barka da zuwa Cibiyar Bayanai ta Jihar Plateau. Sunana Nanpan. Da me zan iya taimaka maka a yau?',
+                // Ends by asking the name, as the Contact Centre script's
+                // Phase 1 does — not "how can I help you?" (Da me zan iya
+                // taimaka maka), which callers answered with their topic.
+                'Sannu! Barka da zuwa Cibiyar Bayanai ta Jihar Plateau. Sunana Nanpan. Dan Allah menene cikakken sunan ka?',
             },
             tts: {
               voiceId: '9wJXRg0I6YvgLFAP3g7J',

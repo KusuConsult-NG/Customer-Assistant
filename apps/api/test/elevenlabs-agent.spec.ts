@@ -342,7 +342,7 @@ describe('ElevenLabs agent provisioning', () => {
      */
     it('a re-sync sends the 25-second timeout to every existing tool, and the new prompt and greeting', async () => {
       const greeting =
-        'Hello! Welcome to the Sync Test Clinic. My name is Nanpan — how are you doing today?';
+        '{greeting}, and welcome to the Sync Test Clinic. My name is Nanpan. To get started, may I kindly know your full name?';
       await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: greeting } });
       try {
         stubWorkspace();
@@ -360,9 +360,12 @@ describe('ElevenLabs agent provisioning', () => {
         const agentUpdate = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
         expect(agentUpdate).toBeDefined();
         const agentConfig = agentUpdate!.body?.conversation_config?.agent;
-        expect(agentConfig?.first_message).toBe(greeting);
-        expect(agentConfig?.prompt?.prompt).toContain('## Step 1 of Every Call');
-        expect(agentConfig?.prompt?.prompt).toContain('DO NOT SKIP THE 5 QUESTIONS');
+        // The STORED first message cannot know the time of the call, so the
+        // token becomes "Hello"; the conversation-start webhook sends the
+        // timed one per call.
+        expect(agentConfig?.first_message).toBe(greeting.replace('{greeting}', 'Hello'));
+        expect(agentConfig?.prompt?.prompt).toContain("## How Every Call Runs — the Contact Centre's Standard Script");
+        expect(agentConfig?.prompt?.prompt).toContain('THE CONTACT CENTRE SCRIPT IS THE CALL');
       } finally {
         await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: null } });
       }

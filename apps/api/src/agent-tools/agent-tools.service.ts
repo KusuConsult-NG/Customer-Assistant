@@ -26,14 +26,16 @@
  */
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { relevantPassage } from './relevant-passage';
+import { caseClassFor } from './call-report';
 import {
   CALLER_VARIABLE_DEFAULTS,
   callerVariablesFor,
+  locationPhrase,
   profileOf,
   type CallerVariables,
 } from './caller-profile';
-import { dynamicVariablesFor, welcomeBackMessageFor, type AgentOrganization } from './agent-tool-catalog';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES } from '@ace/database';
+import { dynamicVariablesFor, renderWelcome, welcomeBackMessageFor, type AgentOrganization } from './agent-tool-catalog';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { CrmService } from '../crm/crm.service';
@@ -51,6 +53,21 @@ export interface ConversationStartReply {
   dynamic_variables: Record<string, string>;
   conversation_config_override?: { agent: { first_message: string } };
 }
+
+/**
+ * What `lookup-customer` tells the agent about a caller we do not know.
+ *
+ * The Contact Centre script, Phases 1–2. The name is optional — the script says
+ * so outright — and nothing beyond the location and a follow-up number is
+ * asked, because non-essential personal information is never compulsory.
+ */
+const NEW_CALLER_PROMPT =
+  'NEW CALLER — follow the Contact Centre script: (1) ask for their full name if your greeting has not already ' +
+  '(if they decline, say that is perfectly fine and carry on — the name is optional); (2) ask which Local Government ' +
+  'Area of Plateau State they are calling from; (3) ask their ward and community; (4) ask whether they are comfortable ' +
+  'with us using the number they are calling from for follow-up, and if not take another number and read it back ' +
+  'digit by digit. Call update-caller-profile with what they gave, then ask the reason for their call. Never ask ' +
+  'for a home address, occupation or preferred language. If they open with an active emergency, safety comes first.';
 
 export interface ToolResult {
   ok: boolean;
@@ -166,16 +183,17 @@ export class AgentToolsService {
         select: { id: true, fullName: true, email: true, city: true, address: true, preferredLanguage: true, metadata: true },
       });
       if (!contact) {
+        const profile = profileOf(null);
         return {
           ok: true,
-          speak:
-            "Welcome! Since this is your first time calling us, let me quickly register your caller details — may I have your full name please?",
+          // Phase 1 ends by asking for the name; the agent's greeting has
+          // usually done so already, so this is only said if it has not.
+          speak: 'To get started, may I kindly know your full name?',
           data: {
             known: false,
             profileComplete: false,
-            missingProfileFields: ['fullName', 'lga', 'homeAddress', 'occupation', 'preferredLanguage'],
-            prompt:
-              'NEW CALLER (NOT YET PROFILED) — MANDATORY 5-QUESTION ONBOARDING: You MUST collect the caller\'s 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and say: "I will help you with that right away! Since this is your first time calling us, let me quickly take your details first — may I have your full name please?" Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!',
+            missingProfileFields: profile.missing,
+            prompt: NEW_CALLER_PROMPT,
           },
         };
       }
@@ -230,8 +248,7 @@ export class AgentToolsService {
 
       let greetingSentence: string;
       if (ours) {
-        greetingSentence =
-          "Welcome! Since I don't have your profile details on file yet, may I quickly have your full name please?";
+        greetingSentence = 'To get started, may I kindly know your full name?';
       } else if (prefLang.startsWith('ha')) {
         greetingSentence = `Barka da dawowa, ${contact.fullName}${contact.city ? ` daga ${contact.city}` : ''}! Da me zan iya taimaka maka a yau?`;
       } else if (prefLang.includes('pidgin') || prefLang === 'pcm') {
@@ -286,11 +303,17 @@ export class AgentToolsService {
           occupation,
           preferredLanguage: contact.preferredLanguage ?? null,
           recentCallSummary: recentCallSummary || null,
+          profileComplete: profileOf(contact).status === 'returning',
+          missingProfileFields: profileOf(contact).missing,
           prompt: ours
-            ? 'NEW / UNPROFILED CALLER — MANDATORY 5-QUESTION ONBOARDING: This caller still has a placeholder name ("Caller (...) ") and is NOT profiled yet! You MUST collect their 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and ask for their full name first. Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!'
+            ? NEW_CALLER_PROMPT
             : profileOf(contact).status === 'partial'
-              ? `PARTIALLY PROFILED CALLER: Name on file is "${contact.fullName}", LGA="${contact.city ?? 'MISSING'}", Address="${contact.address ?? 'MISSING'}", Occupation="${occupation ?? 'MISSING'}", PreferredLanguage="${contact.preferredLanguage ?? 'MISSING'}". Greet ${contact.fullName} by name, then collect any MISSING profile fields one question at a time (LGA, home address, occupation, preferred language) and call update-caller-profile to complete their profile!`
-              : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Refer to ${contact.fullName} by name and speak in ${contact.preferredLanguage ?? 'English'} immediately (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa).`,
+              ? `KNOWN BY NAME, LOCATION INCOMPLETE: greet ${contact.fullName} by name and ask ONLY for what is ` +
+                `missing (${profileOf(contact).missing.join(', ')}), one question at a time, then call ` +
+                `update-caller-profile. Then confirm the follow-up number if not yet agreed, and go to the reason for the call.`
+              : `KNOWN RETURNING CALLER — do not ask for their name or location again. Greet ${contact.fullName} by ` +
+                `name, confirm in ONE question that they are still calling from ${locationPhrase(profileOf(contact))} ` +
+                `(save any change with update-caller-profile), then go straight to the reason for their call.`,
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,
@@ -372,7 +395,14 @@ export class AgentToolsService {
         `conversation_start_fallback org=${organizationId} ms=${Date.now() - started} ` +
           `reason=${Date.now() - started >= AgentToolsService.CONVERSATION_START_BUDGET_MS ? 'deadline' : 'error'}`
       );
-      return this.conversationStartReply(organizationId, { ...CALLER_VARIABLE_DEFAULTS });
+      // Even with no records, the agency's greeting can still say "Good
+      // morning": the cached organization is all it needs.
+      const cached = this.orgVariables.get(organizationId)?.org;
+      return this.conversationStartReply(
+        organizationId,
+        { ...CALLER_VARIABLE_DEFAULTS },
+        cached ? this.timedWelcome(cached) : undefined
+      );
     }
     this.log.log(
       `conversation_start org=${organizationId} status=${outcome.status} outbound=${outcome.outbound} ms=${Date.now() - started}`
@@ -396,6 +426,15 @@ export class AgentToolsService {
    * database cannot be read, the name comes from here rather than not at all.
    */
   private readonly orgVariables = new Map<string, { org: AgentOrganization; variables: Record<string, string> }>();
+
+  /**
+   * The agency's own greeting with "Good morning" etc. filled in — only when
+   * its text asks for it (`{greeting}`). Otherwise the stored first message is
+   * already exactly what would be said, and there is nothing to override.
+   */
+  private timedWelcome(org: AgentOrganization): string | undefined {
+    return org.welcomeMessage?.includes('{greeting}') ? renderWelcome(org, new Date()) : undefined;
+  }
 
   private conversationStartReply(
     organizationId: string,
@@ -453,10 +492,17 @@ export class AgentToolsService {
       select: { fullName: true, city: true, address: true, preferredLanguage: true, metadata: true },
     });
     const profile = profileOf(contact);
-    const greetByName = !outbound && profile.name && org ? welcomeBackMessageFor(org, profile.name) : undefined;
+    // The first thing said. Outbound calls keep their own: "welcome back" is for
+    // somebody who rang us. A caller we know by name is greeted by it; anybody
+    // else hears the agency's greeting with the time of day filled in.
+    const firstMessage = outbound || !org
+      ? undefined
+      : profile.name
+        ? welcomeBackMessageFor(org, profile)
+        : this.timedWelcome(org);
 
     return {
-      reply: this.conversationStartReply(organizationId, callerVariablesFor(profile), greetByName),
+      reply: this.conversationStartReply(organizationId, callerVariablesFor(profile), firstMessage),
       status: profile.status,
       outbound,
     };
@@ -471,6 +517,14 @@ export class AgentToolsService {
       phoneNumber: string;
       fullName?: string;
       lga?: string;
+      ward?: string;
+      community?: string;
+      /** The caller agreed to be followed up on the number they are calling from. */
+      followUpConsent?: boolean | string;
+      /** Another number to follow up on, instead of the calling number. */
+      followUpNumber?: string;
+      /** true only after the alternative number was read back and the caller said yes. */
+      followUpNumberConfirmed?: boolean | string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
@@ -482,6 +536,25 @@ export class AgentToolsService {
       const rawName = (body?.fullName || '').trim();
       if (!phone) {
         return { ok: false, speak: 'No phone number was provided.', data: {} };
+      }
+
+      // An alternative number is a promise that somebody can be reached on it.
+      // A digit misheard on a phone line makes that a promise to a stranger, so
+      // it is saved only once it has been read back and confirmed — the same
+      // rule request-callback applies to a callback number.
+      const yes = (v: unknown) => v === true || String(v).toLowerCase() === 'true';
+      const alternative = (body.followUpNumber ?? '').trim();
+      if (alternative && !yes(body.followUpNumberConfirmed)) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            numberToConfirm: normalizePhoneNumber(alternative) || alternative,
+            instruction:
+              'Read this number back to the caller digit by digit and wait for a clear yes. Then call ' +
+              'update-caller-profile again with followUpNumberConfirmed=true. Nothing was saved yet.',
+          },
+        };
       }
 
       const contact = await ensureContactForPhone(prisma, organizationId, phone, rawName);
@@ -497,7 +570,22 @@ export class AgentToolsService {
         updateData.fullName = rawName;
       }
       if (body.lga?.trim()) {
-        updateData.city = body.lga.trim();
+        // The State's spelling when the words name an LGA, so the dashboard and
+        // every report count the same place once; the caller's words otherwise.
+        updateData.city = resolveLga(body.lga) ?? body.lga.trim();
+      }
+      if (body.ward?.trim()) {
+        metaUpdates.ward = body.ward.trim();
+      }
+      if (body.community?.trim()) {
+        metaUpdates.community = body.community.trim();
+      }
+      if (alternative) {
+        metaUpdates.followUpNumber = normalizePhoneNumber(alternative) || alternative;
+        metaUpdates.followUpConsent = false;
+      } else if (yes(body.followUpConsent)) {
+        metaUpdates.followUpConsent = true;
+        metaUpdates.followUpNumber = null;
       }
       if (body.homeAddress?.trim()) {
         updateData.address = body.homeAddress.trim();
@@ -563,22 +651,44 @@ export class AgentToolsService {
           : `Thank you! I have saved your details and your Plateau language preference (${updated.preferredLanguage}). How can I assist you today?`;
         languageInstruction = `The caller selected the Plateau State indigenous language ${updated.preferredLanguage}. Warmly use ${updated.preferredLanguage} greetings and expressions alongside clear Hausa, Pidgin, or Nigerian English so every detail is crystal clear!`;
       } else {
+        // Phase 3 of the Contact Centre script, word for word in substance.
         speak = savedName
-          ? `Thank you so much, ${savedName}! I've saved your details. How can I help you today?`
-          : "Thank you! I've saved your details. How can I help you today?";
+          ? `Thank you for providing those details, ${savedName}. Now, how may we assist you today? Please tell me the reason for your call.`
+          : 'Thank you for providing those details. Now, how may we assist you today? Please tell me the reason for your call.';
       }
+
+      // Phase 2 is not finished while part of the location is missing — the
+      // caller is asked for the rest before the reason for the call, so the
+      // reply hands over the NEXT question rather than moving on.
+      const profile = profileOf(updated);
+      const stillNeeded = profile.missing.filter((f) => f !== 'fullName');
+      const nextQuestion =
+        stillNeeded[0] === 'lga'
+          ? 'Ask which Local Government Area of Plateau State they are calling from.'
+          : stillNeeded.length
+            ? `Ask for their ${stillNeeded.join(' and ')}.`
+            : !profile.followUp
+              ? 'Ask whether they are comfortable with us using the number they are calling from for follow-up; if not, take another number and read it back.'
+              : null;
 
       return {
         ok: true,
-        speak,
+        speak: nextQuestion ? '' : speak,
         data: {
           contactId: updated.id,
-          fullName: updated.fullName,
+          // Our placeholder is never handed back as the caller's name.
+          fullName: savedName,
           lga: updated.city,
+          ward: profile.values.ward,
+          community: profile.values.community,
+          followUp: profile.followUp,
           address: updated.address,
           occupation: (updated.metadata as any)?.occupation ?? null,
           preferredLanguage: updated.preferredLanguage,
-          ...(languageInstruction ? { instruction: languageInstruction } : {}),
+          stillMissing: stillNeeded,
+          ...(nextQuestion || languageInstruction
+            ? { instruction: [nextQuestion ? `Saved. Next: ${nextQuestion}` : null, languageInstruction].filter(Boolean).join(' ') }
+            : {}),
         },
       };
     } catch (e) {
@@ -1061,13 +1171,45 @@ export class AgentToolsService {
       subject: string;
       description: string;
       category?: string;
+      lga?: string;
+      ward?: string;
+      community?: string;
       location?: string;
       occurredAt?: string;
+      institution?: string;
+      impact?: string;
+      previouslyReported?: string;
+      urgentMedicalAttention?: boolean | string;
       isOngoing?: boolean | string;
       victimsOrInjuries?: string;
+      anonymous?: boolean | string;
+      summary?: string;
+      summaryConfirmed?: boolean | string;
     }
   ): Promise<ToolResult> {
     try {
+      const yes = (v: unknown) => v === true || String(v).toLowerCase() === 'true';
+
+      // ── Phase 6 before Phase 8 ────────────────────────────────────────────
+      // The Contact Centre script reads the report back and waits for the
+      // caller to confirm it BEFORE it is registered. A case filed from the
+      // model's own understanding, unconfirmed, is what an officer then acts
+      // on — so nothing is written until the caller has said it is right.
+      if (!yes(input.summaryConfirmed)) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            filed: false,
+            instruction:
+              'Nothing was registered yet. First read the report back as one short summary — what they are ' +
+              'reporting, where (community, ward, LGA) and the key details — and ask "Is this an accurate summary ' +
+              'of your complaint?". If they correct anything, update it. Once they confirm, call create-ticket ' +
+              'again with the confirmed summary and summaryConfirmed=true.',
+          },
+        };
+      }
+
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
       const text = `${input.subject} ${input.description} ${input.category ?? ''} ${input.victimsOrInjuries ?? ''}`.toLowerCase();
 
@@ -1079,7 +1221,7 @@ export class AgentToolsService {
       const FIRE = /\bfire\b|explosion|gas leak|inferno/i;
       const DISASTER = /flood|collapse|landslide|storm|windstorm|rainstorm|erosion/i;
       const MEDICAL = /bleeding|unconscious|not breathing|labou?r|accident|crash|injur|dying|poison|snake ?bite/i;
-      const kind = SECURITY.test(text)
+      const wordsSay = SECURITY.test(text)
         ? 'security'
         : FIRE.test(text)
         ? 'fire'
@@ -1089,6 +1231,20 @@ export class AgentToolsService {
         ? 'medical'
         : null;
       const ongoing = input.isOngoing === true || String(input.isOngoing).toLowerCase() === 'true';
+
+      // The words alone are not enough once the agent has named the area
+      // (Phase 3). "The culvert collapsed last week" matched DISASTER and was
+      // filed as an urgent incident, with SEMA's emergency line read to a
+      // caller reporting a road. A report the agent files as infrastructure,
+      // healthcare, education or public administration is a complaint — unless
+      // it is still happening, which is what makes something an emergency.
+      const cls = caseClassFor(input.category, text);
+      const COMPLAINT_AREAS = new Set([
+        'infrastructure', 'roads', 'water', 'electricity', 'waste', 'project', 'environment',
+        'health', 'education', 'public_administration', 'misconduct', 'service_delay',
+      ]);
+      const filedAsComplaint = !!input.category?.trim() && COMPLAINT_AREAS.has(cls.category) && !ongoing;
+      const kind = filedAsComplaint ? null : wordsSay;
 
       // A citizen reporting that they were asked for money, refused service or
       // mistreated is a service-integrity complaint at ANY agency, not only a
@@ -1105,10 +1261,22 @@ export class AgentToolsService {
         ? `[INTEGRITY ESCALATION] ${input.subject}`
         : input.subject;
 
+      // Where the PROBLEM is — which may not be where the caller lives.
+      const lga = input.lga?.trim() ? resolveLga(input.lga) ?? input.lga.trim() : null;
+      const ward = input.ward?.trim() || null;
+      const community = input.community?.trim() || null;
+      const where = [community, ward ? `${ward} ward` : null, lga].filter(Boolean).join(', ');
+      const urgentMedical = yes(input.urgentMedicalAttention);
+
       const details = [
         input.description,
-        input.location ? `Location: ${input.location}` : null,
+        where ? `Where: ${where}` : null,
+        input.location ? `Exact location: ${input.location}` : null,
+        input.institution ? `Facility / office involved: ${input.institution}` : null,
         input.occurredAt ? `When: ${input.occurredAt}` : null,
+        input.impact ? `Effect: ${input.impact}` : null,
+        input.previouslyReported ? `Reported before / tried to resolve: ${input.previouslyReported}` : null,
+        urgentMedical ? 'Somebody needs URGENT medical attention.' : null,
         kind ? `Still ongoing: ${ongoing ? 'YES' : 'no / unknown'}` : null,
         input.victimsOrInjuries ? `Victims / injuries: ${input.victimsOrInjuries}` : null,
         `Reported by phone: ${input.phoneNumber}`,
@@ -1116,11 +1284,32 @@ export class AgentToolsService {
         .filter(Boolean)
         .join('\n');
 
+      // Classified (above) the way the WhatsApp engine classifies, so a report
+      // counts under the same category whichever way it arrived.
+      const anonymous = yes(input.anonymous) || wantsAnonymity(text);
+      const stage = cls.category === 'other' ? 'RECEIVED' : 'CLASSIFIED';
+
       const ticket = await this.crm.createTicket(organizationId, {
         contactId: contact.id,
         subject,
         description: details,
-        priority,
+        priority: kind || isIntegrityComplaint ? priority : (cls.priority as TicketPriority),
+        caseFields: {
+          caseStage: stage,
+          category: cls.category,
+          isSensitive: cls.sensitive,
+          isAnonymous: anonymous,
+          lga,
+          ward,
+          community,
+          // The read-back the caller confirmed — the record of what they agreed
+          // they reported, kept beside their own words in `description`.
+          summary: input.summary?.trim() || null,
+          dueAt: new Date(Date.now() + cls.serviceDays * 86_400_000),
+          channel: 'VOICE',
+          openedBy: 'system:voice-agent',
+          eventBody: `Opened from a phone call after the caller confirmed the summary; classified as ${cls.category}.`,
+        },
       });
 
       if (isIntegrityComplaint || kind) {
@@ -1148,7 +1337,7 @@ export class AgentToolsService {
         return {
           ok: true,
           speak:
-            `You did the right thing by reporting this. I have logged it as an urgent incident and flagged it to our team, and your reference is ${ticket.ticketNumber}. ` +
+            `You did the right thing by reporting this. Your report has been registered as an urgent incident and flagged to our team, and your unique reference number is ${ticket.ticketNumber}. ` +
             authority,
           data: {
             ticketId: ticket.id,
@@ -1170,12 +1359,24 @@ export class AgentToolsService {
       // officer can look up, for the same complaint that WhatsApp references
       // correctly. Two engines, one complaint, two references, one of them
       // useless.
+      // Phase 8 of the Contact Centre script.
       return {
         ok: true,
-        speak: isIntegrityComplaint
-          ? `I have logged this as an urgent complaint for review. Your reference number is ${ticket.ticketNumber} — please keep it. Someone will look into this as a priority and come back to you on this number.`
-          : `I have logged this for our team. Your reference is ${ticket.ticketNumber}, and someone will come back to you on this number.`,
-        data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, isEscalated: isIntegrityComplaint },
+        speak:
+          `Thank you for your patience. Your report has now been registered in our system. Your unique complaint ` +
+          `reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will help you track the ` +
+          `progress of your report and make subsequent enquiries.` +
+          (isIntegrityComplaint ? ' It has also been flagged for urgent review.' : ''),
+        data: {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          category: cls.category,
+          isEscalated: isIntegrityComplaint,
+          instruction:
+            'Read the reference slowly. Then close the call as the script does: thank them by name for contacting ' +
+            'the Contact Centre, repeat the reference, tell them their voice matters, ask if there is anything else, ' +
+            'and say goodbye.',
+        },
       };
     } catch (e) {
       return this.failed('create_ticket', e);
