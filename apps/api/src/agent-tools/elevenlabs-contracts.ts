@@ -306,9 +306,33 @@ export function agentDefinition(spec: AgentSpec) {
         ],
         // ulaw_8000 = G.711 μ-law 8kHz — the universal format for telephony / PSTN networks.
         agentOutputAudioFormat: 'ulaw_8000',
-        stability: 0.5,
-        similarityBoost: 0.8,
-        speed: 1.0,
+        expressiveMode: true,
+        enablePhonemeTags: true,
+        suggestedAudioTags: [
+          {
+            tag: 'warmly',
+            description: 'When greeting a caller, welcoming them back, or using cultural salutations',
+          },
+          {
+            tag: 'friendly',
+            description: 'During natural conversational bridging and rapport building',
+          },
+          {
+            tag: 'empathetic',
+            description: 'When a caller reports an emergency, attack, complaint, or distress',
+          },
+          {
+            tag: 'reassuring',
+            description: 'When giving emergency contacts, reference numbers, or promising a callback',
+          },
+          {
+            tag: 'calm',
+            description: 'When reading back phone numbers or reference codes clearly',
+          },
+        ],
+        stability: 0.42,
+        similarityBoost: 0.78,
+        speed: 0.98,
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
       },
       languagePresets: {
