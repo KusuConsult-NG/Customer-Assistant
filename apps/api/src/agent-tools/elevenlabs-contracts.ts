@@ -212,6 +212,15 @@ export function agentDefinition(spec: AgentSpec) {
                 onlyAtConversationStart: false,
               },
             },
+            endCall: {
+              type: 'system' as const,
+              name: 'end_call',
+              description:
+                'Drop/end the phone call ONLY AFTER you have asked the citizen whether you should drop/end the call (or whether there is anything else they need before ending the call) and they have confirmed yes/goodbye, OR when the citizen does not respond and the conversation is finished. Never call end_call mid-conversation before asking the citizen.',
+              params: {
+                systemToolType: 'end_call' as const,
+              },
+            },
           },
           // See `clearInlineTools`. Emitted ONLY as an empty array, never with
           // definitions in it.
@@ -275,6 +284,7 @@ export function agentDefinition(spec: AgentSpec) {
       },
       turn: {
         turnTimeout: 3.5,
+        silenceEndCallTimeout: 10,
         mode: 'turn',
         turnEagerness: 'eager',
         speculativeTurn: true,
