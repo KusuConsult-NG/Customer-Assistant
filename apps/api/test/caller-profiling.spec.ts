@@ -44,6 +44,7 @@ import {
   firstMessageFor,
   renderWelcome,
   timeOfDayGreeting,
+  welcomeBackMessageFor,
 } from '../src/agent-tools/agent-tool-catalog';
 
 const SCRIPT_FIELDS = ['fullName', 'lga', 'ward', 'community'];
@@ -636,7 +637,7 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.dynamic_variables.caller_profile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
         expect(res.body.dynamic_variables.caller_profile).not.toMatch(/occupation|language/);
         const first = res.body.conversation_config_override.agent.first_message;
-        expect(first).toMatch(/^Good (morning|afternoon|evening), Hauwa Musa, and welcome back to Profiling Test Centre\./);
+        expect(first).toMatch(/^Good (morning|afternoon|evening), Hauwa Musa, welcome back\. Are you still calling from/);
         expect(first).toMatch(/Are you still calling from Angwan Rogo, Ali Kazaure ward, Jos South\?$/);
         expect(first).not.toMatch(/how (can|may) I (help|assist)/i);
       });
@@ -802,7 +803,7 @@ describe('The Contact Centre script on the phone line', () => {
         const second = await callStarts(number).expect(200);
         expect(second.body.dynamic_variables).toMatchObject({ caller_status: 'returning', caller_name: 'Nanret Davou' });
         expect(second.body.conversation_config_override.agent.first_message).toMatch(
-          /Nanret Davou, and welcome back .* Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
+          /Nanret Davou, welcome back\. Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
         );
 
         const tool = await lookup(number);
@@ -823,14 +824,29 @@ describe('The Contact Centre script on the phone line', () => {
     };
     const shared = (o = plateau) => agentPromptFor({ ...o, aiPersonaPrompt: null });
 
-    it('the Plateau greeting is Phase 1, timed, and ends by asking the name', () => {
+    it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
-      expect(morning).toMatch(/^Good morning, and welcome to the Plateau State Government Citizen Contact Centre\. Thank you for calling\./);
-      expect(morning).toMatch(/My name is Nanpan, and I am your virtual assistant from the Ministry of Information\./);
-      expect(morning).toMatch(/To get started, may I kindly know your full name\?$/);
+      expect(morning).toBe("Good morning, I'm Nanpan, Plateau State's virtual assistant. May I have your full name?");
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
-      expect(firstMessageFor(plateau)).toMatch(/^Hello, and welcome to the Plateau State Government Citizen Contact Centre/);
+      expect(firstMessageFor(plateau)).toMatch(/^Hello, I'm Nanpan/);
+    });
+
+    // The agency cut the opening to about five seconds: the document's full
+    // introduction ran about thirty, and callers spoke over it. At a normal
+    // speaking pace (about 2.8 words a second) five seconds is 14 words.
+    const words = (s: string) => s.trim().split(/\s+/).length;
+    it('every opening is about five seconds before its question', () => {
+      expect(words(renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')))).toBeLessThanOrEqual(14);
+      const def = agentDefinitionFor(plateau, ['t1']) as any;
+      expect(words(def.conversationConfig.languagePresets.ha.overrides.agent.firstMessage)).toBeLessThanOrEqual(16);
+      // A returning caller: the greeting before the location question.
+      const back = welcomeBackMessageFor(plateau as any, {
+        status: 'returning', name: 'Hauwa Musa', missing: [], followUp: null,
+        values: { fullName: 'Hauwa Musa', lga: 'Jos South', ward: 'Vom', community: 'Vom Junction' },
+      } as any, new Date('2026-11-13T07:00:00Z'));
+      expect(back).toBe('Good morning, Hauwa Musa, welcome back. Are you still calling from Vom Junction, Vom ward, Jos South?');
+      expect(words(back.split('.')[0])).toBeLessThanOrEqual(6);
     });
 
     it('says good morning, afternoon or evening at the agency\'s own clock, not the server\'s', () => {
