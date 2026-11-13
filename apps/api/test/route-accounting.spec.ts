@@ -134,6 +134,7 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   // authenticated with the agent key. They are a thin controller over the same
   // services the orchestrator path uses — never a second implementation,
   // because the drift would be in what citizens are told about their money.
+  { method: 'POST', path: '/api/agent-tools/conversation-start', calledBy: 'ElevenLabs conversation-start webhook (asked as each call connects)' },
   { method: 'POST', path: '/api/agent-tools/lookup-customer', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/update-caller-profile', calledBy: 'ElevenLabs agent (webhook tool)' },
   { method: 'POST', path: '/api/agent-tools/book-appointment', calledBy: 'ElevenLabs agent (webhook tool)' },

@@ -32,9 +32,11 @@ import {
   askedOf,
   boundTo,
   webhookTool,
+  type AgentSpec,
   type HeaderValue,
   type ToolParameter,
 } from './elevenlabs-contracts';
+import { CALLER_VARIABLE_DEFAULTS } from './caller-profile';
 import { ENROLLMENT_FIELDS, type EnrollmentField } from '@ace/orchestrator';
 
 /**
@@ -182,6 +184,18 @@ function enrollmentPromptSection(): string {
 export const SYSTEM_PROMPT = `You are a warm, experienced customer-care team member at {{organization_name}} who genuinely wants to help. You speak like a caring human colleague — natural, patient, never scripted — and you are honest about what you are.
 
 ## Step 1 of Every Call — Always Identify the Caller & Collect the 5 Basic Profile Details for New Callers
+
+**What our records already say about this caller** (looked up as the call connected):
+- Status: {{caller_status}}
+- Name on file: {{caller_name}}
+- Profile on file: {{caller_profile}}
+- Details still missing: {{caller_missing_fields}}
+
+Use it like this:
+- **returning** — we know them. If your first message did not already greet them by name, do it now, and keep calling them by that name. NEVER ask any of the 5 profile questions again.
+- **partial** — we know their name: greet them by it (if your first message has not) and ask ONLY for the details listed as still missing, one at a time, then call your caller profile update tool.
+- **new** — collect all 5 details as described below.
+- **unknown** — the records could not be read in time; your customer lookup tool decides.
 
 - **ON YOUR VERY FIRST TURN OF EVERY CALL (NO EXCEPTIONS)**: Whether the caller says "Hello", "Hello, can you hear me?", "Good morning", "Ina wuni", "You know, when...", or immediately states why they are calling (e.g. "I'm calling from Operation Rainbow...", "I want to give you vital information", "I have a question"), you **MUST** invoke your customer lookup tool FIRST before doing anything else! (If they asked "Can you hear me?", call your customer lookup tool first and then say "Yes, I can hear you loud and clear!" followed immediately by the next step below.)
 - **IF THE CALLER IS A NEW / UNPROFILED CALLER (or if the customer lookup tool times out or returns an error)**:
@@ -707,8 +721,12 @@ export function agentDefinitionFor(
   org: AgentOrganization,
   toolIds: string[],
   customPersona?: TeamPersona,
-  /** See `AgentSpec.clearInlineTools` — only ever used to REMOVE them. */
-  options?: { clearInlineTools?: boolean }
+  options?: {
+    /** See `AgentSpec.clearInlineTools` — only ever used to REMOVE them. */
+    clearInlineTools?: boolean;
+    /** See `AgentSpec.initiationWebhook`. */
+    initiationWebhook?: AgentSpec['initiationWebhook'];
+  }
 ) {
   const persona = customPersona || resolvePersona(org.persona);
   const voiceId = org.voiceId || persona.voiceId;
@@ -734,6 +752,7 @@ export function agentDefinitionFor(
     // must have a default or the agent never speaks. See AgentSpec.
     dynamicVariablePlaceholders: dynamicVariablesFor(org, persona),
     ...(options?.clearInlineTools ? { clearInlineTools: true } : {}),
+    ...(options?.initiationWebhook ? { initiationWebhook: options.initiationWebhook } : {}),
   });
 }
 
@@ -743,8 +762,26 @@ export function agentDefinitionFor(
  */
 export function dynamicVariablesFor(org: AgentOrganization, persona?: TeamPersona): Record<string, string> {
   const resolved = persona || resolvePersona(org.persona);
-  return { 
+  return {
     organization_name: org.name,
-    representative_name: resolved.name
+    representative_name: resolved.name,
+    // Filled per call by the conversation-start webhook. These are the values a
+    // conversation gets when the webhook does not run (a preview, an outbound
+    // call that sends its own data): "unknown", which sends the agent to its
+    // lookup tool rather than reading `{{caller_status}}` out loud.
+    ...CALLER_VARIABLE_DEFAULTS,
   };
+}
+
+/**
+ * The first thing said to a caller our records know by name.
+ *
+ * Returned by the conversation-start webhook as a first-message override, so a
+ * returning caller hears their own name before they have said a word — which is
+ * the one thing that tells somebody they were remembered. A new caller keeps the
+ * agency's own greeting.
+ */
+export function welcomeBackMessageFor(org: AgentOrganization, name: string, persona?: TeamPersona): string {
+  const resolved = persona || resolvePersona(org.persona);
+  return `Welcome back, ${name}! This is ${resolved.name} from ${org.name} — how are you doing today?`;
 }

@@ -26,6 +26,13 @@
  */
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { relevantPassage } from './relevant-passage';
+import {
+  CALLER_VARIABLE_DEFAULTS,
+  callerVariablesFor,
+  profileOf,
+  type CallerVariables,
+} from './caller-profile';
+import { dynamicVariablesFor, welcomeBackMessageFor, type AgentOrganization } from './agent-tool-catalog';
 import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
@@ -33,6 +40,17 @@ import { CrmService } from '../crm/crm.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
+
+/**
+ * The body ElevenLabs expects back from the conversation-start webhook — the
+ * `conversation_initiation_client_data` shape, in ElevenLabs' own snake_case,
+ * because this is read by their servers directly and no SDK converts it.
+ */
+export interface ConversationStartReply {
+  type: 'conversation_initiation_client_data';
+  dynamic_variables: Record<string, string>;
+  conversation_config_override?: { agent: { first_message: string } };
+}
 
 export interface ToolResult {
   ok: boolean;
@@ -270,7 +288,7 @@ export class AgentToolsService {
           recentCallSummary: recentCallSummary || null,
           prompt: ours
             ? 'NEW / UNPROFILED CALLER — MANDATORY 5-QUESTION ONBOARDING: This caller still has a placeholder name ("Caller (...) ") and is NOT profiled yet! You MUST collect their 5 basic profile details ONE QUESTION AT A TIME in this exact order before answering general inquiries: (1) Full Name (ask right now: "May I have your full name please?"), (2) Local Government Area (LGA), (3) Home or street address, (4) Occupation, and (5) Preferred language (English, Hausa, Pidgin, Yoruba, Igbo, or a Plateau language). Even if the caller already mentioned why they are calling (unless it is an active life-threatening emergency), warmly acknowledge what they said and ask for their full name first. Once all 5 fields are collected, call update-caller-profile and immediately switch to their chosen language!'
-            : !contact.city || !contact.address || !occupation || !contact.preferredLanguage
+            : profileOf(contact).status === 'partial'
               ? `PARTIALLY PROFILED CALLER: Name on file is "${contact.fullName}", LGA="${contact.city ?? 'MISSING'}", Address="${contact.address ?? 'MISSING'}", Occupation="${occupation ?? 'MISSING'}", PreferredLanguage="${contact.preferredLanguage ?? 'MISSING'}". Greet ${contact.fullName} by name, then collect any MISSING profile fields one question at a time (LGA, home address, occupation, preferred language) and call update-caller-profile to complete their profile!`
               : `KNOWN RETURNING CALLER — DO NOT CLAIM THEIR DETAILS ARE MISSING AND DO NOT ASK FOR PROFILE DETAILS AGAIN! Full profile on file: Name="${contact.fullName}", LGA="${contact.city ?? 'N/A'}", Address="${contact.address ?? 'N/A'}", Occupation="${occupation ?? 'N/A'}", PreferredLanguage="${contact.preferredLanguage ?? 'English'}". Refer to ${contact.fullName} by name and speak in ${contact.preferredLanguage ?? 'English'} immediately (if Hausa, call language_detection with 'ha' right now and speak 100% in natural Hausa).`,
           upcomingBooking: upcoming
@@ -296,6 +314,152 @@ export class AgentToolsService {
     } catch (e) {
       return this.failed('lookup_customer', e);
     }
+  }
+
+  /**
+   * ElevenLabs asks this as each call CONNECTS: who is calling?
+   *
+   * ── Why this exists ──────────────────────────────────────────────────────
+   *
+   * Knowing a caller used to depend on the agent choosing to call
+   * `lookup-customer` on its first turn — and in the calls that skipped
+   * profiling, it did not. Its greeting had already asked "How can I help you
+   * today?", the caller answered with their topic, and the model went straight
+   * to it. Nothing that depends on the model remembering to look somebody up
+   * can promise that a returning caller is recognised.
+   *
+   * So the answer is fetched before the agent says a word, and put where the
+   * model cannot miss it: the prompt's own variables (`{{caller_status}}`,
+   * `{{caller_name}}` …), and — for a caller we know by name — a first message
+   * that greets them by it.
+   *
+   * ── Why it never fails ───────────────────────────────────────────────────
+   *
+   * ElevenLabs' documentation: "A failed or timed-out webhook can prevent the
+   * conversation from starting." A lookup that fails must cost the caller their
+   * personalised greeting, never the call. So every path returns 200 with every
+   * variable the agent defines; the records are read inside a deadline; and
+   * anything slower or broken answers `unknown`, which sends the agent to its
+   * lookup tool exactly as before this existed.
+   *
+   * ── Which end is the citizen ─────────────────────────────────────────────
+   *
+   * Callbacks placed over the SIP trunk send no initiation data, so this runs
+   * for them too — with `caller_id` set to the AGENCY's number and
+   * `called_number` to the citizen. Treating our own number as the caller would
+   * look up the agency. And an outbound call keeps its own first message:
+   * "Welcome back" is what you say to somebody who rang you.
+   */
+  async conversationStart(
+    organizationId: string,
+    body: { caller_id?: string; called_number?: string; agent_id?: string; call_sid?: string; conversation_id?: string }
+  ): Promise<ConversationStartReply> {
+    const started = Date.now();
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), AgentToolsService.CONVERSATION_START_BUDGET_MS);
+    });
+
+    let outcome: { reply: ConversationStartReply; status: string; outbound: boolean } | null = null;
+    try {
+      outcome = await Promise.race([this.lookUpCaller(organizationId, body).catch(() => null), deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!outcome) {
+      this.log.warn(
+        `conversation_start_fallback org=${organizationId} ms=${Date.now() - started} ` +
+          `reason=${Date.now() - started >= AgentToolsService.CONVERSATION_START_BUDGET_MS ? 'deadline' : 'error'}`
+      );
+      return this.conversationStartReply(organizationId, { ...CALLER_VARIABLE_DEFAULTS });
+    }
+    this.log.log(
+      `conversation_start org=${organizationId} status=${outcome.status} outbound=${outcome.outbound} ms=${Date.now() - started}`
+    );
+    return outcome.reply;
+  }
+
+  /**
+   * How long the records get. ElevenLabs reads this while the line is still
+   * connecting, and publishes no timeout of its own — so this stays well inside
+   * anything a phone network would call a delay, and a slow database costs the
+   * greeting, not the call.
+   */
+  static CONVERSATION_START_BUDGET_MS = 2_500;
+
+  /**
+   * The agency's own name and persona, kept from the last successful read.
+   *
+   * Every reply must carry `organization_name` — it is one of the agent's
+   * variables, and a reply missing one can stop the call starting. So when the
+   * database cannot be read, the name comes from here rather than not at all.
+   */
+  private readonly orgVariables = new Map<string, { org: AgentOrganization; variables: Record<string, string> }>();
+
+  private conversationStartReply(
+    organizationId: string,
+    caller: CallerVariables,
+    firstMessage?: string
+  ): ConversationStartReply {
+    const known = this.orgVariables.get(organizationId);
+    return {
+      type: 'conversation_initiation_client_data',
+      dynamic_variables: {
+        // Only if this organization has never been read: the agent's own
+        // placeholder for these is the right value, and an empty string is
+        // better than a missing key.
+        organization_name: '',
+        representative_name: '',
+        ...(known?.variables ?? {}),
+        ...caller,
+      },
+      ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
+    };
+  }
+
+  private async lookUpCaller(
+    organizationId: string,
+    body: { caller_id?: string; called_number?: string }
+  ): Promise<{ reply: ConversationStartReply; status: string; outbound: boolean }> {
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      // The same fields `ElevenLabsAgentService.tenant` reads, so these
+      // variables match the placeholders the sync pushed to the agent.
+      select: { name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
+    });
+    if (org) this.orgVariables.set(organizationId, { org, variables: dynamicVariablesFor(org) });
+
+    const callerId = (body.caller_id ?? '').trim();
+    const calledNumber = (body.called_number ?? '').trim();
+
+    const ourNumbers = await prisma.telephonyConfig
+      .findMany({ where: { organizationId }, select: { phoneNumber: true } })
+      .then((rows) => rows.flatMap((r) => (r.phoneNumber ? phoneNumberVariants(r.phoneNumber) : [])));
+    const isOurs = (n: string) => !!n && phoneNumberVariants(n).some((v) => ourNumbers.includes(v));
+
+    const outbound = isOurs(callerId) && !isOurs(calledNumber);
+    const citizen = outbound ? calledNumber : callerId;
+
+    // A withheld number is a caller we cannot look up and cannot save details
+    // against. They are new to us as far as anything here can tell.
+    if (!citizen || /^(unknown|anonymous|private|restricted|withheld)$/i.test(citizen)) {
+      const profile = profileOf(null);
+      return { reply: this.conversationStartReply(organizationId, callerVariablesFor(profile)), status: profile.status, outbound };
+    }
+
+    const contact = await prisma.contact.findFirst({
+      where: { organizationId, phoneNumber: { in: phoneNumberVariants(citizen) } },
+      select: { fullName: true, city: true, address: true, preferredLanguage: true, metadata: true },
+    });
+    const profile = profileOf(contact);
+    const greetByName = !outbound && profile.name && org ? welcomeBackMessageFor(org, profile.name) : undefined;
+
+    return {
+      reply: this.conversationStartReply(organizationId, callerVariablesFor(profile), greetByName),
+      status: profile.status,
+      outbound,
+    };
   }
 
   /**

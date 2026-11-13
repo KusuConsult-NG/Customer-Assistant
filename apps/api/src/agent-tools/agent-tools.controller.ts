@@ -10,10 +10,10 @@
  * Every endpoint is authenticated by AgentKeyGuard, which resolves the tenant
  * from the key. No endpoint here accepts an organizationId.
  */
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AgentKeyGuard, AgentRequestContext } from './agent-key.guard';
-import { AgentToolsService, ToolResult } from './agent-tools.service';
+import { AgentToolsService, ConversationStartReply, ToolResult } from './agent-tools.service';
 
 interface AgentRequest {
   agent: AgentRequestContext;
@@ -30,6 +30,26 @@ export class AgentToolsController {
 
   private org(req: AgentRequest): string {
     return req.agent.organizationId;
+  }
+
+  /**
+   * ElevenLabs' conversation-start webhook: who is calling, asked as the call
+   * connects. See `AgentToolsService.conversationStart`.
+   *
+   * 200, not Nest's default 201: this is a read, and its reply is the data the
+   * conversation starts with. Its own rate limit, higher than the tools': a 429
+   * here would stop a call from starting at all, while it still needs the agent
+   * key, so it is no more of an enumeration route than lookup-customer.
+   */
+  @Post('conversation-start')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
+  conversationStart(
+    @Req() req: AgentRequest,
+    @Body()
+    body: { caller_id?: string; called_number?: string; agent_id?: string; call_sid?: string; conversation_id?: string }
+  ): Promise<ConversationStartReply> {
+    return this.tools.conversationStart(this.org(req), body ?? {});
   }
 
   @Post('lookup-customer')

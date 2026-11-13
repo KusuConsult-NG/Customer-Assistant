@@ -664,7 +664,13 @@ export class ElevenLabsAgentService {
     const orderedIds = TOOL_NAMES.map((name) => toolIds[name]).filter(
       (id): id is string => Boolean(id)
     );
-    const definition = agentDefinitionFor(org, orderedIds);
+    // Asked by ElevenLabs as each call connects, with the same agent key the
+    // tools use — so it resolves the same tenant, by the same guard.
+    const initiationWebhook = {
+      url: `${baseUrl}/api/agent-tools/conversation-start`,
+      authorization: fromSecret(secret.secretId),
+    };
+    const definition = agentDefinitionFor(org, orderedIds, undefined, { initiationWebhook });
 
     let agentId = config?.agentId ?? null;
     if (agentId) {
@@ -685,12 +691,13 @@ export class ElevenLabsAgentService {
         // re-reads and still reports inline tools if any remain.
         const hasInlineTools = await this.remoteHasInlineTools(client, agentId);
         const payload = hasInlineTools
-          ? agentDefinitionFor(org, orderedIds, undefined, { clearInlineTools: true })
+          ? agentDefinitionFor(org, orderedIds, undefined, { clearInlineTools: true, initiationWebhook })
           : definition;
 
         await client.conversationalAi.agents.update(agentId, {
           name: payload.name,
           conversationConfig: payload.conversationConfig as any,
+          platformSettings: payload.platformSettings,
         });
         steps.push({ target: 'agent', action: 'updated', id: agentId });
         if (hasInlineTools) {
@@ -709,6 +716,7 @@ export class ElevenLabsAgentService {
         created = await client.conversationalAi.agents.create({
           name: definition.name,
           conversationConfig: definition.conversationConfig as any,
+          platformSettings: definition.platformSettings,
         });
       } catch (err) {
         this.fail('the agent', err);

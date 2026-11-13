@@ -368,6 +368,42 @@ describe('ElevenLabs agent provisioning', () => {
       }
     });
 
+    /**
+     * Recognising a returning caller must not depend on the model choosing to
+     * call lookup-customer. The sync points ElevenLabs at our conversation-start
+     * webhook — authenticated with the same agent-key secret as the tools — and
+     * allows its reply to replace the first message. Asserted on create AND on
+     * a re-sync, because the agent in production already exists and only a
+     * re-sync will reach it.
+     */
+    it('turns on the conversation-start webhook, with the agent key, on create and on every re-sync', async () => {
+      stubWorkspace();
+      await service.syncAgent(orgId);
+      const created = sent.find((r) => r.method === 'POST' && r.url.includes('/v1/convai/agents/create'));
+
+      sent = [];
+      await service.syncAgent(orgId);
+      const updated = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
+
+      for (const [which, req] of Object.entries({ created, updated })) {
+        const platform = req?.body?.platform_settings;
+        expect({ which, enabled: platform?.overrides?.enable_conversation_initiation_client_data_from_webhook }).toEqual({
+          which,
+          enabled: true,
+        });
+        expect(platform?.overrides?.conversation_config_override?.agent?.first_message).toBe(true);
+        const hook = platform?.workspace_overrides?.conversation_initiation_client_data_webhook;
+        expect(hook?.url).toBe(`${PUBLIC_URL}/api/agent-tools/conversation-start`);
+        // The secret, never the key itself.
+        expect(hook?.request_headers?.Authorization).toEqual({ secret_id: 'secret_1' });
+        expect(JSON.stringify(req?.body)).not.toContain(AGENT_KEY_PREFIX);
+        // And the defaults a conversation without the webhook falls back to.
+        expect(req?.body?.conversation_config?.agent?.dynamic_variables?.dynamic_variable_placeholders?.caller_status).toBe(
+          'unknown'
+        );
+      }
+    });
+
     it('reuses the existing key rather than minting one on every sync', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);

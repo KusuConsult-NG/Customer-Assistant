@@ -31,6 +31,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { prisma } from '@ace/database';
 import { AgentToolsModule } from '../src/agent-tools/agent-tools.module';
+import { AgentToolsService } from '../src/agent-tools/agent-tools.service';
 import { WorkflowTriggerModule } from '../src/workflows/workflow-trigger.module';
 import { AGENT_KEY_PREFIX } from '../src/agent-tools/agent-key.guard';
 import {
@@ -38,6 +39,7 @@ import {
   TOOL_NAMES,
   agentPromptFor,
   agentToolCatalog,
+  dynamicVariablesFor,
   firstMessageFor,
 } from '../src/agent-tools/agent-tool-catalog';
 
@@ -82,6 +84,21 @@ describe('Collecting a new caller\'s five profile details', () => {
         .send({ phoneNumber })
         .expect(201);
 
+    /** What ElevenLabs sends as a call connects (see its personalization docs). */
+    const callStarts = (caller_id: string, called_number = TOLL_FREE, withKey: string | null = key) => {
+      const r = request(app.getHttpServer())
+        .post('/api/agent-tools/conversation-start')
+        .send({
+          caller_id,
+          called_number,
+          agent_id: 'agent_test',
+          call_sid: `CA${randomBytes(8).toString('hex')}`,
+          conversation_id: `conv_${randomBytes(8).toString('hex')}`,
+        });
+      return withKey ? r.set('Authorization', `Bearer ${withKey}`) : r;
+    };
+    const TOLL_FREE = `+2348000${String(runId).padStart(4, '0')}456`.slice(0, 14);
+
     beforeAll(async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [WorkflowTriggerModule, AgentToolsModule],
@@ -105,6 +122,10 @@ describe('Collecting a new caller\'s five profile details', () => {
           keyHash: createHash('sha256').update(key).digest('hex'),
           keyPrefix: key.slice(0, 20),
         },
+      });
+      // The agency's own line, so an outbound call can be told from an inbound one.
+      await prisma.telephonyConfig.create({
+        data: { organizationId: orgId, provider: 'SIP_TRUNK', phoneNumber: TOLL_FREE },
       });
     }, 60_000);
 
@@ -207,6 +228,211 @@ describe('Collecting a new caller\'s five profile details', () => {
       expect(res.body.data.prompt).toMatch(/Occupation="Teacher"/);
       // Greeted in the language on file.
       expect(res.body.speak).toMatch(/Barka da dawowa, Hauwa Musa/);
+    });
+
+    // ── Before the agent says a word ───────────────────────────────────────
+    //
+    // Recognising a caller used to depend on the model choosing to call
+    // lookup-customer on its first turn, and in the calls that skipped
+    // profiling it did not. These pin the conversation-start webhook, which
+    // ElevenLabs calls as the line connects.
+    describe('conversation-start', () => {
+      const variablesTheAgentDefines = async () =>
+        Object.keys(
+          dynamicVariablesFor(
+            (await prisma.organization.findUniqueOrThrow({ where: { id: orgId } })) as any
+          )
+        );
+
+      it('refuses a request without the agent key', async () => {
+        await callStarts(phone(), TOLL_FREE, null).expect(401);
+      });
+
+      it('a number never seen: status new, all five missing, and the agency\'s own greeting', async () => {
+        const res = await callStarts(phone()).expect(200);
+        expect(res.body.type).toBe('conversation_initiation_client_data');
+        expect(res.body.dynamic_variables).toMatchObject({
+          organization_name: 'Profiling Test Centre',
+          caller_status: 'new',
+          caller_name: 'not on file',
+          caller_missing_fields: 'full name, LGA, home address, occupation, preferred language',
+        });
+        expect(res.body.conversation_config_override).toBeUndefined();
+      });
+
+      it('returns every variable the agent defines — a missing one can stop the call starting', async () => {
+        const res = await callStarts(phone()).expect(200);
+        for (const name of await variablesTheAgentDefines()) {
+          expect({ name, present: typeof res.body.dynamic_variables[name] === 'string' }).toEqual({ name, present: true });
+        }
+      });
+
+      it('a fully profiled caller is greeted by name before saying anything, and asked nothing', async () => {
+        const number = phone();
+        await prisma.contact.create({
+          data: {
+            organizationId: orgId,
+            phoneNumber: number,
+            fullName: 'Hauwa Musa',
+            city: 'Jos South',
+            address: 'Rayfield Road',
+            preferredLanguage: 'Hausa',
+            metadata: { occupation: 'Teacher' },
+          },
+        });
+
+        const res = await callStarts(number).expect(200);
+        expect(res.body.dynamic_variables).toMatchObject({
+          caller_status: 'returning',
+          caller_name: 'Hauwa Musa',
+          caller_missing_fields: 'none',
+        });
+        expect(res.body.dynamic_variables.caller_profile).toMatch(/LGA: Jos South/);
+        expect(res.body.dynamic_variables.caller_profile).toMatch(/occupation: Teacher/);
+        expect(res.body.conversation_config_override.agent.first_message).toMatch(/^Welcome back, Hauwa Musa!/);
+      });
+
+      it('finds a returning caller whatever shape the carrier sends the number in', async () => {
+        const number = phone();
+        await prisma.contact.create({
+          data: { organizationId: orgId, phoneNumber: number, fullName: 'Ladi Gyang' },
+        });
+        // Stored as +234…; arriving as 0… or 234… must be the same person.
+        const local = `0${number.slice(4)}`;
+        const res = await callStarts(local).expect(200);
+        expect(res.body.dynamic_variables.caller_name).toBe('Ladi Gyang');
+      });
+
+      it('a partly profiled caller is greeted by name and asked only for what is missing', async () => {
+        const number = phone();
+        await prisma.contact.create({
+          data: { organizationId: orgId, phoneNumber: number, fullName: 'Dachung Pam', city: 'Jos North' },
+        });
+        const res = await callStarts(number).expect(200);
+        expect(res.body.dynamic_variables).toMatchObject({
+          caller_status: 'partial',
+          caller_name: 'Dachung Pam',
+          caller_missing_fields: 'home address, occupation, preferred language',
+        });
+        expect(res.body.conversation_config_override.agent.first_message).toMatch(/^Welcome back, Dachung Pam!/);
+      });
+
+      it('a placeholder name is a new caller: never read out, never welcomed back', async () => {
+        const number = phone();
+        await prisma.contact.create({
+          data: { organizationId: orgId, phoneNumber: number, fullName: `Caller (···${number.slice(-4)})` },
+        });
+        const res = await callStarts(number).expect(200);
+        expect(res.body.dynamic_variables.caller_status).toBe('new');
+        expect(res.body.dynamic_variables.caller_name).toBe('not on file');
+        expect(JSON.stringify(res.body)).not.toContain('Caller (');
+        expect(res.body.conversation_config_override).toBeUndefined();
+      });
+
+      it('an outbound callback looks up the citizen it is calling, and keeps its own first message', async () => {
+        const number = phone();
+        await prisma.contact.create({
+          data: { organizationId: orgId, phoneNumber: number, fullName: 'Kaneng Bot' },
+        });
+        // Outbound over the SIP trunk: caller_id is OUR line, called_number the citizen.
+        const res = await callStarts(TOLL_FREE, number).expect(200);
+        expect(res.body.dynamic_variables.caller_name).toBe('Kaneng Bot');
+        // "Welcome back" is for somebody who rang us.
+        expect(res.body.conversation_config_override).toBeUndefined();
+      });
+
+      it('a withheld number is a new caller, not an error', async () => {
+        const res = await callStarts('anonymous').expect(200);
+        expect(res.body.dynamic_variables.caller_status).toBe('new');
+      });
+
+      it('cannot see another agency\'s caller', async () => {
+        const number = phone();
+        const other = await prisma.organization.create({
+          data: { name: 'Other Agency', slug: `other-${randomBytes(4).toString('hex')}`, industry: 'GOVERNMENT' },
+        });
+        try {
+          await prisma.contact.create({
+            data: { organizationId: other.id, phoneNumber: number, fullName: 'Somebody Else' },
+          });
+          const res = await callStarts(number).expect(200);
+          expect(res.body.dynamic_variables.caller_status).toBe('new');
+          expect(JSON.stringify(res.body)).not.toContain('Somebody Else');
+        } finally {
+          await prisma.organization.delete({ where: { id: other.id } }).catch(() => {});
+        }
+      });
+
+      describe('when the records cannot be read', () => {
+        const realBudget = AgentToolsService.CONVERSATION_START_BUDGET_MS;
+        afterEach(() => {
+          AgentToolsService.CONVERSATION_START_BUDGET_MS = realBudget;
+          jest.restoreAllMocks();
+        });
+
+        it('answers "unknown" inside the deadline instead of holding the call', async () => {
+          await callStarts(phone()).expect(200); // the agency's name is now known
+          AgentToolsService.CONVERSATION_START_BUDGET_MS = 300;
+          jest
+            .spyOn(AgentToolsService.prototype as any, 'lookUpCaller')
+            .mockImplementation(() => new Promise(() => undefined)); // a database that never answers
+
+          const started = Date.now();
+          const res = await callStarts(phone()).expect(200);
+          expect(Date.now() - started).toBeLessThan(2_000);
+          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          // Still every variable, and still the agency's real name.
+          expect(res.body.dynamic_variables.organization_name).toBe('Profiling Test Centre');
+          for (const name of await variablesTheAgentDefines()) {
+            expect(typeof res.body.dynamic_variables[name]).toBe('string');
+          }
+          expect(res.body.conversation_config_override).toBeUndefined();
+        });
+
+        it('answers "unknown" when the lookup throws', async () => {
+          jest
+            .spyOn(AgentToolsService.prototype as any, 'lookUpCaller')
+            .mockRejectedValue(new Error('connection pool exhausted'));
+          const res = await callStarts(phone()).expect(200);
+          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+        });
+      });
+
+      it('the whole loop: unknown on the first call, details saved, greeted by name on the next', async () => {
+        const number = phone();
+
+        // Call 1 — nobody on file.
+        const first = await callStarts(number).expect(200);
+        expect(first.body.dynamic_variables.caller_status).toBe('new');
+
+        // The agent collects the five details and saves them, as the prompt tells it to.
+        await request(app.getHttpServer())
+          .post('/api/agent-tools/update-caller-profile')
+          .set('Authorization', `Bearer ${key}`)
+          .send({
+            phoneNumber: number,
+            fullName: 'Nanret Davou',
+            lga: 'Bokkos',
+            homeAddress: 'Mushere Road',
+            occupation: 'Farmer',
+            preferredLanguage: 'English',
+          })
+          .expect(201);
+
+        // Call 2 — recognised before a word is said, and by the tool as well.
+        const second = await callStarts(number).expect(200);
+        expect(second.body.dynamic_variables).toMatchObject({
+          caller_status: 'returning',
+          caller_name: 'Nanret Davou',
+          caller_missing_fields: 'none',
+        });
+        expect(second.body.conversation_config_override.agent.first_message).toMatch(/^Welcome back, Nanret Davou!/);
+
+        const tool = await lookup(number);
+        expect(tool.body.data.known).toBe(true);
+        expect(tool.body.speak).toContain('Nanret Davou');
+        expect(tool.body.data.prompt).toMatch(/KNOWN RETURNING CALLER/);
+      });
     });
   });
 
