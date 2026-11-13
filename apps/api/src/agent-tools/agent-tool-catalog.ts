@@ -468,11 +468,20 @@ export function agentToolCatalog(
     // on WhatsApp produce a dated commitment.
     'request-callback': build(
       'request-callback',
-      'Promise to ring the caller back later. Use when they ask to be called back, or when they cannot wait for a colleague now. ' +
-      'State the window you are given back to them — it is the promise.',
+      'Promise to ring the caller back later. Use whenever they ask for a person, or when you cannot help or answer. NEVER offer a live transfer — a callback is the only way to reach a human. ' +
+      'First call it WITHOUT numberConfirmed: it returns the number to read back. Read it digit by digit, wait for a clear yes (or a different number, which you also read back), then call again with numberConfirmed=true. ' +
+      'State the window and reference you are given back — it is the promise.',
       {
         phoneNumber: callerPhone,
         reason: askedOf('string', 'What the callback is about, in enough detail for a colleague to act on it.'),
+        callbackNumber: askedOf(
+          'string',
+          'The number the caller CONFIRMED for the call back. Omit only if they want to be called on the number they are calling from.'
+        ),
+        numberConfirmed: askedOf(
+          'boolean',
+          'true ONLY after you have read the number back digit by digit and the caller clearly said yes. Never set true on your own.'
+        ),
         whenMinutes: askedOf(
           'number',
           'How soon, in minutes: 60 for within the hour, 240 for later today, 1440 for tomorrow. Ask which suits them; do not assume.'
@@ -513,7 +522,7 @@ export function agentToolCatalog(
 
     handoff: build(
       'handoff',
-      'Put the caller through to a person. This ATTEMPTS the transfer — do not say anything about transferring before calling it, and then say only what its reply says happened.',
+      'DISABLED FOR LIVE TRANSFER — do not use this to connect the caller to a person. If you ever call it, it will tell you to arrange a confirmed-number callback with request-callback instead; follow that.',
       {
         phoneNumber: callerPhone,
         conversationId: boundTo(CONVERSATION_VARIABLE),
@@ -631,6 +640,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `    As soon as they answer question 5, call update-caller-profile ONCE with all 5 fields (fullName, lga, homeAddress, occupation, preferredLanguage), IMMEDIATELY switch to their chosen language (call language_detection with 'ha' if they chose Hausa, or speak Pidgin/Yoruba/Igbo/Plateau greetings), and ask how you can help them today IN THAT CHOSEN LANGUAGE!\n` +
     `  - If a caller asks to switch languages at ANY point, switch immediately and never insist on English.\n` +
     `  - If a caller skips any profile question or has an urgent question first, do not force them — save whatever details you have via update-caller-profile and help them right away.\n` +
+    `- NO LIVE TRANSFERS: never offer, announce or attempt to transfer or connect the caller to a human. When you cannot help, cannot find an answer, or the caller asks for a person, say a desk officer will call them back — then (1) ask which number to call (the one they are calling from, or another), (2) read the number back digit by digit and wait for a clear yes, (3) call request-callback with numberConfirmed=true, (4) read out the reference and window it returns. Never promise a callback before request-callback has succeeded, and never skip the number confirmation.\n` +
     `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done.`;
 

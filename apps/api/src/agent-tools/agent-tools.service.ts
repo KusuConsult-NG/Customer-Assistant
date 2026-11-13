@@ -776,7 +776,14 @@ export class AgentToolsService {
    */
   async requestCallback(
     organizationId: string,
-    input: { phoneNumber: string; reason: string; whenMinutes?: number; fullName?: string }
+    input: {
+      phoneNumber: string;
+      reason: string;
+      whenMinutes?: number;
+      fullName?: string;
+      callbackNumber?: string;
+      numberConfirmed?: boolean | string;
+    }
   ): Promise<ToolResult> {
     try {
       if (!input?.phoneNumber?.trim()) {
@@ -789,6 +796,29 @@ export class AgentToolsService {
           data: { reason: 'missing_reason' },
         };
       }
+
+      // A callback is a promise to ring a specific number. It is not filed until
+      // the caller has heard the number read back and said yes — otherwise the
+      // promise can be made to a number nobody is waiting at.
+      const confirmed = input.numberConfirmed === true || String(input.numberConfirmed).toLowerCase() === 'true';
+      const requested = (input.callbackNumber?.trim() || input.phoneNumber).trim();
+      if (!confirmed) {
+        const digits = normalizePhoneNumber(requested).replace(/\D/g, '');
+        const spoken = digits.split('').join(' ');
+        return {
+          ok: false,
+          speak: input.callbackNumber?.trim()
+            ? `Just to be sure I have it right — I will call you back on ${spoken}. Is that correct?`
+            : `Before I book your call back — shall we call you on the number you are calling from, ${spoken}, or would you prefer a different number?`,
+          data: {
+            reason: 'number_not_confirmed',
+            numberToConfirm: normalizePhoneNumber(requested),
+            instruction:
+              'Read the number back digit by digit and wait for a clear yes. If they give a different number, read THAT one back too. Only then call request-callback again with numberConfirmed=true and callbackNumber set to the confirmed number.',
+          },
+        };
+      }
+      const targetNumber = normalizePhoneNumber(requested);
 
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
 
@@ -826,7 +856,7 @@ export class AgentToolsService {
         data: {
           organizationId,
           contactId: contact.id,
-          phoneNumber: normalizePhoneNumber(input.phoneNumber),
+          phoneNumber: targetNumber,
           reason: input.reason.trim().slice(0, 1000),
           promisedText,
           dueAt,
@@ -837,8 +867,8 @@ export class AgentToolsService {
         ok: true,
         speak:
           `That is arranged — your reference is ${callbackReference(row.id)}. ` +
-          `Someone will call you back ${promisedText.toLowerCase()}.`,
-        data: { callbackId: row.id, reference: callbackReference(row.id), dueAt: dueAt.toISOString() },
+          `Someone will call you back ${promisedText.toLowerCase()} on ${targetNumber.replace(/\D/g, '').split('').join(' ')}.`,
+        data: { callbackId: row.id, reference: callbackReference(row.id), dueAt: dueAt.toISOString(), callbackNumber: targetNumber },
       };
     } catch (err) {
       return this.failed('request-callback', err);
@@ -1082,6 +1112,23 @@ export class AgentToolsService {
       this.log.log(
         `handoff_requested org=${organizationId} conversation=${conversationId ?? '(none supplied)'}`
       );
+
+      // Policy: no live transfers unless explicitly enabled. Desk officers are
+      // not on the line, so the agent promises a callback instead — after
+      // confirming the number with the caller.
+      if (process.env.ENABLE_LIVE_TRANSFER !== 'true') {
+        return {
+          ok: true,
+          speak:
+            'Our desk officers are attending to other citizens right now, so I will arrange for one of them to call you back. ',
+          data: {
+            transferred: false,
+            liveTransferDisabled: true,
+            instruction:
+              'Do NOT transfer. Ask the caller to confirm the number for the call back (the number they are calling from, or another), read it back digit by digit, wait for a yes, then call request-callback with callbackNumber and numberConfirmed=true, and read out the reference it returns.',
+          },
+        };
+      }
 
       if (conversationId) {
         // Act. Throws are caught below and fall through to the ticket, so a

@@ -121,7 +121,14 @@ export class AgentToolsController {
   requestCallback(
     @Req() req: AgentRequest,
     @Body()
-    body: { phoneNumber: string; reason: string; whenMinutes?: number; fullName?: string }
+    body: {
+      phoneNumber: string;
+      reason: string;
+      whenMinutes?: number;
+      fullName?: string;
+      callbackNumber?: string;
+      numberConfirmed?: boolean | string;
+    }
   ): Promise<ToolResult> {
     return this.tools.requestCallback(this.org(req), body);
   }
