@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { RoleNotice } from '@/components/RoleNotice';
+import { CallRecordingPlayer } from '@/components/CallRecordingPlayer';
 import { AlertTriangle, ClipboardList, Clock, EyeOff, Lock, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 
 const STAGES = ['RECEIVED', 'CLASSIFIED', 'ASSIGNED', 'UNDER_REVIEW', 'ACTION_IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED'] as const;
@@ -351,6 +352,37 @@ function CaseDetail({ c, members, busy, isLiaison, liaisonMda, act }: {
           </ul>
         )}
       </article>
+
+      {(c.calls?.withheld || (c.calls?.items ?? []).length > 0) && (
+        <article className={`${card} p-5`}>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Call record</h3>
+          {c.calls?.withheld ? (
+            <p className="mt-2 text-xs text-slate-500">The call record is withheld: it identifies the reporter of a confidential report.</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {c.calls.items.map((call: any) => (
+                <li key={call.id} className="text-xs space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-slate-500">
+                      {new Date(call.startedAt).toLocaleString()} · {Math.floor((call.durationSeconds || 0) / 60)}m {(call.durationSeconds || 0) % 60}s
+                    </span>
+                    <CallRecordingPlayer callId={call.id} playable={call.recordingPlayable} />
+                  </div>
+                  {call.summary && <p className="text-slate-700 dark:text-slate-200">{call.summary}</p>}
+                  {call.transcript ? (
+                    <details>
+                      <summary className="cursor-pointer font-semibold text-slate-700 dark:text-slate-200">Transcript</summary>
+                      <p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{call.transcript}</p>
+                    </details>
+                  ) : (
+                    <p className="text-slate-500">No transcript is held for this call.</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+      )}
 
       <article className={`${card} p-5`}>
         <h3 className="text-sm font-bold text-slate-900 dark:text-white">History</h3>

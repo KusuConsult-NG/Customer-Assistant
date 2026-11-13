@@ -160,6 +160,9 @@ export class AgentToolsController {
       anonymous?: boolean | string;
       summary?: string;
       summaryConfirmed?: boolean | string;
+      alternativePhone?: string;
+      alternativePhoneConfirmed?: boolean | string;
+      conversationId?: string;
     }
   ): Promise<ToolResult> {
     return this.tools.createTicket(this.org(req), body);

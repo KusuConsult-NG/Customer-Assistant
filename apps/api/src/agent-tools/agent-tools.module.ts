@@ -16,6 +16,8 @@ import { ElevenLabsWebhookController } from './elevenlabs-webhook.controller';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
 import { ElevenLabsWebhookService } from './elevenlabs-webhook.service';
 import { ElevenLabsCallSyncService } from './elevenlabs-call-sync.service';
+import { CallRecordingService } from './call-recording.service';
+import { CallRecordingController } from './call-recording.controller';
 
 /**
  * Everything to do with a hosted conversational agent (ElevenLabs Agents):
@@ -43,7 +45,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
   // TelephonyModule exports VoiceAiService, whose transferCallToHuman is what
   // actually moves a live call — the same one the orchestrator path uses.
   imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule, OnboardingModule],
-  controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController],
+  controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController, CallRecordingController],
   providers: [
     AgentToolsService,
     ElevenLabsApi,
@@ -54,6 +56,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
     ElevenLabsTakeoverService,
     ElevenLabsWebhookService,
     ElevenLabsCallSyncService,
+    CallRecordingService,
     MissedCallFollowUpService,
   ],
   exports: [

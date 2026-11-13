@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { BrowserCallingService } from './browser-calling.service';
 import { prisma, withTelephonyCredentials, ensureContactForPhone, phoneNumberVariants } from '@ace/database';
+import { recordingPlayable } from '../common/call-recording';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { SipTrunkOriginationService } from './sip-trunk-origination.service';
@@ -895,7 +896,7 @@ export class TelephonyService {
 
   async getCallLogs(organizationId: string, page = 1, limit = 50) {
     const skip = (page - 1) * limit;
-    const [data, total] = await Promise.all([
+    const [rows, total, agent] = await Promise.all([
       prisma.callLog.findMany({
         where: { organizationId },
         orderBy: { startedAt: 'desc' },
@@ -904,7 +905,11 @@ export class TelephonyService {
         include: { contact: true },
       }),
       prisma.callLog.count({ where: { organizationId } }),
+      prisma.hostedAgentConfig.findUnique({ where: { organizationId }, select: { agentId: true } }),
     ]);
+    // Whether the screen offers Play — see common/call-recording.ts. The audio
+    // itself is fetched from GET /api/calls/:id/recording, never from a link.
+    const data = rows.map((r) => ({ ...r, recordingPlayable: recordingPlayable(r, !!agent?.agentId) }));
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

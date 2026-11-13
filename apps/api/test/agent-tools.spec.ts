@@ -643,7 +643,11 @@ describe('Agent tools', () => {
       }).expect(201);
 
       expect(res.body.ok).toBe(false);
-      expect(res.body.handoff).toBe(true);
+      // Not a hand-off to a person any more: the State's script asks for a
+      // number to reach the caller on when caller ID is not available, and the
+      // report is filed against that (caller-profiling.spec.ts).
+      expect(res.body.data).toMatchObject({ filed: false, numberShown: false });
+      expect(res.body.data.instruction).toMatch(/Could you please give me a telephone number we can reach you on/);
       const row = await prisma.contact.findFirst({
         where: { organizationId: orgA, phoneNumber: 'anonymous' },
       });

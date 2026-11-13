@@ -27,9 +27,12 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { relevantPassage } from './relevant-passage';
 import { caseClassFor } from './call-report';
+import { callReferenceText } from '../common/call-case-link';
 import {
   CALLER_VARIABLE_DEFAULTS,
   LOCATION_FIELDS,
+  PROFILE_FIELDS,
+  callerNumberShown,
   callerVariablesFor,
   locationPhrase,
   missingPhrase,
@@ -110,6 +113,30 @@ const SECTOR_LABEL: Record<string, string> = {
   security: 'Security', fire: 'Fire', disaster: 'Disaster',
 };
 
+/**
+ * A caller whose number does not show — withheld, or a forwarded call that
+ * arrives as one of the agency's own lines. The script asks "are you
+ * comfortable with us using the number you are calling from" only "if caller
+ * ID is available"; here it is not, so the number to reach them on is ASKED
+ * and becomes their record. Nothing can be looked up or saved by a number we
+ * do not have.
+ */
+const NUMBER_NOT_SHOWN_PROMPT =
+  'NUMBER NOT SHOWN — the number this call comes from is hidden, or is one of our own lines (a forwarded call), so it ' +
+  'cannot reach the caller and nothing about them can be looked up by it. Follow PHASE 1 and PHASE 2 as for a new ' +
+  'caller, with ONE change: do not ask whether we may use the number they are calling from. Instead ask: "Could you ' +
+  'please give me a telephone number we can reach you on for subsequent communication?" Read it back digit by digit, ' +
+  'and once they confirm, pass it as alternativePhone with alternativePhoneConfirmed=true to update-caller-profile and ' +
+  'to create-ticket. Their details and any report are saved against that number. If they would rather not give one, ' +
+  'say that is perfectly fine for an enquiry, but that a report can only be registered with a number to reach them on; ' +
+  'they may call back from a number that shows, and they may ask for their name to be kept confidential.';
+
+/** What every tool answers when it needs the caller's number and does not have it. */
+const ASK_FOR_A_NUMBER =
+  'The number this call comes from is not shown, so there is nothing to save this against yet. Ask: "Could you please ' +
+  'give me a telephone number we can reach you on for subsequent communication?", read it back digit by digit, and once ' +
+  'they confirm, call this tool again with it as alternativePhone and alternativePhoneConfirmed=true.';
+
 export interface ToolResult {
   ok: boolean;
   /** The exact sentence the agent should say. Never null. */
@@ -185,8 +212,12 @@ export class AgentToolsService {
    * fourth placeholder format. It also never wrote the name the caller gave
    * back to the record the greeting is read from.
    */
-  private async contactFor(organizationId: string, phoneNumber: string, fullName?: string) {
-    const contact = await ensureContactForPhone(prisma, organizationId, phoneNumber, fullName);
+  private async contactFor(organizationId: string, phoneNumber: string, fullName?: string, givenNumber?: string) {
+    // The agency's own numbers are never a citizen: a forwarded call arrives as
+    // one, and unguarded every caller on that line would share one record.
+    const agency = await this.agencyNumbers(organizationId);
+    const number = callerNumberShown(phoneNumber, agency) ? phoneNumber : givenNumber;
+    const contact = number ? await ensureContactForPhone(prisma, organizationId, number, fullName, agency) : null;
     if (!contact) {
       // Withheld number. Say so rather than filing against a shared row.
       throw new BadRequestException(
@@ -195,6 +226,15 @@ export class AgentToolsService {
       );
     }
     return contact;
+  }
+
+  /** The agency's own lines and their forwarding targets — never a citizen's number. */
+  private async agencyNumbers(organizationId: string): Promise<string[]> {
+    const rows = await prisma.telephonyConfig.findMany({
+      where: { organizationId },
+      select: { phoneNumber: true, forwardingNumber: true },
+    });
+    return rows.flatMap((r) => [r.phoneNumber, r.forwardingNumber]).filter((n): n is string => !!n);
   }
 
   // ── Identify the caller ────────────────────────────────────────────────────
@@ -219,6 +259,22 @@ export class AgentToolsService {
    */
   async lookupCustomer(organizationId: string, phoneNumber: string): Promise<ToolResult> {
     try {
+      // A hidden number, or our own line on a forwarded call, identifies
+      // nobody — and looking it up would find whoever was saved against it
+      // last, and greet the next caller by their name.
+      if (!callerNumberShown(phoneNumber, await this.agencyNumbers(organizationId))) {
+        return {
+          ok: true,
+          speak: 'To get started, may I kindly know your full name?',
+          data: {
+            known: false,
+            numberShown: false,
+            profileComplete: false,
+            missingProfileFields: [...PROFILE_FIELDS],
+            prompt: NUMBER_NOT_SHOWN_PROMPT,
+          },
+        };
+      }
       const contact = await prisma.contact.findFirst({
         where: { organizationId, phoneNumber: { in: phoneNumberVariants(phoneNumber) } },
         select: { id: true, fullName: true, email: true, city: true, address: true, preferredLanguage: true, metadata: true },
@@ -524,19 +580,28 @@ export class AgentToolsService {
     const callerId = (body.caller_id ?? '').trim();
     const calledNumber = (body.called_number ?? '').trim();
 
-    const ourNumbers = await prisma.telephonyConfig
-      .findMany({ where: { organizationId }, select: { phoneNumber: true } })
-      .then((rows) => rows.flatMap((r) => (r.phoneNumber ? phoneNumberVariants(r.phoneNumber) : [])));
+    const agency = await this.agencyNumbers(organizationId);
+    const ourNumbers = agency.flatMap((n) => phoneNumberVariants(n));
     const isOurs = (n: string) => !!n && phoneNumberVariants(n).some((v) => ourNumbers.includes(v));
 
     const outbound = isOurs(callerId) && !isOurs(calledNumber);
     const citizen = outbound ? calledNumber : callerId;
 
-    // A withheld number is a caller we cannot look up and cannot save details
-    // against. They are new to us as far as anything here can tell.
-    if (!citizen || /^(unknown|anonymous|private|restricted|withheld)$/i.test(citizen)) {
-      const profile = profileOf(null);
-      return { reply: this.conversationStartReply(organizationId, callerVariablesFor(profile)), status: profile.status, outbound };
+    // A withheld number — or, on a forwarded call, one of our own lines — is a
+    // caller we cannot look up and cannot save details against. Looking our
+    // own number up would find whoever was last saved against it and welcome
+    // the next caller back by their name.
+    if (!callerNumberShown(citizen, outbound ? [] : agency)) {
+      const variables = {
+        ...callerVariablesFor(profileOf(null)),
+        caller_status: 'withheld',
+        caller_profile: 'number not shown — ask for a number to reach them on',
+      };
+      return {
+        reply: this.conversationStartReply(organizationId, variables, outbound || !org ? undefined : this.timedWelcome(org)),
+        status: 'withheld',
+        outbound,
+      };
     }
 
     const contact = await prisma.contact.findFirst({
@@ -584,9 +649,6 @@ export class AgentToolsService {
     try {
       const phone = (body?.phoneNumber || '').trim();
       const rawName = (body?.fullName || '').trim();
-      if (!phone) {
-        return { ok: false, speak: 'No phone number was provided.', data: {} };
-      }
 
       // An alternative number is a promise that somebody can be reached on it.
       // A digit misheard on a phone line makes that a promise to a stranger, so
@@ -607,9 +669,16 @@ export class AgentToolsService {
         };
       }
 
-      const contact = await ensureContactForPhone(prisma, organizationId, phone, rawName);
+      // When the number this call comes from does not show, the number the
+      // caller GAVE is their record — read back and confirmed above.
+      const agency = await this.agencyNumbers(organizationId);
+      const shown = callerNumberShown(phone, agency);
+      if (!shown && !alternative) {
+        return { ok: false, speak: '', data: { saved: false, numberShown: false, instruction: `Nothing was saved. ${ASK_FOR_A_NUMBER}` } };
+      }
+      const contact = await ensureContactForPhone(prisma, organizationId, shown ? phone : alternative, rawName, agency);
       if (!contact) {
-        return { ok: false, speak: 'Could not resolve a contact record for this number.', data: {} };
+        return { ok: false, speak: '', data: { saved: false, instruction: `Nothing was saved. ${ASK_FOR_A_NUMBER}` } };
       }
 
       const prevMeta = (contact.metadata as Record<string, any>) || {};
@@ -630,7 +699,11 @@ export class AgentToolsService {
       if (body.community?.trim()) {
         metaUpdates.community = body.community.trim();
       }
-      if (alternative) {
+      if (!shown) {
+        // The record IS the number they gave, so that is the one to use.
+        metaUpdates.phoneConfirmedForFollowUp = true;
+        metaUpdates.alternativePhone = null;
+      } else if (alternative) {
         // Confirmed above. The calling number is then not the one to use.
         metaUpdates.alternativePhone = normalizePhoneNumber(alternative) || alternative;
         metaUpdates.phoneConfirmedForFollowUp = false;
@@ -1252,6 +1325,11 @@ export class AgentToolsService {
       anonymous?: boolean | string;
       summary?: string;
       summaryConfirmed?: boolean | string;
+      /** When the calling number does not show: the number they gave, read back. */
+      alternativePhone?: string;
+      alternativePhoneConfirmed?: boolean | string;
+      /** This call, so its record can be attached to the case when it ends. */
+      conversationId?: string;
     }
   ): Promise<ToolResult> {
     try {
@@ -1325,9 +1403,32 @@ export class AgentToolsService {
         CENTRAL_DESK;
       const sector = kind ? `Emergency (${kind})` : input.category?.trim() || SECTOR_LABEL[cls.category] || 'General Public Service';
 
-      const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
+      // A report is filed against the person who made it. When the number this
+      // call comes from does not show (withheld, or our own line on a
+      // forwarded call), that is the number they gave and confirmed — never our
+      // own line, which would file everyone's reports under one "person".
+      const agency = await this.agencyNumbers(organizationId);
+      const shown = callerNumberShown(input.phoneNumber, agency);
+      const given = (input.alternativePhone ?? '').trim();
+      if (!shown && !(given && yes(input.alternativePhoneConfirmed))) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            filed: false,
+            numberShown: false,
+            instruction:
+              `Nothing was registered yet. ${ASK_FOR_A_NUMBER} If they would rather not give a number, explain that a ` +
+              'report can only be registered with a number to reach them on, that they can call back from a number that ' +
+              'shows, and that they may ask for their name to be kept confidential. If something is happening right now, ' +
+              'give 1 1 2 and the relevant emergency line first.',
+          },
+        };
+      }
+      const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName, shown ? undefined : given);
       const contactMeta = (contact.metadata as Record<string, any>) || {};
-      const followUpPhone = (contactMeta.alternativePhone as string) || input.phoneNumber;
+      const reachOn = shown ? input.phoneNumber : contact.phoneNumber;
+      const followUpPhone = (contactMeta.alternativePhone as string) || reachOn;
       const callerDisplayName =
         input.fullName?.trim() ||
         (!isPlaceholderContactName(contact.fullName) ? contact.fullName : null);
@@ -1368,7 +1469,9 @@ export class AgentToolsService {
         urgentMedical ? 'Somebody needs URGENT medical attention.' : null,
         kind ? `Still ongoing: ${ongoing ? 'YES' : 'no / unknown'}` : null,
         input.victimsOrInjuries ? `Victims / injuries: ${input.victimsOrInjuries}` : null,
-        `Reported by phone: ${input.phoneNumber}${followUpPhone !== input.phoneNumber ? ` (Follow-up phone: ${followUpPhone})` : ''}`,
+        shown
+          ? `Reported by phone: ${input.phoneNumber}${followUpPhone !== input.phoneNumber ? ` (Follow-up phone: ${followUpPhone})` : ''}`
+          : `Reported by phone: calling number not shown; reachable on ${reachOn} (given and confirmed on the call)`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -1398,9 +1501,11 @@ export class AgentToolsService {
           dueAt: new Date(Date.now() + cls.serviceDays * 86_400_000),
           channel: 'VOICE',
           openedBy: 'system:voice-agent',
-          eventBody: yes(input.summaryConfirmed)
-            ? `Opened from a phone call after the caller confirmed the summary; classified as ${cls.category}, marked for ${routedToMda}.`
-            : `Opened from a phone call as an emergency still in progress, without a read-back; classified as ${cls.category}, marked for ${routedToMda}.`,
+          eventBody:
+            (yes(input.summaryConfirmed)
+              ? `Opened from a phone call after the caller confirmed the summary; classified as ${cls.category}, marked for ${routedToMda}.`
+              : `Opened from a phone call as an emergency still in progress, without a read-back; classified as ${cls.category}, marked for ${routedToMda}.`) +
+            (input.conversationId?.trim() ? callReferenceText(input.conversationId.trim()) : ''),
         },
       });
 

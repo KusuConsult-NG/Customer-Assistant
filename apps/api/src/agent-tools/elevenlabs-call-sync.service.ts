@@ -62,6 +62,7 @@ export function toPostCallPayload(c: any): PostCallPayload {
       agent_id: c?.agentId,
       conversation_id: c?.conversationId,
       status: c?.status,
+      has_audio: typeof c?.hasAudio === 'boolean' ? c.hasAudio : undefined,
       transcript: (c?.transcript ?? []).map((t: any) => ({
         role: t?.role,
         message: t?.message ?? null,
