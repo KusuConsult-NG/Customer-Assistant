@@ -19,7 +19,7 @@ import { randomBytes } from 'crypto';
 const createdOrgIds: string[] = [];
 const FAKE_MP3 = Buffer.from('ID3\u0004fake-mp3-for-e2e');
 
-type Seeded = { token: string; playableCallId: string; unrecordedCallId: string; ticketNumber: string };
+type Seeded = { token: string; agentToken: string; playableCallId: string; unrecordedCallId: string; ticketNumber: string; anonPhone: string };
 
 async function seed(): Promise<Seeded> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -69,12 +69,30 @@ async function seed(): Promise<Seeded> {
       },
     },
   });
-  const token = jwt.sign(
-    { userId: user.id, email: user.email, fullName: user.fullName, organizationId: org.id, role: 'OWNER', tokenVersion: user.tokenVersion ?? 0 },
-    secret,
-    { expiresIn: '1h' }
-  );
-  return { token, playableCallId: played.id, unrecordedCallId: unrecorded.id, ticketNumber: ticket.ticketNumber };
+  // A whistle-blower's call: the record of an ANONYMOUS report.
+  const anonPhone = `+23482${digits}`;
+  const whistle = await prisma.contact.create({ data: { organizationId: org.id, phoneNumber: anonPhone, fullName: 'Whistle Blower' } });
+  const anonCall = await prisma.callLog.create({
+    data: {
+      organizationId: org.id, contactId: whistle.id, callSid: `CA${tag}c`, fromNumber: anonPhone, toNumber: '+2348000000001',
+      status: 'COMPLETED', durationSeconds: 47, transcript: 'user: the officer at the registry took a bribe',
+    },
+  });
+  await prisma.ticket.create({
+    data: {
+      organizationId: org.id, contactId: whistle.id, ticketNumber: `ANON-${tag}`, subject: 'Bribe at the registry',
+      description: 'Bribe.', caseStage: 'CLASSIFIED', category: 'misconduct', channel: 'VOICE', isAnonymous: true,
+      events: { create: [{ organizationId: org.id, type: 'CALL_RECORDED', actorLabel: 'system:voice-agent', body: `Call recorded: ${anonCall.id} (0m 47s). The transcript and recording are on the call record.` }] },
+    },
+  });
+  const officer = await prisma.user.create({
+    data: { organizationId: org.id, email: `${tag}-agent@mda.test`, passwordHash: 'x', fullName: 'Desk Officer', role: 'AGENT' },
+  });
+  const sign = (u: any, role: string) =>
+    jwt.sign({ userId: u.id, email: u.email, fullName: u.fullName, organizationId: org.id, role, tokenVersion: u.tokenVersion ?? 0 }, secret, { expiresIn: '1h' });
+  const token = sign(user, 'OWNER');
+  const agentToken = sign(officer, 'AGENT');
+  return { token, agentToken, playableCallId: played.id, unrecordedCallId: unrecorded.id, ticketNumber: ticket.ticketNumber, anonPhone };
 }
 
 test.afterAll(async () => {
@@ -154,5 +172,31 @@ test.describe('Playing call recordings', () => {
     await section.getByRole('button', { name: /Play Audio/ }).click();
     await expect(section.locator('audio[aria-label="Call recording"]')).toBeVisible();
     expect(asked).toHaveLength(1);
+  });
+
+  test('a confidential report’s call is listed without its caller or transcript for an officer', async ({ page }) => {
+    const s = await seed();
+    await signIn(page, s.agentToken);
+    await page.goto('/telephony');
+
+    const row = page.locator('tr', { hasText: '0m 47s' });
+    await expect(row).toBeVisible({ timeout: 20000 });
+    await expect(row).toContainText('Confidential report');
+    await expect(row.getByRole('button', { name: /Transcript/ })).toBeDisabled();
+    await expect(row.getByRole('button', { name: /Play Audio/ })).toBeDisabled();
+    // Nowhere on the page: the reporter's number, name or words.
+    const body = page.locator('body');
+    await expect(body).not.toContainText(s.anonPhone);
+    await expect(body).not.toContainText('took a bribe');
+  });
+
+  test('an administrator still sees that call in full', async ({ page }) => {
+    const s = await seed();
+    await signIn(page, s.token);
+    await page.goto('/telephony');
+    const row = page.locator('tr', { hasText: '0m 47s' });
+    await expect(row).toBeVisible({ timeout: 20000 });
+    await expect(row).toContainText(s.anonPhone);
+    await expect(row.getByRole('button', { name: /Transcript/ })).toBeEnabled();
   });
 });

@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { AuthUser } from '@ace/shared-types';
 import { CALL_RECORDED_EVENT } from '../common/call-case-link';
+import { mayHearCall } from '../common/case-visibility';
 import { prisma } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
 import {
@@ -123,16 +124,8 @@ export class CallRecordingService {
       where: { organizationId: user.organizationId, type: CALL_RECORDED_EVENT, body: { startsWith: `Call recorded: ${callLogId}` } },
       select: { ticket: { select: { isAnonymous: true, isSensitive: true, assignedUserId: true } } },
     });
-    if (!links.length) return;
-    const privileged = user.role === 'OWNER' || user.role === 'ADMIN';
-    const liaison = !!user.mdaName;
     for (const { ticket } of links) {
-      if (!ticket) continue;
-      const blocked =
-        liaison ||
-        (ticket.isAnonymous && !privileged) ||
-        (ticket.isSensitive && !privileged && ticket.assignedUserId !== user.userId);
-      if (blocked) {
+      if (ticket && !mayHearCall(user, ticket)) {
         throw new ForbiddenException('This call belongs to a confidential report. Only an administrator, or the officer assigned to it, can play it.');
       }
     }

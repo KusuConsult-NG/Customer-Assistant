@@ -416,6 +416,6 @@ export class TelephonyController {
   @UseGuards(JwtAuthGuard)
   @Get('calls')
   async getCallLogs(@Req() req: { user: AuthUser }, @Query('page') page: string, @Query('limit') limit: string) {
-    return this.telephonyService.getCallLogs(req.user.organizationId, parseInt(page) || 1, parseInt(limit) || 50);
+    return this.telephonyService.getCallLogs(req.user.organizationId, parseInt(page) || 1, parseInt(limit) || 50, req.user);
   }
 }

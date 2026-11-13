@@ -36,7 +36,7 @@ export class AnalyticsController {
   ) {
     const validPeriods: Array<'7d' | '30d' | '90d'> = ['7d', '30d', '90d'];
     const safePeriod = validPeriods.includes(period) ? period : '7d';
-    return this.analyticsService.getDashboardSummary(req.user.organizationId, safePeriod);
+    return this.analyticsService.getDashboardSummary(req.user.organizationId, safePeriod, req.user);
   }
 
   /**

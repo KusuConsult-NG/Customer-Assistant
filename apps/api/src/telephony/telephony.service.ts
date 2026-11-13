@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { BrowserCallingService } from './browser-calling.service';
 import { prisma, withTelephonyCredentials, ensureContactForPhone, phoneNumberVariants } from '@ace/database';
+import { callWithholding, isCallWithheld, redactCall, type Viewer } from '../common/case-visibility';
 import { recordingPlayable } from '../common/call-recording';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -894,7 +895,7 @@ export class TelephonyService {
     return updated;
   }
 
-  async getCallLogs(organizationId: string, page = 1, limit = 50) {
+  async getCallLogs(organizationId: string, page = 1, limit = 50, viewer?: Viewer) {
     const skip = (page - 1) * limit;
     const [rows, total, agent] = await Promise.all([
       prisma.callLog.findMany({
@@ -909,7 +910,14 @@ export class TelephonyService {
     ]);
     // Whether the screen offers Play — see common/call-recording.ts. The audio
     // itself is fetched from GET /api/calls/:id/recording, never from a link.
-    const data = rows.map((r) => ({ ...r, recordingPlayable: recordingPlayable(r, !!agent?.agentId) }));
+    // A call that is the record of a confidential report (anonymous or
+    // sensitive) is listed without who called or what was said, for anyone the
+    // case itself would not show its reporter to — common/case-visibility.ts.
+    const withheld = viewer ? await callWithholding({ ...viewer, organizationId }) : null;
+    const data = rows.map((r) => {
+      const row = { ...r, recordingPlayable: recordingPlayable(r, !!agent?.agentId) };
+      return withheld && isCallWithheld(withheld, r.id) ? redactCall(row) : row;
+    });
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

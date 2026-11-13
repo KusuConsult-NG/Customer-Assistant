@@ -36,6 +36,12 @@ export function callRecordedBody(callLogId: string, durationSeconds: number): st
   return `Call recorded: ${callLogId} (${m}m ${s}s). The transcript and recording are on the call record.`;
 }
 
+/** The ElevenLabs conversation id a CREATED event's call reference names, or null. */
+export function conversationIdFrom(body: string | null | undefined): string | null {
+  const m = / Call reference: ([A-Za-z0-9_-]+)\.$/.exec(body ?? '');
+  return m ? m[1] : null;
+}
+
 /** The CallLog id a CALL_RECORDED event names, or null (erased, or another event). */
 export function callLogIdFrom(body: string | null | undefined): string | null {
   const m = /^Call recorded: ([0-9a-f-]{36})\b/.exec(body ?? '');
