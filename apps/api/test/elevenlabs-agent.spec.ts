@@ -333,6 +333,41 @@ describe('ElevenLabs agent provisioning', () => {
       expect(posts('/v1/convai/secrets')).toHaveLength(0);
     });
 
+    /**
+     * fd15a41 raised the tool timeout from 10 to 25 seconds and rewrote the
+     * prompt. Neither reaches a call until a sync sends it: the tools and the
+     * agent live in the workspace, not in this API. So this asserts on what a
+     * RE-sync puts on the wire — every existing tool updated with 25, and the
+     * agent given the new prompt and the agency's own first message.
+     */
+    it('a re-sync sends the 25-second timeout to every existing tool, and the new prompt and greeting', async () => {
+      const greeting =
+        'Hello! Welcome to the Sync Test Clinic. My name is Nanpan — how are you doing today?';
+      await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: greeting } });
+      try {
+        stubWorkspace();
+        await service.syncAgent(orgId);
+
+        sent = [];
+        await service.syncAgent(orgId);
+
+        const toolUpdates = sent.filter((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/tools/'));
+        expect(toolUpdates).toHaveLength(TOOL_NAMES.length);
+        for (const update of toolUpdates) {
+          expect(update.body?.tool_config?.response_timeout_secs).toBe(25);
+        }
+
+        const agentUpdate = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
+        expect(agentUpdate).toBeDefined();
+        const agentConfig = agentUpdate!.body?.conversation_config?.agent;
+        expect(agentConfig?.first_message).toBe(greeting);
+        expect(agentConfig?.prompt?.prompt).toContain('## Step 1 of Every Call');
+        expect(agentConfig?.prompt?.prompt).toContain('DO NOT SKIP THE 5 QUESTIONS');
+      } finally {
+        await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: null } });
+      }
+    });
+
     it('reuses the existing key rather than minting one on every sync', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);
