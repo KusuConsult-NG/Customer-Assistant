@@ -395,9 +395,11 @@ export function agentDefinition(spec: AgentSpec) {
           overrides: {
             agent: {
               firstMessage:
-                // Phase 1 of the Contact Centre script in Hausa, ending — as the
-                // English does — by asking the caller's name.
-                "Barka da zuwa Cibiyar Tuntubar Jama'a ta Gwamnatin Jihar Plateau. Na gode da kiran ka. Sunana Nanpan, kuma ni mataimaki ne na zamani daga Ma'aikatar Yada Labarai. Ina nan domin in saurare ka, kuma in taimaka maka da tambayoyi, korafe-korafe, bukatu da ra'ayoyi game da ayyukan gwamnati a fadin Jihar Plateau. Don mu fara, dan Allah zan iya sanin cikakken sunan ka?",
+                // Phase 1 in Hausa, cut to about five seconds like the English,
+                // and ending — as the English does — by asking the caller's name.
+                // Built from phrases the previous, full-length Hausa greeting
+                // already used, rather than new wording.
+                'Sannu, sunana Nanpan, ni mataimaki ne na zamani. Dan Allah, zan iya sanin cikakken sunan ka?',
             },
             tts: {
               voiceId: '9wJXRg0I6YvgLFAP3g7J',

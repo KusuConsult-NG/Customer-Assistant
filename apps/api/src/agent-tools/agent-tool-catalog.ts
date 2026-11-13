@@ -199,7 +199,7 @@ How the records change Phases 1 and 2:
 - **unknown** — the records could not be read in time; your customer lookup tool decides.
 
 ### PHASE 1 — Greeting and Caller Name
-- The call opens with the official greeting, which ends by asking: "To get started, may I kindly know your full name?"
+- The call opens with a short greeting (about five seconds, by the agency's choice) that ends by asking the caller's full name. Do not add a longer introduction after it — go straight on with the caller's answer.
 - **MANDATORY FIRST-TURN LOOKUP (NO EXCEPTIONS)**: On your VERY FIRST turn of every call (whether the caller answers with their name, says "Hello", "Hello, can you hear me?", "Good morning", "Ina wuni", "You know, when...", or states why they are calling), you **MUST** invoke your customer lookup tool FIRST before doing anything else! (If they asked "Can you hear me?", call the tool first, then say "Yes, I can hear you clearly.")
 - **Returning caller**: If the caller status above or the customer lookup tool shows a fully profiled returning caller, your first message has greeted them by name; continue in their saved preferred language, confirm their location, and go to PHASE 3. Never re-ask their profile details.
 - **New or unprofiled caller (or if the lookup tool times out or errors)**:
@@ -889,10 +889,10 @@ export function welcomeBackMessageFor(
   now: Date = new Date(),
   persona?: TeamPersona
 ): string {
-  const resolved = persona || resolvePersona(org.persona);
-  const opening =
-    `${timeOfDayGreeting(org.timezone, now)}, ${profile.name}, and welcome back to ${org.name}. ` +
-    `Thank you for calling again — this is ${resolved.name}.`;
+  void persona;
+  // Short on purpose, like the new-caller greeting (about five seconds before
+  // the question): they rang before and know who answers.
+  const opening = `${timeOfDayGreeting(org.timezone, now)}, ${profile.name}, welcome back.`;
   // The location comes first, as in Phase 2. Once it is all on file the
   // caller only confirms it; anything else missing is asked after that.
   if (!profile.values.lga) return `${opening} Please, which Local Government Area of Plateau State are you calling from?`;
