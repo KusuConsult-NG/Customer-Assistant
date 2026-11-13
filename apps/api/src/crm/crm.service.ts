@@ -225,7 +225,38 @@ export class CrmService {
     return pageEnvelope(data, total, paging);
   }
 
-  async createTicket(organizationId: string, data: { contactId: string; subject: string; description: string; priority?: TicketPriority }) {
+  async createTicket(
+    organizationId: string,
+    data: {
+      contactId: string;
+      subject: string;
+      description: string;
+      priority?: TicketPriority;
+      /**
+       * Case-management fields (PRD §10), for a report the caller has already
+       * described in full — the phone agent's create-ticket. The dashboard's
+       * own "new ticket" sends none, and gets a plain RECEIVED case as before.
+       * A CREATED event goes with them, because a case's history starts when
+       * it is opened, not when an officer first touches it.
+       */
+      caseFields?: {
+        caseStage: 'RECEIVED' | 'CLASSIFIED';
+        category: string;
+        isSensitive: boolean;
+        isAnonymous: boolean;
+        lga: string | null;
+        ward: string | null;
+        community: string | null;
+        /** The MDA the case is marked for — what the caller was told. */
+        responsibleMda?: string | null;
+        summary: string | null;
+        dueAt: Date;
+        channel: string;
+        openedBy: string;
+        eventBody: string;
+      };
+    }
+  ) {
     // ticketNumber is @unique across the whole table.
     //
     // It used to be `TCK-<4 digits of Date.now()>-<count+1>`, derived from a COUNT
@@ -236,6 +267,7 @@ export class CrmService {
     //
     // Now: time-ordered prefix (so numbers still sort chronologically) plus 5 bytes
     // of randomness, with a bounded retry for the vanishingly unlikely collision.
+    const c = data.caseFields;
     const ticket = await this.createWithUniqueTicketNumber(() => ({
       organizationId,
       contactId: data.contactId,
@@ -244,6 +276,30 @@ export class CrmService {
       priority: data.priority || TicketPriority.MEDIUM,
       status: TicketStatus.OPEN,
       updatedAt: new Date(),
+      ...(c
+        ? {
+            caseStage: c.caseStage,
+            category: c.category,
+            isSensitive: c.isSensitive,
+            isAnonymous: c.isAnonymous,
+            lga: c.lga,
+            ward: c.ward,
+            community: c.community,
+            responsibleMda: c.responsibleMda ?? null,
+            summary: c.summary,
+            dueAt: c.dueAt,
+            channel: c.channel,
+            events: {
+              create: {
+                organizationId,
+                type: 'CREATED',
+                toStage: c.caseStage,
+                actorLabel: c.openedBy,
+                body: c.eventBody,
+              },
+            },
+          }
+        : {}),
     }));
 
     this.webhookDispatcher.dispatch(organizationId, 'ticket.created', {

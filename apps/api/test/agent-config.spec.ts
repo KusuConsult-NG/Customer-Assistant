@@ -337,7 +337,9 @@ describe('Agent definition', () => {
         .filter((n) => !n.startsWith('system__')),
     );
     expect(used.size).toBeGreaterThan(0);
-    const placeholders = agent.dynamicVariables?.dynamicVariablePlaceholders ?? {};
+    // snake_case: the SDK passes `dynamic_variables` through untouched — see
+    // elevenlabs-contracts.ts, and the wire assertion in elevenlabs-agent.spec.ts.
+    const placeholders = agent.dynamicVariables?.dynamic_variable_placeholders ?? {};
     for (const name of used) expect(placeholders[name]).toBeTruthy();
     expect(placeholders.organization_name).toBe(ORG.name);
   });

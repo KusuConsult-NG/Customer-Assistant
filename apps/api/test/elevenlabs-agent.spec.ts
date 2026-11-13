@@ -333,6 +333,80 @@ describe('ElevenLabs agent provisioning', () => {
       expect(posts('/v1/convai/secrets')).toHaveLength(0);
     });
 
+    /**
+     * fd15a41 raised the tool timeout from 10 to 25 seconds and rewrote the
+     * prompt. Neither reaches a call until a sync sends it: the tools and the
+     * agent live in the workspace, not in this API. So this asserts on what a
+     * RE-sync puts on the wire — every existing tool updated with 25, and the
+     * agent given the new prompt and the agency's own first message.
+     */
+    it('a re-sync sends the 25-second timeout to every existing tool, and the new prompt and greeting', async () => {
+      const greeting =
+        '{greeting}, and welcome to the Sync Test Clinic. My name is Nanpan. To get started, may I kindly know your full name?';
+      await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: greeting } });
+      try {
+        stubWorkspace();
+        await service.syncAgent(orgId);
+
+        sent = [];
+        await service.syncAgent(orgId);
+
+        const toolUpdates = sent.filter((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/tools/'));
+        expect(toolUpdates).toHaveLength(TOOL_NAMES.length);
+        for (const update of toolUpdates) {
+          expect(update.body?.tool_config?.response_timeout_secs).toBe(25);
+        }
+
+        const agentUpdate = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
+        expect(agentUpdate).toBeDefined();
+        const agentConfig = agentUpdate!.body?.conversation_config?.agent;
+        // The STORED first message cannot know the time of the call, so the
+        // token becomes "Hello"; the conversation-start webhook sends the
+        // timed one per call.
+        expect(agentConfig?.first_message).toBe(greeting.replace('{greeting}', 'Hello'));
+        expect(agentConfig?.prompt?.prompt).toContain('## Standard Operating Script (Phases 1 to 10)');
+        expect(agentConfig?.prompt?.prompt).toContain('THIS SCRIPT SUPERSEDES OLDER WORDING ABOVE');
+      } finally {
+        await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: null } });
+      }
+    });
+
+    /**
+     * Recognising a returning caller must not depend on the model choosing to
+     * call lookup-customer. The sync points ElevenLabs at our conversation-start
+     * webhook — authenticated with the same agent-key secret as the tools — and
+     * allows its reply to replace the first message. Asserted on create AND on
+     * a re-sync, because the agent in production already exists and only a
+     * re-sync will reach it.
+     */
+    it('turns on the conversation-start webhook, with the agent key, on create and on every re-sync', async () => {
+      stubWorkspace();
+      await service.syncAgent(orgId);
+      const created = sent.find((r) => r.method === 'POST' && r.url.includes('/v1/convai/agents/create'));
+
+      sent = [];
+      await service.syncAgent(orgId);
+      const updated = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
+
+      for (const [which, req] of Object.entries({ created, updated })) {
+        const platform = req?.body?.platform_settings;
+        expect({ which, enabled: platform?.overrides?.enable_conversation_initiation_client_data_from_webhook }).toEqual({
+          which,
+          enabled: true,
+        });
+        expect(platform?.overrides?.conversation_config_override?.agent?.first_message).toBe(true);
+        const hook = platform?.workspace_overrides?.conversation_initiation_client_data_webhook;
+        expect(hook?.url).toBe(`${PUBLIC_URL}/api/agent-tools/conversation-start`);
+        // The secret, never the key itself.
+        expect(hook?.request_headers?.Authorization).toEqual({ secret_id: 'secret_1' });
+        expect(JSON.stringify(req?.body)).not.toContain(AGENT_KEY_PREFIX);
+        // And the defaults a conversation without the webhook falls back to.
+        expect(req?.body?.conversation_config?.agent?.dynamic_variables?.dynamic_variable_placeholders?.caller_status).toBe(
+          'unknown'
+        );
+      }
+    });
+
     it('reuses the existing key rather than minting one on every sync', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);

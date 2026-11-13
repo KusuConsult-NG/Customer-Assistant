@@ -175,6 +175,27 @@ export interface AgentSpec {
    * then said nothing at all: no greeting, no LLM call, zero TTS characters.
    */
   dynamicVariablePlaceholders?: Record<string, string>;
+  /**
+   * Where ElevenLabs asks, as each call connects, who is calling.
+   *
+   * Set per AGENT (`platformSettings.workspaceOverrides`), not on the
+   * workspace, because each agency's agent must reach its own tenant's
+   * records. ElevenLabs runs it for inbound Twilio and SIP-trunk calls, and for
+   * outbound calls that send no initiation data of their own.
+   *
+   * Turning it on also allows the reply to override the first message and the
+   * language, which is how a returning caller is greeted by name — and which
+   * the outbound path already sends, so it is enabled for both.
+   *
+   * ElevenLabs' documentation is blunt that a failed or timed-out webhook can
+   * stop the conversation starting. The endpoint is built never to fail; see
+   * `AgentToolsService.conversationStart`.
+   */
+  initiationWebhook?: {
+    url: string;
+    /** A literal or a workspace secret — the only two kinds this header takes. */
+    authorization: string | ElevenLabs.ConvAiSecretLocator;
+  };
 }
 
 /** Build the request for `conversationalAi.agents.create`. */
@@ -189,12 +210,36 @@ export function agentDefinition(spec: AgentSpec) {
 
   return {
     name: spec.name,
+    ...(spec.initiationWebhook
+      ? {
+          platformSettings: {
+            overrides: {
+              enableConversationInitiationClientDataFromWebhook: true,
+              conversationConfigOverride: { agent: { firstMessage: true, language: true } },
+            },
+            workspaceOverrides: {
+              conversationInitiationClientDataWebhook: {
+                url: spec.initiationWebhook.url,
+                requestHeaders: { Authorization: spec.initiationWebhook.authorization },
+              },
+            },
+          },
+        }
+      : {}),
     conversationConfig: {
       agent: {
         firstMessage: spec.firstMessage,
         language: spec.language ?? 'en',
+        // snake_case INSIDE, on purpose — the one exception to "the SDK
+        // converts". Its AgentConfig serializer types `dynamic_variables` as
+        // `unknown` and passes the object through untouched, so the camelCase
+        // key this used to send reached ElevenLabs verbatim as
+        // `dynamicVariablePlaceholders`. Their API reads
+        // `conversation_config.agent.dynamic_variables.dynamic_variable_placeholders`
+        // (their dynamic-variables documentation), so the defaults were never
+        // set. elevenlabs-agent.spec.ts asserts the field on the wire.
         ...(spec.dynamicVariablePlaceholders
-          ? { dynamicVariables: { dynamicVariablePlaceholders: spec.dynamicVariablePlaceholders } }
+          ? { dynamicVariables: { dynamic_variable_placeholders: spec.dynamicVariablePlaceholders } }
           : {}),
         prompt: {
           prompt: spec.systemPrompt,
@@ -350,6 +395,8 @@ export function agentDefinition(spec: AgentSpec) {
           overrides: {
             agent: {
               firstMessage:
+                // Phase 1 of the Contact Centre script in Hausa, ending — as the
+                // English does — by asking the caller's name.
                 "Barka da zuwa Cibiyar Tuntubar Jama'a ta Gwamnatin Jihar Plateau. Na gode da kiran ka. Sunana Nanpan, kuma ni mataimaki ne na zamani daga Ma'aikatar Yada Labarai. Ina nan domin in saurare ka, kuma in taimaka maka da tambayoyi, korafe-korafe, bukatu da ra'ayoyi game da ayyukan gwamnati a fadin Jihar Plateau. Don mu fara, dan Allah zan iya sanin cikakken sunan ka?",
             },
             tts: {
