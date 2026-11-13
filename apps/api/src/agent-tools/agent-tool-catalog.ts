@@ -449,15 +449,21 @@ export function agentToolCatalog(
 
     'create-ticket': build(
       'create-ticket',
-      'Log an issue for a human to follow up. Use for complaints, faults, and anything your other tools cannot resolve.',
+      'Log an issue or incident for a human to act on. Use for complaints, faults, and ESPECIALLY incident reports (attacks, fires, floods, accidents, injuries). ' +
+        'Fill category, location, occurredAt, isOngoing and victimsOrInjuries from what the caller already told you — never re-ask. It returns the right emergency contacts to read out.',
       {
         phoneNumber: callerPhone,
         fullName: askedOf('string', "The customer's full name, if known."),
         subject: askedOf('string', 'A short summary of the issue.'),
         description: askedOf(
           'string',
-          'What the customer described, in enough detail for a colleague to act on it.'
+          'What the customer described, in enough detail for a colleague to act on it: who, what happened, how, any suspects or vehicles.'
         ),
+        category: askedOf('string', "Type: 'security attack', 'fire', 'flood/disaster', 'medical', 'service complaint', 'corruption', 'other'."),
+        location: askedOf('string', 'Where it happened: community/street, landmark, LGA.'),
+        occurredAt: askedOf('string', "When it happened, in the caller's words (e.g. 'about 2 hours ago', 'last night around 10pm')."),
+        isOngoing: askedOf('boolean', 'true if it is still happening or people are still in danger.'),
+        victimsOrInjuries: askedOf('string', 'Who was hurt, killed, missing or affected, and how many, if any.'),
       },
       ['phoneNumber', 'subject', 'description']
     ),
@@ -641,6 +647,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `  - If a caller asks to switch languages at ANY point, switch immediately and never insist on English.\n` +
     `  - If a caller skips any profile question or has an urgent question first, do not force them — save whatever details you have via update-caller-profile and help them right away.\n` +
     `- NO LIVE TRANSFERS: never offer, announce or attempt to transfer or connect the caller to a human. When you cannot help, cannot find an answer, or the caller asks for a person, say a desk officer will call them back — then (1) ask which number to call (the one they are calling from, or another), (2) read the number back digit by digit and wait for a clear yes, (3) call request-callback with numberConfirmed=true, (4) read out the reference and window it returns. Never promise a callback before request-callback has succeeded, and never skip the number confirmation.\n` +
+    `- INCIDENT REPORTS — ACT LIKE A SEASONED HUMAN OFFICER, NOT A FORM: when a caller reports an attack, violence, kidnapping, fire, flood, accident or injury (e.g. "my village was attacked"), do this in order: (1) SAFETY FIRST, before any questions: acknowledge it with real empathy and ask whether they and others are safe and whether it is still happening. If it is ongoing or anyone is hurt, IMMEDIATELY give the emergency contacts — 112 for any emergency, Operation Rainbow control room 09064000112 and Police Plateau Command 08032419336 for attacks, Fire Service 07040007283 for fire, SEMA 08037808218 for floods and disasters — and urge them to call right now (offer to stay on the line). (2) Then collect the essentials conversationally, one short question at a time, skipping anything already said: what happened, where (community/LGA/landmark), when, who is hurt or missing, and whether security services were already informed. Never interrogate and never ask something they already told you. (3) Call create-ticket with ALL structured fields (category, location, occurredAt, isOngoing, victimsOrInjuries) — it files an URGENT incident. (4) Give the reference, say plainly that it is flagged urgent to the State team, name the right authority and the emergency numbers again, and never promise that police or rescue will arrive. (5) Do NOT just say "someone will call you back" as the whole answer. Offer a follow-up callback only if they want one, using the confirmed-number steps. Use search-knowledge to name the right ministry or agency when it is a non-emergency matter, and give the caller something concrete they can do next.\n` +
     `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done.`;
 

@@ -112,7 +112,17 @@ export class AgentToolsController {
   createTicket(
     @Req() req: AgentRequest,
     @Body()
-    body: { phoneNumber: string; fullName?: string; subject: string; description: string }
+    body: {
+      phoneNumber: string;
+      fullName?: string;
+      subject: string;
+      description: string;
+      category?: string;
+      location?: string;
+      occurredAt?: string;
+      isOngoing?: boolean | string;
+      victimsOrInjuries?: string;
+    }
   ): Promise<ToolResult> {
     return this.tools.createTicket(this.org(req), body);
   }

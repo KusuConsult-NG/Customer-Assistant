@@ -877,11 +877,40 @@ export class AgentToolsService {
 
   async createTicket(
     organizationId: string,
-    input: { phoneNumber: string; fullName?: string; subject: string; description: string }
+    input: {
+      phoneNumber: string;
+      fullName?: string;
+      subject: string;
+      description: string;
+      category?: string;
+      location?: string;
+      occurredAt?: string;
+      isOngoing?: boolean | string;
+      victimsOrInjuries?: string;
+    }
   ): Promise<ToolResult> {
     try {
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
-      const text = `${input.subject} ${input.description}`.toLowerCase();
+      const text = `${input.subject} ${input.description} ${input.category ?? ''} ${input.victimsOrInjuries ?? ''}`.toLowerCase();
+
+      // ── Incident / emergency triage ───────────────────────────────────────
+      // A citizen reporting an attack, fire, flood or injury needs two things a
+      // callback does not give them: the right emergency number NOW, and a
+      // record an officer can act on without phoning back to ask "where?".
+      const SECURITY = /attack|gunmen|gunman|bandit|kidnap|abduct|shoot|shot |killed|killing|robber|armed|raid|riot|violence|clash|mob|assault|rape|stab|burn(ed|t) down|arson|invad/i;
+      const FIRE = /\bfire\b|explosion|gas leak|inferno/i;
+      const DISASTER = /flood|collapse|landslide|storm|windstorm|rainstorm|erosion/i;
+      const MEDICAL = /bleeding|unconscious|not breathing|labou?r|accident|crash|injur|dying|poison|snake ?bite/i;
+      const kind = SECURITY.test(text)
+        ? 'security'
+        : FIRE.test(text)
+        ? 'fire'
+        : DISASTER.test(text)
+        ? 'disaster'
+        : MEDICAL.test(text)
+        ? 'medical'
+        : null;
+      const ongoing = input.isOngoing === true || String(input.isOngoing).toLowerCase() === 'true';
 
       // A citizen reporting that they were asked for money, refused service or
       // mistreated is a service-integrity complaint at ANY agency, not only a
@@ -889,27 +918,67 @@ export class AgentToolsService {
       // wording is gone. What the citizen is told names no scheme, no card and
       // no helpline the agency may not have.
       const isIntegrityComplaint =
-        /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|mistreat/i.test(text);
+        !kind && /extortion|illegal|bribe|demand|money|cash|pay|refus|deny|denied|stockout|mistreat/i.test(text);
 
-      const priority = isIntegrityComplaint ? TicketPriority.URGENT : TicketPriority.HIGH;
-      const subject = isIntegrityComplaint
+      const priority = kind || isIntegrityComplaint ? TicketPriority.URGENT : TicketPriority.HIGH;
+      const subject = kind
+        ? `[URGENT ${kind.toUpperCase()} INCIDENT] ${input.subject}`
+        : isIntegrityComplaint
         ? `[INTEGRITY ESCALATION] ${input.subject}`
         : input.subject;
+
+      const details = [
+        input.description,
+        input.location ? `Location: ${input.location}` : null,
+        input.occurredAt ? `When: ${input.occurredAt}` : null,
+        kind ? `Still ongoing: ${ongoing ? 'YES' : 'no / unknown'}` : null,
+        input.victimsOrInjuries ? `Victims / injuries: ${input.victimsOrInjuries}` : null,
+        `Reported by phone: ${input.phoneNumber}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
 
       const ticket = await this.crm.createTicket(organizationId, {
         contactId: contact.id,
         subject,
-        description: input.description,
+        description: details,
         priority,
       });
 
-      if (isIntegrityComplaint) {
+      if (isIntegrityComplaint || kind) {
         await prisma.note.create({
           data: {
             contactId: contact.id,
-            content: `🚨 URGENT SERVICE-INTEGRITY COMPLAINT LOGGED: ${input.subject} — escalated for review.`,
+            content: kind
+              ? `🚨 URGENT ${kind.toUpperCase()} INCIDENT REPORTED (${ticket.ticketNumber}): ${input.subject} — ${input.location ?? 'location not given'}.`
+              : `🚨 URGENT SERVICE-INTEGRITY COMPLAINT LOGGED: ${input.subject} — escalated for review.`,
           },
         }).catch(() => {});
+      }
+
+      if (kind) {
+        const authority =
+          kind === 'security'
+            ? 'For anything happening now, please call 1 1 2, Operation Rainbow control room on 0 9 0 6 4 0 0 0 1 1 2, or the Police Plateau Command on 0 8 0 3 2 4 1 9 3 3 6.'
+            : kind === 'fire'
+            ? 'Please call 1 1 2 or the Plateau State Fire Service on 0 7 0 4 0 0 0 7 2 8 3 right away.'
+            : kind === 'disaster'
+            ? 'The Plateau State Emergency Management Agency, SEMA, handles this — their number is 0 8 0 3 7 8 0 8 2 1 8.'
+            : 'Please call 1 1 2 for an ambulance, or get to the nearest hospital as fast as you safely can.';
+        return {
+          ok: true,
+          speak:
+            `I have logged this as an urgent incident report and flagged it to our team. Your reference is ${ticket.ticketNumber}. ` +
+            authority,
+          data: {
+            ticketId: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            isEscalated: true,
+            incidentKind: kind,
+            instruction:
+              'Say the reference and the emergency contacts, then be human: acknowledge what they went through, make sure they are safe, and tell them honestly that you have flagged it as urgent and that the emergency services above are the fastest route for anything happening now. Do NOT promise police or a rescue response. Offer a confirmed-number callback only if they want a follow-up. Never ask them to repeat details they already gave.',
+          },
+        };
       }
 
       // `ticket.ticketNumber`, not `ticket.id.slice(0, 8)`.
