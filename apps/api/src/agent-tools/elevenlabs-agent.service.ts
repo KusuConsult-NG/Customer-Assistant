@@ -689,7 +689,7 @@ export class ElevenLabsAgentService {
         // real tool ids so clearing the copy cannot take the tools with it.
         // Whether the workspace honours it is NOT assumed: `getAgentStatus`
         // re-reads and still reports inline tools if any remain.
-        const hasInlineTools = await this.remoteHasInlineTools(client, agentId);
+        const hasInlineTools = await this.remoteHasInlineTools(client, agentId, baseUrl, org.slug);
         const payload = hasInlineTools
           ? agentDefinitionFor(org, orderedIds, undefined, { clearInlineTools: true, initiationWebhook })
           : definition;
@@ -741,21 +741,53 @@ export class ElevenLabsAgentService {
   }
 
   /**
+   * Distinguish a truly stale inline tool definition from ElevenLabs' live echo
+   * of `prompt.tool_ids` inside `prompt.tools` on GET responses.
+   *
+   * ElevenLabs' GET /v1/convai/agents/:id expands `prompt.tool_ids` into
+   * `prompt.tools` with each tool's current `name` and `apiSchema.url`. An
+   * entry is only a stale inline snapshot if it carries a URL that does NOT
+   * match one of this tenant's current tracked `tool_ids` endpoints (or if the
+   * agent has no `tool_ids` attached at all).
+   */
+  private isStaleInlineTool(
+    t: any,
+    baseUrl: string,
+    orgSlug: string,
+    remoteToolIds: string[]
+  ): boolean {
+    const url: string | undefined = t?.api?.url || t?.apiSchema?.url || t?.api_schema?.url;
+    if (!url) return false;
+    if (t?.api?.url) return true;
+    if (!Array.isArray(remoteToolIds) || remoteToolIds.length === 0) return true;
+
+    const matchesCurrentTrackedTool = TOOL_NAMES.some(
+      (toolName) =>
+        (t?.name === remoteToolName(toolName, orgSlug) || t?.name === toolName) &&
+        url === `${baseUrl}/api/agent-tools/${toolName}`
+    );
+    return !matchesCurrentTrackedTool;
+  }
+
+  /**
    * Does the remote agent still carry deprecated inline `prompt.tools`?
    *
    * Read before the update so the sync only sends the clearing payload when
    * there is something to clear — and so a workspace that cannot be read does
    * not turn into a silent no-op.
    */
-  private async remoteHasInlineTools(client: any, agentId: string): Promise<boolean> {
+  private async remoteHasInlineTools(
+    client: any,
+    agentId: string,
+    baseUrl: string,
+    orgSlug: string
+  ): Promise<boolean> {
     try {
       const agent = await client.conversationalAi.agents.get(agentId);
-      const tools: any[] = (agent?.conversationConfig as any)?.agent?.prompt?.tools ?? [];
-      // ElevenLabs echoes tool_ids-referenced tools back inside prompt.tools on
-      // GET responses, but those echoed entries carry no URL — they are live
-      // references, not stale snapshots. Only flag entries that bake in their
-      // own URL (the hallmark of old inline definitions).
-      return tools.some((t) => Boolean(t?.api?.url || t?.apiSchema?.url || t?.api_schema?.url));
+      const prompt: any = (agent?.conversationConfig as any)?.agent?.prompt ?? {};
+      const tools: any[] = Array.isArray(prompt.tools) ? prompt.tools : [];
+      const remoteToolIds: string[] = Array.isArray(prompt.toolIds) ? prompt.toolIds : [];
+      return tools.some((t) => this.isStaleInlineTool(t, baseUrl, orgSlug, remoteToolIds));
     } catch {
       // A read failure is not evidence of anything. The ordinary payload is
       // sent and the status check reports whatever is really there.
@@ -864,11 +896,12 @@ export class ElevenLabsAgentService {
     }
 
     // ElevenLabs echoes tool_ids-referenced tools back inside prompt.tools on
-    // GET responses, but those echoed entries carry no URL — they are live
-    // references, not stale snapshots. Only flag entries that bake in their
-    // own URL (the hallmark of old inline definitions created before tool_ids).
+    // GET responses. Only flag entries that are not live echoes of our current
+    // tracked tool_ids.
     const staleInlineTools = Array.isArray(prompt.tools)
-      ? (prompt.tools as any[]).filter((t) => Boolean(t?.api?.url || t?.apiSchema?.url || t?.api_schema?.url))
+      ? (prompt.tools as any[]).filter((t) =>
+          this.isStaleInlineTool(t, baseUrl, org.slug, remoteToolIds)
+        )
       : [];
     if (staleInlineTools.length > 0) {
       drift.push(

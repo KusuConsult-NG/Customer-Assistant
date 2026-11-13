@@ -395,10 +395,9 @@ export function agentDefinition(spec: AgentSpec) {
           overrides: {
             agent: {
               firstMessage:
-                // Ends by asking the name, as the Contact Centre script's
-                // Phase 1 does — not "how can I help you?" (Da me zan iya
-                // taimaka maka), which callers answered with their topic.
-                'Sannu! Barka da zuwa Cibiyar Bayanai ta Jihar Plateau. Sunana Nanpan. Dan Allah menene cikakken sunan ka?',
+                // Phase 1 of the Contact Centre script in Hausa, ending — as the
+                // English does — by asking the caller's name.
+                "Barka da zuwa Cibiyar Tuntubar Jama'a ta Gwamnatin Jihar Plateau. Na gode da kiran ka. Sunana Nanpan, kuma ni mataimaki ne na zamani daga Ma'aikatar Yada Labarai. Ina nan domin in saurare ka, kuma in taimaka maka da tambayoyi, korafe-korafe, bukatu da ra'ayoyi game da ayyukan gwamnati a fadin Jihar Plateau. Don mu fara, dan Allah zan iya sanin cikakken sunan ka?",
             },
             tts: {
               voiceId: '9wJXRg0I6YvgLFAP3g7J',

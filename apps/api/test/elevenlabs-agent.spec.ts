@@ -364,8 +364,8 @@ describe('ElevenLabs agent provisioning', () => {
         // token becomes "Hello"; the conversation-start webhook sends the
         // timed one per call.
         expect(agentConfig?.first_message).toBe(greeting.replace('{greeting}', 'Hello'));
-        expect(agentConfig?.prompt?.prompt).toContain("## How Every Call Runs — the Contact Centre's Standard Script");
-        expect(agentConfig?.prompt?.prompt).toContain('THE CONTACT CENTRE SCRIPT IS THE CALL');
+        expect(agentConfig?.prompt?.prompt).toContain('## Standard Operating Script (Phases 1 to 10)');
+        expect(agentConfig?.prompt?.prompt).toContain('THIS SCRIPT SUPERSEDES OLDER WORDING ABOVE');
       } finally {
         await prisma.organization.update({ where: { id: orgId }, data: { welcomeMessage: null } });
       }

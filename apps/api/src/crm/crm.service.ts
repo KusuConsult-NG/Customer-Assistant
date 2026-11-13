@@ -247,6 +247,8 @@ export class CrmService {
         lga: string | null;
         ward: string | null;
         community: string | null;
+        /** The MDA the case is marked for — what the caller was told. */
+        responsibleMda?: string | null;
         summary: string | null;
         dueAt: Date;
         channel: string;
@@ -283,6 +285,7 @@ export class CrmService {
             lga: c.lga,
             ward: c.ward,
             community: c.community,
+            responsibleMda: c.responsibleMda ?? null,
             summary: c.summary,
             dueAt: c.dueAt,
             channel: c.channel,

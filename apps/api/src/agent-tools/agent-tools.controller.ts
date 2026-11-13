@@ -70,12 +70,13 @@ export class AgentToolsController {
       lga?: string;
       ward?: string;
       community?: string;
-      followUpConsent?: boolean;
-      followUpNumber?: string;
-      followUpNumberConfirmed?: boolean;
+      /** true ONLY after alternativePhone was read back and the caller said yes. */
+      alternativePhoneConfirmed?: boolean | string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
+      alternativePhone?: string;
+      phoneConfirmedForFollowUp?: boolean | string;
       notes?: string;
     }
   ): Promise<ToolResult> {
@@ -147,6 +148,7 @@ export class AgentToolsController {
       ward?: string;
       community?: string;
       location?: string;
+      targetMda?: string;
       occurredAt?: string;
       institution?: string;
       impact?: string;
@@ -154,6 +156,7 @@ export class AgentToolsController {
       urgentMedicalAttention?: boolean | string;
       isOngoing?: boolean | string;
       victimsOrInjuries?: string;
+      additionalEvidence?: string;
       anonymous?: boolean | string;
       summary?: string;
       summaryConfirmed?: boolean | string;

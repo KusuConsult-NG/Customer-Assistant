@@ -52,6 +52,10 @@ const AREAS: Record<string, CaseClass | 'infrastructure'> = {
   flooddisaster: { category: 'disaster', sensitive: false, priority: 'URGENT', serviceDays: 1 },
   flood: { category: 'disaster', sensitive: false, priority: 'URGENT', serviceDays: 1 },
   disaster: { category: 'disaster', sensitive: false, priority: 'URGENT', serviceDays: 1 },
+  // A medical emergency that is over (an accident last week, a death at a
+  // facility) is a health complaint; one still happening is handled as an
+  // incident before this is consulted.
+  medicalemergency: { category: 'health', sensitive: false, priority: 'HIGH', serviceDays: 7 },
 };
 
 const key = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
