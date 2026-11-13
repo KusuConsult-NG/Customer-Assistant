@@ -14,6 +14,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, MessageSender } from '@ace/shared-types';
 import { prisma } from '@ace/database';
+import { WITHHELD_TEXT, callWithholding, isTranscriptTurnWithheld } from '../common/case-visibility';
 import { describeConversationFlow } from '@ace/orchestrator';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { AgentConsoleGateway } from './agent-console.gateway';
@@ -69,7 +70,8 @@ export class ConversationsController {
    */
   @Get()
   async getConversations(@Req() req: { user: AuthUser }) {
-    return prisma.conversation.findMany({
+    const withheld = await callWithholding(req.user);
+    const rows = await prisma.conversation.findMany({
       where: { organizationId: req.user.organizationId },
       include: {
         contact: {
@@ -78,7 +80,7 @@ export class ConversationsController {
         messages: {
           orderBy: { sentAt: 'desc' },
           take: 1,
-          select: { content: true, sender: true, sentAt: true },
+          select: { content: true, sender: true, sentAt: true, externalId: true },
         },
       },
       // lastMessageAt is what the UI sorts and displays; updatedAt also moves for
@@ -87,6 +89,14 @@ export class ConversationsController {
       orderBy: { lastMessageAt: 'desc' },
       take: 100,
     });
+    // A call's transcript is mirrored here as a VOICE thread; a confidential
+    // report's call reads as withheld, as it does on the call list.
+    return rows.map((c) => ({
+      ...c,
+      messages: c.messages.map(({ externalId, ...m }) =>
+        isTranscriptTurnWithheld(withheld, c.channel, externalId) ? { ...m, content: WITHHELD_TEXT } : m
+      ),
+    }));
   }
 
   /**
@@ -120,7 +130,14 @@ export class ConversationsController {
       orderBy: { sentAt: 'desc' },
       take: MESSAGE_PAGE_SIZE,
     });
-    return page.reverse();
+    const withheld = conv.channel === 'VOICE' ? await callWithholding(req.user) : null;
+    return page
+      .reverse()
+      .map((m) =>
+        withheld && isTranscriptTurnWithheld(withheld, conv.channel, m.externalId)
+          ? { ...m, content: WITHHELD_TEXT, mediaUrl: null, metadata: null }
+          : m
+      );
   }
 
   /**

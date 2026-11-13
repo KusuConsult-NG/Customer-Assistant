@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { callWithholding, isCallWithheld, redactCall, type Viewer } from '../common/case-visibility';
 import { zonedDayKey, zonedDayLabel, zonedWindow } from '../common/zoned-days';
 
 type Period = '7d' | '30d' | '90d';
@@ -25,7 +26,7 @@ export class AnalyticsService {
    * recorded yet", and it is worse here because the home page is the first
    * thing anyone sees. Nothing known is not the same as nothing there.
    */
-  async getDashboardSummary(organizationId: string, period: Period = '7d') {
+  async getDashboardSummary(organizationId: string, period: Period = '7d', viewer?: Viewer) {
     const days = periodToDays(period);
 
     const org = await prisma.organization
@@ -111,8 +112,13 @@ export class AnalyticsService {
 
     const weeklyData = await this.buildTrend(organizationId, keys, days, timezone, read);
 
-    const recentCalls = (await read('recentCalls', () =>
-      prisma.callLog.findMany({ where: { organizationId }, take: 10, orderBy: { startedAt: 'desc' } }))) ?? [];
+    // The same rule as the call list: a confidential report's call is shown
+    // without who called or what was said (common/case-visibility.ts).
+    const withheld = viewer ? await callWithholding({ ...viewer, organizationId }) : null;
+    const recentCalls = ((await read('recentCalls', () =>
+      prisma.callLog.findMany({ where: { organizationId }, take: 10, orderBy: { startedAt: 'desc' } }))) ?? []).map((c) =>
+      withheld && isCallWithheld(withheld, c.id) ? redactCall(c) : c
+    );
     const recentConversations = (await read('recentConversations', () =>
       prisma.conversation.findMany({
         where: { organizationId },

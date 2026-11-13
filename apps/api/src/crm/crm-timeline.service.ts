@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@ace/database';
+import { WITHHELD_TEXT, callWithholding, isCallWithheld, visibleCasesOfContactWhere } from '../common/case-visibility';
 import { AceLogger } from '../config/logger';
 
 export interface CustomerTimelineItem {
@@ -15,17 +16,24 @@ export interface CustomerTimelineItem {
 export class CrmTimelineService {
   private logger = new AceLogger('CrmTimelineService');
 
-  async getCustomerTimeline(contactId: string, organizationId: string): Promise<{
+  async getCustomerTimeline(
+    contactId: string,
+    organizationId: string,
+    viewer?: { userId: string; role: string; mdaName?: string | null }
+  ): Promise<{
     contact: any;
     healthScore: number;
     timeline: CustomerTimelineItem[];
   }> {
+    // Only the cases this viewer may see under this contact, and no word of
+    // what a confidential report's call said (common/case-visibility.ts).
+    const as = viewer ? { ...viewer, organizationId } : null;
     const contact = await prisma.contact.findFirst({
       where: { id: contactId, organizationId },
       include: {
         leads: true,
         deals: true,
-        tickets: true,
+        tickets: as ? { where: visibleCasesOfContactWhere(as, contactId) } : true,
       },
     });
 
@@ -50,13 +58,15 @@ export class CrmTimelineService {
     const timeline: CustomerTimelineItem[] = [];
 
     // Map calls
+    const withheld = as ? await callWithholding(as) : null;
     callLogs.forEach((call: any) => {
+      const hidden = !!withheld && isCallWithheld(withheld, call.id);
       timeline.push({
         id: call.id,
         type: 'CALL',
         timestamp: call.startedAt,
         title: `Voice Call (${call.direction})`,
-        description: `Duration: ${call.durationSeconds}s. Status: ${call.status}. ${call.summary || ''}`,
+        description: `Duration: ${call.durationSeconds}s. Status: ${call.status}. ${hidden ? WITHHELD_TEXT : call.summary || ''}`,
         metadata: { durationSeconds: call.durationSeconds, callSid: call.callSid },
       });
     });

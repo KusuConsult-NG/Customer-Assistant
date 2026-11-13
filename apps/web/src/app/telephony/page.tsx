@@ -7,7 +7,8 @@ import { CallRecordingPlayer } from '@/components/CallRecordingPlayer';
 import { RoleNotice } from '@/components/RoleNotice';
 import {
   PhoneCall, Sparkles, Phone, CheckCircle, AlertCircle, Radio, ShieldCheck,
-  Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft, PhoneOff
+  Play, Pause, FileText, Clock, User, Volume2, RefreshCw, X, ArrowUpRight, ArrowDownLeft, PhoneOff,
+  Lock,
 } from 'lucide-react';
 
 /** One of the agency's voice lines, as `GET /api/organizations/me` returns it. */
@@ -70,6 +71,8 @@ interface CallLog {
   recordingUrl?: string;
   /** Set by the API: whether this call's audio can be fetched (GET /api/calls/:id/recording). */
   recordingPlayable?: boolean;
+  /** Set by the API: this call is a confidential report's record, withheld from this viewer. */
+  confidential?: boolean;
   transcript?: string;
   sentiment?: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
   /** When the call began. CallLog has no createdAt: reading one showed "—" for every call. */
@@ -454,7 +457,16 @@ export default function TelephonyPage() {
               {callLogs.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="px-5 py-4">
-                    <p className="font-mono text-slate-900 dark:text-slate-100 font-bold">{log.fromNumber || log.toNumber || 'Unknown'}</p>
+                    {log.confidential ? (
+                      <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300" title="Part of a confidential report: only an administrator, or the officer assigned to it, can see who called">
+                        <Lock className="w-3.5 h-3.5" /> Confidential report
+                      </p>
+                    ) : (
+                      // The CITIZEN's end: on an outbound call that is the number dialled, not our own line.
+                      <p className="font-mono text-slate-900 dark:text-slate-100 font-bold">
+                        {(log.direction === 'OUTBOUND' ? log.toNumber : log.fromNumber) || 'Unknown'}
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-4">
                     <span className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-semibold">
@@ -486,7 +498,9 @@ export default function TelephonyPage() {
                     <CallRecordingPlayer callId={log.id} playable={log.recordingPlayable} />
                     <button
                       onClick={() => setSelectedCall(log)}
-                      className="px-3 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 hover:bg-blue-100 dark:bg-blue-500/20 text-xs font-semibold inline-flex items-center gap-1"
+                      disabled={log.confidential}
+                      title={log.confidential ? 'Withheld: part of a confidential report' : undefined}
+                      className="px-3 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 hover:bg-blue-100 dark:bg-blue-500/20 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FileText className="w-3 h-3" /> Transcript
                     </button>

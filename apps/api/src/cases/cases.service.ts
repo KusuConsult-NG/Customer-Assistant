@@ -9,6 +9,7 @@ import {
   type Actor,
   type CaseStageName,
 } from '@ace/database';
+import { mayHearCall, mayIdentifyReporter, visibleCasesWhere } from '../common/case-visibility';
 import { CALL_RECORDED_EVENT, callLogIdFrom } from '../common/call-case-link';
 import { recordingPlayable } from '../common/call-recording';
 import type { AuthUser } from '@ace/shared-types';
@@ -48,20 +49,14 @@ export class CasesService {
     return !!user.mdaName;
   }
 
+  /** The shared rule — common/case-visibility.ts — so no other list can drift from it. */
   private visibilityWhere(user: AuthUser): any {
-    const base: any = { organizationId: user.organizationId };
-    if (this.isLiaison(user)) {
-      return { ...base, referrals: { some: { mdaName: user.mdaName } } };
-    }
-    if (!PRIVILEGED.has(user.role)) {
-      return { ...base, OR: [{ isSensitive: false }, { assignedUserId: user.userId }] };
-    }
-    return base;
+    return visibleCasesWhere(user);
   }
 
   /** Withhold what this viewer may not see. Applied to every case returned. */
   private present(user: AuthUser, c: any) {
-    const hideReporter = c.isAnonymous && (this.isLiaison(user) || !PRIVILEGED.has(user.role));
+    const hideReporter = !mayIdentifyReporter(user, c);
     const now = Date.now();
     const overdue = !!c.dueAt && new Date(c.dueAt).getTime() < now && OPEN_STAGES.includes(c.caseStage);
     const out: any = { ...c, overdue };
@@ -130,9 +125,11 @@ export class CasesService {
    * report says who made it, and a liaison reads the case and the referral
    * thread, never the State's internal record of the call.
    */
-  private async callsFor(user: AuthUser, c: { organizationId: string; isAnonymous: boolean; events?: Array<{ type: string; body: string | null }> }) {
-    const hideReporter = c.isAnonymous && (this.isLiaison(user) || !PRIVILEGED.has(user.role));
-    if (hideReporter || this.isLiaison(user)) return { withheld: true, items: [] as any[] };
+  private async callsFor(
+    user: AuthUser,
+    c: { organizationId: string; isAnonymous: boolean; isSensitive: boolean; assignedUserId: string | null; events?: Array<{ type: string; body: string | null }> }
+  ) {
+    if (!mayHearCall(user, c)) return { withheld: true, items: [] as any[] };
     const ids = (c.events ?? [])
       .filter((e) => e.type === CALL_RECORDED_EVENT)
       .map((e) => callLogIdFrom(e.body))

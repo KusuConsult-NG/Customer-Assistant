@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { prisma, countContactRelations, describeContactRelation, normalizePhoneNumber, createTicketWithUniqueNumber, recordAgencyAudit, type Actor } from '@ace/database';
+import { mayIdentifyReporter, visibleCasesOfContactWhere, visibleCasesWhere, type Viewer } from '../common/case-visibility';
 import { resolvePaging, pageEnvelope, STABLE_DESC } from '../common/pagination';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -202,10 +203,9 @@ export class CrmService {
     viewer?: { userId: string; role: string; mdaName?: string | null },
   ) {
     const paging = resolvePaging(rawPage, rawLimit);
-    const privileged = !viewer || viewer.role === 'OWNER' || viewer.role === 'ADMIN';
-    const where: any = { organizationId };
-    if (viewer?.mdaName) where.referrals = { some: { mdaName: viewer.mdaName } };
-    else if (!privileged) where.OR = [{ isSensitive: false }, { assignedUserId: viewer!.userId }];
+    // No viewer is an internal caller (the export), which sees everything.
+    const as: Viewer | null = viewer ? { ...viewer, organizationId } : null;
+    const where: any = as ? visibleCasesWhere(as) : { organizationId };
     const [rows, total] = await Promise.all([
       prisma.ticket.findMany({
         where,
@@ -216,9 +216,8 @@ export class CrmService {
       }),
       prisma.ticket.count({ where }),
     ]);
-    const hideAnonymous = !privileged || !!viewer?.mdaName;
     const data = rows.map((t: any) =>
-      t.isAnonymous && hideAnonymous
+      as && !mayIdentifyReporter(as, t)
         ? { ...t, contactId: null, contact: { id: null, fullName: 'Anonymous reporter', phoneNumber: null, email: null } }
         : t,
     );
@@ -575,8 +574,20 @@ export class CrmService {
     return removed;
   }
 
-  async getContactById(contactId: string, organizationId: string) {
-    const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId }, include: { leads: true, deals: true, tickets: true } });
+  /**
+   * A contact, with the cases this viewer may see listed under them. On a
+   * contact's own page the contact IS the reporter, so an anonymous case listed
+   * here names its reporter — exactly what the Cases screen withholds.
+   */
+  async getContactById(contactId: string, organizationId: string, viewer?: { userId: string; role: string; mdaName?: string | null }) {
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, organizationId },
+      include: {
+        leads: true,
+        deals: true,
+        tickets: viewer ? { where: visibleCasesOfContactWhere({ ...viewer, organizationId }, contactId) } : true,
+      },
+    });
     if (!contact) throw new NotFoundException('Contact not found');
     return contact;
   }

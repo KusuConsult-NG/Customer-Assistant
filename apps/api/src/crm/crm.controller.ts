@@ -164,12 +164,12 @@ export class CrmController {
    */
   @Get('contacts/:id/timeline')
   async getContactTimeline(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmTimelineService.getCustomerTimeline(id, req.user.organizationId);
+    return this.crmTimelineService.getCustomerTimeline(id, req.user.organizationId, req.user);
   }
 
   @Get('contacts/:id')
   async getContact(@Req() req: { user: AuthUser }, @Param('id') id: string) {
-    return this.crmService.getContactById(id, req.user.organizationId);
+    return this.crmService.getContactById(id, req.user.organizationId, req.user);
   }
 
   @Get('contacts/:id/digital-card')
