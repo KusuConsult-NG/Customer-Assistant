@@ -747,7 +747,7 @@ export class ElevenLabsAgentService {
       // GET responses, but those echoed entries carry no URL — they are live
       // references, not stale snapshots. Only flag entries that bake in their
       // own URL (the hallmark of old inline definitions).
-      return tools.some((t) => Boolean(t?.api?.url));
+      return tools.some((t) => Boolean(t?.api?.url || t?.apiSchema?.url || t?.api_schema?.url));
     } catch {
       // A read failure is not evidence of anything. The ordinary payload is
       // sent and the status check reports whatever is really there.
@@ -860,7 +860,7 @@ export class ElevenLabsAgentService {
     // references, not stale snapshots. Only flag entries that bake in their
     // own URL (the hallmark of old inline definitions created before tool_ids).
     const staleInlineTools = Array.isArray(prompt.tools)
-      ? (prompt.tools as any[]).filter((t) => Boolean(t?.api?.url))
+      ? (prompt.tools as any[]).filter((t) => Boolean(t?.api?.url || t?.apiSchema?.url || t?.api_schema?.url))
       : [];
     if (staleInlineTools.length > 0) {
       drift.push(

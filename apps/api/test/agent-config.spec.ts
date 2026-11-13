@@ -76,6 +76,7 @@ describe('Agent tool catalogue', () => {
         'request-callback',
         'reschedule-booking',
         'search-knowledge',
+        'update-caller-profile',
       ].sort()
     );
   });
@@ -198,20 +199,12 @@ describe('Agent tool catalogue', () => {
     expect(SYSTEM_PROMPT).toMatch(/exactly as the tools returned them/i);
   });
 
-  it('never promises to SPEAK a language the voice cannot produce', () => {
-    // The TTS engine renders English (and Pidgin, which is English-lexified);
-    // Hausa, Igbo and Yoruba are absent from the provider's model line-up
-    // entirely. An earlier revision of this prompt told the agent to "reply in
-    // the language the caller is using" across all five, which on a call is a
-    // promise the next sentence breaks — invariant 1, aimed at someone who
-    // cannot read the code. The prompt must scope speech and offer real routes.
-    expect(SYSTEM_PROMPT).toMatch(/cannot speak Hausa, Igbo or Yoruba aloud/i);
-    expect(SYSTEM_PROMPT).toMatch(/do not pretend to speak their language/i);
-    // The two escapes that actually exist.
-    expect(SYSTEM_PROMPT).toMatch(/human colleague who speaks their language/i);
-    expect(SYSTEM_PROMPT).toMatch(/continuing on WhatsApp/i);
-    // Understanding is still all five — only speech is scoped.
-    expect(SYSTEM_PROMPT).toMatch(/UNDERSTAND all five/);
+  it('supports fluent multilingual conversations and Plateau indigenous languages without insisting on English', () => {
+    expect(SYSTEM_PROMPT).toMatch(/NEVER INSIST ON ENGLISH/i);
+    expect(SYSTEM_PROMPT).toMatch(/language_detection/i);
+    for (const tribe of ['Berom', 'Ngas', 'Mwaghavul', 'Tarok', 'Goemai']) {
+      expect(SYSTEM_PROMPT).toContain(tribe);
+    }
   });
 
   it('gives each tool a description an LLM can route on', () => {

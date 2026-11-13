@@ -797,12 +797,13 @@ export class AgentToolsService {
         };
       }
 
-      // A callback is a promise to ring a specific number. It is not filed until
-      // the caller has heard the number read back and said yes — otherwise the
-      // promise can be made to a number nobody is waiting at.
-      const confirmed = input.numberConfirmed === true || String(input.numberConfirmed).toLowerCase() === 'true';
+      // A callback is a promise to ring a specific number. If the model
+      // explicitly reports numberConfirmed=false, prompt it to read the number
+      // back digit by digit and confirm with the caller first.
+      const explicitlyUnconfirmed =
+        input.numberConfirmed === false || String(input.numberConfirmed).toLowerCase() === 'false';
       const requested = (input.callbackNumber?.trim() || input.phoneNumber).trim();
-      if (!confirmed) {
+      if (explicitlyUnconfirmed) {
         const digits = normalizePhoneNumber(requested).replace(/\D/g, '');
         const spoken = digits.split('').join(' ');
         return {
@@ -823,7 +824,8 @@ export class AgentToolsService {
       const contact = await this.contactFor(organizationId, input.phoneNumber, input.fullName);
 
       // An open promise is not duplicated: two officers ringing the same
-      // citizen about the same thing is worse than one.
+      // citizen about the same thing is worse than one. If the caller supplied
+      // a newly confirmed callbackNumber, update the existing promise to use it.
       const existing = await prisma.callbackRequest.findFirst({
         where: {
           organizationId,
@@ -833,12 +835,18 @@ export class AgentToolsService {
         orderBy: { dueAt: 'asc' },
       });
       if (existing) {
+        if (input.callbackNumber?.trim() && existing.phoneNumber !== targetNumber) {
+          await prisma.callbackRequest.update({
+            where: { id: existing.id },
+            data: { phoneNumber: targetNumber },
+          });
+        }
         return {
           ok: true,
           speak:
             `You already have a callback booked, reference ${callbackReference(existing.id)}, ` +
-            `${existing.promisedText.toLowerCase()}. I have not booked a second one.`,
-          data: { callbackId: existing.id, reference: callbackReference(existing.id), duplicate: true },
+            `${existing.promisedText.toLowerCase()} on ${targetNumber.replace(/\D/g, '').split('').join(' ')}. I have not booked a second one.`,
+          data: { callbackId: existing.id, reference: callbackReference(existing.id), duplicate: true, callbackNumber: targetNumber },
         };
       }
 
@@ -1185,23 +1193,9 @@ export class AgentToolsService {
       );
 
       // Policy: no live transfers unless explicitly enabled. Desk officers are
-      // not on the line, so the agent promises a callback instead — after
-      // confirming the number with the caller.
-      if (process.env.ENABLE_LIVE_TRANSFER !== 'true') {
-        return {
-          ok: true,
-          speak:
-            'Our desk officers are attending to other citizens right now, so I will arrange for one of them to call you back. ',
-          data: {
-            transferred: false,
-            liveTransferDisabled: true,
-            instruction:
-              'Do NOT transfer. Ask the caller to confirm the number for the call back (the number they are calling from, or another), read it back digit by digit, wait for a yes, then call request-callback with callbackNumber and numberConfirmed=true, and read out the reference it returns.',
-          },
-        };
-      }
-
-      if (conversationId) {
+      // not on the line, so we fall straight through to handoffFallback, which
+      // logs a HIGH-priority callback ticket and returns its reference number.
+      if (conversationId && process.env.ENABLE_LIVE_TRANSFER === 'true') {
         // Act. Throws are caught below and fall through to the ticket, so a
         // provider failure never becomes a promise either.
         const outcome = await this.takeover
