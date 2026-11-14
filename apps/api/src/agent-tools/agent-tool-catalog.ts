@@ -664,9 +664,9 @@ export const TEAM_PERSONAS: Record<string, TeamPersona> = {
     id: 'nanpan',
     name: 'Nanpan',
     gender: 'male',
-    voiceId: '9wJXRg0I6YvgLFAP3g7J',
+    voiceId: 'ideEOMYLgcyF9rr94ycz',
     greetingPhrase: 'my name is Nanpan',
-    description: 'Warm, professional, and authentic Northern/Plateau Nigerian voice (Professional Voice Clone)',
+    description: 'Warm, professional, and authentic Nigerian conversational voice (Professional Voice Clone)',
   },
   sarah: {
     id: 'sarah',
@@ -843,8 +843,10 @@ export function agentDefinitionFor(
     (!rawDictVer ||
       rawDictVer === '9S0SqLMwXr6zI2LWnq8A' ||
       rawDictVer === 'ey6XtK32F1Fvz1szb44W' ||
-      rawDictVer === '1EMxmEpvrkYASaxB12Ut')
-      ? 'iBWdlUL0Q0mCGbvOUJ1I'
+      rawDictVer === '1EMxmEpvrkYASaxB12Ut' ||
+      rawDictVer === 'iBWdlUL0Q0mCGbvOUJ1I' ||
+      rawDictVer === 'EvLGUrAnHdMr6cAna7fm')
+      ? 'Tc7tNx3lQsTh54kJkYU8'
       : rawDictVer;
   const pronunciationDictionaryLocators = dictId && dictVer
     ? [{ pronunciationDictionaryId: dictId, versionId: dictVer }]
