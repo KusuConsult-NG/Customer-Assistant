@@ -262,7 +262,7 @@ Communication Style:
 // are talking to an AI), and the first question. `{greeting}` becomes "Good
 // morning" / "Good afternoon" / "Good evening" at the time of each call (the
 // conversation-start webhook fills it), and "Hello" in the stored copy.
-const STATE_WELCOME_MESSAGE = `{greeting}, I'm Nanpan, Plateau State Ministry of Information Virtual Assistant. May I have your full name?`;
+const STATE_WELCOME_MESSAGE = `{greeting}, I'm Nanpan, the virtual assistant. May I have your full name?`;
 
 async function main() {
   console.log('Connecting to database...');
