@@ -31,6 +31,7 @@ interface Conversation {
   contact?: { id?: string; fullName?: string; phoneNumber?: string; email?: string };
   channel: string;
   status: string;
+  isHumanHandoffActive?: boolean;
   updatedAt?: string;
   messages?: Message[];
 }
@@ -286,8 +287,20 @@ export default function AgentConsolePage() {
   const activeConv = conversations.find(c => c.id === activeId);
   const activeLive = live.find(c => c.conversationId === liveId) ?? null;
 
+  useEffect(() => {
+    if (activeConv) {
+      setIsHumanActive(Boolean(activeConv.isHumanHandoffActive));
+    }
+  }, [activeConv?.id, activeConv?.isHumanHandoffActive]);
+
   /** Selecting one clears the other — they are different panes, not one list. */
-  const selectStored = (id: string) => { setLiveId(null); setActiveId(id); setTakeoverNote(null); };
+  const selectStored = (id: string) => {
+    setLiveId(null);
+    setActiveId(id);
+    setTakeoverNote(null);
+    const found = conversations.find(c => c.id === id);
+    setIsHumanActive(Boolean(found?.isHumanHandoffActive));
+  };
   const selectLive = (id: string) => { setActiveId(null); setLiveId(id); setTakeoverNote(null); };
 
   /**
@@ -718,17 +731,19 @@ export default function AgentConsolePage() {
                 </div>
               </div>
 
-              <button
-                onClick={handleToggleHandoff}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  isHumanActive
-                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
-                    : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                {isHumanActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                {isHumanActive ? 'Human Takeover Active' : 'AI Assistant Handling'}
-              </button>
+              {activeConv.channel !== 'VOICE' && (
+                <button
+                  onClick={handleToggleHandoff}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    isHumanActive
+                      ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
+                      : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  {isHumanActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                  {isHumanActive ? 'Human Takeover Active' : 'AI Assistant Handling'}
+                </button>
+              )}
             </div>
 
             {/* The toggle reverts on failure; this says why, because a silent
@@ -798,7 +813,7 @@ export default function AgentConsolePage() {
             </div>
 
             {/* Quick replies bar */}
-            {isHumanActive && (
+            {isHumanActive && activeConv.channel !== 'VOICE' && (
               <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 overflow-x-auto">
                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1 flex-shrink-0">
                   <Zap className="w-3 h-3 text-amber-700 dark:text-amber-400" /> Quick Snippets:
@@ -817,29 +832,53 @@ export default function AgentConsolePage() {
 
             {/* Input box */}
             <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
-              {!isHumanActive && (
-                <div className="mb-2 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
-                  <Bot className="w-3.5 h-3.5" />
-                  AI Agent is currently answering automatically. Click "Human Takeover" above to take control.
+              {activeConv.channel === 'VOICE' ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl">
+                  <div className="text-xs text-slate-600 dark:text-slate-300">
+                    <span className="font-bold text-slate-900 dark:text-white">Voice Call Transcript</span> — Completed voice call record. Use Voice / Telephony to call back or Cases to follow up.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="/telephony"
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-600 hover:bg-blue-700 text-white transition-colors"
+                    >
+                      Call Citizen Back
+                    </a>
+                    <a
+                      href="/cases"
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition-colors"
+                    >
+                      View Cases
+                    </a>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {!isHumanActive && (
+                    <div className="mb-2 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                      <Bot className="w-3.5 h-3.5" />
+                      AI Agent is currently answering automatically. Click "Human Takeover" above to take control.
+                    </div>
+                  )}
+                  <form onSubmit={e => handleSend(e)} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={replyText}
+                      onChange={e => setReplyText(e.target.value)}
+                      placeholder={isHumanActive ? "Type your message to customer..." : "Enable Human Takeover to type"}
+                      disabled={!isHumanActive || sending}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-40 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!isHumanActive || !replyText.trim() || sending}
+                      className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center disabled:opacity-40 transition-all shadow-lg shadow-brand-600/20"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                </>
               )}
-              <form onSubmit={e => handleSend(e)} className="flex gap-2">
-                <input
-                  type="text"
-                  value={replyText}
-                  onChange={e => setReplyText(e.target.value)}
-                  placeholder={isHumanActive ? "Type your message to customer..." : "Enable Human Takeover to type"}
-                  disabled={!isHumanActive || sending}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-40 text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={!isHumanActive || !replyText.trim() || sending}
-                  className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center disabled:opacity-40 transition-all shadow-lg shadow-brand-600/20"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
             </div>
           </>
         ) : (

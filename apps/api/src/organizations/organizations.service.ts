@@ -274,17 +274,10 @@ export class OrganizationsService {
    * recognisable suffix, so that is all it gets. Values are never re-readable after
    * being written, which is the same rule already applied to API keys.
    */
-  async getOrganization(organizationId: string) {
+  async getOrganization(organizationId: string, callerRole?: string) {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       include: {
-        // ORDERED, because the settings screen renders `telephonyConfigs[0]`
-        // and `whatsAppConfigs[0]`. Unordered, Postgres is free to return the
-        // rows of a multi-line agency in a different sequence on different
-        // requests, so the screen showed a different line after a refresh and
-        // the officer had no way to tell. The order matches what
-        // `getOutboundConfig` prefers — the default line first — so the line
-        // the screen shows is the line outbound calls actually use.
         telephonyConfigs: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }] },
         whatsAppConfigs: { orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] },
         users: { select: { id: true, email: true, fullName: true, role: true, isActive: true } },
@@ -293,24 +286,25 @@ export class OrganizationsService {
 
     if (!org) throw new NotFoundException('Organization not found');
 
+    const isNonAdmin = callerRole !== undefined && callerRole !== 'OWNER' && callerRole !== 'ADMIN';
+    if (isNonAdmin) {
+      return {
+        ...org,
+        aiPersonaPrompt: null,
+        webhookUrl: null,
+        enabledWebhookEvents: [],
+        payoutBankName: null,
+        payoutAccountName: null,
+        payoutAccountNumber: null,
+        payoutUssdCode: null,
+        telephonyConfigs: [],
+        whatsAppConfigs: [],
+      };
+    }
+
     return {
       ...org,
-      // One masking function, not a second copy of the field list. The list was
-      // duplicated here and in the write path, and a credential column added to
-      // one of them is a column returned in the clear from the other: that is
-      // exactly what happened to `sipPassword`, which the write path masked and
-      // this read handed back as ciphertext.
       telephonyConfigs: org.telephonyConfigs.map((c) => maskedTelephonyConfig(c)),
-      // ...and the WhatsApp line was STILL a second copy, directly beneath the
-      // comment saying it should not be. The telephony line obeyed it; this one
-      // was a hand-written duplicate of the same field list.
-      //
-      // It cost exactly what the comment predicts. `maskedWhatsAppConfig` was
-      // taught to report which credentials cannot be decrypted — the thing
-      // that tells an operator which box to retype when ENCRYPTION_KEY has
-      // changed — and this path, the one the settings screen actually reads,
-      // did not get it. The screen went on showing an unreadable token as
-      // `••••`, indistinguishable from a working one.
       whatsAppConfigs: org.whatsAppConfigs.map((c) => maskedWhatsAppConfig(c)),
     };
   }

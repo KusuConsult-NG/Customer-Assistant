@@ -277,8 +277,8 @@ export default function CrmPage() {
     { id: 'enrollees' as Tab, label: 'Registration Desk', count: contacts.filter(c => (c.tags || []).includes('enrollment-pending') || (c.tags || []).includes('enrolled-active') || c.metadata?.planType).length, icon: <ShieldCheck className="w-4 h-4 text-emerald-500" /> },
     { id: 'contacts' as Tab, label: 'All Contacts & Directory', count: contacts.length, icon: <Users className="w-4 h-4" /> },
     { id: 'leads' as Tab, label: 'Prospects & Inquiries', count: leads.length, icon: <TrendingUp className="w-4 h-4" /> },
-    { id: 'deals' as Tab, label: 'Premiums & Plans', count: deals.length, icon: <Briefcase className="w-4 h-4" /> },
-    { id: 'tickets' as Tab, label: 'Facility Grievances & Tickets', count: tickets.length, icon: <TicketCheck className="w-4 h-4" /> },
+    { id: 'deals' as Tab, label: 'Service Requests & Programmes', count: deals.length, icon: <Briefcase className="w-4 h-4" /> },
+    { id: 'tickets' as Tab, label: 'Citizen Cases & Tickets', count: tickets.length, icon: <TicketCheck className="w-4 h-4" /> },
   ];
 
   return (
@@ -290,7 +290,7 @@ export default function CrmPage() {
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <Users className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Citizens &amp; Contacts
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage Plateau State citizen enrollments, premium subscriptions, and provider grievance reports.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Manage Plateau State citizen profiles, service registrations, inquiries, and grievance reports.</p>
         </div>
         <div className="flex items-center gap-2">
           {tab === 'contacts' && (
@@ -298,7 +298,7 @@ export default function CrmPage() {
               onClick={exportContactsCsv}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white text-sm font-semibold transition-all shadow-sm"
             >
-              <Download className="w-4 h-4" /> Export Citizenes CSV
+              <Download className="w-4 h-4" /> Export Citizens CSV
             </button>
           )}
           <button
@@ -307,7 +307,7 @@ export default function CrmPage() {
             style={{ background: 'linear-gradient(135deg, #3b6102, #4d7d02)' }}
           >
             <Plus className="w-4 h-4" />
-            Add {tab === 'contacts' ? 'Citizen' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Plan' : 'Grievance Ticket'}
+            Add {tab === 'contacts' ? 'Citizen' : tab === 'leads' ? 'Inquiry' : tab === 'deals' ? 'Programme Record' : 'Case Ticket'}
           </button>
         </div>
       </div>

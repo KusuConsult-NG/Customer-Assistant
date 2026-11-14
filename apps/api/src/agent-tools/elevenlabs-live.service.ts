@@ -243,7 +243,11 @@ export class ElevenLabsLiveService implements OnModuleDestroy {
     const turns: LiveTurn[] = (full?.transcript ?? [])
       .map((t: any) => ({
         role: t.role === 'user' ? ('user' as const) : ('agent' as const),
-        message: (t.message ?? '').trim(),
+        message: (t.message ?? '')
+          .replace(/<\/?(?:governor|nanpan)>/gi, '')
+          .replace(/\[(?:happy|warmly|empathetic|excited|calm|serious|polite|cheerful|softly|laughs|sighs|clears throat)\]\s*/gi, '')
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim(),
         timeInCallSecs: t.time_in_call_secs ?? t.timeInCallSecs ?? 0,
       }))
       // Tool-call-only turns carry no text. Showing them as blank bubbles makes

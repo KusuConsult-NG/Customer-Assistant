@@ -67,6 +67,10 @@ export function toPostCallPayload(c: any): PostCallPayload {
         role: t?.role,
         message: t?.message ?? null,
         time_in_call_secs: t?.timeInCallSecs,
+        tool_calls: (t?.toolCalls ?? t?.tool_calls ?? []).map((tc: any) => ({
+          tool_name: tc?.toolName ?? tc?.tool_name,
+          params_as_json: tc?.paramsAsJson ?? tc?.params_as_json,
+        })),
       })),
       metadata: {
         start_time_unix_secs: meta.startTimeUnixSecs,

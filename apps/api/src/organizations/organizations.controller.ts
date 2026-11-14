@@ -51,7 +51,7 @@ export class OrganizationsController {
 
   @Get('me')
   async getMyOrganization(@Req() req: { user: AuthUser }) {
-    return this.orgsService.getOrganization(req.user.organizationId);
+    return this.orgsService.getOrganization(req.user.organizationId, req.user.role);
   }
 
   @Roles('OWNER', 'ADMIN')

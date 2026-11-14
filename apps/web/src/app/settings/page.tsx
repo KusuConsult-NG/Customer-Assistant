@@ -76,9 +76,19 @@ export default function SettingsPage() {
   const [org, setOrg] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState<string>('');
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('ace_token') : '';
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('ace_user') || '{}');
+      setRole(stored?.role || '');
+    } catch {}
+  }, []);
+
+  const isAdmin = role === 'OWNER' || role === 'ADMIN';
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
@@ -92,10 +102,6 @@ export default function SettingsPage() {
         setOrg(await res.json());
         return;
       }
-      // An expired token is handled by apiFetch, which refreshes or signs the
-      // operator out. Anything else reaching here leaves every field on this
-      // screen blank — and a blank settings form will happily save itself
-      // over the agency's real configuration. Say so rather than look loaded.
       showToast('Could not load this agency’s settings. Reload before saving, or you may overwrite them.', 'error');
     } catch {
       showToast('Could not reach the server to load settings. Reload before saving.', 'error');
@@ -105,16 +111,17 @@ export default function SettingsPage() {
 
   useEffect(() => { fetchOrg(); }, [fetchOrg]);
 
-  const tabs = [
-    { id: 'profile' as Tab, label: 'Profile & Security', icon: <User className="w-4 h-4" /> },
-    { id: 'general' as Tab, label: 'General', icon: <Building2 className="w-4 h-4" /> },
-    { id: 'whatsapp' as Tab, label: 'WhatsApp', icon: <MessageSquare className="w-4 h-4" /> },
-    { id: 'voice' as Tab, label: 'Voice / Telephony', icon: <Phone className="w-4 h-4" /> },
-    { id: 'agent' as Tab, label: 'Hosted Agent', icon: <Bot className="w-4 h-4" /> },
-    { id: 'team' as Tab, label: 'Team Members', icon: <Users className="w-4 h-4" /> },
-    { id: 'apikeys' as Tab, label: 'API Key', icon: <KeyRound className="w-4 h-4" /> },
-    { id: 'activity' as Tab, label: 'Activity Log', icon: <ScrollText className="w-4 h-4" /> },
+  const allTabs = [
+    { id: 'profile' as Tab, label: 'Profile & Security', icon: <User className="w-4 h-4" />, adminOnly: false },
+    { id: 'general' as Tab, label: 'General', icon: <Building2 className="w-4 h-4" />, adminOnly: true },
+    { id: 'whatsapp' as Tab, label: 'WhatsApp', icon: <MessageSquare className="w-4 h-4" />, adminOnly: true },
+    { id: 'voice' as Tab, label: 'Voice / Telephony', icon: <Phone className="w-4 h-4" />, adminOnly: true },
+    { id: 'agent' as Tab, label: 'Hosted Agent', icon: <Bot className="w-4 h-4" />, adminOnly: true },
+    { id: 'team' as Tab, label: 'Team Members', icon: <Users className="w-4 h-4" />, adminOnly: true },
+    { id: 'apikeys' as Tab, label: 'API Key', icon: <KeyRound className="w-4 h-4" />, adminOnly: true },
+    { id: 'activity' as Tab, label: 'Activity Log', icon: <ScrollText className="w-4 h-4" />, adminOnly: true },
   ];
+  const tabs = isAdmin ? allTabs : allTabs.filter(t => !t.adminOnly);
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -124,13 +131,17 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <Settings className="w-6 h-6 text-brand-700 dark:text-brand-300" /> Agency Settings
+          <Settings className="w-6 h-6 text-brand-700 dark:text-brand-300" /> {isAdmin ? 'Agency Settings' : 'Account & Security Settings'}
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Configure this agency’s identity, serving hours, telephony credentials and voice assistant.</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+          {isAdmin
+            ? 'Configure this agency’s identity, serving hours, telephony credentials and voice assistant.'
+            : 'Manage your personal profile, password, and two-step sign-in security.'}
+        </p>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
+      <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -150,13 +161,13 @@ export default function SettingsPage() {
         <>
           {tab === 'profile' && <ProfileTab authHeaders={authHeaders} showToast={showToast} />}
           {tab === 'profile' && <TwoStepPanel org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
-          {tab === 'general' && <GeneralTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
-          {tab === 'whatsapp' && <WhatsAppTab org={org} authHeaders={authHeaders} showToast={showToast} />}
-          {tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
-          {tab === 'agent' && <HostedAgentTab showToast={showToast} />}
-          {tab === 'team' && <TeamTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
-          {tab === 'apikeys' && <ApiKeyTab authHeaders={authHeaders} showToast={showToast} />}
-          {tab === 'activity' && <ActivityLogTab showToast={showToast} />}
+          {isAdmin && tab === 'general' && <GeneralTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
+          {isAdmin && tab === 'whatsapp' && <WhatsAppTab org={org} authHeaders={authHeaders} showToast={showToast} />}
+          {isAdmin && tab === 'voice' && <VoiceTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
+          {isAdmin && tab === 'agent' && <HostedAgentTab showToast={showToast} />}
+          {isAdmin && tab === 'team' && <TeamTab org={org} authHeaders={authHeaders} showToast={showToast} onSaved={fetchOrg} />}
+          {isAdmin && tab === 'apikeys' && <ApiKeyTab authHeaders={authHeaders} showToast={showToast} />}
+          {isAdmin && tab === 'activity' && <ActivityLogTab showToast={showToast} />}
         </>
       )}
     </div>

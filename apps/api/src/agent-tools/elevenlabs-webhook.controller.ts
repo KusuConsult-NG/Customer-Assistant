@@ -87,8 +87,12 @@ export class ElevenLabsWebhookController {
       where: { organizationId },
       select: { webhookSecret: true },
     });
-    if (!config?.webhookSecret) return null;
-    return decryptSecret(config.webhookSecret, `HostedAgentConfig.webhookSecret org=${organizationId}`);
+    if (!config?.webhookSecret) return process.env.ELEVENLABS_WEBHOOK_SECRET ?? null;
+    try {
+      return decryptSecret(config.webhookSecret, `HostedAgentConfig.webhookSecret org=${organizationId}`);
+    } catch {
+      return process.env.ELEVENLABS_WEBHOOK_SECRET ?? null;
+    }
   }
 
   private async verifyAndIngest(

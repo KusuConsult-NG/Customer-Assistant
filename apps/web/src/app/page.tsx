@@ -388,7 +388,7 @@ export default function DashboardPage() {
         <KpiCard
           title="Conversations"
           value={num(stats.conversations)}
-          subtitle="WhatsApp threads with citizens"
+          subtitle="Voice & WhatsApp threads with citizens"
           icon={<MessageSquareText className="w-5 h-5 text-amber-700 dark:text-amber-400" />}
           badge={`${timeRange} threads`}
           badgeColor="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20"

@@ -122,6 +122,16 @@ export default function TelephonyPage() {
   const [logsLoading, setLogsLoading] = useState(true);
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [role, setRole] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('ace_user') || '{}');
+      setRole(stored?.role || '');
+    } catch {}
+  }, []);
+
+  const isAdmin = role === 'OWNER' || role === 'ADMIN';
 
   const fetchCallLogs = useCallback(async () => {
     setLogsLoading(true);
@@ -388,7 +398,7 @@ export default function TelephonyPage() {
           </div>
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-white">Trigger Outbound Phone Call</h2>
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Enter a phone number to test Twilio / Africa's Talking voice call routing.</p>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Enter a citizen&apos;s phone number to place an outbound voice call from the Contact Centre.</p>
           </div>
         </div>
 
@@ -512,294 +522,254 @@ export default function TelephonyPage() {
         )}
       </div>
 
-      {/* Provider Selection */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
-          <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Active Telephony Carrier Provider</h3>
+      {/* Provider Selection & Readiness (Owners / Administrators only) */}
+      {isAdmin && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Active Telephony Carrier Provider</h3>
 
-          {/* READ-ONLY, and it reads from the saved configuration.
-              This was a second provider picker. It offered "MTN Enterprise SIP"
-              — a value the API rejects outright, because it is not one of the
-              providers this platform supports — and it offered neither
-              SIP_TRUNK nor NIGERIA_CARRIER_FORWARD, which are the two an
-              agency bringing its own toll-free number actually needs. Worse,
-              whatever was picked here was sent as the provider for the real
-              outbound test call, so a test could be attempted "via" a carrier
-              that does not exist.
-
-              Settings → Voice has the complete form, with the SIP fields and
-              the validation. One place to configure it; this one reports it. */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900/60">
-            <p className="text-xs text-slate-600 dark:text-slate-400">Configured carrier</p>
-            <p className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
-              {provider ? PROVIDER_LABELS[provider] ?? provider : 'Not configured'}
-            </p>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-              {provider
-                ? 'Change it, and its credentials, at Settings → Voice & Telephony.'
-                : 'No carrier is configured for this agency yet. Set one at Settings → Voice & Telephony before placing or receiving calls.'}
-            </p>
-            <Link
-              href="/settings"
-              className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" /> Open voice settings
-            </Link>
-          </div>
-        </div>
-
-        {/* The agency's real lines, read-only.
-            This was two editable inputs with no save path: an officer could
-            type a forwarding number into "Carrier Forwarding Target" and
-            nothing was sent anywhere. Both also started as invented values —
-            and the forwarding one was never assigned from the API at all — so
-            an unconfigured agency was shown a phone number and an MTN
-            business line it did not have. Editing happens at Settings → Voice
-            & Telephony, which is the one place that writes these. */}
-        <div className="rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
-          <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400" /> Lines on this agency
-          </h3>
-
-          {lines === null ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400">Loading…</p>
-          ) : lines.length === 0 ? (
-            <p className="text-xs text-slate-600 dark:text-slate-300">
-              No line is configured, so no call can reach this agency. Add one at Settings → Voice &amp; Telephony.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {lines.map((l) => (
-                <li key={l.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-blue-700 dark:text-blue-400">{l.phoneNumber}</span>
-                    {l.isDefault && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                        outbound default
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    {PROVIDER_LABELS[l.provider] ?? l.provider}
-                  </p>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Handoff goes to{' '}
-                    {l.forwardingNumber
-                      ? <span className="font-mono">{l.forwardingNumber}</span>
-                      : <span className="text-amber-700 dark:text-amber-400">nobody — the AI files a ticket instead of transferring</span>}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <Link
-            href="/settings"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" /> Edit at Settings → Voice
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Can a call actually complete right now ──────────────────────────
-          Four separate things each produce a call that connects and goes
-          nowhere — no TTS key means the caller hears pure silence, because the
-          inbound TwiML is <Connect><Stream/> with no <Say> in it; no STT key
-          means they are never transcribed; a wrong API_BASE_URL means every
-          call is refused as unauthenticated. None of that was visible
-          anywhere, so a failed test call looked the same as a broken number. */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-            <Radio className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Can a call complete right now?
-          </h3>
-          <button
-            onClick={fetchCallLogs}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Re-check
-          </button>
-        </div>
-
-        {/* Whether each provider ANSWERS, not whether a variable is set.
-            Every readiness surface here reported a provider as working
-            because its key was non-empty — a revoked, mistyped or
-            out-of-credit key looks identical, and the first thing that
-            finds out is a citizen on the phone. */}
-        {providers && (
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold text-slate-900 dark:text-white">
-                Do the providers answer?
-              </p>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                asked {new Date(providers.checkedAt).toLocaleTimeString()}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400">{providers.summary}</p>
-            <ul className="space-y-1.5">
-              {providers.providers.map((p) => (
-                <li key={p.id} className="flex items-start gap-2">
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
-                      p.state === 'ok' ? 'bg-emerald-500' : p.state === 'failed' ? 'bg-red-500' : 'bg-slate-400'
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-slate-900 dark:text-white">
-                      {p.label}{' '}
-                      <span className="uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        {p.state === 'not_configured' ? 'not configured' : p.state}
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400 break-words">{p.detail}</p>
-                    {p.state !== 'ok' && (
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">{p.consequence}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {readinessError && (
-          <p className="text-xs text-slate-600 dark:text-slate-400">{readinessError}</p>
-        )}
-
-        {readiness && (
-          <>
-            <div className={`flex items-start gap-3 rounded-xl p-3 border ${
-              readiness.state === 'ready'
-                ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10'
-                : readiness.state === 'degraded'
-                  ? 'border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10'
-                  : 'border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10'
-            }`}>
-              {readiness.state === 'ready'
-                ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-700 dark:text-emerald-400 mt-0.5" />
-                : <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${readiness.state === 'degraded' ? 'text-amber-700 dark:text-amber-400' : 'text-red-700 dark:text-red-400'}`} />}
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-slate-900 dark:text-white">{readiness.summary}</p>
-                {readiness.note && (
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{readiness.note}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Offered only when the deployment holds a complete line and this
-                agency has none. It states what it will do BEFORE doing it —
-                which number will answer as this agency, and that the
-                credentials are the deployment's own — because this decides who
-                answers the State's phone number. */}
-            {readiness.canAdoptDeploymentLine && (
-              <div className="rounded-xl border border-brand-500/40 bg-brand-50 dark:bg-brand-500/10 p-3 space-y-2">
-                <p className="text-xs font-bold text-slate-900 dark:text-white">
-                  This deployment already holds a Twilio line
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900/60">
+                <p className="text-xs text-slate-600 dark:text-slate-400">Configured carrier</p>
+                <p className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
+                  {provider ? PROVIDER_LABELS[provider] ?? provider : 'Not configured'}
                 </p>
-                <p className="text-[11px] text-slate-700 dark:text-slate-300">
-                  Its account SID, auth token and phone number are set in the server environment,
-                  but no agency claims them — so every caller is told the number is not configured.
-                  Adopting them makes that number answer as this agency. You will still need to point
-                  the number&apos;s Voice webhook at the URL below in the Twilio console.
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
+                  {provider
+                    ? 'Change it, and its credentials, at Settings → Voice & Telephony.'
+                    : 'No carrier is configured for this agency yet. Set one at Settings → Voice & Telephony before placing or receiving calls.'}
                 </p>
-                {adoptResult && (
-                  <p className={`text-[11px] font-semibold ${adoptResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
-                    {adoptResult.message}
-                  </p>
-                )}
-                <button
-                  onClick={adoptDeploymentLine}
-                  disabled={adopting}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-xs font-bold"
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {adopting ? 'Adopting…' : 'Adopt this line for this agency'}
-                </button>
+                  <ShieldCheck className="w-3.5 h-3.5" /> Open voice settings
+                </Link>
               </div>
-            )}
-
-            <div className="space-y-2">
-              {readiness.checks.map((c) => (
-                <div key={c.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${
-                      c.state === 'ready' ? 'bg-emerald-500' : c.state === 'degraded' ? 'bg-amber-500' : 'bg-red-500'
-                    }`} />
-                    <span className="text-xs font-bold text-slate-900 dark:text-white">{c.label}</span>
-                    {/* The state is written out as well as coloured — a dot
-                        alone is unreadable to anyone who cannot distinguish
-                        the colours. */}
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
-                      {c.state}
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-mono text-slate-700 dark:text-slate-300 mt-1 break-all">{c.detail}</p>
-                  {c.consequence && (
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{c.consequence}</p>
-                  )}
-                  {c.state !== 'ready' && c.remedy && (
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 italic">{c.remedy}</p>
-                  )}
-                </div>
-              ))}
             </div>
 
-            {/* The carrier is the one thing readiness cannot see: every check
-                above can be green while the number still rings to whatever its
-                Voice webhook pointed at. We hold the credentials, so this asks
-                Twilio directly rather than printing a URL to retype. */}
-            {lines && lines.length > 0 && (
+            <div className="rounded-2xl p-6 border border-slate-200 dark:border-slate-800 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <h3 className="font-semibold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400" /> Lines on this agency
+              </h3>
+
+              {lines === null ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">Loading…</p>
+              ) : lines.length === 0 ? (
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  No line is configured, so no call can reach this agency. Add one at Settings → Voice &amp; Telephony.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {lines.map((l) => (
+                    <li key={l.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-blue-700 dark:text-blue-400">{l.phoneNumber}</span>
+                        {l.isDefault && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                            outbound default
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                        {PROVIDER_LABELS[l.provider] ?? l.provider}
+                      </p>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                        Handoff goes to{' '}
+                        {l.forwardingNumber
+                          ? <span className="font-mono">{l.forwardingNumber}</span>
+                          : <span className="text-amber-700 dark:text-amber-400">nobody — the AI files a ticket instead of transferring</span>}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <Link
+                href="/settings"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" /> Edit at Settings → Voice
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Radio className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Can a call complete right now?
+              </h3>
+              <button
+                onClick={fetchCallLogs}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Re-check
+              </button>
+            </div>
+
+            {providers && (
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
-                <p className="text-xs font-bold text-slate-900 dark:text-white">
-                  Does Twilio send this number&apos;s calls here?
-                </p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Everything above can be ready while the number still rings somewhere else — a new
-                  Twilio number points at a demo TwiML bin. This sets its Voice webhook and status
-                  callback to the URLs below. Whatever it points at now stops receiving calls.
-                </p>
-                {pointResult && (
-                  <p className={`text-[11px] font-semibold ${pointResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
-                    {pointResult.message}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">
+                    Do the providers answer?
                   </p>
-                )}
-                <button
-                  onClick={pointNumberAtPlatform}
-                  disabled={pointing}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-500 text-brand-700 dark:text-brand-300 hover:bg-brand-50 dark:hover:bg-brand-500/10 disabled:opacity-60 text-xs font-bold"
-                >
-                  <Radio className="w-3.5 h-3.5" />
-                  {pointing ? 'Asking Twilio…' : 'Point the number at this platform'}
-                </button>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    asked {new Date(providers.checkedAt).toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">{providers.summary}</p>
+                <ul className="space-y-1.5">
+                  {providers.providers.map((p) => (
+                    <li key={p.id} className="flex items-start gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
+                          p.state === 'ok' ? 'bg-emerald-500' : p.state === 'failed' ? 'bg-red-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-slate-900 dark:text-white">
+                          {p.label}{' '}
+                          <span className="uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            {p.state === 'not_configured' ? 'not configured' : p.state}
+                          </span>
+                        </p>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 break-words">{p.detail}</p>
+                        {p.state !== 'ok' && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">{p.consequence}</p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
-            {/* Generated from the same API_BASE_URL the signature check uses,
-                so what is shown here is what will be verified against. */}
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
-              <p className="text-xs font-bold text-slate-900 dark:text-white">Paste into the Twilio console for this number</p>
-              <div className="space-y-1 text-[11px] font-mono break-all">
-                <p className="text-slate-700 dark:text-slate-300">
-                  <span className="text-slate-500 dark:text-slate-400">A call comes in ({readiness.twilio.voiceWebhook.method}): </span>
-                  {readiness.twilio.voiceWebhook.url}
-                </p>
-                <p className="text-slate-700 dark:text-slate-300">
-                  <span className="text-slate-500 dark:text-slate-400">Call status changes ({readiness.twilio.statusCallback.method}): </span>
-                  {readiness.twilio.statusCallback.url}
-                </p>
-                {readiness.twilio.mediaStream && (
-                  <p className="text-slate-700 dark:text-slate-300">
-                    <span className="text-slate-500 dark:text-slate-400">Media stream (set by us, not in the console): </span>
-                    {readiness.twilio.mediaStream}
-                  </p>
+            {readinessError && (
+              <p className="text-xs text-slate-600 dark:text-slate-400">{readinessError}</p>
+            )}
+
+            {readiness && (
+              <>
+                <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+                  readiness.state === 'ready'
+                    ? 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10'
+                    : readiness.state === 'degraded'
+                      ? 'border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10'
+                      : 'border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10'
+                }`}>
+                  {readiness.state === 'ready'
+                    ? <CheckCircle className="w-5 h-5 shrink-0 text-emerald-700 dark:text-emerald-400 mt-0.5" />
+                    : <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${readiness.state === 'degraded' ? 'text-amber-700 dark:text-amber-400' : 'text-red-700 dark:text-red-400'}`} />}
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">{readiness.summary}</p>
+                    {readiness.note && (
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{readiness.note}</p>
+                    )}
+                  </div>
+                </div>
+
+                {readiness.canAdoptDeploymentLine && (
+                  <div className="rounded-xl border border-brand-500/40 bg-brand-50 dark:bg-brand-500/10 p-3 space-y-2">
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">
+                      This deployment already holds a Twilio line
+                    </p>
+                    <p className="text-[11px] text-slate-700 dark:text-slate-300">
+                      Its account SID, auth token and phone number are set in the server environment,
+                      but no agency claims them — so every caller is told the number is not configured.
+                      Adopting them makes that number answer as this agency. You will still need to point
+                      the number&apos;s Voice webhook at the URL below in the Twilio console.
+                    </p>
+                    {adoptResult && (
+                      <p className={`text-[11px] font-semibold ${adoptResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                        {adoptResult.message}
+                      </p>
+                    )}
+                    <button
+                      onClick={adoptDeploymentLine}
+                      disabled={adopting}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-xs font-bold"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      {adopting ? 'Adopting…' : 'Adopt this line for this agency'}
+                    </button>
+                  </div>
                 )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+
+                <div className="space-y-2">
+                  {readiness.checks.map((c) => (
+                    <div key={c.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          c.state === 'ready' ? 'bg-emerald-500' : c.state === 'degraded' ? 'bg-amber-500' : 'bg-red-500'
+                        }`} />
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">{c.label}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
+                          {c.state}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-mono text-slate-700 dark:text-slate-300 mt-1 break-all">{c.detail}</p>
+                      {c.consequence && (
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1">{c.consequence}</p>
+                      )}
+                      {c.state !== 'ready' && c.remedy && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 italic">{c.remedy}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {provider === 'TWILIO' && lines && lines.length > 0 && (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">
+                      Does Twilio send this number&apos;s calls here?
+                    </p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Everything above can be ready while the number still rings somewhere else — a new
+                      Twilio number points at a demo TwiML bin. This sets its Voice webhook and status
+                      callback to the URLs below. Whatever it points at now stops receiving calls.
+                    </p>
+                    {pointResult && (
+                      <p className={`text-[11px] font-semibold ${pointResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
+                        {pointResult.message}
+                      </p>
+                    )}
+                    <button
+                      onClick={pointNumberAtPlatform}
+                      disabled={pointing}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-500 text-brand-700 dark:text-brand-300 hover:bg-brand-50 dark:hover:bg-brand-500/10 disabled:opacity-60 text-xs font-bold"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      {pointing ? 'Asking Twilio…' : 'Point the number at this platform'}
+                    </button>
+                  </div>
+                )}
+
+                {provider === 'TWILIO' && (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Paste into the Twilio console for this number</p>
+                    <div className="space-y-1 text-[11px] font-mono break-all">
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="text-slate-500 dark:text-slate-400">A call comes in ({readiness.twilio.voiceWebhook.method}): </span>
+                        {readiness.twilio.voiceWebhook.url}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="text-slate-500 dark:text-slate-400">Call status changes ({readiness.twilio.statusCallback.method}): </span>
+                        {readiness.twilio.statusCallback.url}
+                      </p>
+                      {readiness.twilio.mediaStream && (
+                        <p className="text-slate-700 dark:text-slate-300">
+                          <span className="text-slate-500 dark:text-slate-400">Media stream (set by us, not in the console): </span>
+                          {readiness.twilio.mediaStream}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Transcript Modal */}
       {selectedCall && (

@@ -797,7 +797,7 @@ export class ElevenLabsWebhookService {
           const turns = data.transcript;
           for (let i = 0; i < turns.length; i++) {
             const turn = turns[i];
-            const content = turn?.message?.trim();
+            const content = this.cleanTranscriptMessage(turn?.message);
             if (!content) continue;
             try {
               await prisma.message.create({
@@ -868,7 +868,7 @@ export class ElevenLabsWebhookService {
     const turns = data.transcript ?? [];
     for (let i = 0; i < turns.length; i++) {
       const turn = turns[i];
-      const content = turn?.message?.trim();
+      const content = this.cleanTranscriptMessage(turn?.message);
       if (!content) continue; // tool-call-only turns have no text to show
 
       try {
@@ -918,10 +918,19 @@ export class ElevenLabsWebhookService {
 
   // ── Shared ─────────────────────────────────────────────────────────────────
 
+  private cleanTranscriptMessage(raw: string | null | undefined): string {
+    if (!raw) return '';
+    return raw
+      .replace(/<\/?(?:governor|nanpan)>/gi, '')
+      .replace(/\[(?:happy|warmly|empathetic|excited|calm|serious|polite|cheerful|softly|laughs|sighs|clears throat)\]\s*/gi, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+
   private renderTranscript(turns: NonNullable<PostCallPayload['data']>['transcript'] = []): string {
     return turns
       .map((t) => {
-        const text = t?.message?.trim();
+        const text = this.cleanTranscriptMessage(t?.message);
         if (!text) return null;
         return `${t.role === 'user' ? 'Customer' : 'Agent'}: ${text}`;
       })
