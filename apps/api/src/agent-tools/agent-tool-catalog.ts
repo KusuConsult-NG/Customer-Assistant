@@ -664,9 +664,9 @@ export const TEAM_PERSONAS: Record<string, TeamPersona> = {
     id: 'nanpan',
     name: 'Nanpan',
     gender: 'male',
-    voiceId: 'Mjq6UONAgV94HuOeTTUJ',
+    voiceId: '9wJXRg0I6YvgLFAP3g7J',
     greetingPhrase: 'my name is Nanpan',
-    description: 'Warm, professional, and authentic Plateau State voice',
+    description: 'Warm, professional, and authentic Northern/Plateau Nigerian voice (Professional Voice Clone)',
   },
   sarah: {
     id: 'sarah',
