@@ -768,10 +768,10 @@ export class ElevenLabsAgentService {
         sv?.label === 'governor'
           ? {
               ...sv,
-              stability: 0.55,
-              similarity_boost: 0.95,
-              speed: 0.98,
-              clone_strength: 1.0,
+              stability: 0.70,
+              similarity_boost: 0.75,
+              speed: 1.0,
+              clone_strength: 0.85,
             }
           : sv
       );

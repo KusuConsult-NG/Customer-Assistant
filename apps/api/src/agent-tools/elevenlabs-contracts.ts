@@ -230,6 +230,7 @@ export function agentDefinition(spec: AgentSpec) {
       agent: {
         firstMessage: spec.firstMessage,
         language: spec.language ?? 'en',
+        disableFirstMessageInterruptions: true,
         // snake_case INSIDE, on purpose — the one exception to "the SDK
         // converts". Its AgentConfig serializer types `dynamic_variables` as
         // `unknown` and passes the object through untouched, so the camelCase
@@ -243,7 +244,7 @@ export function agentDefinition(spec: AgentSpec) {
           : {}),
         prompt: {
           prompt: spec.systemPrompt,
-          llm: spec.llm ?? 'gpt-4o',
+          llm: spec.llm ?? 'gpt-4o-mini',
           toolIds: spec.toolIds,
           timezone: spec.timezone,
           builtInTools: {
@@ -331,8 +332,8 @@ export function agentDefinition(spec: AgentSpec) {
         turnTimeout: 3.5,
         silenceEndCallTimeout: 10,
         mode: 'turn',
-        turnEagerness: 'eager',
-        speculativeTurn: true,
+        turnEagerness: 'normal',
+        speculativeTurn: false,
         turnModel: 'turn_v3',
       },
       tts: {
@@ -345,10 +346,10 @@ export function agentDefinition(spec: AgentSpec) {
             voiceId: 'pAqGcXrGBThHKNv6yJnM',
             description: 'His Excellency Governor Caleb Mutfwang introductory welcome voice — used ONLY inside <governor>...</governor> in the opening welcome before Nanpan takes over. Never use this voice after the opening.',
             language: 'en',
-            stability: 0.55,
-            similarityBoost: 0.95,
-            speed: 0.98,
-            cloneStrength: 1.0,
+            stability: 0.70,
+            similarityBoost: 0.75,
+            speed: 1.0,
+            cloneStrength: 0.85,
           } as any,
           {
             label: 'hausa',
