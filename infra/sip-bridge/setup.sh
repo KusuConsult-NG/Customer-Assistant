@@ -28,11 +28,12 @@ for v in ALPHATECH_HOST ALPHATECH_IP ALPHATECH_EXTENSION ALPHATECH_PASSWORD ELEV
 done
 [[ "$TOLLFREE_E164" =~ ^\+[0-9]{8,15}$ ]] || { echo "TOLLFREE_E164 must be E.164, e.g. +2348000000456"; exit 1; }
 FALLBACK_SOUND="${FALLBACK_SOUND:-all-circuits-busy-now}"
+INTRO_SOUND="${INTRO_SOUND:-}"
 if [ -z "${PUBLIC_IP:-}" ]; then
   PUBLIC_IP="$(curl -fsS -4 --max-time 10 https://api.ipify.org || true)"
   [ -n "$PUBLIC_IP" ] || { echo "Could not detect the public IP; set PUBLIC_IP in bridge.env"; exit 1; }
 fi
-export PUBLIC_IP FALLBACK_SOUND
+export PUBLIC_IP FALLBACK_SOUND INTRO_SOUND
 
 echo "==> Installing Asterisk"
 export DEBIAN_FRONTEND=noninteractive
@@ -40,7 +41,7 @@ apt-get update -qq
 apt-get install -y -qq asterisk gettext-base ufw curl >/dev/null
 
 echo "==> Rendering configuration (public IP ${PUBLIC_IP})"
-VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND}'
+VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND}'
 for f in pjsip extensions rtp modules; do
   envsubst "$VARS" < "templates/${f}.conf.template" > "/etc/asterisk/${f}.conf"
 done
