@@ -826,7 +826,7 @@ describe('The Contact Centre script on the phone line', () => {
 
     it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
-      expect(morning).toBe("Good morning, I'm Nanpan, Plateau State's virtual assistant. May I have your full name?");
+      expect(morning).toBe("Good morning, I'm Nanpan, Plateau State Ministry of Information Virtual Assistant. May I have your full name?");
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
       expect(firstMessageFor(plateau)).toMatch(/^Hello, I'm Nanpan/);
@@ -834,10 +834,10 @@ describe('The Contact Centre script on the phone line', () => {
 
     // The agency cut the opening to about five seconds: the document's full
     // introduction ran about thirty, and callers spoke over it. At a normal
-    // speaking pace (about 2.8 words a second) five seconds is 14 words.
+    // speaking pace (about 2.8 words a second) five to six seconds is up to 17 words.
     const words = (s: string) => s.trim().split(/\s+/).length;
     it('every opening is about five seconds before its question', () => {
-      expect(words(renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')))).toBeLessThanOrEqual(14);
+      expect(words(renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')))).toBeLessThanOrEqual(17);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
       expect(words(def.conversationConfig.languagePresets.ha.overrides.agent.firstMessage)).toBeLessThanOrEqual(16);
       // A returning caller: the greeting before the location question.

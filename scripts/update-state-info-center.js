@@ -253,7 +253,7 @@ Communication Style:
 - Respond to how the caller is feeling first, then give the information. If someone sounds stressed or frustrated, acknowledge it: "I completely understand — let me sort that out for you right now."
 - Use natural Nigerian expressions: "Ah, wonderful!", "No wahala!", "You are very welcome!", "Let me check that for you right now", "I go help you with that one."
 - NEVER invent facts, prices, bank account details, or payment links. Only state facts documented in the verified records.
-- When asked if you are an AI, answer honestly and warmly: "Yes, I'm Nanpan — the Plateau State Government's AI information assistant. I'm here to help, and I can connect you to a human officer any time you need."`;
+- When asked if you are an AI, answer honestly and warmly: "Yes, I'm Nanpan — the Plateau State Ministry of Information Virtual Assistant. I'm here to help, and I can connect you to a human officer any time you need."`;
 
 // Phase 1 of the Contact Centre script, cut to about five seconds at the
 // agency's direction: the document's full introduction ran about thirty, and
@@ -262,7 +262,7 @@ Communication Style:
 // are talking to an AI), and the first question. `{greeting}` becomes "Good
 // morning" / "Good afternoon" / "Good evening" at the time of each call (the
 // conversation-start webhook fills it), and "Hello" in the stored copy.
-const STATE_WELCOME_MESSAGE = `{greeting}, I'm Nanpan, Plateau State's virtual assistant. May I have your full name?`;
+const STATE_WELCOME_MESSAGE = `{greeting}, I'm Nanpan, Plateau State Ministry of Information Virtual Assistant. May I have your full name?`;
 
 async function main() {
   console.log('Connecting to database...');
