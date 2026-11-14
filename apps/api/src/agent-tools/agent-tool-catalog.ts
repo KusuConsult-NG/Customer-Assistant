@@ -664,7 +664,10 @@ export const TEAM_PERSONAS: Record<string, TeamPersona> = {
     id: 'nanpan',
     name: 'Nanpan',
     gender: 'male',
-    voiceId: 'ideEOMYLgcyF9rr94ycz',
+    // "Stephen" — Nigerian-English cloned voice chosen by the Plateau State
+    // team for Nanpan. The previous default (Obinna, a stock library voice)
+    // read as American/British on calls.
+    voiceId: 'KpLREcAbIIKFKpEkPEIR',
     greetingPhrase: 'my name is Nanpan',
     description: 'Warm, professional, and authentic Nigerian conversational voice (Professional Voice Clone)',
   },
