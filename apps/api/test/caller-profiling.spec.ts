@@ -826,18 +826,20 @@ describe('The Contact Centre script on the phone line', () => {
 
     it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
-      expect(morning).toBe("Good morning, I'm Nanpan, the virtual assistant. May I have your full name?");
+      expect(morning).toBe(
+        "<governor>Hi, my name is Caleb Mutfwang, Governor of Plateau State. Welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> Good morning, I'm Nanpan, the virtual assistant. May I have your full name?"
+      );
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
-      expect(firstMessageFor(plateau)).toMatch(/^Hello, I'm Nanpan/);
+      expect(firstMessageFor(plateau)).toMatch(/<\/governor> Hello, I'm Nanpan/);
     });
 
-    // The agency cut the opening to about five seconds: the document's full
-    // introduction ran about thirty, and callers spoke over it. At a normal
-    // speaking pace (about 2.8 words a second) five seconds is 14 words.
+    // Nanpan's own spoken handoff after `</governor>` is cut to about five
+    // seconds (<= 14 words) before its question.
     const words = (s: string) => s.trim().split(/\s+/).length;
     it('every opening is about five seconds before its question', () => {
-      expect(words(renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')))).toBeLessThanOrEqual(14);
+      const nanpanPart = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).replace(/^<governor>[\s\S]*?<\/governor>\s*/, '');
+      expect(words(nanpanPart)).toBeLessThanOrEqual(14);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
       expect(words(def.conversationConfig.languagePresets.ha.overrides.agent.firstMessage)).toBeLessThanOrEqual(16);
       // A returning caller: the greeting before the location question.

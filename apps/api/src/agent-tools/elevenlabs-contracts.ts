@@ -341,19 +341,28 @@ export function agentDefinition(spec: AgentSpec) {
         modelId: 'eleven_v3_conversational',
         supportedVoices: [
           {
-            label: 'Hausa Native',
+            label: 'governor',
+            voiceId: 'pAqGcXrGBThHKNv6yJnM',
+            description: 'His Excellency Governor Caleb Mutfwang introductory welcome voice — used ONLY inside <governor>...</governor> in the opening welcome before Nanpan takes over. Never use this voice after the opening.',
+            language: 'en',
+            stability: 0.65,
+            similarityBoost: 0.9,
+            speed: 0.96,
+          },
+          {
+            label: 'hausa',
             voiceId: '9wJXRg0I6YvgLFAP3g7J',
             description: 'Use this native Northern Nigerian Hausa voice whenever speaking in Hausa.',
             language: 'ha',
           },
           {
-            label: 'Yoruba & Pidgin Native',
+            label: 'yoruba_pidgin',
             voiceId: 'qsiRIDxZEoXB7eXEuRFz',
             description: 'Use this native Nigerian Yoruba and Pidgin conversational voice when speaking Yoruba or Nigerian Pidgin.',
             language: 'en',
           },
           {
-            label: 'Igbo Native',
+            label: 'igbo',
             voiceId: 'ideEOMYLgcyF9rr94ycz',
             description: 'Use this native Nigerian Igbo conversational voice when speaking Igbo.',
             language: 'en',

@@ -253,16 +253,16 @@ Communication Style:
 - Respond to how the caller is feeling first, then give the information. If someone sounds stressed or frustrated, acknowledge it: "I completely understand — let me sort that out for you right now."
 - Use natural Nigerian expressions: "Ah, wonderful!", "No wahala!", "You are very welcome!", "Let me check that for you right now", "I go help you with that one."
 - NEVER invent facts, prices, bank account details, or payment links. Only state facts documented in the verified records.
+- NEVER use the <governor> voice tag in your replies: the Governor's voice is ONLY for the pre-configured opening welcome, after which you speak exclusively as Nanpan in your own voice.
 - When asked if you are an AI, answer honestly and warmly: "Yes, I'm Nanpan — the Plateau State Ministry of Information Virtual Assistant. I'm here to help, and I can connect you to a human officer any time you need."`;
 
-// Phase 1 of the Contact Centre script, cut to about five seconds at the
-// agency's direction: the document's full introduction ran about thirty, and
-// callers spoke over it. What stays is what the opening has to do — the time of
-// day, who is speaking, that it is a VIRTUAL assistant (callers must know they
-// are talking to an AI), and the first question. `{greeting}` becomes "Good
-// morning" / "Good afternoon" / "Good evening" at the time of each call (the
-// conversation-start webhook fills it), and "Hello" in the stored copy.
-const STATE_WELCOME_MESSAGE = `{greeting}, I'm Nanpan, the virtual assistant. May I have your full name?`;
+// Phase 1 of the Contact Centre script: opens with Governor Caleb Mutfwang's
+// welcome (`<governor>...</governor>`, voiced by pAqGcXrGBThHKNv6yJnM) and
+// hands over to Nanpan (`9wJXRg0I6YvgLFAP3g7J`), who greets the caller by time
+// of day and asks their full name. `{greeting}` becomes "Good morning" / "Good
+// afternoon" / "Good evening" at the time of each call (the conversation-start
+// webhook fills it), and "Hello" in the stored copy.
+const STATE_WELCOME_MESSAGE = `<governor>Hi, my name is Caleb Mutfwang, Governor of Plateau State. Welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> {greeting}, I'm Nanpan, the virtual assistant. May I have your full name?`;
 
 async function main() {
   console.log('Connecting to database...');

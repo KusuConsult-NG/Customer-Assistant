@@ -834,7 +834,18 @@ export function agentDefinitionFor(
   // being hardcoded into source. An agency whose name or terms are mispronounced
   // sets one for its own workspace; there is no platform-wide dictionary.
   const dictId = process.env.ELEVENLABS_PRONUNCIATION_DICT_ID;
-  const dictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
+  const rawDictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
+  // Ensure the Plateau State dictionary (HMJkcJlwny4ffPudEjyX) always uses the
+  // latest 113-rule version (with Nanpan, Caleb Mutfwang, Plateau, Wase, Kwande,
+  // etc.) even if an older version id is still in a deployment env var.
+  const dictVer =
+    dictId === 'HMJkcJlwny4ffPudEjyX' &&
+    (!rawDictVer ||
+      rawDictVer === '9S0SqLMwXr6zI2LWnq8A' ||
+      rawDictVer === 'ey6XtK32F1Fvz1szb44W' ||
+      rawDictVer === '1EMxmEpvrkYASaxB12Ut')
+      ? 'iBWdlUL0Q0mCGbvOUJ1I'
+      : rawDictVer;
   const pronunciationDictionaryLocators = dictId && dictVer
     ? [{ pronunciationDictionaryId: dictId, versionId: dictVer }]
     : [];
