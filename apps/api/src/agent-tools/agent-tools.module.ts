@@ -4,6 +4,7 @@ import { CrmModule } from '../crm/crm.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { TelephonyModule } from '../telephony/telephony.module';
 import { AgentToolsController } from './agent-tools.controller';
+import { AgentKeyGuard } from './agent-key.guard';
 import { AgentToolsService } from './agent-tools.service';
 import { AgentProvisioningController } from './agent-provisioning.controller';
 import { ElevenLabsAgentService } from './elevenlabs-agent.service';
@@ -47,6 +48,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
   imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule, OnboardingModule],
   controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController, CallRecordingController],
   providers: [
+    AgentKeyGuard,
     AgentToolsService,
     ElevenLabsApi,
     ElevenLabsAgentService,

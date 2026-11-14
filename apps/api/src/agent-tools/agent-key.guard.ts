@@ -15,7 +15,7 @@
  * widget key is published in every visitor's page source, an agent key must
  * never be.
  */
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { prisma } from '@ace/database';
 
@@ -26,8 +26,49 @@ export interface AgentRequestContext {
   organizationName: string;
 }
 
+interface CachedAgentKey {
+  id: string;
+  ctx: AgentRequestContext;
+  cachedAt: number;
+  lastTouchedAt: number;
+}
+
+const CACHE_TTL_MS = 5 * 60_000;
+const TOUCH_INTERVAL_MS = 60_000;
+const DB_LOOKUP_TIMEOUT_MS = 1_500;
+
 @Injectable()
-export class AgentKeyGuard implements CanActivate {
+export class AgentKeyGuard implements CanActivate, OnModuleInit {
+  private static readonly cache = new Map<string, CachedAgentKey>();
+
+  async onModuleInit(): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    await AgentKeyGuard.warmCache();
+  }
+
+  static async warmCache(): Promise<void> {
+    try {
+      const records = await prisma.apiKey.findMany({
+        where: { keyPrefix: { startsWith: AGENT_KEY_PREFIX } },
+        include: { organization: { select: { id: true, name: true } } },
+      });
+      const now = Date.now();
+      for (const r of records) {
+        if (r.organization) {
+          const existing = AgentKeyGuard.cache.get(r.keyHash);
+          AgentKeyGuard.cache.set(r.keyHash, {
+            id: r.id,
+            ctx: { organizationId: r.organization.id, organizationName: r.organization.name },
+            cachedAt: now,
+            lastTouchedAt: existing?.lastTouchedAt ?? 0,
+          });
+        }
+      }
+    } catch {
+      // Best-effort startup warm-up; live requests will populate on demand.
+    }
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
 
@@ -42,22 +83,72 @@ export class AgentKeyGuard implements CanActivate {
       throw new UnauthorizedException('Not an agent key.');
     }
 
-    const record = await prisma.apiKey.findUnique({
-      where: { keyHash: createHash('sha256').update(key).digest('hex') },
-      include: { organization: { select: { id: true, name: true } } },
-    });
-    if (!record?.organization) throw new UnauthorizedException('Invalid agent key.');
+    const keyHash = createHash('sha256').update(key).digest('hex');
+    const now = Date.now();
+    const cached = AgentKeyGuard.cache.get(keyHash);
 
-    // Best-effort: a failed touch must not fail the customer's call.
-    await prisma.apiKey
-      .update({ where: { id: record.id }, data: { lastUsedAt: new Date() } })
-      .catch(() => {});
+    if (cached && now - cached.cachedAt < CACHE_TTL_MS) {
+      req.agent = cached.ctx;
+      this.touchKeyAsync(cached, now);
+      return true;
+    }
+
+    let record: { id: string; organization: { id: string; name: string } | null } | null = null;
+    try {
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<null>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('agent_key_lookup_timeout')), DB_LOOKUP_TIMEOUT_MS);
+      });
+      try {
+        record = await Promise.race([
+          prisma.apiKey.findUnique({
+            where: { keyHash },
+            include: { organization: { select: { id: true, name: true } } },
+          }),
+          timeout,
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err) {
+      // If the database pool is temporarily stalled or reconnecting, serve from
+      // a previously verified entry so a live phone call is never dropped.
+      if (cached) {
+        cached.cachedAt = now;
+        req.agent = cached.ctx;
+        return true;
+      }
+      throw err;
+    }
+
+    if (!record?.organization) {
+      AgentKeyGuard.cache.delete(keyHash);
+      throw new UnauthorizedException('Invalid agent key.');
+    }
 
     const ctx: AgentRequestContext = {
       organizationId: record.organization.id,
       organizationName: record.organization.name,
     };
+    const entry: CachedAgentKey = {
+      id: record.id,
+      ctx,
+      cachedAt: now,
+      lastTouchedAt: cached?.lastTouchedAt ?? 0,
+    };
+    AgentKeyGuard.cache.set(keyHash, entry);
+    this.touchKeyAsync(entry, now);
+
     req.agent = ctx;
     return true;
+  }
+
+  private touchKeyAsync(entry: CachedAgentKey, now: number): void {
+    if (now - entry.lastTouchedAt < TOUCH_INTERVAL_MS) return;
+    entry.lastTouchedAt = now;
+    // Never await on the request path: a slow write must not delay call setup.
+    void prisma.apiKey
+      .update({ where: { id: entry.id }, data: { lastUsedAt: new Date(now) } })
+      .catch(() => {});
   }
 }

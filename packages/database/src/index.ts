@@ -25,6 +25,7 @@ export * from '@prisma/client';
  * every process that imports this client.
  */
 const DEFAULT_CONNECTION_LIMIT = 25;
+const SUPABASE_POOLER_CONNECTION_LIMIT = 10;
 const DEFAULT_POOL_TIMEOUT_SECONDS = 20;
 
 function buildDatabaseUrl(): string | undefined {
@@ -33,9 +34,27 @@ function buildDatabaseUrl(): string | undefined {
 
   try {
     const url = new URL(raw);
+    const isSupabasePooler = url.hostname.endsWith('.pooler.supabase.com');
+
+    // Supabase's pooler on port 5432 is Session Mode (capped at ~15 persistent
+    // backend slots across the whole project). At runtime PrismaClient must use
+    // Transaction Mode (port 6543, pgbouncer=true) so connections are returned
+    // after each transaction instead of pinning the entire pool.
+    if (isSupabasePooler) {
+      if (url.port === '5432' || url.port === '') {
+        url.port = '6543';
+      }
+      if (!url.searchParams.has('pgbouncer')) {
+        url.searchParams.set('pgbouncer', 'true');
+      }
+    }
+
+    const defaultLimit = isSupabasePooler
+      ? SUPABASE_POOLER_CONNECTION_LIMIT
+      : DEFAULT_CONNECTION_LIMIT;
 
     if (!url.searchParams.has('connection_limit')) {
-      url.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT ?? String(DEFAULT_CONNECTION_LIMIT));
+      url.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT ?? String(defaultLimit));
     } else if (process.env.DATABASE_CONNECTION_LIMIT) {
       url.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT);
     }

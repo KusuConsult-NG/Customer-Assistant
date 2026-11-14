@@ -24,8 +24,9 @@
  * Tenant scoping comes from the agent key (see agent-key.guard.ts) and is passed
  * in as organizationId — never read from the request body.
  */
-import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { relevantPassage } from './relevant-passage';
+import { AgentKeyGuard } from './agent-key.guard';
 import { caseClassFor } from './call-report';
 import { callReferenceText } from '../common/call-case-link';
 import {
@@ -172,8 +173,9 @@ function isSlotClash(err: unknown): boolean {
 }
 
 @Injectable()
-export class AgentToolsService {
+export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('AgentTools');
+  private keepAliveTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private scheduling: SchedulingService,
@@ -184,6 +186,40 @@ export class AgentToolsService {
     private takeover: ElevenLabsTakeoverService,
     private onboarding: OnboardingService
   ) {}
+
+  onModuleInit(): void {
+    if (process.env.NODE_ENV === 'test') return;
+    void this.warmActiveAgentOrgs();
+    // Keep the database connection pool warm and tenant variables cached so the
+    // first inbound call after hours of silence never blocks on a dead socket.
+    this.keepAliveTimer = setInterval(() => void this.warmActiveAgentOrgs(), 45_000);
+    this.keepAliveTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.keepAliveTimer) clearInterval(this.keepAliveTimer);
+    this.keepAliveTimer = null;
+  }
+
+  private async warmActiveAgentOrgs(): Promise<void> {
+    try {
+      await AgentKeyGuard.warmCache();
+      const configs = await prisma.hostedAgentConfig.findMany({
+        where: { isActive: true },
+        select: { organizationId: true },
+      });
+      if (!configs.length) return;
+      const orgs = await prisma.organization.findMany({
+        where: { id: { in: configs.map((c) => c.organizationId) } },
+        select: { id: true, name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
+      });
+      for (const org of orgs) {
+        this.orgVariables.set(org.id, { org, variables: dynamicVariablesFor(org) });
+      }
+    } catch {
+      // Best-effort pool warm-up.
+    }
+  }
 
   /**
    * The single place a tool failure becomes words. Keeping it here means no
@@ -524,7 +560,7 @@ export class AgentToolsService {
    * anything a phone network would call a delay, and a slow database costs the
    * greeting, not the call.
    */
-  static CONVERSATION_START_BUDGET_MS = 2_500;
+  static CONVERSATION_START_BUDGET_MS = 1_500;
 
   /**
    * The agency's own name and persona, kept from the last successful read.
@@ -569,18 +605,20 @@ export class AgentToolsService {
     organizationId: string,
     body: { caller_id?: string; called_number?: string }
   ): Promise<{ reply: ConversationStartReply; status: string; outbound: boolean }> {
-    const org = await prisma.organization.findUnique({
-      where: { id: organizationId },
-      // The same fields `ElevenLabsAgentService.tenant` reads, so these
-      // variables match the placeholders the sync pushed to the agent.
-      select: { name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
-    });
+    const [org, agency] = await Promise.all([
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        // The same fields `ElevenLabsAgentService.tenant` reads, so these
+        // variables match the placeholders the sync pushed to the agent.
+        select: { name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
+      }),
+      this.agencyNumbers(organizationId),
+    ]);
     if (org) this.orgVariables.set(organizationId, { org, variables: dynamicVariablesFor(org) });
 
     const callerId = (body.caller_id ?? '').trim();
     const calledNumber = (body.called_number ?? '').trim();
 
-    const agency = await this.agencyNumbers(organizationId);
     const ourNumbers = agency.flatMap((n) => phoneNumberVariants(n));
     const isOurs = (n: string) => !!n && phoneNumberVariants(n).some((v) => ourNumbers.includes(v));
 
