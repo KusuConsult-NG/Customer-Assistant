@@ -35,9 +35,24 @@
 /** Nigeria. The default because this platform's tenants are Nigerian. */
 export const DEFAULT_COUNTRY_CODE = '234';
 
-/** Strip everything a human or a provider might decorate a number with. */
+/**
+ * Strip everything a human or a provider might decorate a number with.
+ *
+ * Including a SIP or TEL address, which is how a SIP-trunk call can present
+ * its caller (`sip:08031234567@10.0.0.1:5060`, `"Amina" <sip:+234…@host>`,
+ * `tel:+234…;phone-context=…`). Only the USER part is the number. Before this,
+ * the host and port were cleaned into it — `sip:08031234567@10001:5060` — so
+ * a caller whose carrier presents a local number over SIP got a different
+ * "number" whenever the source port changed, and was never recognised again.
+ * (A `+` number survived only because that branch kept digits alone.)
+ */
 function clean(raw: string): string {
-  return (raw ?? '').trim().replace(/[\s()\-.]/g, '');
+  let value = (raw ?? '').trim();
+  const bracketed = value.match(/<([^>]*)>/);
+  if (bracketed) value = bracketed[1].trim();
+  const uri = value.match(/^(?:sips?|tel):([^@;?]*)/i);
+  if (uri) value = uri[1];
+  return value.replace(/[\s()\-.]/g, '');
 }
 
 /**

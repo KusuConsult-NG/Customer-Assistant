@@ -72,6 +72,26 @@ describe('phone number normalisation', () => {
     });
   });
 
+  // A SIP-trunk call can present its caller as a SIP or TEL address. Only the
+  // user part is the number: the host and port were once cleaned INTO it, so a
+  // local number over SIP became a different "number" whenever the port moved.
+  describe('a caller presented as a SIP or TEL address', () => {
+    it.each([
+      ['sip:08031234567@10.0.0.1:5060'],
+      ['sip:08031234567@10.0.0.2:41234'],
+      ['sips:+2348031234567@sip.carrier.ng;transport=tls'],
+      ['"Amina" <sip:2348031234567@sbc.carrier.ng>'],
+      ['tel:+2348031234567;phone-context=+234'],
+    ])('%s is the same subscriber as +2348031234567', (raw) => {
+      expect(normalizePhoneNumber(raw)).toBe('+2348031234567');
+      expect(phoneNumberVariants(raw)).toContain('08031234567');
+    });
+
+    it('does not turn a withheld SIP caller into a number', () => {
+      expect(normalizePhoneNumber('sip:anonymous@anonymous.invalid')).toBe('anonymous');
+    });
+  });
+
   describe('the country assumption', () => {
     it('applies the tenant country code to a local number', () => {
       // 0801… is Nigerian only because this platform's tenants are. The rule is
