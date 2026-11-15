@@ -864,6 +864,23 @@ export interface AgentOrganization {
 }
 
 /** The system prompt with the chosen persona identity and business rules appended. */
+/**
+ * The agency's stored persona text, as the agent should read it.
+ *
+ * The Plateau assistant takes a different name from PLATEAU_MALE_NAMES on each
+ * call, carried by {{representative_name}}. The State's persona was stored when
+ * it began "You are Nanpan, …" — and the copy in the database only changes
+ * when someone re-runs scripts/update-state-info-center.js or edits it in
+ * Settings. While it said "You are Nanpan", every call introduced itself as
+ * Nanpan whatever name the opening used. For a Plateau agency the literal name
+ * is read as the per-call name instead; any other agency's text is untouched.
+ */
+export function storedPersonaFor(org: AgentOrganization): string | undefined {
+  const text = org.aiPersonaPrompt?.trim();
+  if (!text) return undefined;
+  return isPlateauStateOrg(org) ? text.replace(/\bNanpan\b/g, '{{representative_name}}') : text;
+}
+
 export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
   const personaHeader = `You are {{representative_name}} (default persona: ${resolved.name}), a dedicated customer service team member at {{organization_name}}.\nIntroduce yourself as {{representative_name}} when asked who is speaking or when greeting the customer.\nConverse consistently as {{representative_name}} throughout the entire call.`;
@@ -896,7 +913,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `- END-OF-CALL CONFIRMATION & 10-SECOND SILENCE DROP: At the end of EVERY conversation (once you have answered the citizen's inquiry, booked their callback, or logged their ticket), you MUST ask the citizen warmly if there is anything else they need or if you may end the call (PHASE 10: "Is there anything else I can assist you with today, or may I go ahead and end the call?"). Wait for their answer: as soon as they confirm they are done or say goodbye, say the PHASE 10 farewell ("Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye.", in English) and immediately call the end_call tool to drop the call. If the caller remains silent for 10 seconds without responding, the call will be dropped automatically (or you may call end_call after checking if they are still on the line). Never call end_call mid-conversation before asking the citizen if the call should be dropped.`;
 
   return (
-    [personaHeader, SYSTEM_PROMPT, org.aiPersonaPrompt?.trim()]
+    [personaHeader, SYSTEM_PROMPT, storedPersonaFor(org)]
       .filter(Boolean)
       .join('\n\n## The business\n\n') +
     '\n\n' +

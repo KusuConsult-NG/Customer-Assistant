@@ -849,6 +849,17 @@ describe('The Contact Centre script on the phone line', () => {
       expect(renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'))).toMatch(/<\/governor> <break time="1\.0s" \/> I'm /);
     });
 
+    // A stored persona saved before the names rotated still says "You are
+    // Nanpan"; read as written, every call introduced itself as Nanpan.
+    it('reads a stored Plateau persona that names Nanpan as the per-call name', () => {
+      const prompt = agentPromptFor({ ...plateau, aiPersonaPrompt: 'You are Nanpan, the official AI virtual assistant. Yes, I am Nanpan.' });
+      expect(prompt).toContain('You are {{representative_name}}, the official AI virtual assistant. Yes, I am {{representative_name}}.');
+      expect(prompt).not.toMatch(/You are Nanpan|I am Nanpan/);
+      // Another agency's persona is its own business.
+      const other = agentPromptFor({ name: 'Clinic', slug: 'clinic', timezone: 'Africa/Lagos', welcomeMessage: null, aiPersonaPrompt: 'You are Nanpan.' });
+      expect(other).toContain('You are Nanpan.');
+    });
+
     it('rotates through 100 unique Plateau State male names starting with Gwaman on every call', () => {
       expect(PLATEAU_MALE_NAMES).toHaveLength(100);
       expect(new Set(PLATEAU_MALE_NAMES).size).toBe(100);
