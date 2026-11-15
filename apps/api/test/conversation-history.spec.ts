@@ -234,6 +234,7 @@ describe('Conversation history returns the last N messages', () => {
           accessToken: 'legacy-plaintext-token',
           displayPhoneNumber: '+2348000000003',
           webhookVerifyToken: 'verify',
+          createdAt: new Date(Date.now() - 86400000),
         },
       });
 

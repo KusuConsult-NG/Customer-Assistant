@@ -502,13 +502,12 @@ describe('WhatsApp call events', () => {
         webhookVerifyToken: 'verify-contested',
         isActive: true,
       });
-      // Two sequential creates, not one `createMany`: the resolution order is
-      // `createdAt asc`, and rows written in a single createMany can share a
-      // timestamp to the microsecond, leaving `id` to decide — which is stable
-      // but not predictable from here. Sequential writes make the owner
-      // demonstrably first, so this asserts the ORDERING and not merely that
-      // some row won.
-      await prisma.whatsAppConfig.create({ data: line(orgId) });
+      // Postgres TIMESTAMP(3) has millisecond precision, so two sequential
+      // creates on localhost can land in the same millisecond and fall back to
+      // `id asc` (random UUID). Give the owner an explicitly earlier createdAt.
+      await prisma.whatsAppConfig.create({
+        data: { ...line(orgId), createdAt: new Date(Date.now() - 86400000) },
+      });
       await prisma.whatsAppConfig.create({ data: line(rival.id) });
 
       try {
