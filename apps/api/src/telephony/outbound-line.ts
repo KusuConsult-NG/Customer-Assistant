@@ -31,13 +31,11 @@ export async function outboundLineFor(organizationId: string) {
 }
 
 /**
- * Is this agency's outbound line one an OFFICER dials, from the browser?
- *
- * True for Infobip: this process places no Infobip calls, so a promise on
- * such a line is held for an officer rather than claimed and failed — a
- * failed claim spends one of the citizen's attempts on a dial nobody placed.
+ * Why a line on Infobip is refused. The Infobip path was removed; the enum
+ * value stays because dropping it needs `db push --accept-data-loss`, so a
+ * row can still name it, and it is refused with this rather than dialled as
+ * something it is not.
  */
-export async function isOfficerDialledLine(organizationId: string): Promise<boolean> {
-  const line = await outboundLineFor(organizationId);
-  return (line?.provider as string | undefined) === 'INFOBIP';
-}
+export const INFOBIP_RETIRED_REASON =
+  "This agency's line is set to Infobip, which this platform no longer supports. " +
+  'Change the line under Settings → Voice & Telephony to a supported carrier.';

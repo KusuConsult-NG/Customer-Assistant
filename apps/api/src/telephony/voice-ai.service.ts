@@ -198,11 +198,9 @@ export class VoiceAiService {
   /**
    * TTS as raw 16-bit mono PCM at one of the rates ElevenLabs offers.
    *
-   * Generalised from `fetchTtsPcm24k` for the Infobip media stream, whose
-   * sample rate is chosen on the Infobip side when the stream configuration is
-   * created (their own tutorial uses 16000). Asking ElevenLabs for the rate the
-   * stream already runs at means no resample at all — and a resample done
-   * wrong is heard as a robotic voice, never reported as an error.
+   * Asking ElevenLabs for the rate the stream already runs at means no
+   * resample at all — and a resample done wrong is heard as a robotic voice,
+   * never reported as an error.
    *
    * Restricted to the rates ElevenLabs actually publishes. An unlisted rate is
    * refused here rather than requested, because ElevenLabs answering 400 on a

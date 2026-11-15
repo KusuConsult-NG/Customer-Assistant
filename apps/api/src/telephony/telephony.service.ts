@@ -6,8 +6,7 @@ import { recordingPlayable } from '../common/call-recording';
 import { WebhookDispatcherService } from '../webhooks/webhook-dispatcher.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
 import { SipTrunkOriginationService } from './sip-trunk-origination.service';
-import { INFOBIP_OUTBOUND_REASON } from './infobip/infobip-voice.service';
-import { outboundLineFor } from './outbound-line';
+import { outboundLineFor, INFOBIP_RETIRED_REASON } from './outbound-line';
 import { TelephonyFactory } from '@ace/telephony-sdk';
 import { TelephonyProviderType, CallDirection, CallStatus } from '@ace/shared-types';
 import { AceLogger, generateCorrelationId } from '../config/logger';
@@ -614,14 +613,16 @@ export class TelephonyService {
     const fromNumber = config.phoneNumber;
     const resolvedProvider = providerType ?? (config.provider as TelephonyProviderType);
 
-    // ── An Infobip line is dialled by an officer, not by this process ──────
+    // ── Infobip is no longer supported ─────────────────────────────────────
     //
-    // Without this branch the factory's `default` answered INFOBIP with a
-    // credential-less TwilioProvider, so a callback on an Infobip agency
-    // failed with a Twilio authentication error — sending whoever read it to
-    // check Twilio credentials the agency deliberately does not have.
+    // The Infobip path was removed, but `INFOBIP` stays in the enum (dropping
+    // it needs `db push --accept-data-loss`), so a leftover row can still
+    // exist. Without this branch the factory's `default` would answer it with a
+    // credential-less TwilioProvider and fail with a Twilio authentication
+    // error — sending whoever read it to check credentials that were never
+    // the problem.
     if ((resolvedProvider as string) === 'INFOBIP') {
-      throw new BadRequestException(INFOBIP_OUTBOUND_REASON);
+      throw new BadRequestException(INFOBIP_RETIRED_REASON);
     }
 
     log.info('telephony_outbound_call_initiating', {

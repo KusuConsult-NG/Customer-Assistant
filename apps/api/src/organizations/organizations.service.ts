@@ -125,9 +125,6 @@ const TELEPHONY_PROVIDERS = [
   'MTN_ENTERPRISE_SIP',
   'AIRTEL_BUSINESS_SIP',
   'SIP_TRUNK',
-  // A number carried by Infobip — usually the agency's own, brought over SIP.
-  // Infobip hands the audio to this platform, so this platform's AI answers.
-  'INFOBIP',
 ] as const;
 
 function maskedWhatsAppConfig<T extends Record<string, any>>(c: T) {
