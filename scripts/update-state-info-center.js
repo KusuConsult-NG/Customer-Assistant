@@ -234,7 +234,11 @@ Communication Style:
 // afternoon" / "Good evening" at the time of each call (the conversation-start
 // webhook fills both `{greeting}` and `{name}`), and "Hello" / "Nanpan" in the
 // stored fallback copy.
-const STATE_WELCOME_MESSAGE = `<governor>{greeting}, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> I'm {name}, the virtual assistant. May I have your full name?`;
+// The `<break time="1.0s" />` is a one-second pause between the Governor's
+// voice and the assistant's: without it the hand-over ran the two together.
+// ElevenLabs reads the tag on the English model (eleven_turbo_v2) the agent
+// uses; it is never spoken.
+const STATE_WELCOME_MESSAGE = `<governor>{greeting}, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I'm {name}, the virtual assistant. May I have your full name?`;
 
 async function main() {
   console.log('Connecting to database...');
