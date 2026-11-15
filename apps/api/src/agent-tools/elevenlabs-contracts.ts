@@ -392,6 +392,12 @@ export function agentDefinition(spec: AgentSpec) {
         ...VOICE_SETTINGS,
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
       },
+      // EMPTY, explicitly — not omitted. The live agent was created with a
+      // Hausa preset (`ha`), and an agent update MERGES: leaving the key out
+      // kept `ha` on the agent, and ElevenLabs then refused the whole sync
+      // (HTTP 400, "Preset languages must be one of en, zh, …, but got ha")
+      // because the English model accepts no Hausa preset. English only.
+      languagePresets: {},
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,
         // 'audio' MUST be here. Without it the agent produced no greeting and

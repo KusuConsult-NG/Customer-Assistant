@@ -199,7 +199,9 @@ describe('Agent tool catalogue', () => {
     const agent = def.conversationConfig.agent;
     expect(agent.language).toBe('en');
     expect(agent.prompt.builtInTools.languageDetection).toBeUndefined();
-    expect(def.conversationConfig.languagePresets).toBeUndefined();
+    // Sent EMPTY rather than left out: an update merges, so an absent key kept
+    // the live agent's old `ha` preset and ElevenLabs refused every sync.
+    expect(def.conversationConfig.languagePresets).toEqual({});
     // Nothing a webhook returns may change the language either.
     const withHook = agentDefinitionFor(ORG, [], undefined, {
       initiationWebhook: { url: 'https://api.example.test/x', authorization: 'k', enabled: true },

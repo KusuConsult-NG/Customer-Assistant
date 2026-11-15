@@ -433,6 +433,10 @@ describe('ElevenLabs agent provisioning', () => {
       expect(turnedOff.map((r) => `${r.method} ${r.url}`)).toEqual([]);
       // Proof the scan saw the agent update, so the line above checked something.
       expect(sent.some((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'))).toBe(true);
+      // On the wire, after the SDK serialises it: an EMPTY language_presets,
+      // not an absent one. Absent, the merge kept the live agent's Hausa
+      // preset and ElevenLabs refused the sync with HTTP 400.
+      expect(updated?.body?.conversation_config?.language_presets).toEqual({});
 
       for (const [which, req] of Object.entries({ created, updated })) {
         const platform = req?.body?.platform_settings;

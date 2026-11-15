@@ -872,7 +872,7 @@ describe('The Contact Centre script on the phone line', () => {
       expect(words(nanpanPart)).toBeLessThanOrEqual(14);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
       // English only: no Hausa preset, so no second opening.
-      expect(def.conversationConfig.languagePresets).toBeUndefined();
+      expect(def.conversationConfig.languagePresets).toEqual({});
       // A returning caller: the greeting before the location question.
       const back = welcomeBackMessageFor(plateau as any, {
         status: 'returning', name: 'Hauwa Musa', missing: [], followUp: null,
