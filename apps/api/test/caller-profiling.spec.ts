@@ -35,6 +35,7 @@ import { WorkflowTriggerModule } from '../src/workflows/workflow-trigger.module'
 import { AGENT_KEY_PREFIX } from '../src/agent-tools/agent-key.guard';
 import { caseClassFor } from '../src/agent-tools/call-report';
 import {
+  PLATEAU_MALE_NAMES,
   SYSTEM_PROMPT,
   TOOL_NAMES,
   agentDefinitionFor,
@@ -42,6 +43,7 @@ import {
   agentToolCatalog,
   dynamicVariablesFor,
   firstMessageFor,
+  pickPlateauMalePersona,
   renderWelcome,
   timeOfDayGreeting,
   welcomeBackMessageFor,
@@ -832,6 +834,23 @@ describe('The Contact Centre script on the phone line', () => {
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
       expect(firstMessageFor(plateau)).toMatch(/<\/governor> Hello, I'm Nanpan/);
+    });
+
+    it('rotates through 100 unique Plateau State male names starting with Gwaman on every call', () => {
+      expect(PLATEAU_MALE_NAMES).toHaveLength(100);
+      expect(new Set(PLATEAU_MALE_NAMES).size).toBe(100);
+      expect(PLATEAU_MALE_NAMES[0]).toBe('Gwaman');
+
+      const firstPersona = pickPlateauMalePersona();
+      const secondPersona = pickPlateauMalePersona();
+      expect(PLATEAU_MALE_NAMES).toContain(firstPersona.name);
+      expect(PLATEAU_MALE_NAMES).toContain(secondPersona.name);
+      expect(secondPersona.name).not.toBe(firstPersona.name);
+
+      const dynamicMorning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'), firstPersona);
+      expect(dynamicMorning).toBe(
+        `<governor>Hi, my name is Caleb Mutfwang, Governor of Plateau State. Welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> Good morning, I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
+      );
     });
 
     // Nanpan's own spoken handoff after `</governor>` is cut to about five

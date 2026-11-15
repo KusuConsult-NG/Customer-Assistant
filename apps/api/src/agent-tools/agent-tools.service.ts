@@ -40,7 +40,15 @@ import {
   profileOf,
   type CallerVariables,
 } from './caller-profile';
-import { dynamicVariablesFor, renderWelcome, welcomeBackMessageFor, type AgentOrganization } from './agent-tool-catalog';
+import {
+  dynamicVariablesFor,
+  isPlateauStateOrg,
+  pickPlateauMalePersona,
+  renderWelcome,
+  welcomeBackMessageFor,
+  type AgentOrganization,
+  type TeamPersona,
+} from './agent-tool-catalog';
 import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
@@ -545,10 +553,12 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // Even with no records, the agency's greeting can still say "Good
       // morning": the cached organization is all it needs.
       const cached = this.orgVariables.get(organizationId)?.org;
+      const dynamicPersona = isPlateauStateOrg(cached) ? pickPlateauMalePersona() : undefined;
       return this.conversationStartReply(
         organizationId,
         { ...CALLER_VARIABLE_DEFAULTS },
-        cached ? this.timedWelcome(cached) : undefined
+        cached ? this.timedWelcome(cached, dynamicPersona) : undefined,
+        dynamicPersona
       );
     }
     this.log.log(
@@ -575,18 +585,27 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
   private readonly orgVariables = new Map<string, { org: AgentOrganization; variables: Record<string, string> }>();
 
   /**
-   * The agency's own greeting with "Good morning" etc. filled in — only when
-   * its text asks for it (`{greeting}`). Otherwise the stored first message is
-   * already exactly what would be said, and there is nothing to override.
+   * The agency's own greeting with "Good morning" etc. and any dynamic per-call
+   * persona name filled in — only when its text asks for it (`{greeting}`,
+   * `{name}`, or a Plateau State dynamic persona override). Otherwise the stored
+   * first message is already exactly what would be said.
    */
-  private timedWelcome(org: AgentOrganization): string | undefined {
-    return org.welcomeMessage?.includes('{greeting}') ? renderWelcome(org, new Date()) : undefined;
+  private timedWelcome(org: AgentOrganization, persona?: TeamPersona): string | undefined {
+    if (!org.welcomeMessage) return undefined;
+    if (
+      org.welcomeMessage.includes('{greeting}') ||
+      (persona && (org.welcomeMessage.includes('{name}') || /\bNanpan\b/.test(org.welcomeMessage)))
+    ) {
+      return renderWelcome(org, new Date(), persona);
+    }
+    return undefined;
   }
 
   private conversationStartReply(
     organizationId: string,
     caller: CallerVariables,
-    firstMessage?: string
+    firstMessage?: string,
+    dynamicPersona?: TeamPersona
   ): ConversationStartReply {
     const known = this.orgVariables.get(organizationId);
     return {
@@ -598,6 +617,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         organization_name: '',
         representative_name: '',
         ...(known?.variables ?? {}),
+        ...(dynamicPersona ? { representative_name: dynamicPersona.name } : {}),
         ...caller,
       },
       ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
@@ -618,6 +638,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       this.agencyNumbers(organizationId),
     ]);
     if (org) this.orgVariables.set(organizationId, { org, variables: dynamicVariablesFor(org) });
+    const dynamicPersona = isPlateauStateOrg(org) ? pickPlateauMalePersona() : undefined;
 
     const callerId = (body.caller_id ?? '').trim();
     const calledNumber = (body.called_number ?? '').trim();
@@ -639,7 +660,12 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         caller_profile: 'number not shown — ask for a number to reach them on',
       };
       return {
-        reply: this.conversationStartReply(organizationId, variables, outbound || !org ? undefined : this.timedWelcome(org)),
+        reply: this.conversationStartReply(
+          organizationId,
+          variables,
+          outbound || !org ? undefined : this.timedWelcome(org, dynamicPersona),
+          dynamicPersona
+        ),
         status: 'withheld',
         outbound,
       };
@@ -656,11 +682,11 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     const firstMessage = outbound || !org
       ? undefined
       : profile.name
-        ? welcomeBackMessageFor(org, profile)
-        : this.timedWelcome(org);
+        ? welcomeBackMessageFor(org, profile, new Date(), dynamicPersona)
+        : this.timedWelcome(org, dynamicPersona);
 
     return {
-      reply: this.conversationStartReply(organizationId, callerVariablesFor(profile), firstMessage),
+      reply: this.conversationStartReply(organizationId, callerVariablesFor(profile), firstMessage, dynamicPersona),
       status: profile.status,
       outbound,
     };

@@ -725,6 +725,176 @@ export function resolvePersona(nameOrId?: string | null): TeamPersona {
   return TEAM_PERSONAS[key] || Object.values(TEAM_PERSONAS).find(p => p.name.toLowerCase() === key) || TEAM_PERSONAS.nanpan;
 }
 
+/**
+ * 100 authentic Plateau State male names across all indigenous ethnic groups
+ * across the 17 Local Government Areas of Plateau State (starting with Gwaman
+ * and 99 others). On every call to the Plateau State Citizen Contact Centre,
+ * one name from this roster is dynamically assigned to the male virtual
+ * assistant (`KpLREcAbIIKFKpEkPEIR`). Female Plateau State names will be added
+ * alongside the female Plateau voice in a subsequent phase.
+ */
+export const PLATEAU_MALE_NAMES: readonly string[] = [
+  // 1–10: Afizere / Izere (Jos East, Jos North)
+  'Gwaman',
+  'Izang',
+  'Itse',
+  'Ajik',
+  'Atang',
+  'Ajang',
+  'Agwom',
+  'Azi',
+  'Adankat',
+  'Ikpang',
+  // 11–26: Berom (Jos North, Jos South, Barkin Ladi, Riyom)
+  'Gyang',
+  'Davou',
+  'Dachung',
+  'Dung',
+  'Pam',
+  'Chuwang',
+  'Bot',
+  'Jang',
+  'Pwajok',
+  'Mancha',
+  'Zang',
+  'Badung',
+  'Dalyop',
+  'Choji',
+  'Rwang',
+  'Bature',
+  // 27–40: Ngas / Angas (Pankshin, Kanke)
+  'Nanpan',
+  'Gowon',
+  'Golkaf',
+  'Goshit',
+  'Dimka',
+  'Benshak',
+  'Gotom',
+  'Nde',
+  'Nenfort',
+  'Nentawe',
+  'Kopdi',
+  'Longs',
+  'Shikbi',
+  'Gokum',
+  // 41–54: Mwaghavul (Mangu)
+  'Satmark',
+  'Nanchang',
+  'Ponzing',
+  'Dawal',
+  'Gamde',
+  'Kyauta',
+  'Plang',
+  'Nankpak',
+  'Chinshak',
+  'Pewat',
+  'Dashan',
+  'Shwar',
+  'Tapgun',
+  'Bindong',
+  // 55–67: Tarok / iTarok (Langtang North, Langtang South)
+  'Domkat',
+  'Ponzhi',
+  'Bali',
+  'Jangfa',
+  'Rimfa',
+  'Nanven',
+  'Nancwat',
+  'Zulfa',
+  'Vonjen',
+  'Ponfa',
+  'Nimfa',
+  'Nanzing',
+  'Selchum',
+  // 68–77: Goemai (Shendam, Qua'an Pan)
+  'Doeyok',
+  'Dongnaan',
+  'Naanlong',
+  'Shurkuk',
+  'Baamlong',
+  'Kwaplong',
+  'Naanmiap',
+  'Miskoom',
+  'Shalangwa',
+  'Naankang',
+  // 78–83: Mupun (Pankshin)
+  'Dapiya',
+  'Dakop',
+  'Nanfwang',
+  'Nansel',
+  'Lengs',
+  'Nandom',
+  // 84–90: Ron / Kulere & Mushere (Bokkos)
+  'Dariye',
+  'Mafulul',
+  'Mallo',
+  'Mashat',
+  'Maren',
+  'Mahanan',
+  'Magit',
+  // 91–94: Irigwe (Bassa / Miango)
+  'Zhe',
+  'Rivi',
+  'Chohu',
+  'Tegwi',
+  // 95–97: Bache / Rukuba, Amo, Buji & Jere (Bassa)
+  'Kuce',
+  'Idik',
+  'Aduk',
+  // 98–100: Pyem, Bogghom, Jahr, Montol, Pan/Kofyar & Wase (Mangu/Gindiri, Kanam, Wase, Mikang, Qua'an Pan)
+  'Dakwak',
+  'Gagdi',
+  'Lalong',
+] as const;
+
+let plateauNameDeck: string[] = [];
+
+/**
+ * Draw the next dynamic Plateau State male name without back-to-back repeats
+ * (Fisher–Yates shuffled deck of all 100 names, with 'Gwaman' guaranteed at
+ * the start of the first cycle).
+ */
+export function pickPlateauMaleName(): string {
+  if (plateauNameDeck.length === 0) {
+    const rest = PLATEAU_MALE_NAMES.slice(1);
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    // Pop from the end: put 'Gwaman' at the end of the array so the first pop() returns 'Gwaman'
+    plateauNameDeck = [...rest, PLATEAU_MALE_NAMES[0]];
+  }
+  return plateauNameDeck.pop() || 'Gwaman';
+}
+
+/**
+ * Build a dynamic per-call TeamPersona using the Plateau male voice (`KpLREcAbIIKFKpEkPEIR`)
+ * and a freshly assigned Plateau State male name from the 100-name roster.
+ */
+export function pickPlateauMalePersona(basePersona: TeamPersona = TEAM_PERSONAS.nanpan): TeamPersona {
+  const name = pickPlateauMaleName();
+  return {
+    ...basePersona,
+    id: name.toLowerCase(),
+    name,
+    greetingPhrase: `my name is ${name}`,
+  };
+}
+
+/**
+ * True when the organization is the Plateau State Government Citizen Contact Centre,
+ * which rotates through the 100 Plateau State ethnic names on every call.
+ */
+export function isPlateauStateOrg(org: Pick<AgentOrganization, 'name' | 'slug' | 'welcomeMessage'> | null | undefined): boolean {
+  if (!org) return false;
+  return (
+    org.slug === 'plaschema' ||
+    org.slug === 'plateau-state' ||
+    /plateau state/i.test(org.name || '') ||
+    Boolean(org.welcomeMessage?.includes('<governor>'))
+  );
+}
+
 /** The organization fields the agent's identity is built from. */
 export interface AgentOrganization {
   name: string;
@@ -739,7 +909,7 @@ export interface AgentOrganization {
 /** The system prompt with the chosen persona identity and business rules appended. */
 export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
-  const personaHeader = `You are ${resolved.name}, a dedicated customer service team member at {{organization_name}}.\nIntroduce yourself as ${resolved.name} when asked who is speaking or when greeting the customer.\nConverse consistently as ${resolved.name} throughout the entire call.`;
+  const personaHeader = `You are {{representative_name}} (default persona: ${resolved.name}), a dedicated customer service team member at {{organization_name}}.\nIntroduce yourself as {{representative_name}} when asked who is speaking or when greeting the customer.\nConverse consistently as {{representative_name}} throughout the entire call.`;
 
   // Appended AFTER the tenant's stored persona, deliberately: a stored persona
   // that instructs the model to deny being an AI (one shipped exactly that)
@@ -813,9 +983,13 @@ export function timeOfDayGreeting(timezone: string | null | undefined, now: Date
  */
 export function renderWelcome(org: AgentOrganization, now?: Date, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
-  return (org.welcomeMessage ?? '')
+  let text = (org.welcomeMessage ?? '')
     .replace(/\{name\}/g, resolved.name)
     .replace(/\{greeting\}/g, now ? timeOfDayGreeting(org.timezone, now) : 'Hello');
+  if (persona) {
+    text = text.replace(/\bNanpan\b/g, resolved.name);
+  }
+  return text;
 }
 
 export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
@@ -869,8 +1043,9 @@ export function agentDefinitionFor(
       rawDictVer === 'T81FUBGqcfEMVniLgS5e' ||
       rawDictVer === '2UbUPZt0Mh4jOJIbwYsl' ||
       rawDictVer === 'Xtli1v7nipOpFiBHnGhu' ||
-      rawDictVer === 'yUzq4maH2Scckbbn9Xr0')
-      ? 'bfqXaFzqjGAg9IqAxBee'
+      rawDictVer === 'yUzq4maH2Scckbbn9Xr0' ||
+      rawDictVer === 'bfqXaFzqjGAg9IqAxBee')
+      ? '9M5dKT0qPOVE0fGUie3h'
       : rawDictVer;
   const pronunciationDictionaryLocators = resolvedDictId && dictVer
     ? [{ pronunciationDictionaryId: resolvedDictId, versionId: dictVer }]
