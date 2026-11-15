@@ -97,9 +97,26 @@ test.describe('Settings — Hosted Agent workspace', () => {
   });
 
   test('offers no credential change form to viewers', async ({ page }) => {
-    await openTab(page, 'VIEWER');
+    // The Hosted Agent tab is admin-only (settings/page.tsx `adminOnly`), so a
+    // viewer is not offered it at all — stronger than the in-tab notice this
+    // test used to read. The API still refuses the write regardless; hiding
+    // the tab is cosmetic, not the control.
+    const { token, user } = await getAuth();
+    await page.addInitScript(
+      ([t, u]) => {
+        window.localStorage.setItem('ace_token', t as string);
+        window.localStorage.setItem('ace_user', JSON.stringify(u));
+      },
+      [token, { ...user, role: 'VIEWER' }]
+    );
+    await page.goto('/settings');
+    await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText(/Only an OWNER or ADMIN can change workspace credentials/i)).toBeVisible({ timeout: 15000 });
+    // Anchor on something a viewer IS shown, so the absence checks below
+    // cannot pass against a page that never rendered.
+    await expect(page.getByRole('button', { name: 'Profile & Security' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Hosted Agent' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Save Credentials' })).toHaveCount(0);
+    await expect(page.getByPlaceholder(/Replace the current key/i)).toHaveCount(0);
   });
 });
