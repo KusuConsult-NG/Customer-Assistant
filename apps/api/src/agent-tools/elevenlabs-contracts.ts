@@ -406,7 +406,7 @@ export function agentDefinition(spec: AgentSpec) {
         enablePhonemeTags: true,
         stability: 0.45,
         similarityBoost: 1.0,
-        speed: 0.96,
+        speed: 1.02,
         cloneStrength: 1.0,
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
       } as any,

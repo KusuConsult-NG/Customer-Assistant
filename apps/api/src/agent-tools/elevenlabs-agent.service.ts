@@ -784,7 +784,7 @@ export class ElevenLabsAgentService {
             tts: {
               stability: 0.45,
               similarity_boost: 1.0,
-              speed: 0.96,
+              speed: 1.02,
               clone_strength: 1.0,
               supported_voices: updatedVoices,
             },

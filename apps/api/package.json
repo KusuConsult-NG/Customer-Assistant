@@ -82,7 +82,7 @@
       "<rootDir>/test/support/release-db-connections.ts"
     ],
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.ts$": "ts-jest"
     },
     "collectCoverageFrom": [
       "src/**/*.(t|j)s"

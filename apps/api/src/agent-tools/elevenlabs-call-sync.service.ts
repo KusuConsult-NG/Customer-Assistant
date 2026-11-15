@@ -63,15 +63,22 @@ export function toPostCallPayload(c: any): PostCallPayload {
       conversation_id: c?.conversationId,
       status: c?.status,
       has_audio: typeof c?.hasAudio === 'boolean' ? c.hasAudio : undefined,
-      transcript: (c?.transcript ?? []).map((t: any) => ({
-        role: t?.role,
-        message: t?.message ?? null,
-        time_in_call_secs: t?.timeInCallSecs,
-        tool_calls: (t?.toolCalls ?? t?.tool_calls ?? []).map((tc: any) => ({
-          tool_name: tc?.toolName ?? tc?.tool_name,
-          params_as_json: tc?.paramsAsJson ?? tc?.params_as_json,
-        })),
-      })),
+      transcript: (c?.transcript ?? []).map((t: any) => {
+        const rawToolCalls = t?.toolCalls ?? t?.tool_calls;
+        return {
+          role: t?.role,
+          message: t?.message ?? null,
+          time_in_call_secs: t?.timeInCallSecs,
+          ...(Array.isArray(rawToolCalls) && rawToolCalls.length > 0
+            ? {
+                tool_calls: rawToolCalls.map((tc: any) => ({
+                  tool_name: tc?.toolName ?? tc?.tool_name,
+                  params_as_json: tc?.paramsAsJson ?? tc?.params_as_json,
+                })),
+              }
+            : {}),
+        };
+      }),
       metadata: {
         start_time_unix_secs: meta.startTimeUnixSecs,
         call_duration_secs: meta.callDurationSecs,
