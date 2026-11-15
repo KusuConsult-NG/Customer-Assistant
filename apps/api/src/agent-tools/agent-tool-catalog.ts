@@ -847,16 +847,18 @@ export function agentDefinitionFor(
   const dictId = process.env.ELEVENLABS_PRONUNCIATION_DICT_ID;
   const rawDictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
   // Ensure the Plateau State dictionary always uses the latest rule version
-  // (with Nanpan -> Nahn-pahn, Caleb Moot-fwang, Plateau -> Plah-toh, Datong,
+  // (with Nanpan -> Nahn-pahn, Caleb Mutfwang, Plateau -> Plah-toh, Datong,
   // Rantya, Gyel, Wase, Kwande, etc.) even if an older dictionary or version id
   // is still in a deployment env var on Render.
   const isLegacyPlateauDict =
     dictId === 'HMJkcJlwny4ffPudEjyX' ||
     dictId === 'QKEIYcTRlsR6uTdVaDfd' ||
-    dictId === 'XVhz0jbXDzCN9I6EfgNT';
-  const resolvedDictId = isLegacyPlateauDict ? 'sBWBu2T0npVpRywaGGkJ' : dictId;
+    dictId === 'XVhz0jbXDzCN9I6EfgNT' ||
+    dictId === 'sBWBu2T0npVpRywaGGkJ' ||
+    dictId === 'FDAAFuuRXSDpGTPkkRNw';
+  const resolvedDictId = isLegacyPlateauDict ? '6Q0cOBoB6nXMLg2GHMEc' : dictId;
   const dictVer =
-    (isLegacyPlateauDict || resolvedDictId === 'sBWBu2T0npVpRywaGGkJ') &&
+    (isLegacyPlateauDict || resolvedDictId === '6Q0cOBoB6nXMLg2GHMEc') &&
     (!rawDictVer ||
       rawDictVer === '9S0SqLMwXr6zI2LWnq8A' ||
       rawDictVer === 'ey6XtK32F1Fvz1szb44W' ||
@@ -865,8 +867,10 @@ export function agentDefinitionFor(
       rawDictVer === 'EvLGUrAnHdMr6cAna7fm' ||
       rawDictVer === 'Tc7tNx3lQsTh54kJkYU8' ||
       rawDictVer === 'T81FUBGqcfEMVniLgS5e' ||
-      rawDictVer === '2UbUPZt0Mh4jOJIbwYsl')
-      ? 'Xtli1v7nipOpFiBHnGhu'
+      rawDictVer === '2UbUPZt0Mh4jOJIbwYsl' ||
+      rawDictVer === 'Xtli1v7nipOpFiBHnGhu' ||
+      rawDictVer === 'yUzq4maH2Scckbbn9Xr0')
+      ? 'bfqXaFzqjGAg9IqAxBee'
       : rawDictVer;
   const pronunciationDictionaryLocators = resolvedDictId && dictVer
     ? [{ pronunciationDictionaryId: resolvedDictId, versionId: dictVer }]
