@@ -1,5 +1,4 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
-import { InfobipVoiceService } from './infobip/infobip-voice.service';
 import {
   prisma,
   withTelephonyCredentials,
@@ -58,8 +57,6 @@ function apiBaseUrl(): string {
 
 @Injectable()
 export class VoiceReadinessService {
-  constructor(private readonly infobip: InfobipVoiceService) {}
-
   async forOrganization(organizationId: string) {
     const base = apiBaseUrl();
     const checks: ReadinessCheck[] = [];
@@ -103,24 +100,19 @@ export class VoiceReadinessService {
 
     const twilio = lines.filter((l) => l.provider === 'TWILIO');
 
-    // ── 1b. Infobip lines ────────────────────────────────────────────────────
+    // ── 1b. Lines left on Infobip ────────────────────────────────────────────
     //
-    // Checked on their own terms. The Twilio checks below are filtered to
-    // Twilio lines, so an Infobip line was never MISreported — but it was
-    // reported as nothing at all, which on the screen an operator uses to ask
-    // "will a call work" reads as "nothing to fix".
-    for (const line of lines.filter((l) => l.provider === 'INFOBIP')) {
-      const r = this.infobip.readiness();
+    // The Infobip path was removed, but the enum value stays, so a stored line
+    // can still name it. Nothing answers or dials it now, and reporting it as
+    // nothing at all would read as "nothing to fix".
+    for (const line of lines.filter((l) => (l.provider as string) === 'INFOBIP')) {
       checks.push({
         id: `infobip:${line.id}`,
         label: `Infobip carries ${line.phoneNumber}`,
-        state: r.enabled ? 'ready' : 'blocked',
-        detail: r.detail,
-        consequence: r.enabled
-          ? ''
-          : 'Calls to this number reach Infobip and are not answered here: events are refused, the AI ' +
-            'cannot be attached, or the media stream is refused.',
-        remedy: r.enabled ? '' : 'Set the missing INFOBIP_* values on the API service, as listed.',
+        state: 'blocked',
+        detail: 'This line is set to Infobip, which this platform no longer supports.',
+        consequence: 'Calls to this number are not answered here, and callbacks on it cannot be placed.',
+        remedy: 'Change this line to a supported carrier under Settings → Voice & Telephony.',
       });
     }
 

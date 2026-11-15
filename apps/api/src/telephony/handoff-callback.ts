@@ -23,7 +23,7 @@
  * the dispatcher retries it, the console shows its reference, and it closes
  * when somebody actually reaches the citizen.
  *
- * Shared by every carrier — Twilio and Infobip both call this — so what a
+ * Shared by every carrier — every voice handler calls this — so what a
  * citizen is told when they ask for help does not depend on which network
  * carried their call. A copy per carrier would be a second place for the
  * wording, the reference format or the withheld-number rule to drift.
