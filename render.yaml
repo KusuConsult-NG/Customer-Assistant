@@ -411,7 +411,12 @@ services:
       DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
       npx prisma generate --schema=packages/database/prisma/schema.prisma &&
       npx turbo run build --filter=@ace/web...
-    startCommand: cd apps/web && npx next start -H 0.0.0.0 -p $PORT
+    # Next is run directly, not through npx. A deploy hung on `npx next start`
+    # with no output at all — Next prints its banner within a second, so it never
+    # got that far — and Render timed out on "no open ports". npx resolves (and
+    # may try to install) the binary first; this asks Node where next lives,
+    # from apps/web, so it works whether npm hoists it to the root or not.
+    startCommand: cd apps/web && node "$(node -p "require.resolve('next/dist/bin/next')")" start -H 0.0.0.0 -p $PORT
     healthCheckPath: /
     envVars:
       - key: NODE_ENV
