@@ -215,12 +215,13 @@ export const NANPAN_VOICE_ID = 'KpLREcAbIIKFKpEkPEIR';
 export const GOVERNOR_VOICE_ID = 'pAqGcXrGBThHKNv6yJnM';
 
 /**
- * The settings both voices are spoken with: the values they sounded like
- * their originals on. Speed 1.0, not a nudge either way — any other speed is
- * heard as a different person. ONE definition: a post-sync PATCH used to
+ * The settings both voices are spoken with. Stability and similarity are the
+ * values they sounded like their originals on. Speed 0.9, by the agency's
+ * decision: at 1.0 callers heard both the Governor and the assistant as too
+ * fast. ElevenLabs accepts 0.7–1.2. ONE definition: a post-sync PATCH used to
  * re-apply its own, different numbers right after the sync wrote these.
  */
-export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 1.0 } as const;
+export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 0.9 } as const;
 
 /** Build the request for `conversationalAi.agents.create`. */
 export function agentDefinition(spec: AgentSpec) {

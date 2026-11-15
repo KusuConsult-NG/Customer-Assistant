@@ -17,6 +17,7 @@
  *    app. Tokens are resolved in JS from the same source the shell uses; the
  *    layout re-renders children on toggle, which re-reads it.
  */
+import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { authFetch, apiFetch, API_URL } from '@/lib/api';
 import {
@@ -488,16 +489,19 @@ function ServiceStandards({ card, heading, sub }: { card: string; heading: strin
     URL.revokeObjectURL(a.href);
   };
 
-  const tiles: Array<[string, unknown, boolean?]> = r
+  // [label, value, warn, the screen the figure is counted from]. Each tile
+  // opens that screen: a tile that only displays a number leaves the officer
+  // to go and find the cases or callbacks it is about.
+  const tiles: Array<[string, unknown, boolean, string]> = r
     ? [
-        ['Cases opened', r.cases.opened],
-        ['Cases resolved', r.cases.resolved],
-        ['Cases overdue now', r.cases.overdueNow, (r.cases.overdueNow ?? 0) > 0],
-        ['Callbacks promised', r.callbacks.promised],
-        ['Callbacks kept', r.callbacks.keptPercent === null ? v(r.callbacks.kept) : `${r.callbacks.kept} (${r.callbacks.keptPercent}%)`],
-        ['Callbacks over 1h late', r.callbacks.overOneHourLateNow, (r.callbacks.overOneHourLateNow ?? 0) > 0],
-        ['Emergencies reported', r.emergencies.whatsapp === null || r.emergencies.voice === null ? null : r.emergencies.whatsapp + r.emergencies.voice],
-        ['Unanswered questions', r.knowledgeGaps.open],
+        ['Cases opened', r.cases.opened, false, '/cases'],
+        ['Cases resolved', r.cases.resolved, false, '/cases'],
+        ['Cases overdue now', r.cases.overdueNow, (r.cases.overdueNow ?? 0) > 0, '/cases'],
+        ['Callbacks promised', r.callbacks.promised, false, '/callbacks'],
+        ['Callbacks kept', r.callbacks.keptPercent === null ? v(r.callbacks.kept) : `${r.callbacks.kept} (${r.callbacks.keptPercent}%)`, false, '/callbacks'],
+        ['Callbacks over 1h late', r.callbacks.overOneHourLateNow, (r.callbacks.overOneHourLateNow ?? 0) > 0, '/callbacks'],
+        ['Emergencies reported', r.emergencies.whatsapp === null || r.emergencies.voice === null ? null : r.emergencies.whatsapp + r.emergencies.voice, false, '/cases'],
+        ['Unanswered questions', r.knowledgeGaps.open, false, '/knowledge'],
       ]
     : [];
 
@@ -523,11 +527,15 @@ function ServiceStandards({ card, heading, sub }: { card: string; heading: strin
       {r && (
         <>
           <div className="grid gap-3 grid-cols-2 md:grid-cols-4 mt-4">
-            {tiles.map(([label, value, warn]) => (
-              <div key={label} className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+            {tiles.map(([label, value, warn, href]) => (
+              <Link
+                key={label}
+                href={href}
+                className="block rounded-xl border border-slate-200 dark:border-slate-800 p-3 hover:border-brand-300 dark:hover:border-brand-500/40 hover:shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
                 <p className={`text-[11px] font-semibold uppercase tracking-wide ${sub}`}>{label}</p>
                 <p className={`text-xl font-bold tabular-nums mt-1 ${warn ? 'text-red-700 dark:text-red-400' : heading}`}>{v(value)}</p>
-              </div>
+              </Link>
             ))}
           </div>
           <div className="grid gap-4 md:grid-cols-3 mt-5 text-xs">

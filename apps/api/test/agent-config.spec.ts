@@ -224,15 +224,15 @@ describe('Agent tool catalogue', () => {
   // multilingual v3 model with expressive mode, lowered stability and an
   // off-1.0 speed. Two voices only — Nanpan, and the Governor for his
   // opening — at the settings they sounded right on.
-  it('speaks in exactly two voices, on the English model, at normal speed', () => {
+  it('speaks in exactly two voices, on the English model, at the agency\'s slower speed', () => {
     const def = agentDefinitionFor({ ...ORG, voiceId: null }, []) as any;
     const tts = def.conversationConfig.tts;
     expect(tts.modelId).toBe('eleven_turbo_v2');
     expect(tts.voiceId).toBe('KpLREcAbIIKFKpEkPEIR');
     expect(tts.expressiveMode).toBeUndefined();
-    expect(tts.speed).toBe(1.0);
+    expect(tts.speed).toBe(0.9);
     expect(tts.supportedVoices.map((v: any) => [v.label, v.voiceId])).toEqual([['governor', 'pAqGcXrGBThHKNv6yJnM']]);
-    expect(tts.supportedVoices[0].speed).toBe(1.0);
+    expect(tts.supportedVoices[0].speed).toBe(0.9);
   });
 
   it('gives each tool a description an LLM can route on', () => {

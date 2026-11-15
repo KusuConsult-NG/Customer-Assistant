@@ -41,6 +41,14 @@ interface Activity {
   status?: string;
 }
 
+/** Where each kind of recent activity is listed in full. */
+const ACTIVITY_HREF: Record<Activity['type'], string> = {
+  call: '/telephony',
+  message: '/conversations',
+  contact: '/crm',
+  booking: '/scheduling',
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats>({
     contacts: null,
@@ -358,6 +366,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total Citizens"
+          href="/crm"
           value={num(stats.contacts)}
           subtitle="Citizens who have contacted the agency"
           icon={<Users className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
@@ -366,6 +375,7 @@ export default function DashboardPage() {
         />
         <KpiCard
           title="Open Cases"
+          href="/cases"
           value={num(stats.openTickets)}
           subtitle="Complaints and requests awaiting resolution"
           icon={<Activity className="w-5 h-5 text-purple-700 dark:text-purple-400" />}
@@ -374,6 +384,7 @@ export default function DashboardPage() {
         />
         <KpiCard
           title="Calls"
+          href="/telephony"
           value={num(stats.calls)}
           subtitle="Handled by the voice assistant"
           icon={<PhoneCall className="w-5 h-5 text-brand-700 dark:text-brand-300" />}
@@ -387,6 +398,7 @@ export default function DashboardPage() {
             have. */}
         <KpiCard
           title="Conversations"
+          href="/conversations"
           value={num(stats.conversations)}
           subtitle="Voice & WhatsApp threads with citizens"
           icon={<MessageSquareText className="w-5 h-5 text-amber-700 dark:text-amber-400" />}
@@ -406,6 +418,9 @@ export default function DashboardPage() {
                 Conversation Volume
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">WhatsApp and phone, by day, across 7 days</p>
+              <Link href="/analytics" className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 dark:text-indigo-400 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
+                Open analytics <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
@@ -483,6 +498,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <ProgressMetric
               label="Ticket Resolution Rate"
+              href="/cases"
               percentage={aiResolutionRate ?? 'N/A'}
               value={aiResolutionRate === null
                 ? 'No tickets recorded yet'
@@ -491,6 +507,7 @@ export default function DashboardPage() {
             />
             <ProgressMetric
               label="AI Reply Share"
+              href="/conversations"
               percentage={aiReplyRate ?? 'N/A'}
               value={aiReplyRate === null
                 ? 'No messages recorded yet'
@@ -499,6 +516,7 @@ export default function DashboardPage() {
             />
             <ProgressMetric
               label="Human Desk Handover Rate"
+              href="/conversations"
               percentage={handoverRate ?? 'N/A'}
               value={handoverRate === null
                 ? 'No conversations recorded yet'
@@ -618,7 +636,13 @@ export default function DashboardPage() {
               </div>
             ) : (
               activities.map((a) => (
-                <div key={a.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                // A row that lights up on hover is read as a link, so it is one:
+                // to the list this kind of activity lives in.
+                <Link
+                  key={a.id}
+                  href={ACTIVITY_HREF[a.type]}
+                  className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+                >
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center ${
                       a.type === 'call' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400' :
@@ -637,7 +661,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400 font-mono font-medium">{a.time}</span>
-                </div>
+                </Link>
               ))
             )}
           </div>
@@ -677,9 +701,17 @@ export default function DashboardPage() {
   );
 }
 
-function KpiCard({ title, value, subtitle, icon, badge, badgeColor }: any) {
-  return (
-    <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm hover:shadow-md transition-all space-y-3">
+/**
+ * A headline figure, and the way into the screen behind it.
+ *
+ * These were plain boxes that lifted on hover, so they looked like links and
+ * did nothing when clicked. Each now opens the list the figure counts. The
+ * card is a real link, so it works from the keyboard and shows a focus ring,
+ * and the screen it opens still applies its own permissions.
+ */
+function KpiCard({ title, value, subtitle, icon, badge, badgeColor, href }: any) {
+  const body = (
+    <>
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</span>
         <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/50">{icon}</div>
@@ -691,13 +723,26 @@ function KpiCard({ title, value, subtitle, icon, badge, badgeColor }: any) {
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60">
         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${badgeColor}`}>{badge}</span>
       </div>
-    </div>
+    </>
+  );
+  const frame =
+    'block p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm transition-all space-y-3';
+  if (!href) return <div className={frame}>{body}</div>;
+  return (
+    <Link
+      href={href}
+      aria-label={`${title}: ${value}. Open ${title.toLowerCase()}`}
+      className={`${frame} hover:shadow-md hover:border-brand-300 dark:hover:border-brand-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500`}
+    >
+      {body}
+    </Link>
   );
 }
 
-function ProgressMetric({ label, percentage, value, color }: any) {
-  return (
-    <div className="space-y-1.5">
+/** A rate, and — like the headline cards — the screen behind it. */
+function ProgressMetric({ label, percentage, value, color, href }: any) {
+  const body = (
+    <>
       <div className="flex items-center justify-between text-xs">
         <span className="font-bold text-slate-900 dark:text-slate-200">{label}</span>
         <span className="font-extrabold text-slate-900 dark:text-white">{percentage}{percentage !== 'N/A' ? '%' : ''}</span>
@@ -706,6 +751,15 @@ function ProgressMetric({ label, percentage, value, color }: any) {
         <div className={`h-full rounded-full ${color}`} style={{ width: percentage === 'N/A' ? '0%' : `${percentage}%` }} />
       </div>
       <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{value}</p>
-    </div>
+    </>
+  );
+  if (!href) return <div className="space-y-1.5">{body}</div>;
+  return (
+    <Link
+      href={href}
+      className="block space-y-1.5 -mx-2 px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+    >
+      {body}
+    </Link>
   );
 }
