@@ -224,15 +224,17 @@ Communication Style:
 - NEVER use the <governor> voice tag in your replies: the Governor's voice is ONLY for the pre-configured opening welcome, after which you speak exclusively as {{representative_name}} in your own voice.
 - When asked if you are an AI, answer honestly and warmly: "Yes, I'm {{representative_name}} — the Plateau State Ministry of Information Virtual Assistant. I'm here to help, and I can connect you to a human officer any time you need."`;
 
-// Phase 1 of the Contact Centre script: opens with Governor Caleb Mutfwang's
-// welcome (`<governor>...</governor>`, voiced by pAqGcXrGBThHKNv6yJnM) and
-// hands over to the virtual assistant (`KpLREcAbIIKFKpEkPEIR`), who greets the
-// caller by time of day and their dynamically assigned Plateau State name
-// (`{name}`), and asks their full name. `{greeting}` becomes "Good morning" /
-// "Good afternoon" / "Good evening" at the time of each call (the
-// conversation-start webhook fills both `{greeting}` and `{name}`), and "Hello"
-// / "Nanpan" in the stored fallback copy.
-const STATE_WELCOME_MESSAGE = `<governor>Hi, my name is Caleb Mutfwang, Governor of Plateau State. Welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> {greeting}, I'm {name}, the virtual assistant. May I have your full name?`;
+// Phase 1 of the Contact Centre script: opens with the Governor's voice
+// (`<governor>...</governor>`, voiced by pAqGcXrGBThHKNv6yJnM) greeting the
+// caller by time of day and welcoming them, then handing over to the virtual
+// assistant (`KpLREcAbIIKFKpEkPEIR`), who says who it is and asks the caller's
+// full name. By the agency's decision the Governor does NOT say his name or
+// title — he greets and hands over. The greeting is said once, by him, so the
+// assistant does not repeat it. `{greeting}` becomes "Good morning" / "Good
+// afternoon" / "Good evening" at the time of each call (the conversation-start
+// webhook fills both `{greeting}` and `{name}`), and "Hello" / "Nanpan" in the
+// stored fallback copy.
+const STATE_WELCOME_MESSAGE = `<governor>{greeting}, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> I'm {name}, the virtual assistant. May I have your full name?`;
 
 async function main() {
   console.log('Connecting to database...');
