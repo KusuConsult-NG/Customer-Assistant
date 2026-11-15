@@ -22,7 +22,7 @@
  * our placeholders (`Caller (···1234)`) is a NEW caller, however many calls it
  * has, and is asked again (politely, and again free to decline).
  */
-import { isAgencyOwnNumber, isPlaceholderContactName } from '@ace/database';
+import { isAgencyOwnNumber, isPlaceholderContactName, normalizePhoneNumber } from '@ace/database';
 
 /**
  * Whether the number a call arrived from is the CITIZEN's — the script asks
@@ -38,7 +38,11 @@ import { isAgencyOwnNumber, isPlaceholderContactName } from '@ace/database';
  * next caller as "welcome back", everybody's reports filed under it.
  */
 export function callerNumberShown(phone: string | null | undefined, agencyNumbers: Array<string | null | undefined>): boolean {
-  const p = (phone ?? '').trim();
+  // Normalised first, so a SIP address is judged by its user part:
+  // `sip:anonymous@anonymous.invalid` is a withheld number, not a caller. Read
+  // as written it counted as "shown", and every withheld caller was saved
+  // against that one address — one shared "person".
+  const p = normalizePhoneNumber((phone ?? '').trim());
   if (!p || /^(unknown|anonymous|private|restricted|withheld)$/i.test(p)) return false;
   return !isAgencyOwnNumber(p, agencyNumbers);
 }
