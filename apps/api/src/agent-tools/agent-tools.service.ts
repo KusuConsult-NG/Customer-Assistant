@@ -250,6 +250,63 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Asynchronously stage the NEXT dynamic Plateau State male name from the
+   * 100-name roster (`PLATEAU_MALE_NAMES`) on the live ElevenLabs agent as soon
+   * as a call's Turn-1 lookup runs. This rotates the assistant's name on every
+   * call WITHOUT enabling `enable_conversation_initiation_client_data_from_webhook`,
+   * so inbound SIP trunk calls never fail with "all circuits are busy".
+   */
+  private async rotateNextPlateauAgentPersona(organizationId: string): Promise<void> {
+    if (process.env.NODE_ENV === 'test') return;
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) return;
+    try {
+      const [org, config] = await Promise.all([
+        prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
+        }),
+        prisma.hostedAgentConfig.findUnique({
+          where: { organizationId },
+          select: { agentId: true },
+        }),
+      ]);
+      if (!org || !config?.agentId || !isPlateauStateOrg(org)) return;
+
+      const nextPersona = pickPlateauMalePersona();
+      const nextFirstMessage = renderWelcome(org, new Date(), nextPersona);
+      const nextVars = dynamicVariablesFor(org, nextPersona);
+      const baseUrl = (process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io').replace(/\/+$/, '');
+
+      await fetch(`${baseUrl}/v1/convai/agents/${config.agentId}`, {
+        method: 'PATCH',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversation_config: {
+            agent: {
+              first_message: nextFirstMessage,
+              dynamic_variables: {
+                dynamic_variable_placeholders: nextVars,
+              },
+            },
+          },
+          platform_settings: {
+            overrides: {
+              enable_conversation_initiation_client_data_from_webhook: false,
+            },
+          },
+        }),
+      });
+      this.log.log(`rotated_plateau_persona org=${organizationId} next_name=${nextPersona.name}`);
+    } catch (err) {
+      this.log.warn(`rotate_plateau_persona_failed org=${organizationId} err=${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
    * The single place a tool failure becomes words. Keeping it here means no
    * endpoint can invent a cheerier story about what just went wrong.
    */
@@ -323,6 +380,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
    */
   async lookupCustomer(organizationId: string, phoneNumber: string): Promise<ToolResult> {
     try {
+      void this.rotateNextPlateauAgentPersona(organizationId);
       // A hidden number, or our own line on a forwarded call, identifies
       // nobody — and looking it up would find whoever was saved against it
       // last, and greet the next caller by their name.
