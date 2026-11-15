@@ -252,7 +252,7 @@ export function agentDefinition(spec: AgentSpec) {
               type: 'system' as const,
               name: 'language_detection',
               description:
-                'Switch the conversation language between Hausa (ha) and English (en). Call it ONLY when the caller asks for the other language, or speaks at least one full, clear sentence in it. Never on a single word, a greeting, a place or person name, or a garbled transcript — a mixed English sentence with a Hausa or Pidgin word in it is still English. If unsure, ask the caller which language they prefer first.',
+                'Switch the conversation language between Hausa (ha) and English (en). Call it ONLY after you have asked the caller whether they want to continue in that language and they said yes — never before asking, even if they requested it or are speaking it. Never on a single word, a greeting, a place or person name, or a garbled transcript.',
               params: {
                 systemToolType: 'language_detection' as const,
                 onlyAtConversationStart: false,

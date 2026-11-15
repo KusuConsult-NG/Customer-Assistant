@@ -219,8 +219,20 @@ describe('Agent tool catalogue', () => {
     expect(prompt).not.toMatch(/"In a corner"/);
     expect(prompt).toMatch(/LANGUAGE STABILITY/);
     const switcher = def.conversationConfig.agent.prompt.builtInTools.languageDetection.description as string;
-    expect(switcher).toMatch(/ONLY when the caller asks/);
+    expect(switcher).toMatch(/ONLY after you have asked the caller/);
     expect(switcher).toMatch(/Never on a single word/);
+  });
+
+  // The agency's rule: the agent ASKS before every language change, even when
+  // the caller requested it, and switches only after a yes. Nothing anywhere
+  // in what the agent is told may order an immediate switch.
+  it('confirms with the caller before every language switch', () => {
+    const def = agentDefinitionFor(ORG, []) as any;
+    const prompt: string = def.conversationConfig.agent.prompt.prompt;
+    expect(prompt).toMatch(/CONFIRM BEFORE YOU SWITCH/);
+    expect(prompt).toMatch(/only after they say yes/);
+    expect(prompt).not.toMatch(/immediately (switch|invoke language_detection|call language_detection)/i);
+    expect(prompt).not.toMatch(/switch immediately/i);
   });
 
   it('gives each tool a description an LLM can route on', () => {
