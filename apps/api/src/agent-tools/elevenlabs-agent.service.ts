@@ -666,9 +666,19 @@ export class ElevenLabsAgentService {
     );
     // Asked by ElevenLabs as each call connects, with the same agent key the
     // tools use — so it resolves the same tenant, by the same guard.
+    //
+    // OFF unless ELEVENLABS_CONVERSATION_START_WEBHOOK=1. With it on, the live
+    // Plateau line refused EVERY call with "all circuits are busy" — on two
+    // separate occasions, and each time switching it off restored calls. Why
+    // ElevenLabs rejects the exchange in production is not yet known (the
+    // handler answers 200 within its budget in every test), so until a real
+    // call proves it, a returning caller is recognised by lookup-customer on
+    // the agent's first turn instead. The sync sends an explicit `false`, so a
+    // re-sync is what switches a live agent's webhook off.
     const initiationWebhook = {
       url: `${baseUrl}/api/agent-tools/conversation-start`,
       authorization: fromSecret(secret.secretId),
+      enabled: process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK === '1',
     };
     const definition = agentDefinitionFor(org, orderedIds, undefined, { initiationWebhook });
 

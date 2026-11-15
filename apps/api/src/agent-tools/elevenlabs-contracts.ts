@@ -192,6 +192,13 @@ export interface AgentSpec {
    * `AgentToolsService.conversationStart`.
    */
   initiationWebhook?: {
+    /**
+     * Whether ElevenLabs asks the webhook as each call connects. false keeps
+     * the URL registered but switched OFF: on the live Plateau line every call
+     * was refused with "all circuits are busy" while it was on, twice, so it
+     * is opt-in until a call proves it.
+     */
+    enabled?: boolean;
     url: string;
     /** A literal or a workspace secret — the only two kinds this header takes. */
     authorization: string | ElevenLabs.ConvAiSecretLocator;
@@ -214,7 +221,10 @@ export function agentDefinition(spec: AgentSpec) {
       ? {
           platformSettings: {
             overrides: {
-              enableConversationInitiationClientDataFromWebhook: true,
+              // Explicitly false when off, never merely absent: an agent update
+              // MERGES, so leaving the key out would keep a live agent's webhook
+              // on. See `AgentSpec.initiationWebhook.enabled`.
+              enableConversationInitiationClientDataFromWebhook: spec.initiationWebhook.enabled !== false,
               conversationConfigOverride: { agent: { firstMessage: true, language: true } },
             },
             workspaceOverrides: {

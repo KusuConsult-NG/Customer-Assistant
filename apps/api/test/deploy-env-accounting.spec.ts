@@ -46,6 +46,9 @@ const DELIBERATELY_OMITTED: Record<string, string> = {
   ELEVENLABS_SIGNATURE_HEADER:
     'Override for the post-call signature header name. The documented default ' +
     'is used unless a live delivery proves otherwise.',
+  ELEVENLABS_CONVERSATION_START_WEBHOOK:
+    'Opt-in for the conversation-initiation webhook. Left out of the manifest ' +
+    'so it stays off by default until a workspace-level webhook is configured in ElevenLabs.',
   ALLOW_MISSING_BOOKING_CONSTRAINT:
     'Deliberate opt-out for a deployment that takes no bookings. Declaring it ' +
     'in the manifest invites someone to set it to get past a failing boot.',
