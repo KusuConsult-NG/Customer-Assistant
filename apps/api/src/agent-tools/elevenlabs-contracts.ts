@@ -205,6 +205,23 @@ export interface AgentSpec {
   };
 }
 
+/** The text-to-speech model: English, because the phone agent speaks only English. */
+export const VOICE_MODEL_ID = 'eleven_turbo_v2';
+
+/** Nanpan — every word the agent says outside the Governor's opening. */
+export const NANPAN_VOICE_ID = 'KpLREcAbIIKFKpEkPEIR';
+
+/** His Excellency the Governor — the `<governor>` part of the opening only. */
+export const GOVERNOR_VOICE_ID = 'pAqGcXrGBThHKNv6yJnM';
+
+/**
+ * The settings both voices are spoken with: the values they sounded like
+ * their originals on. Speed 1.0, not a nudge either way — any other speed is
+ * heard as a different person. ONE definition: a post-sync PATCH used to
+ * re-apply its own, different numbers right after the sync wrote these.
+ */
+export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 1.0 } as const;
+
 /** Build the request for `conversationalAi.agents.create`. */
 export function agentDefinition(spec: AgentSpec) {
   if (!spec.timezone) {
@@ -225,7 +242,8 @@ export function agentDefinition(spec: AgentSpec) {
               // MERGES, so leaving the key out would keep a live agent's webhook
               // on. See `AgentSpec.initiationWebhook.enabled`.
               enableConversationInitiationClientDataFromWebhook: spec.initiationWebhook.enabled !== false,
-              conversationConfigOverride: { agent: { firstMessage: true, language: true } },
+              // language: false — the call is English only, so nothing may override it.
+              conversationConfigOverride: { agent: { firstMessage: true, language: false } },
             },
             workspaceOverrides: {
               conversationInitiationClientDataWebhook: {
@@ -258,16 +276,6 @@ export function agentDefinition(spec: AgentSpec) {
           toolIds: spec.toolIds,
           timezone: spec.timezone,
           builtInTools: {
-            languageDetection: {
-              type: 'system' as const,
-              name: 'language_detection',
-              description:
-                'Switch the conversation language between Hausa (ha) and English (en). Call it ONLY after you have asked the caller whether they want to continue in that language and they said yes — never before asking, even if they requested it or are speaking it. Never on a single word, a greeting, a place or person name, or a garbled transcript.',
-              params: {
-                systemToolType: 'language_detection' as const,
-                onlyAtConversationStart: false,
-              },
-            },
             endCall: {
               type: 'system' as const,
               name: 'end_call',
@@ -289,28 +297,6 @@ export function agentDefinition(spec: AgentSpec) {
         // pcm_16000 is for browser WebRTC — it fails silently over Twilio.
         userInputAudioFormat: 'ulaw_8000',
         keywords: [
-          'Ina wuni',
-          'Ina kwana',
-          'Sannu',
-          'Barka',
-          'Lafiya',
-          'Nagode',
-          'Hausa',
-          'Yaya',
-          'Madalla',
-          'Dan Allah',
-          'Tambaya',
-          'Pidgin',
-          'Abeg',
-          'Wetin',
-          'Wahala',
-          'Yoruba',
-          'E kaaro',
-          'E kaasan',
-          'Bawo ni',
-          'Igbo',
-          'Nnoo',
-          'Kedu',
           'Berom',
           'Ngas',
           'Mwaghavul',
@@ -377,65 +363,34 @@ export function agentDefinition(spec: AgentSpec) {
       },
       tts: {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),
-        // eleven_v3_conversational: supports 74 languages natively including Hausa, English, and multilingual conversational speech over telephony.
-        modelId: 'eleven_v3_conversational',
+        // ENGLISH ONLY, so the English model. eleven_v3_conversational was
+        // adopted to speak Hausa; with expressiveMode, lowered stability and an
+        // off-1.0 speed on top, neither cloned voice sounded like its original.
+        // The phone agent no longer speaks anything but English (the agency's
+        // decision), so the multilingual model buys nothing. eleven_turbo_v2 is
+        // what ElevenLabs accepts for English agents and what these voices
+        // sounded right on.
+        modelId: VOICE_MODEL_ID,
+        // The Governor's opening only: `<governor>…</governor>` in the first
+        // message. Every other word is Nanpan's voice (spec.voiceId). No other
+        // voices are offered, so the model cannot switch to one.
         supportedVoices: [
           {
             label: 'governor',
-            voiceId: 'pAqGcXrGBThHKNv6yJnM',
-            description: 'His Excellency Governor Caleb Mutfwang introductory welcome voice — used ONLY inside <governor>...</governor> in the opening welcome before Nanpan takes over. Never use this voice after the opening.',
+            voiceId: GOVERNOR_VOICE_ID,
+            description:
+              'His Excellency the Governor — used ONLY inside <governor>...</governor> in the opening welcome. Never use this voice anywhere else.',
             language: 'en',
-            stability: 0.50,
-            similarityBoost: 1.0,
-            speed: 0.97,
-            cloneStrength: 1.0,
-          } as any,
-          {
-            label: 'hausa',
-            voiceId: '9wJXRg0I6YvgLFAP3g7J',
-            description: 'Use this native Northern Nigerian Hausa voice whenever speaking in Hausa.',
-            language: 'ha',
-          },
-          {
-            label: 'yoruba_pidgin',
-            voiceId: 'qsiRIDxZEoXB7eXEuRFz',
-            description: 'Use this native Nigerian Yoruba and Pidgin conversational voice when speaking Yoruba or Nigerian Pidgin.',
-            language: 'en',
-          },
-          {
-            label: 'igbo',
-            voiceId: 'ideEOMYLgcyF9rr94ycz',
-            description: 'Use this native Nigerian Igbo conversational voice when speaking Igbo.',
-            language: 'en',
+            ...VOICE_SETTINGS,
           },
         ],
         // ulaw_8000 = G.711 μ-law 8kHz — the universal format for telephony / PSTN networks.
         agentOutputAudioFormat: 'ulaw_8000',
         optimizeStreamingLatency: 1,
-        expressiveMode: true,
+        // Phoneme rules in the pronunciation dictionary (Mutfwang, Nanpan, …).
         enablePhonemeTags: true,
-        stability: 0.45,
-        similarityBoost: 1.0,
-        speed: 1.02,
-        cloneStrength: 1.0,
+        ...VOICE_SETTINGS,
         pronunciationDictionaryLocators: spec.pronunciationDictionaryLocators ?? [],
-      } as any,
-      languagePresets: {
-        ha: {
-          overrides: {
-            agent: {
-              firstMessage:
-                // Phase 1 in Hausa, cut to about five seconds like the English,
-                // and ending — as the English does — by asking the caller's name.
-                // Built from phrases the previous, full-length Hausa greeting
-                // already used, rather than new wording.
-                'Sannu, sunana Nanpan, ni mataimaki ne na zamani. Dan Allah, zan iya sanin cikakken sunan ka?',
-            },
-            tts: {
-              voiceId: '9wJXRg0I6YvgLFAP3g7J',
-            },
-          },
-        },
       },
       conversation: {
         maxDurationSeconds: spec.maxDurationSeconds ?? 900,

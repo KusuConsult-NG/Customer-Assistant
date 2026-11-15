@@ -221,11 +221,11 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.data.missingProfileFields).toEqual([]);
         expect(res.body.data.prompt).toMatch(/KNOWN RETURNING CALLER — do not ask for their name or location again/);
         expect(res.body.data.prompt).toContain('still calling from Angwan Rogo, Ali Kazaure ward, Jos South');
-        expect(res.body.speak).toMatch(/Barka da dawowa, Hauwa Musa/);
-        // A saved language is a reason to ASK, never an order to switch.
-        expect(res.body.data.prompt).not.toMatch(/language_detection with 'ha' now/);
-        expect(res.body.data.prompt).toMatch(/ask whether they would like to continue in Hausa/);
-        expect(res.body.data.prompt).toMatch(/only after a clear yes/);
+        // A saved language changes nothing: the line is English only.
+        expect(res.body.speak).toMatch(/It is a pleasure speaking with you again/);
+        expect(res.body.speak).not.toMatch(/Barka/);
+        expect(res.body.data.prompt).not.toMatch(/language_detection/);
+        expect(res.body.data.prompt).toMatch(/Speak English only/);
       });
     });
 
@@ -871,7 +871,8 @@ describe('The Contact Centre script on the phone line', () => {
       const nanpanPart = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).replace(/^<governor>[\s\S]*?<\/governor>\s*/, '');
       expect(words(nanpanPart)).toBeLessThanOrEqual(14);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
-      expect(words(def.conversationConfig.languagePresets.ha.overrides.agent.firstMessage)).toBeLessThanOrEqual(16);
+      // English only: no Hausa preset, so no second opening.
+      expect(def.conversationConfig.languagePresets).toBeUndefined();
       // A returning caller: the greeting before the location question.
       const back = welcomeBackMessageFor(plateau as any, {
         status: 'returning', name: 'Hauwa Musa', missing: [], followUp: null,
@@ -947,12 +948,6 @@ describe('The Contact Centre script on the phone line', () => {
       expect(SYSTEM_PROMPT).toMatch(/Before calling create-ticket \(except during an active life-threatening emergency\)/);
     });
 
-    it('the Hausa greeting asks the name too, not "how can I help you"', () => {
-      const def = agentDefinitionFor(plateau, ['t1']) as any;
-      const hausa = def.conversationConfig.languagePresets.ha.overrides.agent.firstMessage as string;
-      expect(hausa).not.toMatch(/Da me zan iya taimaka/);
-      expect(hausa).toMatch(/cikakken sunan ka\?$/);
-    });
   });
 
   // ── Phase 3 → case category ─────────────────────────────────────────────

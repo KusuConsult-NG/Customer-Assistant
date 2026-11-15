@@ -190,49 +190,47 @@ describe('Agent tool catalogue', () => {
     expect(SYSTEM_PROMPT).toMatch(/answer honestly/i);
   });
 
-  it('tells the agent to follow the caller across the five supported languages', () => {
-    expect(SYSTEM_PROMPT).toMatch(/## Languages/);
-    for (const name of ['English', 'Nigerian Pidgin', 'Hausa', 'Igbo', 'Yoruba']) {
-      expect(SYSTEM_PROMPT).toContain(name);
-    }
-    // Figures never change with the language.
-    expect(SYSTEM_PROMPT).toMatch(/exactly as the tools returned them/i);
-  });
-
-  it('supports fluent multilingual conversations and Plateau indigenous languages without insisting on English', () => {
-    expect(SYSTEM_PROMPT).toMatch(/NEVER INSIST ON ENGLISH/i);
-    expect(SYSTEM_PROMPT).toMatch(/language_detection/i);
-    for (const tribe of ['Berom', 'Ngas', 'Mwaghavul', 'Tarok', 'Goemai']) {
-      expect(SYSTEM_PROMPT).toContain(tribe);
-    }
-  });
-
-  // Callers complained the agent "changes the language at will". The prompt
-  // told it that "You know, when…" and "You know me" — ordinary English — were
-  // mis-heard Hausa greetings and to switch the whole call to Hausa on sight,
-  // and the switch tool said to fire on any Hausa greeting. A language change
-  // must take the caller asking, or a full sentence in that language.
-  it('does not switch language on everyday English or a single word', () => {
+  // The agency's decision: the phone agent speaks ONLY English. Callers had
+  // reported it "changes the language at will" — the prompt mapped everyday
+  // English ("You know, when…") to Hausa, a switch tool fired on any greeting,
+  // and a Hausa preset changed the voice too. None of that may come back.
+  it('speaks English only, and has no way to switch language', () => {
     const def = agentDefinitionFor(ORG, []) as any;
-    const prompt: string = def.conversationConfig.agent.prompt.prompt;
-    expect(prompt).not.toMatch(/"You know[^"]*"[^\n]*Ina wuni/);
-    expect(prompt).not.toMatch(/"In a corner"/);
-    expect(prompt).toMatch(/LANGUAGE STABILITY/);
-    const switcher = def.conversationConfig.agent.prompt.builtInTools.languageDetection.description as string;
-    expect(switcher).toMatch(/ONLY after you have asked the caller/);
-    expect(switcher).toMatch(/Never on a single word/);
+    const agent = def.conversationConfig.agent;
+    expect(agent.language).toBe('en');
+    expect(agent.prompt.builtInTools.languageDetection).toBeUndefined();
+    expect(def.conversationConfig.languagePresets).toBeUndefined();
+    // Nothing a webhook returns may change the language either.
+    const withHook = agentDefinitionFor(ORG, [], undefined, {
+      initiationWebhook: { url: 'https://api.example.test/x', authorization: 'k', enabled: true },
+    }) as any;
+    expect(withHook.platformSettings.overrides.conversationConfigOverride.agent.language).toBe(false);
+
+    const prompt: string = agent.prompt.prompt;
+    expect(prompt).toMatch(/ENGLISH ONLY/);
+    expect(prompt).toMatch(/Never switch language/);
+    expect(prompt).not.toMatch(/language_detection/);
+    expect(prompt).not.toMatch(/NEVER INSIST ON ENGLISH/i);
+    expect(prompt).not.toMatch(/CONFIRM BEFORE YOU SWITCH/);
+    // No scripted lines in other languages for the model to copy.
+    expect(prompt).not.toMatch(/Akwai wani abin|Na gode sosai|Any other thing wey|Se ohunkohun|O nwere ihe/);
+    // Figures stay exact.
+    expect(prompt).toMatch(/exactly as the tools returned them/i);
   });
 
-  // The agency's rule: the agent ASKS before every language change, even when
-  // the caller requested it, and switches only after a yes. Nothing anywhere
-  // in what the agent is told may order an immediate switch.
-  it('confirms with the caller before every language switch', () => {
-    const def = agentDefinitionFor(ORG, []) as any;
-    const prompt: string = def.conversationConfig.agent.prompt.prompt;
-    expect(prompt).toMatch(/CONFIRM BEFORE YOU SWITCH/);
-    expect(prompt).toMatch(/only after they say yes/);
-    expect(prompt).not.toMatch(/immediately (switch|invoke language_detection|call language_detection)/i);
-    expect(prompt).not.toMatch(/switch immediately/i);
+  // Callers said the voices did not sound like the originals: the
+  // multilingual v3 model with expressive mode, lowered stability and an
+  // off-1.0 speed. Two voices only — Nanpan, and the Governor for his
+  // opening — at the settings they sounded right on.
+  it('speaks in exactly two voices, on the English model, at normal speed', () => {
+    const def = agentDefinitionFor({ ...ORG, voiceId: null }, []) as any;
+    const tts = def.conversationConfig.tts;
+    expect(tts.modelId).toBe('eleven_turbo_v2');
+    expect(tts.voiceId).toBe('KpLREcAbIIKFKpEkPEIR');
+    expect(tts.expressiveMode).toBeUndefined();
+    expect(tts.speed).toBe(1.0);
+    expect(tts.supportedVoices.map((v: any) => [v.label, v.voiceId])).toEqual([['governor', 'pAqGcXrGBThHKNv6yJnM']]);
+    expect(tts.supportedVoices[0].speed).toBe(1.0);
   });
 
   it('gives each tool a description an LLM can route on', () => {

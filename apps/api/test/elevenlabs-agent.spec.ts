@@ -403,9 +403,9 @@ describe('ElevenLabs agent provisioning', () => {
 
     it('turns on the conversation-start webhook, with the agent key, on create and on every re-sync', async () => {
       process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK = '1';
-      // An agent carrying the Governor voice, so the post-sync voice PATCH
-      // (ensureGovernorCloneStrength) actually runs — it is the request that
-      // used to switch the webhook back off.
+      // An agent carrying the Governor voice: a post-sync voice PATCH once ran
+      // only for such an agent, and it was the request that switched the
+      // webhook back off. That PATCH is gone; this keeps the case covered.
       stubWorkspace((req) => {
         if (req.method !== 'GET' || !/\/v1\/convai\/agents\/[^/]+$/.test(new URL(req.url).pathname)) return undefined;
         const agent: any = agentResponse(new URL(req.url).pathname.split('/').pop()!);
@@ -431,8 +431,8 @@ describe('ElevenLabs agent provisioning', () => {
         (r) => r.body?.platform_settings?.overrides?.enable_conversation_initiation_client_data_from_webhook === false
       );
       expect(turnedOff.map((r) => `${r.method} ${r.url}`)).toEqual([]);
-      // Proof the voice PATCH ran, so the line above checked something.
-      expect(sent.some((r) => r.method === 'PATCH' && r.body?.conversation_config?.tts?.supported_voices)).toBe(true);
+      // Proof the scan saw the agent update, so the line above checked something.
+      expect(sent.some((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'))).toBe(true);
 
       for (const [which, req] of Object.entries({ created, updated })) {
         const platform = req?.body?.platform_settings;
