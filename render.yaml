@@ -358,6 +358,13 @@ services:
       # transcripts against another workspace's secret.
       - key: ELEVENLABS_WEBHOOK_SECRET
         sync: false
+      # Leave UNSET. When "1", ElevenLabs asks this API who is calling as each
+      # call connects, so a returning caller is greeted by name. With it on,
+      # the live line refused EVERY call with "all circuits are busy" (twice),
+      # so it stays off until a single test call proves it. Takes effect at
+      # the next agent sync (Agent Provisioning -> Sync configuration).
+      - key: ELEVENLABS_CONVERSATION_START_WEBHOOK
+        sync: false
       # Set to a residency host (api.eu.residency.elevenlabs.io,
       # api.in.residency.elevenlabs.io) to keep conversation data in
       # jurisdiction. Unset uses the default US endpoint.

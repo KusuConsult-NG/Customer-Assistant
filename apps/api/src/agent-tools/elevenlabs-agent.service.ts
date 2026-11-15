@@ -799,13 +799,10 @@ export class ElevenLabsAgentService {
               supported_voices: updatedVoices,
             },
           },
-          // NOTHING under platform_settings here. This PATCH runs right after
-          // syncAgent switches the conversation-start webhook ON, and it once
-          // carried `enable_conversation_initiation_client_data_from_webhook:
-          // false` — turning it straight back off, so no call was ever looked
-          // up as it connected and every returning caller was asked for their
-          // name again. The webhook answers within CONVERSATION_START_BUDGET_MS
-          // whatever the database does, so it is not what drops a call.
+          // NOTHING under platform_settings here: whether the
+          // conversation-start webhook is on is decided in ONE place, by
+          // syncAgent (ELEVENLABS_CONVERSATION_START_WEBHOOK). This PATCH once
+          // carried its own `false`, a second switch nobody could see.
         }),
       });
     } catch {
