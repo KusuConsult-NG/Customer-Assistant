@@ -52,6 +52,7 @@ import {
 import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
+import { ElevenLabsApi } from './elevenlabs-client';
 import { CrmService } from '../crm/crm.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { ElevenLabsTakeoverService } from './elevenlabs-takeover.service';
@@ -195,7 +196,10 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     // One implementation of "move the call", shared with the console's takeover
     // button. A second would be a second thing that can silently stop moving it.
     private takeover: ElevenLabsTakeoverService,
-    private onboarding: OnboardingService
+    private onboarding: OnboardingService,
+    // The ONE place a workspace key is chosen (the tenant's own, decrypted, or
+    // the shared one only where the deployment allows it).
+    private elevenlabs: ElevenLabsApi
   ) {}
 
   onModuleInit(): void {
@@ -241,8 +245,6 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
    */
   private async rotateNextPlateauAgentPersona(organizationId: string): Promise<void> {
     if (process.env.NODE_ENV === 'test') return;
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) return;
     try {
       const [org, config] = await Promise.all([
         prisma.organization.findUnique({
@@ -251,17 +253,24 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         }),
         prisma.hostedAgentConfig.findUnique({
           where: { organizationId },
-          select: { agentId: true },
+          select: { agentId: true, apiKey: true },
         }),
       ]);
       if (!org || !config?.agentId || !isPlateauStateOrg(org)) return;
+      // The AGENCY's workspace key, not ELEVENLABS_API_KEY. This used the shared
+      // key unconditionally, so for an agency with its own workspace every
+      // rotation was refused — the agent lives in a workspace that key cannot
+      // reach — and only a warning was logged, which is why every call kept
+      // the name Nanpan. keyFor throws when there is no usable key; the catch
+      // below logs it.
+      const apiKey = this.elevenlabs.keyFor(organizationId, config.apiKey);
 
       const nextPersona = pickPlateauMalePersona();
       const nextFirstMessage = renderWelcome(org, new Date(), nextPersona);
       const nextVars = dynamicVariablesFor(org, nextPersona);
       const baseUrl = (process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io').replace(/\/+$/, '');
 
-      await fetch(`${baseUrl}/v1/convai/agents/${config.agentId}`, {
+      const res = await fetch(`${baseUrl}/v1/convai/agents/${config.agentId}`, {
         method: 'PATCH',
         headers: {
           'xi-api-key': apiKey,
@@ -276,13 +285,19 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
               },
             },
           },
-          platform_settings: {
-            overrides: {
-              enable_conversation_initiation_client_data_from_webhook: false,
-            },
-          },
+          // Nothing under platform_settings: whether the conversation-start
+          // webhook is on is decided in ONE place, syncAgent
+          // (ELEVENLABS_CONVERSATION_START_WEBHOOK). This PATCH used to force it
+          // off on every call, a second switch nobody could see.
         }),
       });
+      // Report what ElevenLabs did, not what was asked: this logged "rotated"
+      // whatever the response, so a refused key looked like a working rotation.
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '')).slice(0, 300);
+        this.log.warn(`rotate_plateau_persona_refused org=${organizationId} status=${res.status} ${detail}`);
+        return;
+      }
       this.log.log(`rotated_plateau_persona org=${organizationId} next_name=${nextPersona.name}`);
     } catch (err) {
       this.log.warn(`rotate_plateau_persona_failed org=${organizationId} err=${err instanceof Error ? err.message : String(err)}`);
