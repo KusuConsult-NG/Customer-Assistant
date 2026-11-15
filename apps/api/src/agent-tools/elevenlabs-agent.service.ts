@@ -666,9 +666,19 @@ export class ElevenLabsAgentService {
     );
     // Asked by ElevenLabs as each call connects, with the same agent key the
     // tools use — so it resolves the same tenant, by the same guard.
+    //
+    // OFF unless ELEVENLABS_CONVERSATION_START_WEBHOOK=1. With it on, the live
+    // Plateau line refused EVERY call with "all circuits are busy" — on two
+    // separate occasions, and each time switching it off restored calls. Why
+    // ElevenLabs rejects the exchange in production is not yet known (the
+    // handler answers 200 within its budget in every test), so until a real
+    // call proves it, a returning caller is recognised by lookup-customer on
+    // the agent's first turn instead. The sync sends an explicit `false`, so a
+    // re-sync is what switches a live agent's webhook off.
     const initiationWebhook = {
       url: `${baseUrl}/api/agent-tools/conversation-start`,
       authorization: fromSecret(secret.secretId),
+      enabled: process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK === '1',
     };
     const definition = agentDefinitionFor(org, orderedIds, undefined, { initiationWebhook });
 
@@ -789,13 +799,10 @@ export class ElevenLabsAgentService {
               supported_voices: updatedVoices,
             },
           },
-          // NOTHING under platform_settings here. This PATCH runs right after
-          // syncAgent switches the conversation-start webhook ON, and it once
-          // carried `enable_conversation_initiation_client_data_from_webhook:
-          // false` — turning it straight back off, so no call was ever looked
-          // up as it connected and every returning caller was asked for their
-          // name again. The webhook answers within CONVERSATION_START_BUDGET_MS
-          // whatever the database does, so it is not what drops a call.
+          // NOTHING under platform_settings here: whether the
+          // conversation-start webhook is on is decided in ONE place, by
+          // syncAgent (ELEVENLABS_CONVERSATION_START_WEBHOOK). This PATCH once
+          // carried its own `false`, a second switch nobody could see.
         }),
       });
     } catch {

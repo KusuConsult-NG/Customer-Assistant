@@ -77,6 +77,7 @@ describe('ElevenLabs agent provisioning', () => {
   afterAll(async () => {
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => {});
     global.fetch = realFetch;
+    delete process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK;
     if (realBaseUrl === undefined) delete process.env.API_BASE_URL;
     else process.env.API_BASE_URL = realBaseUrl;
     if (realApiUrl === undefined) delete process.env.API_URL;
@@ -379,7 +380,27 @@ describe('ElevenLabs agent provisioning', () => {
      * a re-sync, because the agent in production already exists and only a
      * re-sync will reach it.
      */
+    /**
+     * OFF by default. With the webhook on, the live line refused every call
+     * with "all circuits are busy". And off must be an explicit `false` on the
+     * wire — an update merges, so an absent key would leave a live agent's
+     * webhook on and a re-sync could never switch it off.
+     */
+    it('keeps the conversation-start webhook OFF, explicitly, unless the deployment opts in', async () => {
+      delete process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK;
+      stubWorkspace();
+      await service.syncAgent(orgId);
+      const created = sent.find((r) => r.method === 'POST' && r.url.includes('/v1/convai/agents/create'));
+      sent = [];
+      await service.syncAgent(orgId);
+      const updated = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
+      for (const req of [created, updated]) {
+        expect(req?.body?.platform_settings?.overrides?.enable_conversation_initiation_client_data_from_webhook).toBe(false);
+      }
+    });
+
     it('turns on the conversation-start webhook, with the agent key, on create and on every re-sync', async () => {
+      process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK = '1';
       // An agent carrying the Governor voice, so the post-sync voice PATCH
       // (ensureGovernorCloneStrength) actually runs — it is the request that
       // used to switch the webhook back off.
