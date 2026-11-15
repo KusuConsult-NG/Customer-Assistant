@@ -77,9 +77,10 @@
     },
     "rawLocation": "College of Arts, Science and Technology (CAST)  Kurgwi, P.M.B, 003, Shendam, Qua’an-Pan LGA, Plateau State, Nigeria.",
     "currentProjects": [
-      "Direct Fertilizer Subsidy Distribution: Direct ward-level distribution of subsidized inorganic and organic fertilizers, certified crop seeds, and crop protection chemicals to smallholder farmers.",
-      "Irish Potato Value Chain & Blight Control Project: Tissue culture seed multiplication and modern cold storage facilities in Mangu, Bokkos, and Barkin Ladi to combat potato late blight disease.",
-      "Agricultural Mechanization & Tractor Leasing Scheme: Revitalizing tractor hiring units across the three senatorial districts to enhance mechanized agriculture."
+      "Direct Fertilizer & Farm Input Intervention: Distribution of over 200 truckloads (more than 120,000 bags) of subsidized NPK and Urea fertilizers, improved maize and rice seedlings, and agro-chemicals directly to registered farmers across all 17 LGAs.",
+      "BARI & Resettlement Dry-Season/Wet-Season Farming Initiative: Cultivation of over 6,000+ hectares of abandoned and conflict-affected farmlands across Barkin Ladi, Riyom, Bokkos, Mangu, and Bassa in partnership with ASTC and PADP, providing free land preparation, inputs, and security cover for displaced farmers.",
+      "Irish Potato Value Chain & Tissue Culture Multiplication: Tissue culture seed multiplication, late-blight control, and modern cold-storage/packhouse facilities in Bokkos, Mangu, and Barkin Ladi.",
+      "ASTC Agricultural Mechanization & Tractor Fleet Revival: Acquisition and refurbishment of heavy-duty tractors, harvesters, and planters under the Agricultural Services and Training Centre (ASTC) Vom/Kassa to provide subsidized tractor leasing across the 3 senatorial zones."
     ]
   },
   {
@@ -154,7 +155,12 @@
       "title": "Hon.",
       "position": "Commissioner"
     },
-    "rawLocation": "Cabinet office complex, J.D Gomwalk Secretariat, Jos. Plateau State. "
+    "rawLocation": "Cabinet office complex, J.D Gomwalk Secretariat, Jos. Plateau State. ",
+    "currentProjects": [
+      "2024 'Budget of New Beginnings' (₦314.86 Billion) & 2025 'Budget of Sustainability and Economic Transformation' (₦468.49 Billion): Transitioning Plateau State to a 60.9% capital-expenditure-driven budget focused on infrastructure, agriculture, digital economy, and human capital.",
+      "State Fiscal Transparency, Accountability and Sustainability (SFTAS) & SABER Reforms: Implementation of World Bank-supported State Action on Business Enabling Reforms (SABER) and Citizens' Participatory Budget townhalls across all 3 senatorial districts.",
+      "Medium-Term Sector Strategy (MTSS 2024–2027) & Automated Budget Monitoring Portal: Digital tracking of capital project releases, contractor milestones, and donor counterpart funds."
+    ]
   },
   {
     "name": "Ministry of Commerce and Industry",
@@ -225,7 +231,12 @@
       "title": "Mr.",
       "position": "Commissioner for Commerce and Industry"
     },
-    "rawLocation": "Ministry of Commerce and Industry Plateau State, Private Mail Bag 2059 JD Gomwalk Secretariat, Jos. Plateau State"
+    "rawLocation": "Ministry of Commerce and Industry Plateau State, Private Mail Bag 2059 JD Gomwalk Secretariat, Jos. Plateau State",
+    "currentProjects": [
+      "Jos Main Market (Terminus) Redevelopment & Commercial Hub Revival: Phased urban renewal and PPP-driven reconstruction of the historic Jos Main Market and surrounding commercial corridors to restore Plateau as North-Central Nigeria's trade capital.",
+      "Jos Inland Container Dry Port (Heipang) & Special Agro-Industrial Processing Zone (SAPZ): Fast-tracking completion of the Heipang Inland Dry Port and African Development Bank (AfDB)-backed Special Agro-Industrial Processing Zone for export of Irish potatoes, vegetables, and solid minerals.",
+      "One-Stop Investment & Ease of Doing Business Desk: Streamlining business premises registration, cooperative society digitization, and MSME trade fair exhibitions."
+    ]
   },
   {
     "name": "Ministry of Education",
@@ -313,7 +324,12 @@
       "title": "Dr. (Mrs.)",
       "position": "Commissioner"
     },
-    "rawLocation": "Joseph Gomwalk Secretariat, Jos"
+    "rawLocation": "Joseph Gomwalk Secretariat, Jos",
+    "currentProjects": [
+      "State-Wide Secondary School Rehabilitation & Model Science Schools Upgrade: Renovation of dilapidated classrooms, hostels, and science/computer laboratories across government secondary schools in all 17 LGAs.",
+      "Merit-Based Teacher Recruitment & Capacity Training: Recruitment and digital pedagogical training of thousands of qualified secondary and basic education teachers to close the rural teacher gap.",
+      "Adolescent Girls Initiative for Learning and Empowerment (AGILE): World Bank-assisted project upgrading secondary school infrastructure, WASH facilities, digital literacy labs, and conditional cash transfers to keep girls in school across Plateau State."
+    ]
   },
   {
     "name": "Ministry of Environment, Climate Change and Mineral Development",
@@ -388,7 +404,12 @@
       "title": "Mr ",
       "position": "Commissioner"
     },
-    "rawLocation": "Jos"
+    "rawLocation": "Jos",
+    "currentProjects": [
+      "Agro-Climatic Resilience in Semi-Arid Landscapes (ACReSAL): World Bank-backed multi-million-dollar watershed management, gully erosion control, afforestation, and climate-smart agriculture project across degraded sites in Jos North, Jos South, Barkin Ladi, Mangu, Shendam, and Wase.",
+      "Executive Order on Illegal Mining Suspension & Artisanal Miners Formalization: Reorganizing mining cooperatives, curbing environmental degradation and insecurity around mining sites, and establishing mineral buying centers so Plateau benefits from its tin, columbite, lithium, and lead-zinc endowments.",
+      "Clean & Green Plateau Tree Planting & Urban Beautification Campaign: Planting of over 500,000 economic and ornamental trees across metropolitan Jos-Bukuru and erosion-prone LGAs."
+    ]
   },
   {
     "name": "Ministry of Finance",
@@ -460,7 +481,12 @@
       "email": "ag.ictliaison@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "1999 Constitution of the Federal Republic of Nigeria (as amended) and Plateau State Public Finance Management Law."
+    "legalFramework": "1999 Constitution of the Federal Republic of Nigeria (as amended) and Plateau State Public Finance Management Law.",
+    "currentProjects": [
+      "Clearing of Multi-Year Civil Service Salary, Pension & Gratuity Arrears: Liquidation of inherited 4-to-6-month salary backlogs, restoration of prompt monthly salary payments before the 25th of every month, and phased clearing of long-standing gratuity/pension arrears.",
+      "₦70,000 New National Minimum Wage Implementation: Full implementation of the new ₦70,000 minimum wage for Plateau State civil servants following landmark agreement with organized labour.",
+      "Treasury Single Account (TSA) & Integrated Financial Management Information System (IFMIS): Blocking revenue leakages, centralizing state receipts, and digitizing payroll verification."
+    ]
   },
   {
     "name": "Ministry of Health",
@@ -548,7 +574,12 @@
       "title": "DR. ",
       "position": "COMMISSIONER FOR HEALTH"
     },
-    "rawLocation": "Joseph Gomwalk Secretariat, Ministry of Health Headquaters, PMB 2014, Jos"
+    "rawLocation": "Joseph Gomwalk Secretariat, Ministry of Health Headquaters, PMB 2014, Jos",
+    "currentProjects": [
+      "General Hospitals Comprehensive Upgrade & Re-equipping: Renovation and equipping of zonal General Hospitals in Barkin Ladi, Mangu, Pankshin, Shendam, Langtang, and Bukuru with solar power, digital X-ray, ultrasound, and theatre equipment.",
+      "Plateau State Pharma-Grade Central Medical Warehouse: Commissioning of a modern, temperature-controlled central pharma-grade warehouse in Jos (managed with PSDMCMA) to guarantee uninterrupted supply of genuine, affordable medicines.",
+      "Health Workforce Retention & CONMESS/CONHESS Welfare Implementation: Improved hazard and welfare packages for doctors, nurses, and midwives, plus accreditation restoration at state health training institutions."
+    ]
   },
   {
     "name": "Ministry of Housing and Urban Development",
@@ -608,7 +639,12 @@
       "email": "housing@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Urban and Regional Planning Law and National Housing Policy."
+    "legalFramework": "Plateau State Urban and Regional Planning Law and National Housing Policy.",
+    "currentProjects": [
+      "New Jos Urban Pocket Layouts & Civil Servants Affordable Housing Scheme: Development of serviced residential layouts and PPP mass housing estates for civil servants and low-to-middle-income earners in Jos South, Bassa, and Barkin Ladi.",
+      "Government Buildings & Liaison Offices Rehabilitation: Renovation of the J.D. Gomwalk State Secretariat Complex, Government House Rayfield facilities, and the Plateau State Liaison Office in Abuja.",
+      "Urban Slum Upgrading & Public Lighting Project: Installation of solar-powered streetlights and drainage networks across high-density neighborhoods in Greater Jos."
+    ]
   },
   {
     "name": "Ministry of Humanitarian Affairs and Poverty Alleviation",
@@ -660,7 +696,11 @@
       "email": "humanitarian@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Executive Order of the Governor of Plateau State establishing the Ministry."
+    "legalFramework": "Executive Order of the Governor of Plateau State establishing the Ministry.",
+    "currentProjects": [
+      "Safe Return, Rehabilitation & Resettlement of Internally Displaced Persons (IDPs): Coordinated humanitarian relief, building materials support, trauma counseling, and security-backed return of displaced families in Bokkos, Mangu, Barkin Ladi, Riyom, and Bassa.",
+      "Plateau Social Register Expansion & Conditional Cash Transfers: Expanding the verified State Social Register of vulnerable households for federal/state palliative distributions, livelihood grants, and food security interventions."
+    ]
   },
   {
     "name": "Ministry of Information and Communication",
@@ -745,7 +785,12 @@
       "title": "Rt. Hon ",
       "position": "Commissioner"
     },
-    "rawLocation": "Plateau"
+    "rawLocation": "Plateau",
+    "currentProjects": [
+      "Plateau State Government Citizen Contact Centre (Nanpan AI Helpline — 08000000456): Launch of Nigeria's first multilingual AI-enabled State Citizen Contact Centre & Public Inquiry Desk handling citizen complaints, emergency routing, and MDA inquiries in English, Hausa, Pidgin, Yoruba, Igbo, and Plateau indigenous languages.",
+      "PRTVC & State Media Digital Broadcast Modernization: Upgrading transmitters, studio equipment, and digital terrestrial broadcasting at Plateau Radio Television Corporation (Rayfield & Bukuru) and reviving The Nigeria Standard newspaper.",
+      "Regular Ministerial Press Briefings & Citizen Townhall Series: Open-government accountability briefings detailing MDA scorecards under 'The Time is Now' administration."
+    ]
   },
   {
     "name": "Ministry of Justice",
@@ -822,7 +867,12 @@
       "title": "Bar",
       "position": "Attorney-General and Commissioner Of Justice"
     },
-    "rawLocation": "Bepco Building, Joseph Gomwalk State Secretariat, Jos, Plateau State"
+    "rawLocation": "Bepco Building, Joseph Gomwalk State Secretariat, Jos, Plateau State",
+    "currentProjects": [
+      "Administration of Criminal Justice Law (ACJL) & E-Justice Digitization: Fast-tracking criminal trials, decongesting correctional centers through prerogative of mercy and bail reviews, and digitizing case records.",
+      "Citizens' Rights & Alternative Dispute Resolution (ADR) Multi-Door Courthouse: Expanding free legal aid for indigent citizens and commercial/community mediation services in Jos.",
+      "Land Swap & Anti-Land-Grabbing Legal Enforcement: Prosecuting illegal land grabbing and enforcing state land administration laws."
+    ]
   },
   {
     "name": "Ministry of Lands, Survey, and Town Planning",
@@ -899,7 +949,8 @@
     "rawLocation": "Ministry of Agriculture and Rural Development, Joseph Gomwalk Secretariat, P.M.B 2050, Jos, Plateau State",
     "currentProjects": [
       "PLAGIS Digital Land Administration Reform: Plateau State Geographic Information System digitalization of all cadastral maps, automated land title searches, electronic land registries, and accelerated issuance of electronic Certificates of Occupancy (e-C of O).",
-      "State-Wide Aerial Cadastral Mapping: High-resolution GIS aerial mapping of urban and rural land parcels to resolve boundary disputes and enhance land documentation."
+      "State-Wide Aerial Cadastral Mapping: High-resolution GIS aerial mapping of urban and rural land parcels to resolve boundary disputes and enhance land documentation.",
+      "50% Waiver & Recertification Drive on Land Title Regularization: Special governor's concession enabling property owners to regularize titles and obtain digital C of O at discounted rates."
     ]
   },
   {
@@ -961,7 +1012,12 @@
       "email": "livestock@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Livestock and Animal Health Laws, and Executive Restructuring Order 2025."
+    "legalFramework": "Plateau State Livestock and Animal Health Laws, and Executive Restructuring Order 2025.",
+    "currentProjects": [
+      "Creation of Dedicated Ministry of Livestock Development, Veterinary Services & Fisheries (2025): Institutional reform by Governor Mutfwang to unlock Plateau's livestock, dairy, poultry, and aquaculture economy and align with the Federal Ministry of Livestock Development.",
+      "Wase Grazing Reserve & Modern Ranching Transformation: Developing modern pasture, veterinary clinics, and water earth-dams to transition from open grazing to ranching and peaceful livestock production.",
+      "Panyam Fish Farm & NVRI Vom Vaccine Cold-Chain Partnership: Revitalization of Panyam Fish Farm in Mangu and statewide mass vaccination of cattle, sheep, goats, and poultry against transboundary animal diseases."
+    ]
   },
   {
     "name": "Ministry for Local Government and Chieftaincy Affairs",
@@ -1029,7 +1085,12 @@
       "title": "Hon.",
       "position": "Commissioner"
     },
-    "rawLocation": "No. 2 Richard Road, Behind Leventist Motors P.M.B. 2138, Jos, Plateau State"
+    "rawLocation": "No. 2 Richard Road, Behind Leventist Motors P.M.B. 2138, Jos, Plateau State",
+    "currentProjects": [
+      "Conduct of Peaceful, Democratic Elections Across All 17 LGAs (October 2024): Restoration of full democratically elected Local Government Chairmen and Councillors across all 17 LGAs.",
+      "LGA Financial Autonomy & Joint Account Transparency Projects: Coordinating rural market upgrades, primary healthcare counterpart funding, and traditional council welfare across all 17 LGAs.",
+      "Graders & Earth-Moving Equipment Acquisition for Rural LGA Roads: Procurement of motor graders and rollers for grading rural feeder roads across the 3 senatorial zones."
+    ]
   },
   {
     "name": "Ministry of Science, Technology and Innovation",
@@ -1180,7 +1241,12 @@
       "title": "HAJ.",
       "position": "Commissioner, Ministry of Tourism, Culture and Hospitality"
     },
-    "rawLocation": "Ministry of Tourism, Culture and Hospitality  First floor, Joseph Gomwalk Secretariat,  Jos"
+    "rawLocation": "Ministry of Tourism, Culture and Hospitality  First floor, Joseph Gomwalk Secretariat,  Jos",
+    "currentProjects": [
+      "Hill Station Hotel & Plateau Hotel PPP Revitalization: Landmark concession and redevelopment partnerships with premier hospitality investors to rebuild Hill Station Hotel and Plateau Hotel into 5-star international hospitality hubs.",
+      "Jos Wildlife Park & Pandam Game Reserve Eco-Tourism Rehabilitation: Upgrading perimeter fencing, safari tracks, animal enclosures, and visitor chalets at Jos Wildlife Park and Pandam Wildlife Park.",
+      "Plateau Cultural Carnival & Heritage Festival Revival: Promoting Nzem Berom, Puuskat Mwaghavul, Pusdung Ngas, Bit Goemai, Ilumutarok, and domestic tourism."
+    ]
   },
   {
     "name": "Ministry of Transport",
@@ -1247,7 +1313,12 @@
       "title": "Hon.",
       "position": "Commssioner"
     },
-    "rawLocation": "Joseph Gomwalk Secretariat Complex, Jos Plateau State, Nigeria"
+    "rawLocation": "Joseph Gomwalk Secretariat Complex, Jos Plateau State, Nigeria",
+    "currentProjects": [
+      "Jos–Bukuru Commuter Rail Line Revival: Rehabilitation and resumption of passenger train services along the Jos–Bukuru–Kuru rail corridor in partnership with the Nigerian Railway Corporation (NRC) to provide affordable mass transit.",
+      "Yakubu Gowon Airport (Heipang) Upgrade & Abuja–Jos Scheduled Flights: Partnership with ValueJet Airlines and FAAN to restore regular commercial flights between Abuja and Jos (in addition to Lagos–Jos routes) and upgrade airport fire/navigational infrastructure into an international agro-cargo hub.",
+      "Tin City Metro Bus Rapid Transit (BRT) Expansion: Supervision of the 15-bus luxury Tin City Metro fleet and smart-card terminal infrastructure across Greater Jos."
+    ]
   },
   {
     "name": "Ministry of Water Resources and Energy Development",
@@ -1319,7 +1390,12 @@
       "email": "water@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Water and Sanitation Law and Plateau State Energy Corporation Edict."
+    "legalFramework": "Plateau State Water and Sanitation Law and Plateau State Energy Corporation Edict.",
+    "currentProjects": [
+      "SURWASH (Sustainable Urban and Rural Water Supply, Sanitation and Hygiene): World Bank-supported program rehabilitating urban water treatment works and expanding piped water connections in Jos-Bukuru and semi-urban LGA headquarters.",
+      "Assop Hydro & State Clean Energy Transition Policy: Utilizing the new Electricity Act to develop mini-hydropower and solar independent power projects (IPPs) across Plateau State.",
+      "State-Wide Dam Desilting & Irrigation Dam Repairs: Rehabilitation of Yakubu Gowon Dam, Lamingo Dam, Shen Dam, and Langtang Dam."
+    ]
   },
   {
     "name": "Ministry of Women Affairs and Social Development",
@@ -1387,7 +1463,12 @@
       "title": "Hon",
       "position": "Commissioner"
     },
-    "rawLocation": "Joseph Gomwalk Secretariat, PMB 2064, Jos Plateau State"
+    "rawLocation": "Joseph Gomwalk Secretariat, PMB 2064, Jos Plateau State",
+    "currentProjects": [
+      "Nigeria for Women Project (NFWP) Scale-Up: World Bank-supported women's affinity groups, financial inclusion, and livelihood grants empowering tens of thousands of rural and urban women across Plateau State.",
+      "Gender-Based Violence (GBV) One-Stop Sexual Assault Referral Centres (SARCs): Upgrading trauma shelters, psychosocial support, and vocational rehabilitation for survivors of gender violence and conflict.",
+      "Orphans, Widows & Persons With Disabilities (PWDs) Empowerment: Distribution of assistive devices, starter packs, and micro-grants to widows and PWDs across the 17 LGAs."
+    ]
   },
   {
     "name": "Ministry of Works",
@@ -1459,8 +1540,9 @@
     },
     "legalFramework": "Plateau State Public Works Law and Highways Act.",
     "currentProjects": [
-      "Jos-Bukuru Urban Road Dualization & Resurfacing: Upgrading and asphalt resurfacing of major transit arteries, pedestrian walkways, and bridge approaches within the Jos-Bukuru metropolis.",
-      "Rural Access and Agricultural Marketing Project (RAAMP): Constructing all-weather feeder roads connecting rural agricultural farming communities to urban commercial hubs across the 17 LGAs."
+      "Metropolitan Jos–Bukuru Road Dualization & Urban Renewal Network: Rehabilitation and asphalt overlay of over 35+ key urban roads across Jos North and Jos South (including Tudun Wada–Kabong, Rukuba Road spurs, Hwolshe, Rayfield, Bukuru Express service lanes, Apata, Jenta, and Secretariat links).",
+      "Strategic Inter-LGA Arterial Roads & Bridges Construction: Ongoing construction and rehabilitation of critical rural-urban highways and bridges across Riyom, Barkin Ladi, Mangu, Bokkos, Pankshin, Kanke, Shendam, Langtang, Mikang, Qua'an Pan, and Wase.",
+      "Rural Access and Agricultural Marketing Project (RAAMP): Constructing all-weather feeder roads and river crossings connecting agricultural clusters to markets across the 17 LGAs."
     ]
   },
   {
@@ -1543,7 +1625,12 @@
       "title": "Mr.",
       "position": "Commissioner of Youth and Sports Development"
     },
-    "rawLocation": "J. D Gomwalk Secretariat, Jos Plateau State"
+    "rawLocation": "J. D Gomwalk Secretariat, Jos Plateau State",
+    "currentProjects": [
+      "Zaria Road New Jos International Stadium Completion Drive: Phased engineering work and pitch/spectator upgrades at the Zaria Road Stadium and Rwang Pam Township Stadium.",
+      "Plateau United FC & Mighty Jets FC Revitalization & Grassroots Sports Talent Hunt: Sponsorship of state football clubs, Governor's Cup tournament across 17 LGAs, and national marathon hosting in Jos.",
+      "Plateau Youth Artisanal, Agro-Preneurship & Digital Skills Bootcamp: Training and equipping over 5,000 youths in solar installation, modern carpentry, welding, fashion, and ICT."
+    ]
   },
   {
     "name": "Office of the Secretary to the Government of the State",
@@ -1612,7 +1699,12 @@
       "title": "Arc.",
       "position": "Secretary to the Government of the State"
     },
-    "rawLocation": "Old Government House, Fwavei, Rayfield Jos"
+    "rawLocation": "Old Government House, Fwavei, Rayfield Jos",
+    "currentProjects": [
+      "Inter-Agency Security Coordination & Operation Rainbow Reinforcement: Central coordination of military, police, DSS, NSCDC, and Operation Rainbow deployments, early-warning response, and logistics support across all 17 LGAs.",
+      "Executive Orders Implementation & Policy Tracking Unit: Enforcing Executive Order 003 (urban traffic, illegal structures, and sanitation sanity in Greater Jos) and monitoring cabinet performance.",
+      "Biometric Verification & Christian/Muslim Pilgrims Welfare Reform: Streamlining state sponsorship and welfare operations for holy pilgrimages."
+    ]
   },
   {
     "name": "Office of the Head of Civil Service",
@@ -1666,7 +1758,12 @@
       "email": "ohcs@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Section 206 of the 1999 Constitution of the Federal Republic of Nigeria."
+    "legalFramework": "Section 206 of the 1999 Constitution of the Federal Republic of Nigeria.",
+    "currentProjects": [
+      "Civil Service Digital Transformation & E-Registry: Full computerization of civil service personnel records, promotion examinations, and digital work emails in partnership with PICTDA.",
+      "Restoration of Civil Service Training, Promotions & Leave Grants: Clearing backlogs of staff promotions, reopening the Civil Service Training Centre, and implementing the ₦70,000 minimum wage structure.",
+      "Secretariat Solar Power & Workspace Modernization: Upgrading offices across the J.D. Gomwalk State Secretariat for higher productivity."
+    ]
   },
   {
     "name": "Office of the Accountant General",
@@ -1723,7 +1820,11 @@
       "title": "Mrs ",
       "position": "Accountant General"
     },
-    "rawLocation": "Ministry of Finance, JD Gomwalk Secretariate, Jos, Plateau state"
+    "rawLocation": "Ministry of Finance, JD Gomwalk Secretariate, Jos, Plateau state",
+    "currentProjects": [
+      "State Integrated Financial Management Information System (SIFMIS): Real-time electronic treasury operations, automated warrant releases, and biometric pension/salary payment validation.",
+      "IPSAS Accrual Accounting Compliance & Timely Audited Financial Statements: Publication of transparent quarterly budget execution reports and annual audited state accounts."
+    ]
   },
   {
     "name": "Plateau State Audit Department (Office of the State Auditor General)",
@@ -1780,7 +1881,11 @@
       "title": "Mrs.",
       "position": "Auditor General"
     },
-    "rawLocation": "JD Gomwalk Secretariat, Jos"
+    "rawLocation": "JD Gomwalk Secretariat, Jos",
+    "currentProjects": [
+      "Performance & Value-for-Money Capital Project Audits: Physical verification and forensic auditing of state capital projects across all 17 LGAs to ensure contractors deliver to specification.",
+      "Digital Audit Management System: Transitioning state audit workflows to paperless electronic working papers."
+    ]
   },
   {
     "name": "Jos Metropolitan Development Board",
@@ -1848,9 +1953,9 @@
     },
     "rawLocation": "no. 123",
     "currentProjects": [
+      "Jos Main Market (Terminus) Urban Renewal & Traffic Decongestion (Executive Order 003): Clearing illegal roadside shanties, restoring pedestrian walkways, and reorganizing Terminus, Ahmadu Bello Way, and Bukuru commercial corridors.",
       "Greater Jos Master Plan GIS Revision: Digital zoning and urban master plan overhaul to manage urban growth, protect green areas, and guide sustainable metropolitan development.",
-      "E-Permit Digital Building Approval Portal: Online portal for submitting, vetting, and issuing building approvals, structural safety certificates, and architectural clearances.",
-      "Urban Renewal & Metropolitan Sanitation Enforcement: Street lighting restoration, clearing unauthorized roadside setbacks, modernizing traffic intersections, and urban beautification in Jos-Bukuru."
+      "E-Permit Digital Building Approval Portal: Online portal for submitting, vetting, and issuing building approvals within 14 days, alongside structural integrity audits to prevent building collapse."
     ]
   },
   {
@@ -1916,8 +2021,8 @@
     "currentProjects": [
       "Informal Sector Universal Health Coverage Expansion: Massive statewide enrollment drives enrolling artisans, market traders, farmers, and self-employed individuals at ₦12,000/year per person or ₦50,000/year for families of 6.",
       "Retiree Free Healthcare Scheme: Providing fully subsidized medical care coverage for state and local government retirees under Governor Caleb Mutfwang's social welfare mandate.",
-      "Basic Health Care Provision Fund (BHCPF) Equity Plan: Free healthcare access for vulnerable groups (pregnant women, children under 5, elderly 65+, and persons living with disabilities).",
-      "Digital Health Management Information System: Hospital biometric verification, automated provider claims processing, and electronic patient authentication across accredited healthcare centers."
+      "Basic Health Care Provision Fund (BHCPF) & Vulnerable Group Equity Plan: 100% free healthcare coverage for over 100,000+ vulnerable citizens (pregnant women, children under 5, elderly 65+, IDPs, and persons living with disabilities).",
+      "Digital Health Management Information System & Biometric Verification: Automated provider claims processing and electronic patient authentication across accredited public and private hospitals."
     ]
   },
   {
@@ -1978,7 +2083,12 @@
       "title": "Hon",
       "position": "Commissioner of MECCMD"
     },
-    "rawLocation": "JD Gomwalk Secretariat. Jos Plateau"
+    "rawLocation": "JD Gomwalk Secretariat. Jos Plateau",
+    "currentProjects": [
+      "'Keep Plateau Clean' Metropolitan Waste Evacuation Fleet Upgrade: Acquisition of modern compactor trucks, roll-off bins, and motorized street sweepers clearing decades-old refuse dumps across Jos and Bukuru.",
+      "Waste-to-Wealth Recycling & Plastic Recovery Initiative: Establishing material recovery facilities and organic compost conversion plants.",
+      "Monthly Environmental Sanitation & Drainage Desilting Campaign: Clearing blocked stormwater drains ahead of rainy seasons to prevent urban flash flooding."
+    ]
   },
   {
     "name": "Plateau Information Communication and Technology Development Agency",
@@ -2039,13 +2149,13 @@
     },
     "rawLocation": "New Government house Little Rayfield Jos, Plateau State",
     "currentProjects": [
-      "State-Wide Broadband Fibre Infrastructure Expansion: Expanding high-speed fibre-optic coverage from 900 km to 2,500 km across Plateau State in a public-private partnership with Solutron Eastern Fibre Limited, providing a high-speed digital backbone for e-governance, telemedicine, smart security, and traffic management.",
-      "Code Plateau Fellowship: Flagship human capital development program operating from the Code Plateau Campus in Jos, providing intensive, tuition-free training in full-stack software development, UI/UX design, data science, and digital marketing. Includes 'Code Plateau on Wheels' for rural LGA digital outreach and 'Code for Plateau' talent placements within state MDAs.",
-      "Federal 3 Million Technical Talents (3MTT) Partnership: Partnering with the Federal Ministry of Communications, Innovation & Digital Economy to train thousands of Plateau residents in cybersecurity, AI, cloud computing, data science, and software engineering with prioritized female participation.",
-      "LGA Computer-Based Test (CBT) & Grassroots Innovation Centres: Establishing modern digital examination and innovation hubs across Plateau State's 17 Local Government Areas (including the Qua'an Pan Innovation Hub, Murtala Mohammed House 6th Floor Tech Hub, and regional training centers).",
-      "Government E-Governance & Data-Driven Digital Migration: Digitizing school management systems, automating civil service payroll and biometric verification, digitalizing judiciary case files, and provisioning secure official email addresses and subdomains on plateaustate.gov.ng for all MDAs.",
-      "ICT Procurement Technical Clearance & Vendor Registry: Enforcing mandatory technical review and compliance clearance for all government hardware and software procurement across state MDAs, ensuring IT standards, cost efficiency, and priority patronage for local tech enterprises.",
-      "Silicon Plateau & Tech Ecosystem Collaboration: Organizing the Plateau State Tech Summit and partnering with NITDA, World Bank, Plateau Association of Tech Companies (PLATEC), Nigeria Computer Society (NCS), and private tech hubs (nHub) to attract global venture funding and tech outsourcing to Jos."
+      "State-Wide Broadband Fibre Infrastructure Expansion: Expanding high-speed fibre-optic coverage from 900 km to 2,500 km across Plateau State in a public-private partnership with Solutron Eastern Fibre Limited.",
+      "Code Plateau Fellowship (6.0 & Code Plateau on Wheels): Flagship tuition-free software engineering, AI, UI/UX, data science, and cybersecurity academy in Jos with mobile digital outreach to rural LGAs.",
+      "Federal 3 Million Technical Talents (3MTT) Partnership: Training thousands of Plateau youths in software development, cloud computing, and AI.",
+      "LGA Computer-Based Test (CBT) & Grassroots Innovation Centres: Establishing modern digital examination and innovation hubs across Plateau State's 17 LGAs (including Qua'an Pan Innovation Hub and Murtala Mohammed House Tech Hub).",
+      "Government E-Governance & Data-Driven Digital Migration: Digitizing school management, civil service payroll, judiciary files, and official `plateaustate.gov.ng` MDA portals.",
+      "ICT Procurement Technical Clearance & Vendor Registry: Enforcing IT standards and local tech patronage across state MDAs.",
+      "Silicon Plateau & Tech Ecosystem Collaboration: Hosting the Plateau State Tech Summit and partnering with NITDA, World Bank, PLATEC, and nHub."
     ]
   },
   {
@@ -2107,8 +2217,8 @@
     },
     "rawLocation": "NO 6 BANK ROAD, P.M.B. 2061, JOS, PLATEAU STATE",
     "currentProjects": [
-      "Central Billing System (CBS) & Automated Tax Clearance Certificate (e-TCC): Fully automated taxpayer self-service portal enabling online tax filing, instant electronic receipts, and automated tax clearance verification.",
-      "Harmonized Informal Sector Revenue Framework: Digital ticketing and single-point collection system eliminating duplicate taxes for market traders, artisans, and transport operators across the 17 LGAs."
+      "Central Billing System (CBS) & Automated Tax Clearance Certificate (e-TCC): Fully automated taxpayer self-service portal (`psirs.gov.ng`) enabling online tax filing, instant electronic receipts, and e-TCC verification—growing Plateau's IGR from ~₦15B to over ₦38B–₦62B+.",
+      "Harmonized Informal Sector Revenue & Single-Haulage Ticketing: Digital POS/USSD ticketing eliminating multiple taxation and illegal roadblocks across all 17 LGAs."
     ]
   },
   {
@@ -2158,7 +2268,11 @@
       "email": "info@plateaupeacebuilding.org",
       "website": "https://plateaupeacebuilding.org"
     },
-    "legalFramework": "Plateau State Peace Building Agency Law 2016."
+    "legalFramework": "Plateau State Peace Building Agency Law 2016.",
+    "currentProjects": [
+      "Early Warning and Early Response (EWER) Situation Room Upgrade: 24/7 digital conflict-monitoring desk tracking community tensions across all 17 LGAs and deploying rapid mediation teams.",
+      "Inter-Ethnic & Farmer-Herder Peace Dialogues: Community peace accords and trauma-healing workshops in Bokkos, Mangu, Barkin Ladi, Riyom, Bassa, and Wase."
+    ]
   },
   {
     "name": "Plateau State Emergency Management Agency",
@@ -2216,7 +2330,11 @@
       "title": "Mr.",
       "position": "Executive Secretary"
     },
-    "rawLocation": "Ground floor, Ministry of Commerce and Industry Complex, JD Gomwalk Secretariat, Jos, Plateau State."
+    "rawLocation": "Ground floor, Ministry of Commerce and Industry Complex, JD Gomwalk Secretariat, Jos, Plateau State.",
+    "currentProjects": [
+      "IDP Camp Humanitarian Relief & Resettlement Logistics: Distribution of food, mattresses, roofing sheets, cement, and medical supplies to displaced persons in Mangu, Bokkos, Barkin Ladi, and Riyom.",
+      "Flood Early-Warning & Disaster Rapid Response Teams: Pre-positioning relief materials and search-and-rescue equipment across flood-prone lowland LGAs (Shendam, Langtang South, Wase, Qua'an Pan, Kanam)."
+    ]
   },
   {
     "name": "Plateau State Drugs and Medical Commodities Management Agency",
@@ -2275,8 +2393,8 @@
     },
     "rawLocation": "NO. 69 Murtala Mohammed Way, Jos",
     "currentProjects": [
-      "Central Medical Commodities Supply Chain Modernization: Automated logistics and inventory tracking system connecting central warehouses to all state general hospitals and primary health facilities, preventing medicine stockouts.",
-      "Anti-Counterfeit Drug Testing & Quality Assurance Laboratory: Rapid testing and forensic batch verification of pharmaceuticals distributed in Plateau State."
+      "Commissioning of Pharma-Grade Central Medical Commodities Warehouse: World-class temperature-regulated central drug store in Jos ensuring 24/7 availability of genuine, low-cost essential medicines across state facilities.",
+      "Central Medical Commodities Supply Chain Modernization & Anti-Counterfeit Lab: Automated inventory tracking from central warehouse to general hospitals and PHCs, plus forensic quality testing."
     ]
   },
   {
@@ -2334,7 +2452,11 @@
       "title": "Mr.",
       "position": "DIRECTOR GENERAL"
     },
-    "rawLocation": "Plot 760 Liberty Boulevard Beside Nigerian Film Corporation Jos"
+    "rawLocation": "Plot 760 Liberty Boulevard Beside Nigerian Film Corporation Jos",
+    "currentProjects": [
+      "Plateau CARES (NG-CARES Result Area 3) MSME Grants: Disbursement of operational support grants, IT enhancement grants, and soft loans to thousands of micro and small enterprises across all 17 LGAs.",
+      "One-LGA-One-Product Industrial Clusters & Packaging Support: NAFDAC/SON certification assistance and modern packaging support for local processors of acha, Irish potato chips, coffee, honey, and leather."
+    ]
   },
   {
     "name": "Plateau Express Services Group LTD",
@@ -2395,8 +2517,8 @@
     },
     "rawLocation": "Plateau Express Services Group LTD  No. 36 Murtala Mohammed way, Jos",
     "currentProjects": [
-      "Tin City Metro Bus Transit Modernization: Deployment of 15 German-engineered energy-efficient metro buses operating along 8 major Jos-Bukuru corridors with automated digital smart card ticketing.",
-      "Plateau Riders Interstate Fleet Modernization: Fleet expansion with new air-conditioned passenger buses, online seat reservations, and digitized logistics courier delivery."
+      "Tin City Metro Bus Transit Modernization: Deployment of 15 German-engineered MAN/Neoplan energy-efficient metro buses operating along 8 major Jos-Bukuru corridors with automated NFC smart-card ticketing (over 10,000+ daily passengers at subsidized ₦200 fare).",
+      "Plateau Riders Interstate Fleet Modernization & Terminal Upgrade: Acquisition of new air-conditioned interstate buses, digitized manifest/ticketing, and terminal renovation in Jos and Abuja."
     ]
   },
   {
@@ -2454,7 +2576,11 @@
       "title": "Mrs",
       "position": "Acting Chairperson"
     },
-    "rawLocation": "Jos"
+    "rawLocation": "Jos",
+    "currentProjects": [
+      "24/7 Gender-Based Violence (GBV) Rapid Response & Legal Prosecution Desk: Toll-free reporting, survivor shelter placement, and prosecution of domestic and sexual violence cases under the VAPP Law.",
+      "Women in Governance & Affirmative Action Advocacy: Community sensitization across 17 LGAs on women's inheritance rights, girl-child education, and political participation."
+    ]
   },
   {
     "name": "Plateau State Scholarship Board",
@@ -2511,7 +2637,11 @@
       "title": "Mrs",
       "position": "Executive Secretary "
     },
-    "rawLocation": "3rd floor, Ministry of Education, JD Gomwalk Secretariat, Jos"
+    "rawLocation": "3rd floor, Ministry of Education, JD Gomwalk Secretariat, Jos",
+    "currentProjects": [
+      "Upward Review & Prompt Disbursement of Student Bursaries and Nigerian Law School Grants: Clearing backlogs and paying enhanced bursary allowances to Plateau State indigent students in tertiary institutions nationwide and 100% sponsorship support for Plateau students at the Nigerian Law School.",
+      "Digital Scholarship Application & Biometric Verification Portal: Online portal eliminating ghost beneficiaries and paying scholarships directly to students' bank accounts."
+    ]
   },
   {
     "name": "Plateau State Energy Corporation",
@@ -2568,7 +2698,11 @@
       "title": "Hon.",
       "position": "Chairman of the Board"
     },
-    "rawLocation": "No. 23 Mark Samchi Road, P.O. Box 7160, Jos, Plateau "
+    "rawLocation": "No. 23 Mark Samchi Road, P.O. Box 7160, Jos, Plateau ",
+    "currentProjects": [
+      "Plateau State Electricity Market & Mini-Grid Rollout: Implementing the Plateau State Electricity Law to attract private independent power producers (IPPs) and deploy solar hybrid mini-grids to unserved communities, hospitals, and markets.",
+      "Streetlight Solarization & Public Building Energy Audits: Retrofitting metropolitan streetlights and government complexes with solar-battery hybrid systems."
+    ]
   },
   {
     "name": "Plateau Radio Television Corporation",
@@ -2627,7 +2761,11 @@
       "title": "Mrs.",
       "position": "General Manager"
     },
-    "rawLocation": "No 5 Joseph Gomwalk Road Jos"
+    "rawLocation": "No 5 Joseph Gomwalk Road Jos",
+    "currentProjects": [
+      "PRTVC AM/FM & TV Digital Switchover Modernization: Installation of new high-power digital transmitters, outside broadcasting (OB) vans, and modern HD studios in Rayfield and Bukuru, restoring clear reception across Plateau and neighboring states.",
+      "24-Hour Programming & Digital Live-Streaming Launch: Expanding online streaming and indigenous language news broadcasts."
+    ]
   },
   {
     "name": "Plateau Specialist Hospital",
@@ -2689,7 +2827,11 @@
       "title": "Professor",
       "position": "Chief Medical Director"
     },
-    "rawLocation": "Jos, Plateau State"
+    "rawLocation": "Jos, Plateau State",
+    "currentProjects": [
+      "Plateau Specialist Hospital Infrastructure & Diagnostic Upgrade: Renovation of emergency wards, maternity complex, intensive care unit (ICU), and installation of modern CT-scan, digital X-ray, dialysis machines, and 24/7 solar-inverter backup.",
+      "Electronic Medical Records (EMR) Deployment: Digitizing patient folders, pharmacy billing, and laboratory results to cut patient waiting times."
+    ]
   },
   {
     "name": "Plateau State Hospitals Management Board",
@@ -2747,7 +2889,11 @@
       "title": "Dr.",
       "position": "Chief Medical Director"
     },
-    "rawLocation": "No. 1 Constitution Hill Road, PMB 2148 Jos"
+    "rawLocation": "No. 1 Constitution Hill Road, PMB 2148 Jos",
+    "currentProjects": [
+      "Zonal General Hospitals Revitalization & Solarization: Upgrading clinical wards, operating theatres, blood banks, and solar power across the 18+ General and Cottage Hospitals in all 17 LGAs.",
+      "Mobile Rural Medical & Surgical Outreaches: Free cataract surgeries, hernia repairs, dental care, and maternal screenings for rural citizens."
+    ]
   },
   {
     "name": "Plateau State Debt Management Department",
@@ -2801,7 +2947,11 @@
       "name": "ATIHONG YENGOET",
       "title": "Mrs.",
       "position": "Director General "
-    }
+    },
+    "currentProjects": [
+      "State Domestic & External Debt Restructuring and Arrears Verification: Comprehensive forensic verification of inherited contractor liabilities and restructuring of commercial bank facilities to free up funds for capital projects.",
+      "Annual Debt Sustainability Analysis (DSA) & Bond Issuance Readiness: Transparent quarterly debt reporting in compliance with Fiscal Responsibility laws."
+    ]
   },
   {
     "name": "Plateau State Bureau of Statistics",
@@ -2857,7 +3007,11 @@
       "title": "Mr.",
       "position": "Statistician General Plateau State"
     },
-    "rawLocation": "No. 24, Naraguta Avenue, Tudun Wada, G.R.A Jos."
+    "rawLocation": "No. 24, Naraguta Avenue, Tudun Wada, G.R.A Jos.",
+    "currentProjects": [
+      "Plateau State Socio-Economic & Demographic Data Portal: Conducting the State Gross Domestic Product (SGDP) computation, CPI inflation tracking, and LGA-level baseline surveys for evidence-based budgeting.",
+      "Digitized Statistical Yearbook & Open Data Repository: Publishing verified data on agriculture, health, education, and employment."
+    ]
   },
   {
     "name": "Plateau State Sustainable Development Goals Project Support Unit",
@@ -2912,7 +3066,11 @@
       "title": "Mrs.",
       "position": "Plateau State Project Coordinator"
     },
-    "rawLocation": "No. 50 Shaka Road, Gold and Base, Jos Plateau State"
+    "rawLocation": "No. 50 Shaka Road, Gold and Base, Jos Plateau State",
+    "currentProjects": [
+      "SDG Primary Healthcare & Rural Classroom Interventions: Construction and solarization of maternal health clinics, VIP toilets, and solar boreholes in hard-to-reach rural wards across the 3 senatorial zones.",
+      "Voluntary Local Review (VLR) of SDG Progress in Plateau State: Aligning the state's 2024–2027 development plan with the UN 2030 Sustainable Development Goals."
+    ]
   },
   {
     "name": "Plateau State Tourism Corporation",
@@ -2975,7 +3133,11 @@
       "title": "Mr.",
       "position": "General Manager"
     },
-    "rawLocation": "No. 31A Yakubu Gowon way, PMB 2021, Jos."
+    "rawLocation": "No. 31A Yakubu Gowon way, PMB 2021, Jos.",
+    "currentProjects": [
+      "Jos Wildlife Park Rehabilitation & Eco-Tourism Drive: Renovation of animal enclosures, picnic grounds, internal road network, and security perimeter at Jos Wildlife Park.",
+      "Solomon Lar Amusement Park & Pandam Tourist Resort Upgrade: Revamping family recreational parks and promoting eco-tourism to Assop Falls, Kurra Falls, Wase Rock, and Shere Hills."
+    ]
   },
   {
     "name": "Teachers' Service Commission",
@@ -3032,7 +3194,11 @@
       "title": "MR.",
       "position": "Commissioner Teacher's Service Commission"
     },
-    "rawLocation": "Teachers' Service Commission, J.D Gomwalk Secretariat Jos,Plateau State Park "
+    "rawLocation": "Teachers' Service Commission, J.D Gomwalk Secretariat Jos,Plateau State Park ",
+    "currentProjects": [
+      "Merit-Based Secondary School Teachers Recruitment & Rural Posting Incentives: Transparent computer-based recruitment of qualified STEM, English, and Mathematics teachers and clearing promotion arrears.",
+      "Biometric Staff Audit & Teacher Quality Assurance Inspections: Digital attendance and instructional monitoring across public secondary schools."
+    ]
   },
   {
     "name": "Plateau State Local Government Service Commission",
@@ -3089,7 +3255,11 @@
       "title": "Chief ",
       "position": "Chairman, Local Service Commission"
     },
-    "rawLocation": "JD Gomwalk Secretariat Annex, Jos."
+    "rawLocation": "JD Gomwalk Secretariat Annex, Jos.",
+    "currentProjects": [
+      "Unified Local Government Staff Biometric Verification & Training: Eliminating ghost workers across the 17 Local Government Councils and conducting capacity-building workshops for LGA administrative, treasury, and health staff.",
+      "Clearing of LGA Staff Promotion Backlogs & Minimum Wage Alignment: Regularizing career progression for local government employees."
+    ]
   },
   {
     "name": "Plateau Minerals Development Company Limited",
@@ -3145,7 +3315,11 @@
       "title": "MR.",
       "position": "Managing Director"
     },
-    "rawLocation": "Mineral House, Anguldi-Bukuru Express Way, Adjacent NECO office Jos, Plateau State."
+    "rawLocation": "Mineral House, Anguldi-Bukuru Express Way, Adjacent NECO office Jos, Plateau State.",
+    "currentProjects": [
+      "Revalidation of State Mining Leases & Joint-Venture Lithium/Tin Exploration: Partnering with credible international and domestic mining investors to develop Plateau's lithium, tin, columbite, tantalite, and kaolin deposits transparently.",
+      "Mineral Buying Centres & Artisanal Miners Formalization: Establishing state-backed mineral buying hubs to curb smuggling and boost state royalty/IGR."
+    ]
   },
   {
     "name": "College of Arts, Science and Technology, Kurgwi",
@@ -3201,7 +3375,11 @@
       "title": "Mr.",
       "position": "Provost"
     },
-    "rawLocation": "P.M.B, 003, Shendam, Qua’an-Pan LGA, Plateau State, Nigeria"
+    "rawLocation": "P.M.B, 003, Shendam, Qua’an-Pan LGA, Plateau State, Nigeria",
+    "currentProjects": [
+      "CAST Kurgwi Infrastructure & NBTE Accreditation Expansion: Construction of new lecture halls, ICT center, science laboratories, and student hostels at the College of Arts, Science and Technology, Kurgwi (Qua'an Pan LGA), plus full NBTE accreditation of National Diploma programs.",
+      "IJMB Centre of Excellence Modernization: Upgrading library and e-learning facilities."
+    ]
   },
   {
     "name": "Community and Social Development Agency",
@@ -3257,7 +3435,11 @@
       "title": "Mr.",
       "position": "General Manger"
     },
-    "rawLocation": "Plot 3118, Opposite Westwood Park School, Rayfield Road Jos, Plateau State"
+    "rawLocation": "Plot 3118, Opposite Westwood Park School, Rayfield Road Jos, Plateau State",
+    "currentProjects": [
+      "NG-CARES Community & Social Development Micro-Projects: Funding and completing over 300+ community-driven micro-projects across all 17 LGAs—including rural health posts, motorized boreholes, culverts, market stalls, and primary school blocks.",
+      "Vulnerable Rural Communities Basic Infrastructure Grants: Empowering Community Project Management Committees (CPMCs) to execute local priority projects."
+    ]
   },
   {
     "name": "Plateau State Independent Electoral Commission",
@@ -3305,7 +3487,11 @@
       "email": "info@plasiec.org.ng",
       "website": "https://plasiec.org.ng"
     },
-    "legalFramework": "Section 197 of the 1999 Constitution of the Federal Republic of Nigeria and Plateau State Independent Electoral Commission Law."
+    "legalFramework": "Section 197 of the 1999 Constitution of the Federal Republic of Nigeria and Plateau State Independent Electoral Commission Law.",
+    "currentProjects": [
+      "Conduct of October 9, 2024 Local Government Council Elections: Successful, peaceful conduct of chairmanship and councillorship elections across all 17 LGAs and 325 electoral wards using upgraded logistics and transparent result collation.",
+      "PLASIEC Headquarters & LGA Electoral Offices Upgrade: Modernization of ICT result portal and storage facilities."
+    ]
   },
   {
     "name": "Plateau State Universal Basic Education Board",
@@ -3356,8 +3542,8 @@
     },
     "legalFramework": "Compulsory, Free Universal Basic Education Act 2004 and Plateau State Basic Education Law.",
     "currentProjects": [
-      "Digital Classrooms & Smart Schools Pilot: Equipping model public primary schools with interactive digital whiteboards, solar-powered computer labs, and teacher tablet devices.",
-      "Universal Basic Education Infrastructure Upgrade: Constructing and rehabilitating modern classrooms, perimeter fences, and sanitation facilities across primary schools in all 17 LGAs."
+      "UBEC/PSUBEB Smart Model Schools & Classroom Construction: Construction and renovation of over 400+ primary and junior secondary school classroom blocks, solar-powered ICT labs, perimeter fencing, and Early Childhood Care facilities across all 17 LGAs.",
+      "Distribution of Thousands of Student Desks, Textbooks & Teacher Tablets: Supplying modern furniture and instructional materials to public basic schools and training teachers under the BESDA/Smart Education initiative."
     ]
   },
   {
@@ -3405,7 +3591,12 @@
       "email": "operationrainbow@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Operation Rainbow Law."
+    "legalFramework": "Plateau State Operation Rainbow Law.",
+    "currentProjects": [
+      "Deployment of 600+ Newly Trained Operation Rainbow Community Security Operatives: Recruitment, training, kitting, and deployment of local early-warning and neighbourhood watch operatives across flashpoint communities in all 17 LGAs.",
+      "Agro-Rangers & Farmland Protection Patrols: Joint patrols with conventional security agencies protecting farmers during planting and harvest seasons in Bokkos, Mangu, Barkin Ladi, Riyom, and Bassa.",
+      "24/7 Toll-Free Early Warning Control Room (0800 0022 3344 / 09064000112) & Drone/GIS Surveillance: Upgrading rapid-response vehicles, motorcycles, communication radios, and situational tracking."
+    ]
   },
   {
     "name": "Plateau State Water Board",
@@ -3455,8 +3646,8 @@
     },
     "legalFramework": "Plateau State Water Board Law.",
     "currentProjects": [
-      "Jos-Bukuru Water Supply Scheme Rehabilitation: Upgrading the Lamingo and Yakubu Gowon Dam water treatment plants, replacing damaged distribution mains, and deploying digital bulk water metering.",
-      "Rural Water Sanitation and Hygiene (WASH) Boreholes: Drilling and rehabilitating solar-powered motorized boreholes across rural communities in Plateau State."
+      "Jos–Bukuru Metropolitan Water Supply Rehabilitation: Major overhaul of Yakubu Gowon Dam and Lamingo Water Treatment Plants, replacement of burst high-pressure transmission mains, and restoration of treated tap water to Jos and Bukuru neighborhoods.",
+      "World Bank SURWASH & AFD Urban Water Expansion: Upgrading pumping stations, chemical dosing plants, and digital customer metering."
     ]
   },
   {
@@ -3497,7 +3688,11 @@
       "email": "padp@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Agricultural Development Programme Edict."
+    "legalFramework": "Plateau State Agricultural Development Programme Edict.",
+    "currentProjects": [
+      "BARI Resettlement Farming & Dry-Season Irrigation Support: Deployment of extension officers, motorized water pumps, and high-yield inputs to cultivate thousands of hectares across all 17 LGAs.",
+      "Rural Feeder Roads, Earth Dams & Agro-Processing Centres (RAAMP/FADAMA): Constructing rural farm access roads, solar boreholes, and grain storage silos for farmer cooperatives."
+    ]
   },
   {
     "name": "Plateau State Primary Health Care Board",
@@ -3537,7 +3732,11 @@
       "email": "psphcb@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Primary Health Care Development Board Law."
+    "legalFramework": "Plateau State Primary Health Care Development Board Law.",
+    "currentProjects": [
+      "Revitalization of 325 Ward Focal Primary Health Care (PHC) Centres: Upgrading at least one model Primary Health Care Centre per electoral ward across all 17 LGAs under the World Bank IMPACT Project and BHCPF—complete with solar power, cold-chain vaccine fridges, motorized boreholes, and staff quarters.",
+      "Statewide Maternal, Newborn & Child Health (MNCH) & Routine Immunization Drives: Free malaria, polio, HPV, and maternal health campaigns across rural communities."
+    ]
   },
   {
     "name": "Plateau State Road Maintenance Agency",
@@ -3575,7 +3774,11 @@
       "email": "plarama@plateaustate.gov.ng",
       "website": "https://plateaustate.gov.ng"
     },
-    "legalFramework": "Plateau State Road Maintenance Agency Law."
+    "legalFramework": "Plateau State Road Maintenance Agency Law.",
+    "currentProjects": [
+      "'Operation Zero Potholes' Metropolitan & Township Road Maintenance: Continuous asphalt patching, desilting of side drains, and restoration of failed road sections across Jos North, Jos South, and LGA headquarters using state-owned asphalt plants.",
+      "Direct-Labour Rehabilitation of Neighbourhood Link Roads: Rapid intervention on inner-city streets in Tudun Wada, Rantya, Dadin Kowa, Rayfield, Hwolshe, Anglo-Jos, and Bukuru."
+    ]
   },
   {
     "name": "Plateau Investment and Property Development Company",
@@ -3613,6 +3816,10 @@
       "email": "info@pipc.com.ng",
       "website": "https://pipc.com.ng"
     },
-    "legalFramework": "Incorporated under CAMA and Plateau State Investment Mandate."
+    "legalFramework": "Incorporated under CAMA and Plateau State Investment Mandate.",
+    "currentProjects": [
+      "Revitalization of Plateau State Investment Portfolio & Moribund Assets: Restructuring and PPP turnaround of strategic state-owned enterprises (including BARC Farms, Highland Bottling Company, Jos International Breweries/JIB, and Hill Station Hotel).",
+      "Plateau Diaspora Investment Summit & Venture Capital Desk: Mobilizing domestic and diaspora investment into agro-processing, solid minerals, renewable energy, and hospitality."
+    ]
   }
 ]

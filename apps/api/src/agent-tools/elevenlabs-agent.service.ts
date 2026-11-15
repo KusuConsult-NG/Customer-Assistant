@@ -742,13 +742,14 @@ export class ElevenLabsAgentService {
   }
 
   /**
-   * Ensure `clone_strength: 1` is preserved on the `governor` Instant Voice Clone
-   * (`pAqGcXrGBThHKNv6yJnM`) inside `supported_voices`.
+   * Ensure `clone_strength` is preserved on the primary Instant Voice Clone
+   * (`KpLREcAbIIKFKpEkPEIR`, Stephen — Nanpan) as well as the `governor` Instant
+   * Voice Clone (`pAqGcXrGBThHKNv6yJnM`) inside `supported_voices`.
    *
    * The generated `@elevenlabs/elevenlabs-js` Fern schema serializer strips
-   * `clone_strength` on `SupportedVoice`, which otherwise causes the Governor's
-   * Instant Clone to revert to `clone_strength: null` (0) and sound like a
-   * generic American base voice on `eleven_v3_conversational`.
+   * `clone_strength` on both `tts` and `SupportedVoice`, which otherwise causes
+   * an Instant Voice Clone to revert to `clone_strength: null` (0) and sound like
+   * a generic American base voice on `eleven_v3_conversational`.
    */
   private async ensureGovernorCloneStrength(apiKey: string, agentId: string): Promise<void> {
     try {
@@ -768,10 +769,10 @@ export class ElevenLabsAgentService {
         sv?.label === 'governor'
           ? {
               ...sv,
-              stability: 0.70,
-              similarity_boost: 0.75,
-              speed: 1.0,
-              clone_strength: 0.85,
+              stability: 0.50,
+              similarity_boost: 1.0,
+              speed: 0.97,
+              clone_strength: 1.0,
             }
           : sv
       );
@@ -781,8 +782,18 @@ export class ElevenLabsAgentService {
         body: JSON.stringify({
           conversation_config: {
             tts: {
-              clone_strength: 0,
+              stability: 0.45,
+              similarity_boost: 1.0,
+              speed: 0.96,
+              clone_strength: 1.0,
               supported_voices: updatedVoices,
+            },
+          },
+          platform_settings: {
+            overrides: {
+              // Prevent synchronous conversation-start webhook timeouts from dropping
+              // inbound SIP calls with "All circuits are busy" (code 1011).
+              enable_conversation_initiation_client_data_from_webhook: false,
             },
           },
         }),

@@ -71,10 +71,13 @@ const NEW_CALLER_PROMPT =
   'NEW CALLER — follow PHASE 1 and PHASE 2 of the Contact Centre script: (1) ask for their full name if your greeting ' +
   'has not already (if they decline, say "That is perfectly fine. We can proceed with your report. However, providing ' +
   'your name may help us with subsequent communication and follow-up." and carry on — the name is optional); once ' +
-  'given, say "Thank you very much, [name]. It is a pleasure speaking with you." (2) ask which Local Government Area ' +
+  'given, NEVER assume the speech-to-text transcription is accurate (e.g. ASR often turns "Joy Sunday" into "Jos Andy") — ' +
+  'repeat their name back and ask them to confirm or spell it ("Just to be sure I have your name right, is it [name]? ' +
+  'Please correct me or spell it if I heard wrongly."), and once confirmed say "Thank you very much, [name]. It is a ' +
+  'pleasure speaking with you." (2) ask which Local Government Area ' +
   'of Plateau State they are calling from; (3) ask their ward and community; (4) ask whether they are comfortable ' +
   'with us using the number they are calling from for subsequent communication, and if not take another number and ' +
-  'read it back digit by digit. ONE question at a time. Call update-caller-profile with what they gave — its reply ' +
+  'read it back digit by digit. ONE question at a time. Call update-caller-profile with what they confirmed — its reply ' +
   'names the next question — then ask the reason for their call (PHASE 3). Never ask for a home address, occupation ' +
   'or preferred language. Speak whatever language they speak. If they open with an active emergency, safety comes first.';
 

@@ -213,7 +213,7 @@ Your core mandate is to serve as the State's central knowledge and public inquir
    - Current Commissioners, Directors-General (DGs), Executive Secretaries, General Managers, Chairmen, and Permanent Secretaries.
    - Past leadership and administrative history ("past details"): Former Commissioners, former DGs/GMs, and historical restructuring across prior administrations (e.g. Mutfwang initial cabinet, Lalong administration 2015-2023, Jang administration 2007-2015).
 3. Answer inquiries on statutory mandates, vision, mission, core responsibilities, departments, citizen assistance services (permits, health insurance, certificates, revenue/taxes, agricultural inputs, scholarships), physical office locations, and verified helplines.
-4. Current Projects & Activities: Answer inquiries about current state projects, initiatives, and digital transformation efforts across all MDAs (e.g. PICTDA's 2,500km broadband fibre expansion, Code Plateau fellowship, 3MTT, e-Governance rollout, LGA innovation hubs; PLAGIS digital land titles; JMDB e-Permits; Tin City Metro; PLASCHEMA healthcare expansion; etc.). NEVER give cop-out responses like "I currently don't have specific information on the current projects that [MDA] is working on" when information exists. You have comprehensive records of current and ongoing state projects in your verified knowledge base.
+4. Current Projects & Achievements of Governor Caleb Mutfwang ("The Time is Now" Administration, May 2023–Present): Answer inquiries thoroughly about Governor Mutfwang's projects and achievements across all 58 MDAs — including Transport (15 German-engineered Tin City Metro buses at ₦200 flat fare, Plateau Riders fleet upgrade, Jos–Bukuru commuter rail revival with NRC, Abuja–Jos commercial flights with ValueJet & Yakubu Gowon Airport upgrade), Roads & Urban Renewal (35+ Jos–Bukuru urban roads under Operation Zero Potholes, inter-LGA highways & bridges, RAAMP rural feeder roads, Jos Main Market reconstruction, Executive Order 003 urban renewal, JMDB e-Permits), Agriculture (200+ truckloads of subsidized fertilizer, 6,000+ hectares BARI resettlement farming in Bokkos/Mangu/Barkin Ladi/Riyom/Bassa, ASTC tractors revival, Irish potato tissue culture & cold storage, AfDB Special Agro-Industrial Processing Zone & Heipang Dry Port, new Ministry of Livestock Development), Healthcare (new Pharma-Grade Central Medical Warehouse under PSDMCMA, 100,000+ vulnerable citizens & retirees on free PLASCHEMA healthcare, Plateau Specialist Hospital & General Hospitals upgrades, 325 ward focal PHCs revitalization), ICT (PICTDA 2,500km broadband fibre with Solutron, Code Plateau 6.0, 3MTT, LGA CBT/Innovation hubs, PLAGIS digital e-C of O with 50% waiver, Nanpan 08000000456 AI Contact Centre), Education & Youth (400+ UBEC/PSUBEB classrooms & smart schools, World Bank AGILE project, increased student bursaries & Law School grants, Zaria Road Stadium works), Civil Service & Governance (clearing of inherited salary/pension arrears, prompt salary payment before the 25th, ₦70,000 minimum wage implementation, PSIRS digital CBS growing IGR to ₦38B–₦62B+, October 2024 peaceful elections in all 17 LGAs), Security (600+ new Operation Rainbow operatives & Agro-Rangers, OPEP support, IDP safe resettlement), and Water/Environment/Tourism (Lamingo & Yakubu Gowon Dam water treatment overhaul, ACReSAL erosion control, PEPSA compactor fleet, Hill Station Hotel & Plateau Hotel PPP revitalization). NEVER give cop-out responses like "I currently don't have specific information on the current projects that [MDA] is working on" — use search-knowledge and state the verified projects clearly.
 5. Budget Intelligence & Financial Transparency: Answer inquiries about the Plateau State Annual Budget (2024 'Budget of New Beginnings' ₦314.86B; 2025 'Budget of Sustainability and Economic Transformation' ₦468.49B), capital vs recurrent expenditures, sectoral allocations (Education ₦68.9B, Works & Transport ₦92.5B, Health ₦44.7B, Agriculture ₦39.2B, PICTDA/Tech ₦11.5B), revenue projections (IGR ₦62.5B, FAAC/VAT ₦238.1B), and fiscal principles. Distinguish approved allocations from actual disbursements, and never fabricate financial figures.
 
 Communication Style:
@@ -226,7 +226,7 @@ Communication Style:
 
 // Phase 1 of the Contact Centre script: opens with Governor Caleb Mutfwang's
 // welcome (`<governor>...</governor>`, voiced by pAqGcXrGBThHKNv6yJnM) and
-// hands over to Nanpan (`ideEOMYLgcyF9rr94ycz`), who greets the caller by time
+// hands over to Nanpan (`KpLREcAbIIKFKpEkPEIR`), who greets the caller by time
 // of day and asks their full name. `{greeting}` becomes "Good morning" / "Good
 // afternoon" / "Good evening" at the time of each call (the conversation-start
 // webhook fills it), and "Hello" in the stored copy.
@@ -566,6 +566,48 @@ async function main() {
     console.log(`   ✓ Supplemental Services Guide indexed successfully (${suppChunks.length} chunks).`);
   } else {
     console.log('   ⚠ Supplemental Services Guide not found, skipping.');
+  }
+
+  // 9. Index Governor Caleb Mutfwang Comprehensive Projects & Achievements Scorecard
+  console.log('\n9. Indexing Governor Caleb Mutfwang Comprehensive Projects & Achievements document...');
+  const projectsGuidePath = path.join(__dirname, '..', 'data', 'mda-knowledge', 'Governor-Caleb-Mutfwang-Projects-and-Achievements.md');
+  if (fs.existsSync(projectsGuidePath)) {
+    const projectsBody = fs.readFileSync(projectsGuidePath, 'utf8');
+    const projectsChunks = chunkText(projectsBody);
+
+    const existingProjectsDoc = await prisma.knowledgeDocument.findFirst({
+      where: { organizationId: org.id, title: 'Governor Caleb Mutfwang — Comprehensive Projects & Achievements Scorecard' },
+      select: { id: true },
+    });
+
+    const projectsDocPayload = {
+      organizationId: org.id,
+      title: 'Governor Caleb Mutfwang — Comprehensive Projects & Achievements Scorecard',
+      fileName: 'Governor-Caleb-Mutfwang-Projects-and-Achievements.md',
+      mimeType: 'text/markdown',
+      fileSize: Buffer.byteLength(projectsBody, 'utf8'),
+      storageUrl: 'https://plateaustate.gov.ng/projects',
+      status: 'INDEXED',
+      chunkCount: projectsChunks.length,
+      errorMessage: null,
+    };
+
+    const projectsDoc = existingProjectsDoc
+      ? await prisma.knowledgeDocument.update({ where: { id: existingProjectsDoc.id }, data: projectsDocPayload })
+      : await prisma.knowledgeDocument.create({ data: projectsDocPayload });
+
+    await prisma.documentChunk.deleteMany({ where: { documentId: projectsDoc.id } });
+    for (let i = 0; i < projectsChunks.length; i++) {
+      await prisma.documentChunk.create({
+        data: {
+          organizationId: org.id,
+          documentId: projectsDoc.id,
+          chunkIndex: i,
+          content: projectsChunks[i],
+        },
+      });
+    }
+    console.log(`   ✓ Governor Mutfwang Projects & Achievements indexed successfully (${projectsChunks.length} chunks).`);
   }
 
   console.log('\n======================================================');
