@@ -45,6 +45,14 @@ export class AppointmentReminderService implements OnModuleInit, OnModuleDestroy
   }
 
   onModuleInit() {
+    // Not under Jest. Every API suite boots AppModule, and each boot ran a sweep
+    // over EVERY booking in the shared test database through the real mailer.
+    // A sweep from another suite could claim appointment-reminders.spec's own
+    // booking first, so that spec's reminder was skipped and it saw 0 sends —
+    // an intermittent CI failure that read as broken reminder logic. The spec
+    // calls checkAndSendReminders() itself; nothing needs the boot sweep there.
+    // Same exemption AgentKeyGuard.onModuleInit makes.
+    if (process.env.NODE_ENV === 'test') return;
     // Run immediately on boot then poll every 5 minutes
     this.checkAndSendReminders().catch((err) =>
       log.error('Initial appointment reminder check failed', err),
