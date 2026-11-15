@@ -832,7 +832,7 @@ describe('The Contact Centre script on the phone line', () => {
     it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
       expect(morning).toBe(
-        "<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> I'm Nanpan, the virtual assistant. May I have your full name?"
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> <break time="1.0s" /> I'm Nanpan, the virtual assistant. May I have your full name?`
       );
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
@@ -845,6 +845,8 @@ describe('The Contact Centre script on the phone line', () => {
       const governor = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).match(/<governor>([\s\S]*?)<\/governor>/)![1];
       expect(governor).not.toMatch(/Mutfwang|Caleb|Governor|my name is/i);
       expect(governor).toMatch(/^Good morning, and welcome/);
+      // A pause between the two voices, so the hand-over is not rushed.
+      expect(renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'))).toMatch(/<\/governor> <break time="1\.0s" \/> I'm /);
     });
 
     it('rotates through 100 unique Plateau State male names starting with Gwaman on every call', () => {
@@ -860,7 +862,7 @@ describe('The Contact Centre script on the phone line', () => {
 
       const dynamicMorning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'), firstPersona);
       expect(dynamicMorning).toBe(
-        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> <break time="1.0s" /> I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
       );
     });
 
@@ -868,7 +870,7 @@ describe('The Contact Centre script on the phone line', () => {
     // seconds (<= 14 words) before its question.
     const words = (s: string) => s.trim().split(/\s+/).length;
     it('every opening is about five seconds before its question', () => {
-      const nanpanPart = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).replace(/^<governor>[\s\S]*?<\/governor>\s*/, '');
+      const nanpanPart = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).replace(/^<governor>[\s\S]*?<\/governor>\s*/, '').replace(/^<break[^>]*\/>\s*/, '');
       expect(words(nanpanPart)).toBeLessThanOrEqual(14);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
       // English only: no Hausa preset, so no second opening.
