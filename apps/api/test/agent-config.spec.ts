@@ -207,6 +207,22 @@ describe('Agent tool catalogue', () => {
     }
   });
 
+  // Callers complained the agent "changes the language at will". The prompt
+  // told it that "You know, when…" and "You know me" — ordinary English — were
+  // mis-heard Hausa greetings and to switch the whole call to Hausa on sight,
+  // and the switch tool said to fire on any Hausa greeting. A language change
+  // must take the caller asking, or a full sentence in that language.
+  it('does not switch language on everyday English or a single word', () => {
+    const def = agentDefinitionFor(ORG, []) as any;
+    const prompt: string = def.conversationConfig.agent.prompt.prompt;
+    expect(prompt).not.toMatch(/"You know[^"]*"[^\n]*Ina wuni/);
+    expect(prompt).not.toMatch(/"In a corner"/);
+    expect(prompt).toMatch(/LANGUAGE STABILITY/);
+    const switcher = def.conversationConfig.agent.prompt.builtInTools.languageDetection.description as string;
+    expect(switcher).toMatch(/ONLY when the caller asks/);
+    expect(switcher).toMatch(/Never on a single word/);
+  });
+
   it('gives each tool a description an LLM can route on', () => {
     for (const tool of all) {
       expect(cfg(tool).description.length).toBeGreaterThan(40);
