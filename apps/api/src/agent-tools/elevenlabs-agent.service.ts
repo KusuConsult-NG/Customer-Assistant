@@ -735,7 +735,6 @@ export class ElevenLabsAgentService {
       steps.push({ target: 'agent', action: 'created', id: agentId });
     }
 
-    await this.ensureGovernorCloneStrength(apiKey, agentId);
     await this.persist(organizationId, { agentId, toolIds });
     this.log.log(
       `agent_synced org=${organizationId} agent=${agentId} tools=${orderedIds.length}`
@@ -749,65 +748,6 @@ export class ElevenLabsAgentService {
       steps,
       ...(secret.mintedKey ? { agentKey: secret.mintedKey } : {}),
     };
-  }
-
-  /**
-   * Ensure `clone_strength` is preserved on the primary Instant Voice Clone
-   * (`KpLREcAbIIKFKpEkPEIR`, Stephen — Nanpan) as well as the `governor` Instant
-   * Voice Clone (`pAqGcXrGBThHKNv6yJnM`) inside `supported_voices`.
-   *
-   * The generated `@elevenlabs/elevenlabs-js` Fern schema serializer strips
-   * `clone_strength` on both `tts` and `SupportedVoice`, which otherwise causes
-   * an Instant Voice Clone to revert to `clone_strength: null` (0) and sound like
-   * a generic American base voice on `eleven_v3_conversational`.
-   */
-  private async ensureGovernorCloneStrength(apiKey: string, agentId: string): Promise<void> {
-    try {
-      const host = (process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io').replace(
-        /\/+$/,
-        ''
-      );
-      const getRes = await fetch(`${host}/v1/convai/agents/${agentId}`, {
-        headers: { 'xi-api-key': apiKey },
-      });
-      if (!getRes.ok) return;
-      const agent: any = await getRes.json();
-      const supportedVoices: any[] = agent?.conversation_config?.tts?.supported_voices ?? [];
-      if (!supportedVoices.some((sv) => sv?.label === 'governor')) return;
-
-      const updatedVoices = supportedVoices.map((sv) =>
-        sv?.label === 'governor'
-          ? {
-              ...sv,
-              stability: 0.50,
-              similarity_boost: 1.0,
-              speed: 0.97,
-              clone_strength: 1.0,
-            }
-          : sv
-      );
-      await fetch(`${host}/v1/convai/agents/${agentId}`, {
-        method: 'PATCH',
-        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_config: {
-            tts: {
-              stability: 0.45,
-              similarity_boost: 1.0,
-              speed: 1.02,
-              clone_strength: 1.0,
-              supported_voices: updatedVoices,
-            },
-          },
-          // NOTHING under platform_settings here: whether the
-          // conversation-start webhook is on is decided in ONE place, by
-          // syncAgent (ELEVENLABS_CONVERSATION_START_WEBHOOK). This PATCH once
-          // carried its own `false`, a second switch nobody could see.
-        }),
-      });
-    } catch {
-      // Best-effort post-sync patch; never fail the main sync on it.
-    }
   }
 
   /**

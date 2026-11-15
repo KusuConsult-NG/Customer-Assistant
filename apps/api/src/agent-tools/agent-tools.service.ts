@@ -75,23 +75,6 @@ export interface ConversationStartReply {
  * so outright — and nothing beyond the location and a follow-up number is
  * asked, because non-essential personal information is never compulsory.
  */
-/**
- * What the agent is told after a language other than English is saved.
- *
- * Never "switch now": a caller must be asked before the call changes language,
- * and `preferredLanguage` is only supposed to be saved once they said yes. If
- * the call is not yet in that language, the agent asks first — and the `speak`
- * line written in that language is said only once it is.
- */
-function confirmedLanguage(language: string, usesLanguageDetection = false): string {
-  return (
-    `Saved preferred language: ${language}. If the call is already in ${language}, carry on in it. If it is not, ` +
-    `do NOT switch on your own: ask the caller whether they would like to continue in ${language}, and switch` +
-    (usesLanguageDetection ? " (calling language_detection with 'ha')" : '') +
-    ' only after a clear yes. Until then, say the next line in the language you are speaking.'
-  );
-}
-
 const NEW_CALLER_PROMPT =
   'NEW CALLER — follow PHASE 1 and PHASE 2 of the Contact Centre script: (1) ask for their full name if your greeting ' +
   'has not already (if they decline, say "That is perfectly fine. We can proceed with your report. However, providing ' +
@@ -104,7 +87,7 @@ const NEW_CALLER_PROMPT =
   'with us using the number they are calling from for subsequent communication, and if not take another number and ' +
   'read it back digit by digit. ONE question at a time. Call update-caller-profile with what they confirmed — its reply ' +
   'names the next question — then ask the reason for their call (PHASE 3). Never ask for a home address, occupation ' +
-  'or preferred language. Stay in the language of the call; if they want another, ask them to confirm and switch only after a clear yes. If they open with an active emergency, safety comes first.';
+  'or preferred language. Speak English only, whatever language they use. If they open with an active emergency, safety comes first.';
 
 /**
  * The office a case is marked for, by the category it was filed under.
@@ -468,27 +451,10 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       const alternativePhone = (contactMeta.alternativePhone as string) ?? null;
       const phoneConfirmedForFollowUp = contactMeta.phoneConfirmedForFollowUp ?? null;
       const ours = isPlaceholderContactName(contact.fullName);
-      const prefLang = (contact.preferredLanguage || '').trim().toLowerCase();
 
       let greetingSentence: string;
       if (ours) {
         greetingSentence = 'To get started, may I kindly know your full name?';
-      } else if (prefLang.startsWith('ha')) {
-        greetingSentence = `Barka da dawowa, ${contact.fullName}${contact.city ? ` daga ${contact.city}` : ''}! Ta yaya Gwamnatin Jihar Plateau za ta taimaka maka a yau?`;
-      } else if (prefLang.includes('pidgin') || prefLang === 'pcm') {
-        greetingSentence = `Welcome back, ${contact.fullName}! How body today? Wetin you wan make Plateau State Government help you with today?`;
-      } else if (prefLang.startsWith('yo')) {
-        greetingSentence = `E kaabo pada, ${contact.fullName}! Bawo ni Ijoba Ipinle Plateau se le ran yin lowo loni?`;
-      } else if (prefLang.startsWith('ig')) {
-        greetingSentence = `Nnoo, ${contact.fullName}! Kedu ka Goomenti Plateau State ga-esi nyere gi aka taa?`;
-      } else if (prefLang.includes('berom')) {
-        greetingSentence = `Mwin sho, ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
-      } else if (prefLang.includes('ngas') || prefLang.includes('angas')) {
-        greetingSentence = `Mwa gi, ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
-      } else if (prefLang.includes('mwag') || prefLang.includes('mangu')) {
-        greetingSentence = `Wu na, ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
-      } else if (prefLang.includes('tarok')) {
-        greetingSentence = `Mbin, i kat ${contact.fullName}! Welcome back to the Plateau State Government Citizen Contact Centre — how may we assist you today?`;
       } else {
         greetingSentence = `Thank you very much, ${contact.fullName}. It is a pleasure speaking with you again. Now, how may the Plateau State Government assist you today?`;
       }
@@ -506,7 +472,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
           `${callbackReference(openCallback.id)}, ${openCallback.promisedText.toLowerCase()}.`
         );
       }
-      if (openTickets > 0 && !prefLang.startsWith('ha')) {
+      if (openTickets > 0) {
         sentences.push(
           openTickets === 1
             ? 'You have one open case with us as well.'
@@ -542,11 +508,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
               : `KNOWN RETURNING CALLER — do not ask for their name or location again. Greet ${contact.fullName} by ` +
                 `name, confirm in ONE question that they are still calling from ${locationPhrase(profileOf(contact))} ` +
                 `(save any change with update-caller-profile), then go straight to the reason for their call. ` +
-                (contact.preferredLanguage && !/^en/i.test(contact.preferredLanguage)
-                  ? `They chose ${contact.preferredLanguage} on an earlier call. Do NOT switch on your own: ask whether ` +
-                    `they would like to continue in ${contact.preferredLanguage}, and switch` +
-                    `${prefLang.startsWith('ha') ? " (calling language_detection with 'ha')" : ''} only after a clear yes.`
-                  : 'Continue in English.'),
+                'Speak English only.',
           upcomingBooking: upcoming
             ? {
                 bookingId: upcoming.id,
@@ -893,49 +855,12 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       });
 
       const savedName = updated.fullName && !isPlaceholderContactName(updated.fullName) ? updated.fullName : null;
-      const langNorm = (updated.preferredLanguage || '').trim().toLowerCase();
-      let speak: string;
-      let languageInstruction: string | undefined;
-
-      if (langNorm.startsWith('ha')) {
-        speak = savedName
-          ? `Na gode da bayar da wadannan bayanai, ${savedName}. Yanzu, ta yaya Gwamnatin Jihar Plateau za ta taimaka maka a yau? Dan Allah fadi dalilin kiran ka.`
-          : 'Na gode da bayar da wadannan bayanai. Yanzu, ta yaya Gwamnatin Jihar Plateau za ta taimaka maka a yau? Dan Allah fadi dalilin kiran ka.';
-        languageInstruction =
-          confirmedLanguage('Hausa', true);
-      } else if (langNorm.includes('pidgin') || langNorm === 'pcm') {
-        speak = savedName
-          ? `Thank you well well for those details, ${savedName}! Now, how Plateau State Government fit take help you today? Abeg talk wetin make you call.`
-          : 'Thank you well well for those details! Now, how Plateau State Government fit take help you today? Abeg talk wetin make you call.';
-        languageInstruction =
-          confirmedLanguage('Nigerian Pidgin');
-      } else if (langNorm.startsWith('yo')) {
-        speak = savedName
-          ? `E se pupo fun awon alaye wonyi, ${savedName}! Bayi, bawo ni Ijoba Ipinle Plateau se le ran yin lowo loni? E jowo e so idi ti e fi pe.`
-          : 'E se pupo fun awon alaye wonyi! Bayi, bawo ni Ijoba Ipinle Plateau se le ran yin lowo loni? E jowo e so idi ti e fi pe.';
-        languageInstruction =
-          confirmedLanguage('Yoruba');
-      } else if (langNorm.startsWith('ig')) {
-        speak = savedName
-          ? `Daalu nke ukwuu maka nkowa ndia, ${savedName}! Ugbu a, kedu ka Goomenti Plateau State ga-esi nyere gi aka taa? Biko kwuo ihe mere i ji kpọọ.`
-          : 'Daalu nke ukwuu maka nkowa ndia! Ugbu a, kedu ka Goomenti Plateau State ga-esi nyere gi aka taa? Biko kwuo ihe mere i ji kpọọ.';
-        languageInstruction =
-          confirmedLanguage('Igbo');
-      } else if (
-        /berom|ngas|angas|mwag|tarok|goemai|afizere|izere|irigwe|bache|rukuba|ron|kulere|mupun|mushere|pyem|bogghom|pan|kofyar|montol/.test(
-          langNorm
-        )
-      ) {
-        speak = savedName
-          ? `Thank you for providing those details, ${savedName}. Now, how may the Plateau State Government assist you today? Please state the reason for your call.`
-          : 'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.';
-        languageInstruction = `The caller selected the Plateau State indigenous language ${updated.preferredLanguage}. Warmly use ${updated.preferredLanguage} greetings and expressions alongside clear Hausa, Pidgin, or Nigerian English so every detail is crystal clear!`;
-      } else {
-        // Phase 3 of the Contact Centre script, word for word in substance.
-        speak = savedName
-          ? `Thank you for providing those details, ${savedName}. Now, how may the Plateau State Government assist you today? Please state the reason for your call.`
-          : 'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.';
-      }
+      // English only, whatever preferredLanguage holds: it is recorded so a
+      // desk officer who speaks it can call back, never to change this call.
+      // Phase 3 of the Contact Centre script, word for word in substance.
+      const speak = savedName
+        ? `Thank you for providing those details, ${savedName}. Now, how may the Plateau State Government assist you today? Please state the reason for your call.`
+        : 'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.';
 
       // Phase 2 is not finished while part of the location is missing — the
       // caller is asked for the rest before the reason for the call, so the
@@ -969,8 +894,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
           alternativePhone: updatedMeta.alternativePhone ?? null,
           phoneConfirmedForFollowUp: updatedMeta.phoneConfirmedForFollowUp ?? null,
           stillMissing: stillNeeded,
-          ...(nextQuestion || languageInstruction
-            ? { instruction: [nextQuestion ? `Saved. Next: ${nextQuestion}` : null, languageInstruction].filter(Boolean).join(' ') }
+          ...(nextQuestion
+            ? { instruction: `Saved. Next: ${nextQuestion}` }
             : {}),
         },
       };
