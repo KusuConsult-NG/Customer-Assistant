@@ -380,13 +380,36 @@ describe('ElevenLabs agent provisioning', () => {
      * re-sync will reach it.
      */
     it('turns on the conversation-start webhook, with the agent key, on create and on every re-sync', async () => {
-      stubWorkspace();
+      // An agent carrying the Governor voice, so the post-sync voice PATCH
+      // (ensureGovernorCloneStrength) actually runs — it is the request that
+      // used to switch the webhook back off.
+      stubWorkspace((req) => {
+        if (req.method !== 'GET' || !/\/v1\/convai\/agents\/[^/]+$/.test(new URL(req.url).pathname)) return undefined;
+        const agent: any = agentResponse(new URL(req.url).pathname.split('/').pop()!);
+        agent.conversation_config = {
+          ...(agent.conversation_config ?? {}),
+          tts: { supported_voices: [{ label: 'governor', voice_id: 'pAqGcXrGBThHKNv6yJnM', description: 'governor' }] },
+        };
+        return { status: 200, body: agent };
+      });
       await service.syncAgent(orgId);
       const created = sent.find((r) => r.method === 'POST' && r.url.includes('/v1/convai/agents/create'));
+      const firstSync = sent;
 
       sent = [];
       await service.syncAgent(orgId);
       const updated = sent.find((r) => r.method === 'PATCH' && r.url.includes('/v1/convai/agents/'));
+
+      // And NO later request in either sync turns it back off. A follow-up
+      // voice PATCH once sent `false` right after this was set, so every call
+      // went unrecognised while the assertion below — which reads only the
+      // first PATCH — still passed.
+      const turnedOff = [...firstSync, ...sent].filter(
+        (r) => r.body?.platform_settings?.overrides?.enable_conversation_initiation_client_data_from_webhook === false
+      );
+      expect(turnedOff.map((r) => `${r.method} ${r.url}`)).toEqual([]);
+      // Proof the voice PATCH ran, so the line above checked something.
+      expect(sent.some((r) => r.method === 'PATCH' && r.body?.conversation_config?.tts?.supported_voices)).toBe(true);
 
       for (const [which, req] of Object.entries({ created, updated })) {
         const platform = req?.body?.platform_settings;
