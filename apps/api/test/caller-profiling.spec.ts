@@ -222,7 +222,10 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.data.prompt).toMatch(/KNOWN RETURNING CALLER — do not ask for their name or location again/);
         expect(res.body.data.prompt).toContain('still calling from Angwan Rogo, Ali Kazaure ward, Jos South');
         expect(res.body.speak).toMatch(/Barka da dawowa, Hauwa Musa/);
-        expect(res.body.data.prompt).toMatch(/call language_detection with 'ha' now/);
+        // A saved language is a reason to ASK, never an order to switch.
+        expect(res.body.data.prompt).not.toMatch(/language_detection with 'ha' now/);
+        expect(res.body.data.prompt).toMatch(/ask whether they would like to continue in Hausa/);
+        expect(res.body.data.prompt).toMatch(/only after a clear yes/);
       });
     });
 
@@ -829,11 +832,19 @@ describe('The Contact Centre script on the phone line', () => {
     it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
       expect(morning).toBe(
-        "<governor>Hi, my name is Caleb Mutfwang, Governor of Plateau State. Welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> Good morning, I'm Nanpan, the virtual assistant. May I have your full name?"
+        "<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> I'm Nanpan, the virtual assistant. May I have your full name?"
       );
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
-      expect(firstMessageFor(plateau)).toMatch(/<\/governor> Hello, I'm Nanpan/);
+      expect(firstMessageFor(plateau)).toMatch(/^<governor>Hello, and welcome/);
+    });
+
+    // By the agency's decision the Governor greets and hands over: he does not
+    // say his name or his title.
+    it('the Governor greets without his name or title', () => {
+      const governor = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).match(/<governor>([\s\S]*?)<\/governor>/)![1];
+      expect(governor).not.toMatch(/Mutfwang|Caleb|Governor|my name is/i);
+      expect(governor).toMatch(/^Good morning, and welcome/);
     });
 
     it('rotates through 100 unique Plateau State male names starting with Gwaman on every call', () => {
@@ -849,7 +860,7 @@ describe('The Contact Centre script on the phone line', () => {
 
       const dynamicMorning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'), firstPersona);
       expect(dynamicMorning).toBe(
-        `<governor>Hi, my name is Caleb Mutfwang, Governor of Plateau State. Welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> Good morning, I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
       );
     });
 
