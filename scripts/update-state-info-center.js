@@ -293,19 +293,23 @@ async function main() {
   const catalog = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
   console.log(`   Found ${catalog.length} MDAs in catalog.`);
 
+  const existingDocs = await prisma.knowledgeDocument.findMany({
+    where: { organizationId: org.id },
+    select: { id: true, title: true },
+  });
+  const existingMap = new Map(existingDocs.map((d) => [d.title, d.id]));
+
   let createdCount = 0;
   let updatedCount = 0;
   let totalChunks = 0;
+  let processed = 0;
 
   for (const mda of catalog) {
     const docData = documentFor(mda);
     const chunks = chunkText(docData.body);
     totalChunks += chunks.length;
 
-    const existing = await prisma.knowledgeDocument.findFirst({
-      where: { organizationId: org.id, title: docData.title },
-      select: { id: true },
-    });
+    const existingId = existingMap.get(docData.title);
 
     const payload = {
       organizationId: org.id,
@@ -319,24 +323,29 @@ async function main() {
       errorMessage: null,
     };
 
-    const doc = existing
-      ? await prisma.knowledgeDocument.update({ where: { id: existing.id }, data: payload })
+    const doc = existingId
+      ? await prisma.knowledgeDocument.update({ where: { id: existingId }, data: payload })
       : await prisma.knowledgeDocument.create({ data: payload });
 
-    if (existing) updatedCount++;
+    if (existingId) updatedCount++;
     else createdCount++;
 
-    // Replace chunks cleanly
+    // Replace chunks cleanly with batch createMany
     await prisma.documentChunk.deleteMany({ where: { documentId: doc.id } });
-    for (let i = 0; i < chunks.length; i++) {
-      await prisma.documentChunk.create({
-        data: {
+    if (chunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: chunks.map((content, chunkIndex) => ({
           organizationId: org.id,
           documentId: doc.id,
-          chunkIndex: i,
-          content: chunks[i],
-        },
+          chunkIndex,
+          content,
+        })),
       });
+    }
+
+    processed++;
+    if (processed % 10 === 0 || processed === catalog.length) {
+      console.log(`   [${processed}/${catalog.length}] MDAs processed...`);
     }
   }
 
@@ -396,14 +405,14 @@ async function main() {
     : await prisma.knowledgeDocument.create({ data: masterDocPayload });
 
   await prisma.documentChunk.deleteMany({ where: { documentId: masterDoc.id } });
-  for (let i = 0; i < masterChunks.length; i++) {
-    await prisma.documentChunk.create({
-      data: {
+  if (masterChunks.length > 0) {
+    await prisma.documentChunk.createMany({
+      data: masterChunks.map((content, chunkIndex) => ({
         organizationId: org.id,
         documentId: masterDoc.id,
-        chunkIndex: i,
-        content: masterChunks[i],
-      },
+        chunkIndex,
+        content,
+      })),
     });
   }
   console.log('   ✓ Master Leadership Directory indexed successfully.');
@@ -437,14 +446,14 @@ async function main() {
       : await prisma.knowledgeDocument.create({ data: budgetDocPayload });
 
     await prisma.documentChunk.deleteMany({ where: { documentId: budgetDoc.id } });
-    for (let i = 0; i < budgetChunks.length; i++) {
-      await prisma.documentChunk.create({
-        data: {
+    if (budgetChunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: budgetChunks.map((content, chunkIndex) => ({
           organizationId: org.id,
           documentId: budgetDoc.id,
-          chunkIndex: i,
-          content: budgetChunks[i],
-        },
+          chunkIndex,
+          content,
+        })),
       });
     }
     console.log(`   ✓ Budget and Financial Intelligence indexed successfully (${budgetChunks.length} chunks).`);
@@ -479,14 +488,14 @@ async function main() {
       : await prisma.knowledgeDocument.create({ data: assemblyDocPayload });
 
     await prisma.documentChunk.deleteMany({ where: { documentId: assemblyDoc.id } });
-    for (let i = 0; i < assemblyChunks.length; i++) {
-      await prisma.documentChunk.create({
-        data: {
+    if (assemblyChunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: assemblyChunks.map((content, chunkIndex) => ({
           organizationId: org.id,
           documentId: assemblyDoc.id,
-          chunkIndex: i,
-          content: assemblyChunks[i],
-        },
+          chunkIndex,
+          content,
+        })),
       });
     }
     console.log(`   ✓ House of Assembly and Government Leadership indexed successfully (${assemblyChunks.length} chunks).`);
@@ -521,14 +530,14 @@ async function main() {
       : await prisma.knowledgeDocument.create({ data: guideDocPayload });
 
     await prisma.documentChunk.deleteMany({ where: { documentId: guideDoc.id } });
-    for (let i = 0; i < guideChunks.length; i++) {
-      await prisma.documentChunk.create({
-        data: {
+    if (guideChunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: guideChunks.map((content, chunkIndex) => ({
           organizationId: org.id,
           documentId: guideDoc.id,
-          chunkIndex: i,
-          content: guideChunks[i],
-        },
+          chunkIndex,
+          content,
+        })),
       });
     }
     console.log(`   ✓ Plateau State Master Citizen Guide indexed successfully (${guideChunks.length} chunks).`);
@@ -563,14 +572,14 @@ async function main() {
       : await prisma.knowledgeDocument.create({ data: suppDocPayload });
 
     await prisma.documentChunk.deleteMany({ where: { documentId: suppDoc.id } });
-    for (let i = 0; i < suppChunks.length; i++) {
-      await prisma.documentChunk.create({
-        data: {
+    if (suppChunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: suppChunks.map((content, chunkIndex) => ({
           organizationId: org.id,
           documentId: suppDoc.id,
-          chunkIndex: i,
-          content: suppChunks[i],
-        },
+          chunkIndex,
+          content,
+        })),
       });
     }
     console.log(`   ✓ Supplemental Services Guide indexed successfully (${suppChunks.length} chunks).`);
@@ -607,14 +616,14 @@ async function main() {
       : await prisma.knowledgeDocument.create({ data: projectsDocPayload });
 
     await prisma.documentChunk.deleteMany({ where: { documentId: projectsDoc.id } });
-    for (let i = 0; i < projectsChunks.length; i++) {
-      await prisma.documentChunk.create({
-        data: {
+    if (projectsChunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: projectsChunks.map((content, chunkIndex) => ({
           organizationId: org.id,
           documentId: projectsDoc.id,
-          chunkIndex: i,
-          content: projectsChunks[i],
-        },
+          chunkIndex,
+          content,
+        })),
       });
     }
     console.log(`   ✓ Governor Mutfwang Projects & Achievements indexed successfully (${projectsChunks.length} chunks).`);
