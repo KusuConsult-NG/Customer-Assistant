@@ -14,6 +14,7 @@ import { AppModule } from './app.module';
 import { validateEnvironment } from './config/env.validation';
 import { assertDatabaseGuarantees, assertDeclaredEnumsPresent } from './config/db-readiness';
 import { RedisSocketIoAdapter } from './config/socket-redis-adapter';
+import { redisRejectionGuard } from './common/redis-quota';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { TwilioMediaStreamHandler } from './telephony/twilio-media-stream.handler';
 
@@ -25,6 +26,13 @@ async function bootstrap() {
   validateEnvironment();
 
   const logger = new Logger('CustomerCareAgent');
+
+  // ── 1a. A Redis refusal nobody caught must not take the API down ───────────
+  // With the Upstash quota spent, @socket.io/redis-adapter's unawaited
+  // subscribe/publish rejected and Node exited one second after every boot.
+  // Redis errors are absorbed and logged; any other unhandled rejection is
+  // rethrown, exactly as Node behaves with no handler. See redis-quota.ts.
+  process.on('unhandledRejection', redisRejectionGuard((m) => logger.error(m)));
 
   // ── 1b. Validate the guarantees the SCHEMA cannot carry ────────────────────
   // `db push` cannot create the booking EXCLUDE constraint, so a database can
