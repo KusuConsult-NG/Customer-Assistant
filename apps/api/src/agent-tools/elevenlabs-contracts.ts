@@ -235,8 +235,16 @@ export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 0.9
  * scripted turn plus a tool call with room to spare. A caller who really has
  * gone quiet is handled by turnTimeout (the agent asks if they are still there)
  * and the prompt's instruction to end_call after two unanswered checks.
+ *
+ * 180, not 120: `spoken-duration.spec.ts` measures every scripted turn at the
+ * configured speed, and the urgent SECURITY reply — 112, three toll-free
+ * lines and a control room read digit by digit, which the agent is told to
+ * explain further — needs about 140 seconds with a tool call and the caller's
+ * answer. At 120 a caller reporting an attack could be hung up on mid-number.
+ * ElevenLabs documents no maximum for this field; if a sync is refused over it,
+ * the sync error and the live-settings drift check both say so.
  */
-export const SILENCE_END_CALL_TIMEOUT_SECONDS = 120;
+export const SILENCE_END_CALL_TIMEOUT_SECONDS = 180;
 
 /** Build the request for `conversationalAi.agents.create`. */
 export function agentDefinition(spec: AgentSpec) {

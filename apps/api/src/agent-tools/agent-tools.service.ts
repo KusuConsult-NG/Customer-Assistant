@@ -24,6 +24,7 @@
  * Tenant scoping comes from the agent key (see agent-key.guard.ts) and is passed
  * in as organizationId — never read from the request body.
  */
+import { reportRegisteredReply, urgentReportReply } from './spoken-replies';
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { relevantPassage } from './relevant-passage';
 import { AgentKeyGuard } from './agent-key.guard';
@@ -1606,21 +1607,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (kind) {
-        // Who to call depends on what is happening. 112 leads every time: it is
-        // the one national number that reaches every service.
-        const authority =
-          kind === 'security'
-            ? 'The fastest route for anything happening now is 1 1 2. You can also reach Operation Enduring Peace, the joint military task force, on their toll-free line 0 8 0 0 0 0 2 0 2 0 3, and Operation Rainbow, the State early-warning and security outfit, on their toll-free line 0 8 0 0 0 0 2 2 3 3 4 4 or their control room 0 9 0 6 4 0 0 0 1 1 2. For crimes like robbery or kidnapping, the Police Plateau Command is on 0 8 0 3 2 4 1 9 3 3 6.'
-            : kind === 'fire'
-            ? 'Please call 1 1 2 or the Plateau State Fire Service on 0 7 0 4 0 0 0 7 2 8 3 right away, and keep everyone away from the building.'
-            : kind === 'disaster'
-            ? 'The Plateau State Emergency Management Agency, SEMA, handles floods and disasters — their line is 0 8 0 3 7 8 0 8 2 1 8 — and 1 1 2 will also connect you.'
-            : 'Please call 1 1 2 for an ambulance, or get to the nearest hospital as fast as you safely can.';
         return {
           ok: true,
-          speak:
-            `Thank you for your patience. Your report has now been registered in our system as urgent and flagged to our team. Your unique reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will help you track the progress of your report. ` +
-            authority,
+          speak: urgentReportReply(ticket.ticketNumber, kind),
           data: {
             ticketId: ticket.id,
             ticketNumber: ticket.ticketNumber,
@@ -1645,18 +1634,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // the case is marked for is RECORDED (`responsibleMda`, as the document
       // asks of routing information) but not spoken: nothing here sends the
       // case to that office, an officer refers it.
-      const thanks = callerDisplayName ? `Once again, thank you, ${callerDisplayName}, for` : 'Once again, thank you for';
       return {
         ok: true,
-        speak:
-          `Thank you for your patience. Your report has now been registered in our system. ` +
-          `Your unique complaint reference number is ${ticket.ticketNumber}. Please keep this number safe, as it will ` +
-          `help you track the progress of your report and make subsequent enquiries. ` +
-          `${thanks} contacting the Plateau State Government Citizen Contact Centre. Your report has been recorded under ` +
-          `reference number ${ticket.ticketNumber}. We appreciate your contribution towards improving governance and ` +
-          `public service delivery across Plateau State. Your voice matters, and we encourage you to continue using this ` +
-          `platform to communicate your concerns, seek information and provide feedback on government services. ` +
-          `Is there anything else I can assist you with today, or may I go ahead and end the call?`,
+        speak: reportRegisteredReply(ticket.ticketNumber, callerDisplayName),
         data: {
           ticketId: ticket.id,
           ticketNumber: ticket.ticketNumber,
