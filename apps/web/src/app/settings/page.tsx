@@ -2296,6 +2296,7 @@ function HostedAgentTab({ showToast }: any) {
                 <span>{agent.toolCount} of {agent.expectedToolCount} tools attached</span>
               )}
             </div>
+            {agent?.configured && <AssistantNameStatus agent={agent} />}
             {(agent?.drift ?? []).length === 0 ? (
               <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" /> The remote agent matches this platform.
@@ -2319,6 +2320,45 @@ function HostedAgentTab({ showToast }: any) {
           </div>
         )}
       </Section>
+    </div>
+  );
+}
+
+/**
+ * Which name the next caller will hear, read from the live agent itself, and
+ * what happened the last time this platform tried to change it. Callers kept
+ * hearing "Nanpan" with nothing on any screen to say whether the rotation was
+ * running, refused, or never triggered.
+ */
+function AssistantNameStatus({ agent }: { agent: any }) {
+  const last = agent.lastNameRotation;
+  const when = (iso: string) => {
+    try { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); } catch { return iso; }
+  };
+  const trigger = (t: string) =>
+    t === 'sync' ? 'Sync configuration' : t === 'call-ended' ? 'the end of a call' : t === 'lookup' ? 'a caller lookup' : t;
+  return (
+    <div className="text-xs space-y-1">
+      <p className="text-slate-700 dark:text-slate-300">
+        Next caller will hear the assistant called{' '}
+        <strong>{agent.nextCallerName || 'unknown (could not be read from the agent)'}</strong>.
+      </p>
+      {last ? (
+        last.outcome === 'rotated' ? (
+          <p className="text-slate-500 dark:text-slate-400">
+            Last changed to {last.name} after {trigger(last.trigger)}, {when(last.at)}.
+          </p>
+        ) : (
+          <div className="flex gap-2.5 p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20">
+            <AlertTriangle className="w-4 h-4 text-red-700 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-red-700 dark:text-red-300 leading-relaxed break-words">
+              The last name change ({trigger(last.trigger)}, {when(last.at)}) {last.outcome === 'refused' ? 'was refused by ElevenLabs' : 'failed'}: {last.detail || 'no detail given'}. Until this is fixed, every caller hears the same name.
+            </p>
+          </div>
+        )
+      ) : (
+        <p className="text-slate-500 dark:text-slate-400">No name change has been attempted since the server last started.</p>
+      )}
     </div>
   );
 }

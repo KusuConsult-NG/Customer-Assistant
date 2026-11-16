@@ -882,8 +882,11 @@ export function storedPersonaFor(org: AgentOrganization): string | undefined {
 }
 
 export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): string {
-  const resolved = persona || resolvePersona(org.persona);
-  const personaHeader = `You are {{representative_name}} (default persona: ${resolved.name}), a dedicated customer service team member at {{organization_name}}.\nIntroduce yourself as {{representative_name}} when asked who is speaking or when greeting the customer.\nConverse consistently as {{representative_name}} throughout the entire call.`;
+  // No literal name in the instructions: it said "(default persona: Nanpan)",
+  // which gave the model a name to fall back to on a call whose greeting used
+  // another. Who is speaking is {{representative_name}}, set per call.
+  void persona;
+  const personaHeader = `You are {{representative_name}}, a dedicated customer service team member at {{organization_name}}.\nIntroduce yourself as {{representative_name}} when asked who is speaking or when greeting the customer.\nConverse consistently as {{representative_name}} throughout the entire call.`;
 
   // Appended AFTER the tenant's stored persona, deliberately: a stored persona
   // that instructs the model to deny being an AI (one shipped exactly that)
@@ -984,6 +987,12 @@ export function agentDefinitionFor(
     clearInlineTools?: boolean;
     /** See `AgentSpec.initiationWebhook`. */
     initiationWebhook?: AgentSpec['initiationWebhook'];
+    /**
+     * The persona the NEXT call's greeting and name use, when it differs from
+     * the agent's own. A Plateau sync passes a roster name: writing the
+     * default persona's greeting made the first call after every sync Nanpan.
+     */
+    firstCallPersona?: TeamPersona;
   }
 ) {
   const persona = customPersona || resolvePersona(org.persona);
@@ -1027,7 +1036,7 @@ export function agentDefinitionFor(
 
   return agentDefinition({
     name: agentNameFor(org, persona),
-    firstMessage: firstMessageFor(org, persona),
+    firstMessage: firstMessageFor(org, options?.firstCallPersona ?? persona),
     systemPrompt: agentPromptFor(org, persona),
     voiceId,
     toolIds,
@@ -1035,7 +1044,7 @@ export function agentDefinitionFor(
     pronunciationDictionaryLocators,
     // Inbound calls supply no variables, so the prompt's {{organization_name}}
     // must have a default or the agent never speaks. See AgentSpec.
-    dynamicVariablePlaceholders: dynamicVariablesFor(org, persona),
+    dynamicVariablePlaceholders: dynamicVariablesFor(org, options?.firstCallPersona ?? persona),
     ...(options?.clearInlineTools ? { clearInlineTools: true } : {}),
     ...(options?.initiationWebhook ? { initiationWebhook: options.initiationWebhook } : {}),
   });

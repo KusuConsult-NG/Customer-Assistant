@@ -23,6 +23,7 @@ import {
 } from '../src/agent-tools/elevenlabs-signature';
 import { ElevenLabsWebhookService } from '../src/agent-tools/elevenlabs-webhook.service';
 import { MissedCallFollowUpService } from '../src/agent-tools/missed-call-followup.service';
+import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
 
 const SECRET = 'wsec_test_secret';
 
@@ -135,6 +136,8 @@ describe('ElevenLabs webhook ingestion', () => {
         // failure, and these tests are about what gets RECORDED. Its own
         // refusals are covered in missed-call-followup.spec.ts.
         { provide: MissedCallFollowUpService, useValue: { followUp: jest.fn().mockResolvedValue({ sent: false, reason: 'stubbed in test' }) } },
+        // The name rotation after a call never runs under Jest, so this is never asked.
+        ElevenLabsApi,
       ],
     }).compile();
     service = moduleRef.get(ElevenLabsWebhookService);
