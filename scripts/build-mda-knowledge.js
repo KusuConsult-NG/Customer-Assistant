@@ -497,7 +497,7 @@ const MDA_CATALOG = [
     category: 'GOVERNMENT',
     currentLeadership: {
       title: 'Rt. Hon.',
-      name: 'Joyce Lohya Ramnap',
+      name: 'Joyce Lohya Ramnap, mni',
       position: 'Commissioner for Information and Communication',
       note: 'Former Deputy Speaker of the Plateau State House of Assembly; appointed in cabinet restructuring.'
     },

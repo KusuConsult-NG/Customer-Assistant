@@ -16,6 +16,7 @@
 - **Deputy Governor**: Her Excellency, Ngo Josephine Chundung Piyo.
 - **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau.
 - **Chief of Staff to the Governor**: Engr. Jeremiah Satmark.
+- **Permanent Secretary, Government House**: Mrs. Helen Chundusu.
 - **Head of Civil Service**: Mr. Stephen Pam Gadong (confirmed substantive Head of Civil Service in December 2024, succeeding Barr. Mrs. Rauta Joshua Dakok who retired at the statutory age of 60).
 - **Attorney-General and Commissioner for Justice**: Hon. Philemon Audu Daffi.
 
@@ -52,7 +53,7 @@
 - **Health**: Dr. Nicholas Ba'amlong (appointed February 2025, succeeding Dr. Cletus Bako Shurkuk)
 - **Housing and Urban Development**: Sylvanus Dongtoe
 - **Humanitarian Affairs and Poverty Alleviation**: Ishaku Maren / Prince Miaphen
-- **Information and Communication**: Hon. Joyce Lohya Ramnap
+- **Information and Communication**: Rt. Hon. Joyce Lohya Ramnap, mni
 - **Justice**: Hon. Philemon Audu Daffi
 - **Lands, Survey and Town Planning**: Peter Nyam Gai
 - **Livestock Development, Veterinary Services, and Fisheries**: Sunday Akpa

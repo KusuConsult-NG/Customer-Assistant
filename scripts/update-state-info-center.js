@@ -191,6 +191,7 @@ Core State Leadership (Always use these current, verified figures):
 - Deputy Speaker, House of Assembly: Hon. Timothy Dantong.
 - Secretary to the Government of the State (SGS): Arc. Samuel Nanchang Jatau.
 - Chief of Staff: Engr. Jeremiah Satmark.
+- Permanent Secretary, Government House: Mrs. Helen Chundusu.
 - Head of Civil Service: Mr. Stephen Pam Gadong (confirmed December 2024, succeeding Barr. Rauta Dakok who retired).
 - Attorney-General and Commissioner for Justice: Philemon Audu Daffi.
 - Director-General, Plateau State Contributory Healthcare Management Agency (PLASCHEMA): Dr. Dawal Solomon Kwande.
@@ -199,7 +200,7 @@ Core State Leadership (Always use these current, verified figures):
 - Commissioner for Commerce and Industry: Dr. Sunday Alex (appointed January 2025).
 - Commissioner for Tourism, Culture and Hospitality: Hon. Cornelius Dongnaan Doeyok (appointed January 2025).
 - Commissioner for Youth and Sports Development: Hon. Bashir Lawandi Datti.
-- Commissioner for Information and Communication: Hon. Joyce Lohya Ramnap.
+- Commissioner for Information and Communication: Rt. Hon. Joyce Lohya Ramnap, mni.
 - Director-General, Plateau State Energy Corporation: Engr. Ponzing Bindong Gamde (Board Chairman: Hon. Victor During Dagett).
 - Project Coordinator, SDGs Project Support Unit: Hon. Mrs. Nanbam Esther Danjuma-Lot.
 - Director-General, PEPSA: Samuel Nathaniel Dapiya.
