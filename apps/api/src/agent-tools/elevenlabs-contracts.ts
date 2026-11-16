@@ -223,6 +223,21 @@ export const GOVERNOR_VOICE_ID = 'pAqGcXrGBThHKNv6yJnM';
  */
 export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 0.9 } as const;
 
+/**
+ * Seconds after the CALLER last spoke before ElevenLabs hangs up.
+ *
+ * Not "seconds of silence": the SDK defines it as the "maximum wait time since
+ * the user last spoke before terminating the call", and the agent's own speech
+ * does not reset it. At 10, any agent turn longer than ten seconds was cut off
+ * mid-sentence — the Phase 10 closing alone runs about forty seconds at speed
+ * 0.9, and create-ticket's reply is Phase 8 and Phase 10 together — so calls
+ * dropped in the middle of the agent talking. It must exceed the longest
+ * scripted turn plus a tool call with room to spare. A caller who really has
+ * gone quiet is handled by turnTimeout (the agent asks if they are still there)
+ * and the prompt's instruction to end_call after two unanswered checks.
+ */
+export const SILENCE_END_CALL_TIMEOUT_SECONDS = 120;
+
 /** Build the request for `conversationalAi.agents.create`. */
 export function agentDefinition(spec: AgentSpec) {
   if (!spec.timezone) {
@@ -356,7 +371,7 @@ export function agentDefinition(spec: AgentSpec) {
       },
       turn: {
         turnTimeout: 3.5,
-        silenceEndCallTimeout: 10,
+        silenceEndCallTimeout: SILENCE_END_CALL_TIMEOUT_SECONDS,
         mode: 'turn',
         turnEagerness: 'normal',
         speculativeTurn: false,

@@ -235,6 +235,18 @@ describe('Agent tool catalogue', () => {
     expect(tts.supportedVoices[0].speed).toBe(0.9);
   });
 
+  // Calls dropped in the middle of the agent talking. ElevenLabs counts this
+  // timeout from when the CALLER last spoke, so at 10 seconds any longer agent
+  // turn — the Phase 10 closing, a read-back — was cut off mid-sentence.
+  it('never hangs up on a caller while the agent is still speaking a scripted turn', () => {
+    const def = agentDefinitionFor({ ...ORG, voiceId: null }, []) as any;
+    const turn = def.conversationConfig.turn;
+    // Longer than the longest scripted turn (Phase 8 + Phase 10, ~60s at 0.9) with margin.
+    expect(turn.silenceEndCallTimeout).toBeGreaterThanOrEqual(90);
+    const prompt = def.conversationConfig.agent.prompt.prompt as string;
+    expect(prompt).not.toMatch(/silent for 10 seconds|10-SECOND/i);
+  });
+
   it('gives each tool a description an LLM can route on', () => {
     for (const tool of all) {
       expect(cfg(tool).description.length).toBeGreaterThan(40);
