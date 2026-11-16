@@ -644,6 +644,11 @@ export const api = {
       const res = await fetch(`${API_URL}/api/agent-provisioning/status`, { headers: getHeaders() });
       return handleResponse(res);
     },
+    /** How the agent's calls ended over the last day, by ElevenLabs' recorded reason. Counts only. */
+    getCallHealth: async () => {
+      const res = await fetch(`${API_URL}/api/agent-provisioning/call-health`, { headers: getHeaders() });
+      return handleResponse(res);
+    },
 
     /**
      * Create the agent, its tools and its key in the tenant's workspace.

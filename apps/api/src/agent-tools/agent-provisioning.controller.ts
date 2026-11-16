@@ -56,6 +56,16 @@ export class AgentProvisioningController {
     return this.agents.getAgentStatus(req.user.organizationId);
   }
 
+  /**
+   * How this agency's calls ended over the last day, counted by the reason
+   * ElevenLabs recorded. Counts and reasons only — no caller, number or
+   * transcript — so any signed-in member may read it, like `status`.
+   */
+  @Get('call-health')
+  callHealth(@Req() req: { user: AuthUser }) {
+    return this.agents.getCallHealth(req.user.organizationId);
+  }
+
   // ── Workspace credentials ──────────────────────────────────────────────────
 
   /**
