@@ -44,9 +44,12 @@ import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Prisma, encryptSecret, isEncrypted, prisma, secretFingerprint } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
+import { lastNameRotation, NameRotationRecord, recordNameRotation } from './plateau-name-rotation';
 import { CallHealth, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
 import {
   agentDefinitionFor,
+  isPlateauStateOrg,
+  pickPlateauMalePersona,
   agentNameFor,
   agentToolCatalog,
   remoteToolName,
@@ -87,6 +90,14 @@ export interface AgentStatus {
   drift: string[];
   toolCount: number;
   expectedToolCount: number;
+  /**
+   * The assistant name the live agent will give the NEXT caller, read from the
+   * agent itself — so "is the name rotating?" is answered by ElevenLabs, not by
+   * what this platform believes it sent. Absent when it could not be read.
+   */
+  nextCallerName?: string | null;
+  /** The last attempt to change it, on this server, with ElevenLabs' answer. */
+  lastNameRotation?: NameRotationRecord | null;
 }
 
 type ToolIdMap = Partial<Record<ToolName, string>>;
@@ -727,7 +738,11 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
       authorization: fromSecret(secret.secretId),
       enabled: process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK === '1',
     };
-    const definition = agentDefinitionFor(org, orderedIds, undefined, { initiationWebhook });
+    // A Plateau agency's next caller hears a roster name, not the default
+    // persona's: a sync that wrote "I'm Nanpan" made the first call after every
+    // sync Nanpan, and syncs follow nearly every deploy.
+    const firstCallPersona = isPlateauStateOrg(org) ? pickPlateauMalePersona() : undefined;
+    const definition = agentDefinitionFor(org, orderedIds, undefined, { initiationWebhook, firstCallPersona });
 
     let agentId = config?.agentId ?? null;
     if (agentId) {
@@ -748,7 +763,7 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
         // re-reads and still reports inline tools if any remain.
         const hasInlineTools = await this.remoteHasInlineTools(client, agentId, baseUrl, org.slug);
         const payload = hasInlineTools
-          ? agentDefinitionFor(org, orderedIds, undefined, { clearInlineTools: true, initiationWebhook })
+          ? agentDefinitionFor(org, orderedIds, undefined, { clearInlineTools: true, initiationWebhook, firstCallPersona })
           : definition;
 
         await client.conversationalAi.agents.update(agentId, {
@@ -786,6 +801,14 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     this.log.log(
       `agent_synced org=${organizationId} agent=${agentId} tools=${orderedIds.length}`
     );
+    if (firstCallPersona) {
+      recordNameRotation(organizationId, {
+        at: new Date().toISOString(),
+        trigger: 'sync',
+        outcome: 'rotated',
+        name: firstCallPersona.name,
+      });
+    }
 
     return {
       organizationId,
@@ -1071,6 +1094,10 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
       drift.push(describeSettingDrift(d));
     }
 
+    const placeholders: any = (agent.conversationConfig as any)?.agent?.dynamicVariables?.dynamic_variable_placeholders;
+    const nextCallerName =
+      typeof placeholders?.representative_name === 'string' ? placeholders.representative_name : null;
+
     return {
       configured: true,
       agentId: config.agentId,
@@ -1078,6 +1105,8 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
       drift,
       toolCount: remoteToolIds.length,
       expectedToolCount: TOOL_NAMES.length,
+      nextCallerName,
+      lastNameRotation: lastNameRotation(organizationId),
     };
   }
 

@@ -253,6 +253,44 @@ describe('ElevenLabs agent provisioning', () => {
       expect(create.body.conversation_config.agent.prompt.timezone).toBe('Africa/Lagos');
     });
 
+    // Every caller after a sync heard "Nanpan": the sync wrote the default
+    // persona's greeting, and syncs follow nearly every deploy.
+    it("gives a Plateau agency's next caller a roster name, not the default persona's", async () => {
+      const { PLATEAU_MALE_NAMES } = require('../src/agent-tools/agent-tool-catalog');
+      const { lastNameRotation } = require('../src/agent-tools/plateau-name-rotation');
+      await prisma.organization.update({
+        where: { id: orgId },
+        data: {
+          name: 'Plateau State Government Citizen Contact Centre',
+          welcomeMessage: '<governor>{greeting}, and welcome. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I\'m {name}, the virtual assistant. May I have your full name?',
+        },
+      });
+      try {
+        // Several syncs, so a lucky draw of the one name cannot pass this.
+        const names: string[] = [];
+        for (let i = 0; i < 4; i++) {
+          stubWorkspace();
+          await service.syncAgent(orgId);
+          const creates = posts('/v1/convai/agents/create');
+          const agent = creates[creates.length - 1].body.conversation_config.agent;
+          const name = agent.dynamic_variables.dynamic_variable_placeholders.representative_name;
+          expect(PLATEAU_MALE_NAMES).toContain(name);
+          expect(agent.first_message).toContain(`I'm ${name}, the virtual assistant.`);
+          // Nothing in the instructions names a persona to fall back to.
+          expect(agent.prompt.prompt).not.toMatch(/Nanpan/);
+          expect(lastNameRotation(orgId)).toMatchObject({ trigger: 'sync', outcome: 'rotated', name });
+          names.push(name);
+          await prisma.hostedAgentConfig.deleteMany({ where: { organizationId: orgId } });
+        }
+        expect(names.every((n) => n === 'Nanpan')).toBe(false);
+      } finally {
+        await prisma.organization.update({
+          where: { id: orgId },
+          data: { name: 'Sync Test Clinic', welcomeMessage: null },
+        });
+      }
+    });
+
     it('binds the caller phone number on the wire, in snake_case', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);

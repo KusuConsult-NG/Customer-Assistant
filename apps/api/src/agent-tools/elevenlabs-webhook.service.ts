@@ -38,8 +38,14 @@ import { elevenLabsRecordingRef, isErasedCall } from '../common/call-recording';
 import { ChannelType, MessageSender } from '@ace/database';
 import { AceLogger } from '../config/logger';
 import { MissedCallFollowUpService } from './missed-call-followup.service';
+import { ElevenLabsApi } from './elevenlabs-client';
+import { rotatePlateauAssistantName } from './plateau-name-rotation';
 
 const log = new AceLogger('ElevenLabsWebhook');
+/** The rotation reports through this service's logger. */
+const rotationLog = { log: (m: string) => log.info(m), warn: (m: string) => log.warn(m) };
+/** A call that ended longer ago than this is a replay, not a line just freed. */
+const RECENT_CALL_MS = 15 * 60 * 1000;
 
 /**
  * Delivers the selfie link to a caller immediately after the call ends.
@@ -402,7 +408,10 @@ export type IngestOutcome =
 
 @Injectable()
 export class ElevenLabsWebhookService {
-  constructor(private readonly followUp: MissedCallFollowUpService) {}
+  constructor(
+    private readonly followUp: MissedCallFollowUpService,
+    private readonly elevenlabs: ElevenLabsApi
+  ) {}
 
   /**
    * Persist one delivery.
@@ -827,6 +836,16 @@ export class ElevenLabsWebhookService {
           log.warn('elevenlabs_voice_conversation_mirror_failed', { error: convErr.message, callSid });
         }
       }
+    }
+
+    // The second trigger for the Plateau name rotation. The first is the
+    // agent's turn-1 lookup, which a model can skip — and then the next caller
+    // heard the same name. Only for a call that ended just now: the call-sync
+    // poller replays old conversations through here, and a replay is not a
+    // call that has just freed the line.
+    const endedAt = startedAt.getTime() + (Number(meta.call_duration_secs) || 0) * 1000;
+    if (Date.now() - endedAt < RECENT_CALL_MS) {
+      void rotatePlateauAssistantName(organizationId, this.elevenlabs, rotationLog, 'call-ended');
     }
 
     return { handled: true, kind: 'voice', organizationId, reference: callSid };

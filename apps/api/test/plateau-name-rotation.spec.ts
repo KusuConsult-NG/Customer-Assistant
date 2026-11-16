@@ -21,6 +21,8 @@ import { prisma, encryptSecret } from '@ace/database';
 import { AgentToolsService } from '../src/agent-tools/agent-tools.service';
 import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
 import { PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
+import { lastNameRotation } from '../src/agent-tools/plateau-name-rotation';
+import { ElevenLabsWebhookService } from '../src/agent-tools/elevenlabs-webhook.service';
 
 describe('Plateau name rotation', () => {
   jest.setTimeout(60000);
@@ -107,5 +109,84 @@ describe('Plateau name rotation', () => {
     const { logs } = await rotate(403);
     expect(logs.some((l) => l.startsWith('warn rotate_plateau_persona_refused') && l.includes('status=403'))).toBe(true);
     expect(logs.some((l) => l.includes('rotated_plateau_persona'))).toBe(false);
+  });
+
+  // Nothing on any screen said whether the rotation ran, was refused or never
+  // fired, so "callers still hear Nanpan" could not be told apart from a
+  // working rotation. The outcome is kept and the Hosted Agent screen shows it.
+  it('keeps the outcome, with ElevenLabs\' own words when it refused', async () => {
+    await rotate(403);
+    expect(lastNameRotation(orgId)).toMatchObject({
+      trigger: 'lookup',
+      outcome: 'refused',
+      detail: expect.stringContaining('HTTP 403'),
+    });
+    const { sent } = await rotate(200);
+    const staged = sent[0].body.conversation_config.agent.dynamic_variables.dynamic_variable_placeholders.representative_name;
+    expect(lastNameRotation(orgId)).toMatchObject({ trigger: 'lookup', outcome: 'rotated', name: staged });
+  });
+
+  // The turn-1 lookup was the only trigger, and a model can skip it — the next
+  // caller then heard the same name. The end of every call rotates too.
+  describe('after a call ends', () => {
+    const ingestCall = async (endedSecondsAgo: number) => {
+      const sent: string[] = [];
+      global.fetch = (async (input: any) => {
+        sent.push(String(input));
+        return new Response('{}', { status: 200 });
+      }) as any;
+      const webhooks = new ElevenLabsWebhookService(
+        { followUp: async () => ({ sent: false, reason: 'stub' }) } as any,
+        new ElevenLabsApi()
+      );
+      const duration = 60;
+      const start = Math.floor(Date.now() / 1000) - endedSecondsAgo - duration;
+      process.env.NODE_ENV = 'production';
+      try {
+        await webhooks.ingest(
+          {
+            type: 'post_call_transcription',
+            data: {
+              agent_id: 'agent_rotation_test',
+              conversation_id: `conv_${randomBytes(4).toString('hex')}`,
+              status: 'done',
+              transcript: [{ role: 'agent', message: 'Hello', time_in_call_secs: 0 }],
+              metadata: {
+                start_time_unix_secs: start,
+                call_duration_secs: duration,
+                phone_call: {
+                  type: 'twilio',
+                  direction: 'inbound',
+                  call_sid: `CA${randomBytes(6).toString('hex')}`,
+                  agent_number: '+2348000000009',
+                  external_number: '+2348111111119',
+                },
+              },
+            },
+          } as any,
+          'test',
+          orgId
+        );
+        // The rotation is fire-and-forget after the webhook is recorded.
+        await new Promise((r) => setTimeout(r, 200));
+      } finally {
+        process.env.NODE_ENV = realEnv.NODE_ENV;
+      }
+      return sent.filter((u) => /\/v1\/convai\/agents\/agent_rotation_test$/.test(u));
+    };
+
+    afterAll(async () => {
+      await prisma.callLog.deleteMany({ where: { organizationId: orgId } });
+      await prisma.contact.deleteMany({ where: { organizationId: orgId } });
+    });
+
+    it('stages a new name when a call has just ended', async () => {
+      expect(await ingestCall(30)).toHaveLength(1);
+      expect(lastNameRotation(orgId)).toMatchObject({ trigger: 'call-ended', outcome: 'rotated' });
+    });
+
+    it('does not for an old call replayed by the call-sync poller', async () => {
+      expect(await ingestCall(3600)).toHaveLength(0);
+    });
   });
 });
