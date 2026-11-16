@@ -233,6 +233,32 @@ export default function DashboardPage() {
     fetchAll();
   }, [timeRange]);
 
+  // ── Is the phone agent healthy? ──────────────────────────────────────────
+  // Two failures were found by callers before anyone here: a sync ElevenLabs
+  // refused (the live agent kept old settings while every screen said the fix
+  // had shipped) and a timeout hanging up on callers mid-sentence. Admins see
+  // both on the first screen. Errors are ignored HERE only because an agency
+  // with no phone agent would otherwise get a banner about something it does
+  // not use; Settings → Hosted Agent shows the same checks with their errors.
+  const [agentDrift, setAgentDrift] = useState<string[]>([]);
+  const [callHealth, setCallHealth] = useState<any>(null);
+  useEffect(() => {
+    let role: string | undefined;
+    try { role = JSON.parse(localStorage.getItem('ace_user') || '{}').role; } catch { /* no session detail */ }
+    if (role !== 'OWNER' && role !== 'ADMIN') return;
+    let cancelled = false;
+    void Promise.allSettled([api.agentProvisioning.getStatus(), api.agentProvisioning.getCallHealth()]).then(
+      ([statusRes, healthRes]) => {
+        if (cancelled) return;
+        if (statusRes.status === 'fulfilled' && statusRes.value?.configured) {
+          setAgentDrift(Array.isArray(statusRes.value.drift) ? statusRes.value.drift : []);
+        }
+        if (healthRes.status === 'fulfilled') setCallHealth(healthRes.value);
+      }
+    );
+    return () => { cancelled = true; };
+  }, []);
+
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   /** An unknown figure is a dash. It is never a zero. */
@@ -304,6 +330,36 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-7xl pb-12">
+      {callHealth?.alert && (
+        <Link
+          href="/settings"
+          role="alert"
+          className="flex items-start gap-3 p-4 rounded-2xl border border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        >
+          <AlertTriangle className="w-5 h-5 shrink-0 text-red-700 dark:text-red-400 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-red-900 dark:text-red-200">Calls are being dropped</p>
+            <p className="text-xs text-red-800 dark:text-red-300/90 mt-0.5">
+              {callHealth.abnormal} of {callHealth.total} phone calls in the last {callHealth.windowHours} hours ended abnormally (a timeout or an error). Open Settings → Hosted Agent for the reasons.
+            </p>
+          </div>
+        </Link>
+      )}
+      {agentDrift.length > 0 && (
+        <Link
+          href="/settings"
+          className="flex items-start gap-3 p-4 rounded-2xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+        >
+          <AlertTriangle className="w-5 h-5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">The live phone agent differs from this platform</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300/90 mt-0.5">
+              {agentDrift.length} setting{agentDrift.length === 1 ? '' : 's'} on the agent callers reach {agentDrift.length === 1 ? 'does' : 'do'} not match — usually a sync that did not take. Open Settings → Hosted Agent to see which, then run Sync configuration.
+            </p>
+          </div>
+        </Link>
+      )}
+
       {/* Nothing loaded, or part of it did not. Either way the page says so
           instead of presenting its defaults as the agency's figures. */}
       {(loadError || unavailable.length > 0) && (

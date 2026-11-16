@@ -31,12 +31,20 @@
  * serves every channel; see CLAUDE.md, "TWO conversation engines exist right
  * now, and only one is live."
  */
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import type { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Prisma, encryptSecret, isEncrypted, prisma, secretFingerprint } from '@ace/database';
 import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
+import { CallHealth, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
 import {
   agentDefinitionFor,
   agentNameFor,
@@ -84,10 +92,49 @@ export interface AgentStatus {
 type ToolIdMap = Partial<Record<ToolName, string>>;
 
 @Injectable()
-export class ElevenLabsAgentService {
+export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('ElevenLabsAgent');
+  /** Last call-health reading per organization, so a busy dashboard is not a busy provider. */
+  private readonly callHealthCache = new Map<string, { at: number; value: CallHealth & { checkedAt: string } }>();
+  private callHealthTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly api: ElevenLabsApi) {}
+
+  /**
+   * Check every agency's calls hourly, whether or not anyone has the dashboard
+   * open, and log an ERROR when abnormal endings cross the threshold — the
+   * line a log alert can be set on. Not under Jest: it would call ElevenLabs
+   * from every suite that boots the app.
+   */
+  onModuleInit(): void {
+    if (process.env.NODE_ENV === 'test') return;
+    this.callHealthTimer = setInterval(() => void this.sweepCallHealth(), CALL_HEALTH_SWEEP_MS);
+    this.callHealthTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.callHealthTimer) clearInterval(this.callHealthTimer);
+    this.callHealthTimer = null;
+  }
+
+  private async sweepCallHealth(): Promise<void> {
+    let configs: { organizationId: string }[] = [];
+    try {
+      configs = await prisma.hostedAgentConfig.findMany({
+        where: { agentId: { not: null } },
+        select: { organizationId: true },
+      });
+    } catch (err) {
+      this.log.warn(`call_health_sweep_failed err=${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    for (const { organizationId } of configs) {
+      // One agency's expired key must not stop the others being checked.
+      await this.getCallHealth(organizationId, 24, { fresh: true }).catch((err) =>
+        this.log.warn(`call_health_check_failed org=${organizationId} err=${err instanceof Error ? err.message : String(err)}`)
+      );
+    }
+  }
 
   // ── Environment ────────────────────────────────────────────────────────────
 
@@ -1007,6 +1054,23 @@ export class ElevenLabsAgentService {
       }
     }
 
+    // ── The settings callers hear ────────────────────────────────────────────
+    //
+    // Nothing compared these. A sync refused by ElevenLabs left the agent on
+    // its old voice speed and a 10-second silence timeout that hung up on
+    // callers mid-sentence, while every screen here said the fix had shipped.
+    // The expected side is built exactly as syncAgent builds it.
+    const expectedDefinition = agentDefinitionFor(org, [], undefined, {
+      initiationWebhook: {
+        url: `${baseUrl}/api/agent-tools/conversation-start`,
+        authorization: fromSecret(config.agentKeySecretId ?? 'unknown'),
+        enabled: process.env.ELEVENLABS_CONVERSATION_START_WEBHOOK === '1',
+      },
+    });
+    for (const d of liveSettingsDrift(agent, expectedDefinition)) {
+      drift.push(describeSettingDrift(d));
+    }
+
     return {
       configured: true,
       agentId: config.agentId,
@@ -1016,4 +1080,70 @@ export class ElevenLabsAgentService {
       expectedToolCount: TOOL_NAMES.length,
     };
   }
+
+  // ── How calls are ending ───────────────────────────────────────────────────
+
+  /**
+   * Why this agent's recent conversations ended, counted.
+   *
+   * Read from ElevenLabs, which records a termination reason for every
+   * conversation; nothing here stores one. Scoped to the tenant's own agent,
+   * like every listing, because the workspace may hold other agents' calls.
+   * Capped so a busy line costs a bounded number of requests.
+   */
+  async getCallHealth(
+    organizationId: string,
+    windowHours = 24,
+    options: { fresh?: boolean } = {}
+  ): Promise<CallHealth & { checkedAt: string }> {
+    const cached = this.callHealthCache.get(organizationId);
+    if (!options.fresh && cached && Date.now() - cached.at < CALL_HEALTH_CACHE_MS && cached.value.windowHours === windowHours) {
+      return cached.value;
+    }
+    const { config, apiKey } = await this.tenant(organizationId);
+    if (!config?.agentId) {
+      return { ...summariseCallHealth([], windowHours), checkedAt: new Date().toISOString() };
+    }
+    const client = this.client(apiKey);
+    const after = Math.floor(Date.now() / 1000) - windowHours * 3600;
+    const seen: { terminationReason?: string | null; status?: string | null }[] = [];
+    let cursor: string | undefined;
+    try {
+      for (let page = 0; page < CALL_HEALTH_MAX_PAGES; page++) {
+        const res: any = await client.conversationalAi.conversations.list({
+          agentId: config.agentId,
+          callStartAfterUnix: after,
+          pageSize: 100,
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const c of res?.conversations ?? []) {
+          // A conversation still in progress has not ended, normally or otherwise.
+          if (c?.status === 'in-progress' || c?.status === 'initiated') continue;
+          seen.push({ terminationReason: c?.terminationReason ?? null, status: c?.status ?? null });
+        }
+        if (!res?.hasMore || !res?.nextCursor) break;
+        cursor = res.nextCursor;
+      }
+    } catch (err) {
+      this.fail('the recent calls', err);
+    }
+    const value = { ...summariseCallHealth(seen, windowHours), checkedAt: new Date().toISOString() };
+    this.callHealthCache.set(organizationId, { at: Date.now(), value });
+    if (value.alert) {
+      // Counts and reasons only — never a caller, a number or a transcript.
+      this.log.error(
+        `call_health_alert org=${organizationId} abnormal=${value.abnormal}/${value.total} ` +
+          `window=${windowHours}h top=${JSON.stringify(value.reasons.filter((r) => r.kind === 'abnormal').slice(0, 3))}`
+      );
+    }
+    return value;
+  }
 }
+
+/** How long a call-health reading is reused. */
+const CALL_HEALTH_CACHE_MS = 5 * 60 * 1000;
+/** How often every agency's calls are checked in the background. */
+const CALL_HEALTH_SWEEP_MS = 60 * 60 * 1000;
+
+/** 5 × 100 conversations: a day on a busy line, at a bounded cost. */
+const CALL_HEALTH_MAX_PAGES = 5;

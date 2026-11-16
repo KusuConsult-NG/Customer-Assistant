@@ -2074,6 +2074,8 @@ function HostedAgentTab({ showToast }: any) {
   const [agent, setAgent] = useState<any>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentLoading, setAgentLoading] = useState(true);
+  const [callHealth, setCallHealth] = useState<any>(null);
+  const [callHealthError, setCallHealthError] = useState<string | null>(null);
 
   const role = (() => {
     try { return JSON.parse(localStorage.getItem('ace_user') || '{}').role; } catch { return undefined; }
@@ -2099,7 +2101,17 @@ function HostedAgentTab({ showToast }: any) {
     finally { setAgentLoading(false); }
   }, []);
 
-  useEffect(() => { load(); loadAgent(); }, [load, loadAgent]);
+  const loadCallHealth = useCallback(async () => {
+    setCallHealthError(null);
+    try { setCallHealth(await api.agentProvisioning.getCallHealth()); }
+    catch (err: any) {
+      // Unknown is not "no problems": say it could not be read.
+      setCallHealth(null);
+      setCallHealthError(err.message || 'Could not read how recent calls ended');
+    }
+  }, []);
+
+  useEffect(() => { load(); loadAgent(); loadCallHealth(); }, [load, loadAgent, loadCallHealth]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2255,6 +2267,13 @@ function HostedAgentTab({ showToast }: any) {
       </Section>
 
       <Section
+        title="How Calls Ended (last 24 hours)"
+        description="Why each call on this agent ended, as recorded by ElevenLabs. A rise in calls cut off by a timeout or an error means callers are being dropped."
+      >
+        <CallHealthPanel health={callHealth} error={callHealthError} />
+      </Section>
+
+      <Section
         title="Agent Status"
         description="What the agent your customers reach actually looks like, compared to this platform. Read-only — repairing drift silently would also destroy the evidence of how it happened."
       >
@@ -2300,6 +2319,59 @@ function HostedAgentTab({ showToast }: any) {
           </div>
         )}
       </Section>
+    </div>
+  );
+}
+
+/**
+ * How the agent's recent calls ended. "Could not read" is shown as that, never
+ * as an empty healthy panel: unknown is not the same as fine.
+ */
+function CallHealthPanel({ health, error }: { health: any; error: string | null }) {
+  if (error) {
+    return (
+      <div className="flex gap-2.5 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
+        <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed break-words">{error}</p>
+      </div>
+    );
+  }
+  if (!health) {
+    return (
+      <div className="py-4 text-center text-slate-500 dark:text-slate-400 text-sm flex items-center justify-center gap-2">
+        <Loader2 className="w-4 h-4 animate-spin text-blue-700 dark:text-blue-400" /> Checking recent calls...
+      </div>
+    );
+  }
+  if (health.total === 0) {
+    return <p className="text-xs text-slate-600 dark:text-slate-400">No calls ended in the last {health.windowHours} hours.</p>;
+  }
+  const pct = health.abnormalRate === null ? null : Math.round(health.abnormalRate * 100);
+  return (
+    <div className="space-y-3">
+      {health.alert ? (
+        <div role="alert" className="flex gap-2.5 p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20">
+          <AlertTriangle className="w-4 h-4 text-red-700 dark:text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">
+            {health.abnormal} of {health.total} calls ({pct}%) ended abnormally — cut off by a timeout or an error. Callers are being dropped. Check the reasons below and the Agent Status list.
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+          <CheckCircle2 className="w-3.5 h-3.5" /> {health.abnormal} of {health.total} calls ended abnormally ({pct}%).
+        </p>
+      )}
+      <ul className="space-y-1.5">
+        {health.reasons.map((r: any, i: number) => (
+          <li key={i} className="flex items-start justify-between gap-3 text-xs">
+            <span className={r.kind === 'abnormal' ? 'text-red-700 dark:text-red-300' : r.kind === 'unknown' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-300'}>
+              {r.reason}
+              <span className="ml-1.5 text-slate-500 dark:text-slate-400">({r.kind === 'abnormal' ? 'abnormal' : r.kind === 'unknown' ? 'not recognised' : 'normal'})</span>
+            </span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300 tabular-nums">{r.count}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
