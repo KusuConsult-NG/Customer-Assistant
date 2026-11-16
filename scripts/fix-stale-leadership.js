@@ -75,8 +75,8 @@ const corrections = {
 
   // ── INFORMATION AND COMMUNICATION ────────────────────────────────────────
   'Ministry of Information and Communication': {
-    title: 'Hon.',
-    name: 'Joyce Lohya Ramnap',
+    title: 'Rt. Hon.',
+    name: 'Joyce Lohya Ramnap, mni',
     position: 'Commissioner for Information and Communication',
     note: 'Reappointed January 2025 as part of the cabinet restructuring. Represents Langtang South LGA.',
   },
