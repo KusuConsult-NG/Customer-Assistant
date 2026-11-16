@@ -356,6 +356,7 @@ async function main() {
   masterLines.push('- **Deputy Speaker, Plateau State House of Assembly**: Hon. Timothy Dantong');
   masterLines.push('- **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau');
   masterLines.push('- **Chief of Staff to the Governor**: Engr. Jeremiah Satmark');
+  masterLines.push('- **Permanent Secretary, Government House**: Mrs. Helen Chundusu');
   masterLines.push('- **Head of Civil Service**: Mr. Stephen Pam Gadong (confirmed substantive Head of Civil Service in December 2024, succeeding Barr. Rauta Dakok who reached mandatory retirement age)');
   masterLines.push('- **Attorney-General and Commissioner for Justice**: Hon. Philemon Audu Daffi');
   masterLines.push('- **Director-General, Plateau State Contributory Healthcare Management Agency (PLASCHEMA)**: Dr. Dawal Solomon Kwande');

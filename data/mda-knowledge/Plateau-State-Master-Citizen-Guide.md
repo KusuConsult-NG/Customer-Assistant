@@ -7,6 +7,7 @@
 - **Deputy Speaker, House of Assembly**: Hon. Timothy Dantong.
 - **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau.
 - **Chief of Staff to the Governor**: Engr. Jeremiah Satmark.
+- **Permanent Secretary, Government House**: Mrs. Helen Chundusu.
 - **Head of Civil Service**: Mr. Stephen Pam Gadong (confirmed December 2024, succeeding Barr. Mrs. Rauta Joshua Dakok who retired).
 - **Attorney-General and Commissioner for Justice**: Hon. Philemon Audu Daffi.
 - **Director-General, PLASCHEMA**: Dr. Dawal Solomon Kwande (succeeding Dr. Agabus Nanfwang Manasseh).
