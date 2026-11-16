@@ -31,6 +31,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { ServerOptions } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
+import { isRedisQuotaError } from '../common/redis-quota';
 
 const logger = new Logger('SocketIORedisAdapter');
 
@@ -91,10 +92,27 @@ export class RedisSocketIoAdapter extends IoAdapter {
         ),
       ]);
 
+      // Ask before subscribing. The adapter subscribes the moment it is
+      // created and does not catch a refusal, so a Redis that accepts the
+      // connection but refuses every command (a spent Upstash quota) crashed
+      // the whole API one second after boot. A refused PING means: no adapter.
+      await pubClient.ping();
+
       this.adapterConstructor = createAdapter(pubClient, subClient);
       logger.log('✅ Socket.IO Redis adapter ready — multi-node real-time events enabled.');
       logger.log(`   Redis: ${redisUrl.replace(/:[^:@]+@/, ':***@')}`);
     } catch (err: any) {
+      if (isRedisQuotaError(err)) {
+        logger.error(
+          `Redis is refusing commands on quota (${String(err.message).slice(0, 120)}) — Socket.IO running in ` +
+            'single-node mode. Upgrade the Redis plan or unset REDIS_URL, then restart.'
+        );
+        // No adapter: subscribing would only collect more refusals. The error
+        // listeners stay attached, so closing cannot emit an unheard 'error'.
+        await Promise.allSettled([pubClient.disconnect(), subClient.disconnect()]);
+        this.adapterConstructor = null;
+        return;
+      }
       logger.warn(
         `Redis unavailable (${err.message}) — Socket.IO running in single-node mode. ` +
         `Clients keep retrying in the background.`

@@ -41,3 +41,53 @@ export function reportRedisQuotaOnce(
     return true;
   };
 }
+
+/** Error classes the `redis` client rejects with, by constructor name. */
+const REDIS_CLIENT_ERRORS = new Set([
+  'ErrorReply',
+  'ClientClosedError',
+  'ClientOfflineError',
+  'SocketClosedUnexpectedlyError',
+  'ConnectionTimeoutError',
+  'ReconnectStrategyError',
+]);
+
+/** True for a rejection that came from a Redis client, not from our own code. */
+export function isRedisClientError(err: unknown): boolean {
+  if (isRedisQuotaError(err)) return true;
+  const name = (err as any)?.constructor?.name ?? (err as any)?.name;
+  return typeof name === 'string' && REDIS_CLIENT_ERRORS.has(name);
+}
+
+/**
+ * Keep the API serving when a Redis client rejects a promise nobody awaited.
+ *
+ * ── What it fixes ─────────────────────────────────────────────────────────────
+ *
+ * With the Upstash quota spent, the API crashed one second after every boot:
+ * `@socket.io/redis-adapter` calls `subClient.pSubscribe(...)` and, on every
+ * broadcast, `pubClient.publish(...)` without catching, so the refusal became
+ * an unhandled rejection and Node exits on those. Render restarted it, it
+ * crashed again, and the phone agent's tools answered nothing. Redis here only
+ * carries optional work — cross-pod fan-out, rate-limit counters, queues — so
+ * losing it must cost that work, never the process.
+ *
+ * Only Redis client errors are absorbed. Anything else is rethrown, which is
+ * exactly what Node does without a handler: a real bug still crashes loudly.
+ */
+export function redisRejectionGuard(report: (message: string) => void): (reason: unknown) => void {
+  let reported = 0;
+  return (reason: unknown) => {
+    if (!isRedisClientError(reason)) throw reason;
+    // A handful, then quiet: a spent quota refuses every command.
+    if (reported < 3) {
+      reported++;
+      report(
+        `redis_unhandled_rejection_absorbed: ${String((reason as any)?.message ?? reason).slice(0, 160)}. ` +
+          'The API keeps serving; Redis-backed features (multi-pod events, shared rate limits, queues) are degraded. ' +
+          'Upgrade the Redis plan or unset REDIS_URL, then restart.' +
+          (reported === 3 ? ' Further refusals are not logged.' : ''),
+      );
+    }
+  };
+}
