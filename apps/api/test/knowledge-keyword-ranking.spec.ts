@@ -84,6 +84,51 @@ describe('Keyword retrieval picks the document that answers', () => {
     expect(results[0]?.title).toBe(LINEUP_TITLE);
   });
 
+  it('gives WhatsApp the WHOLE lineup and asks for the complete answer, not a third of it', async () => {
+    // One chunk matched the question; the model used to be given that chunk
+    // alone, and a 400-token reply budget, and answered with part of the list.
+    const { ConversationOrchestrator } = require('@ace/orchestrator');
+    const priorFetch = global.fetch;
+    process.env.OPENAI_API_KEY = 'sk-test-whole-document';
+    const synthesis: any[] = [];
+    global.fetch = (async (url: any, init: any) => {
+      const u = String(url);
+      if (u.includes('/embeddings')) return { ok: false, status: 503, text: async () => 'unavailable' } as any;
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      const isSynthesis = (body.messages ?? []).some((m: any) => String(m.content).includes('knowledge base may be relevant'));
+      if (isSynthesis) synthesis.push(body);
+      const content = isSynthesis ? 'Here is the full lineup.' : '{"intent":"NONE","confidence":0.9}';
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' } as any;
+    }) as any;
+    try {
+      await new ConversationOrchestrator().processIncomingMessage(
+        {
+          conversationId: `whole-doc-${randomBytes(3).toString('hex')}`,
+          organizationId: orgId,
+          customerPhoneNumber: '+2348000000099',
+          channel: 'WHATSAPP',
+          history: [],
+          slots: {},
+          isHumanHandoffActive: false,
+        },
+        // Only the SECOND chunk mentions this venue, so the first event can
+        // reach the model only if the whole document is given.
+        'Where is the Azi Nyako Youth Centre?'
+      );
+    } finally {
+      global.fetch = priorFetch;
+      delete process.env.OPENAI_API_KEY;
+    }
+    expect(synthesis).toHaveLength(1);
+    const prompt = synthesis[0].messages.map((m: any) => m.content).join('\n');
+    // Every part of the lineup reached the model: the first event and the last.
+    expect(prompt).toContain('2nd Plateau Youth Tourism Roundtable');
+    expect(prompt).toContain('Azi Nyako Youth Centre');
+    expect(prompt).toContain('PLAFEST');
+    expect(prompt).toContain('GIVE THE COMPLETE ANSWER');
+    expect(synthesis[0].max_tokens).toBeGreaterThanOrEqual(1500);
+  });
+
   it('still answers a question about an agency by its own title', async () => {
     const results = await new QdrantRAGService().searchKnowledgeBase(orgId, 'urban planning approvals', 5);
     expect(results[0]?.title).toMatch(/Housing and Urban Development/);

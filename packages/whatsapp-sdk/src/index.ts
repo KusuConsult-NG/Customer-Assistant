@@ -7,6 +7,30 @@ export interface WhatsAppClientConfig {
   verifyToken: string;
 }
 
+/** Meta's limit is 4096; kept under it so a split never lands on the edge. */
+export const WHATSAPP_TEXT_LIMIT = 4000;
+
+/**
+ * Split text into WhatsApp-sized parts at the most natural boundary available:
+ * a blank line, then a line break, then a space. A single unbroken run longer
+ * than the limit is cut hard — it is never dropped.
+ */
+export function splitWhatsAppText(text: string, limit = WHATSAPP_TEXT_LIMIT): string[] {
+  const parts: string[] = [];
+  let rest = (text ?? '').trim();
+  while (rest.length > limit) {
+    const window = rest.slice(0, limit);
+    let cut = window.lastIndexOf('\n\n');
+    if (cut < limit * 0.5) cut = window.lastIndexOf('\n');
+    if (cut < limit * 0.5) cut = window.lastIndexOf(' ');
+    if (cut <= 0) cut = limit;
+    parts.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) parts.push(rest);
+  return parts.length ? parts : [''];
+}
+
 export class WhatsAppCloudClient {
   private apiVersion = 'v22.0';
   private baseUrl = 'https://graph.facebook.com';
@@ -172,17 +196,28 @@ export class WhatsAppCloudClient {
     }
   }
 
+  /**
+   * Send text, in as many messages as it takes.
+   *
+   * Meta refuses a text body over 4096 characters, so a complete answer — a
+   * full events lineup, every commissioner — would be refused outright, and the
+   * citizen would get nothing. Long text is split at paragraph, then line, then
+   * word boundaries and sent in order. Returns the LAST part's response, so the
+   * delivery receipt tracked on the message is the one for its final words.
+   */
   async sendTextMessage(to: string, text: string): Promise<any> {
     const url = `${this.baseUrl}/${this.apiVersion}/${this.config.phoneNumberId}/messages`;
-    const payload = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to,
-      type: 'text',
-      text: { body: text },
-    };
-
-    return this.postRequest(url, payload);
+    let last: any;
+    for (const part of splitWhatsAppText(text)) {
+      last = await this.postRequest(url, {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'text',
+        text: { body: part },
+      });
+    }
+    return last;
   }
 
   async sendInteractiveButtons(

@@ -52,6 +52,16 @@ export function relevantPassage(contents: string[], query: string, budget = 1200
   for (const content of contents) {
     const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
     const keep = new Set<number>();
+    // A question about the DOCUMENT as a whole — its title carries the
+    // question's words — is answered with the whole document. "What events are
+    // happening in December?" matched the lineup's title and introduction and
+    // none of its event lines (each says "December", none says "events"), so the
+    // caller was told what Tourism Month is and not one event in it. A question
+    // about one thing in it ("Urban Fest") does not match the title and still
+    // gets just its line.
+    if (lines.length > 0 && hitsIn(lines[0]) >= threshold) {
+      lines.forEach((_, i) => keep.add(i));
+    }
     lines.forEach((line, i) => {
       if (hitsIn(line) >= threshold) {
         if (i > 0) keep.add(i - 1);
