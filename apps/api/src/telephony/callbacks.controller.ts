@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { MIN_UPDATE_CHARS } from './callback-opening';
 import { prisma, callbackReference, normalizePhoneNumber, phoneNumberVariants, outboundContactHoursFrom, nextServiceTime, nextAttemptAt } from '@ace/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -113,11 +114,25 @@ export class CallbacksController {
    */
   @Post(':id/call-now')
   @Roles('OWNER', 'ADMIN', 'AGENT')
-  async callNow(@Req() req: { user: AuthUser }, @Param('id') id: string) {
+  async callNow(
+    @Req() req: { user: AuthUser },
+    @Param('id') id: string,
+    @Body() body: { update?: string } = {}
+  ) {
     const row = await prisma.callbackRequest.findFirst({
       where: { id, organizationId: req.user.organizationId },
     });
     if (!row) throw new BadRequestException('Callback not found in this agency');
+
+    // A callback is for news. Without an update the assistant would ring the
+    // citizen with nothing to tell them — the "random" calls this replaces.
+    const update = String(body?.update ?? '').trim();
+    if (update.length < MIN_UPDATE_CHARS) {
+      throw new BadRequestException(
+        'Say what has changed before calling — for example "Your complaint has been resolved" or ' +
+          '"The Water Board has scheduled the repair for Friday". The assistant tells the citizen this first.'
+      );
+    }
 
     // Refused with the reason, before anything is claimed, so pressing the
     // button on a retired Infobip line costs the citizen no attempt.
@@ -126,7 +141,7 @@ export class CallbacksController {
       throw new BadRequestException(INFOBIP_RETIRED_REASON);
     }
 
-    const outcome = await this.dispatcher.placeOne(id);
+    const outcome = await this.dispatcher.placeOne(id, { update });
     const after = await prisma.callbackRequest.findUnique({ where: { id } });
 
     // Reports what actually happened, from the row the dispatcher wrote —

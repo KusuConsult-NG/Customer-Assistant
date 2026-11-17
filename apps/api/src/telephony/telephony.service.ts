@@ -596,7 +596,14 @@ export class TelephonyService {
      * history cannot name who was rung and `CALL_ENDED` carries nobody for a
      * workflow to act on. Resolved from the number when it is not supplied.
      */
-    contactId?: string
+    contactId?: string,
+    /**
+     * What the assistant says first, and why it is calling. A callback MUST
+     * carry it — a call with no context opened with the inbound greeting, as if
+     * the citizen had rung us. Only the SIP-trunk line can deliver it; the
+     * Twilio line refuses rather than ring someone with nothing to say.
+     */
+    context?: { firstMessage?: string; dynamicVariables?: Record<string, unknown> }
   ) {
     const correlationId = generateCorrelationId();
     const timer = log.startTimer();
@@ -646,6 +653,8 @@ export class TelephonyService {
     if (resolvedProvider === TelephonyProviderType.SIP_TRUNK) {
       const placed = await this.sipOrigination.placeCall(organizationId, toNumber, {
         fromNumber,
+        ...(context?.firstMessage ? { firstMessage: context.firstMessage } : {}),
+        ...(context?.dynamicVariables ? { dynamicVariables: context.dynamicVariables } : {}),
       });
       const record = this.sipOrigination.asCallRecord(organizationId, placed, {
         fromNumber,
@@ -680,6 +689,16 @@ export class TelephonyService {
       });
 
       return { ...record, id: callLog.id, callSid: record.callId };
+    }
+
+    // Only the SIP-trunk branch above can tell the assistant why it is calling.
+    // This one starts a media stream whose greeting is the inbound one, so a
+    // callback placed here would open "how may I help you?" to somebody we rang.
+    if (context?.firstMessage) {
+      throw new BadRequestException(
+        `This agency's line (${resolvedProvider}) cannot give the assistant the reason for the call, so it would ring ` +
+        'the citizen with nothing to say. Ring them from your own phone and record the call on the Callbacks page instead.'
+      );
     }
 
     const provider = TelephonyFactory.createProvider(resolvedProvider, {

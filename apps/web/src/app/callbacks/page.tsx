@@ -185,9 +185,25 @@ export default function CallbacksPage() {
   };
 
   const act = async (id: string, url: string, method: 'POST' | 'PATCH', label: string, path: string) => {
+    // A callback is for NEWS: the assistant opens the call with this update, so
+    // the citizen hears at once why we are ringing. No update, no call.
+    let payload: { update: string } | undefined;
+    if (path === 'call-now') {
+      const update = window.prompt(
+        'What has changed? The assistant tells the citizen this first — e.g. "Your complaint has been resolved" or "The Water Board will repair the pipe on Friday".'
+      );
+      if (update === null) return;
+      if (update.trim().length < 10) {
+        toast.error('Say what has changed before calling. Only ring a citizen back with an update.');
+        return;
+      }
+      payload = { update: update.trim() };
+    }
     setBusy(id);
     try {
-      const res = await apiFetch(url, { method });
+      const res = await apiFetch(url, payload
+        ? { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+        : { method });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(body?.message || `${label} failed (${res.status})`);
