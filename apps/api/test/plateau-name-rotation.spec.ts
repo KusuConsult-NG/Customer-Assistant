@@ -98,6 +98,9 @@ describe('Plateau name rotation', () => {
     expect(PLATEAU_MALE_NAMES).toContain(name);
     expect(first).toContain(`Our virtual assistant, ${name}, will help you now.`);
     expect(first).toContain(`I'm ${name}, the virtual assistant.`);
+    // The next caller is not asked their name before they are looked up.
+    expect(first).not.toMatch(/your (full )?name/i);
+    expect(first).toMatch(/How may I help you today\?$/);
   });
 
   it('does not switch the conversation-start webhook itself', async () => {

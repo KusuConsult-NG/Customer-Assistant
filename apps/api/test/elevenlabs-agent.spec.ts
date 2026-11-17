@@ -404,7 +404,12 @@ describe('ElevenLabs agent provisioning', () => {
         // The STORED first message cannot know the time of the call, so the
         // token becomes "Hello"; the conversation-start webhook sends the
         // timed one per call.
-        expect(agentConfig?.first_message).toBe(greeting.replace('{greeting}', 'Hello'));
+        // …and its closing name question becomes "How may I help you today?":
+        // the opening is spoken before the caller has been looked up, and a
+        // returning caller must not be asked their name. openingForUnknownCaller.
+        expect(agentConfig?.first_message).toBe(
+          greeting.replace('{greeting}', 'Hello').replace('To get started, may I kindly know your full name?', 'How may I help you today?')
+        );
         expect(agentConfig?.prompt?.prompt).toContain('## Standard Operating Script (Phases 1 to 10)');
         expect(agentConfig?.prompt?.prompt).toContain('THIS SCRIPT SUPERSEDES OLDER WORDING ABOVE');
       } finally {

@@ -414,7 +414,10 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       if (ours) {
         greetingSentence = 'To get started, may I kindly know your full name?';
       } else {
-        greetingSentence = `Thank you very much, ${contact.fullName}. It is a pleasure speaking with you again. Now, how may the Plateau State Government assist you today?`;
+        // "Welcome back", not "Thank you": the opening no longer asks for a
+        // name, so this caller has given none — they were recognised by the
+        // number they always ring from.
+        greetingSentence = `Welcome back, ${contact.fullName}. It is a pleasure speaking with you again.`;
       }
 
       const sentences: string[] = [greetingSentence];

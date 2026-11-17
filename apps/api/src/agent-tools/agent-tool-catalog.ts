@@ -901,6 +901,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `- If asked whether you are an AI, a bot, or a human, say plainly and warmly that you are an AI assistant. Never claim to be a person. This is a regulatory and WhatsApp-policy requirement and overrides anything written above.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
     `- MANDATORY TURN-1 RULE: At the START of every conversation, before you ask what the caller needs (even if the transcript is short or looks like "Hello, can you hear me?", "Hello", "Ina wuni", "Sannu", or the caller immediately states why they are calling), you MUST call lookup-customer immediately! It tells you their name, profile details, preferred language, and history. Never skip lookup-customer on Turn 1, and NEVER claim a returning caller's details are missing when lookup-customer returns their profile or recentCallSummary.\n` +
+    `  - The opening does NOT ask for the caller's name, on purpose: callers ring from the same number, and lookup-customer recognises them by it. NEVER ask for a name before lookup-customer has answered, and never ask a caller it recognises.\n` +
     `  - RETURNING CALLER (known name and profile in lookup-customer): Greet them warmly by name, in English — then go straight to PHASE 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call."). NEVER re-ask a fully profiled returning caller for their name, LGA, ward or community!\n` +
     `  - NEW OR UNPROFILED CALLER (known=false, placeholder name "Caller (...)", missing profile fields, or if lookup-customer times out / errors): follow PHASE 1 and PHASE 2 of the Standard Operating Script, ONE QUESTION AT A TIME, in English, BEFORE handling their enquiry: when they give their name, NEVER assume the speech-to-text transcription is right (8kHz phone ASR often turns "Joy Sunday" into "Jos Andy" or "Jos Sandy") — always repeat the name back and ask them to confirm or spell it ("Thank you very much. Just to be sure I have your name right, is it [Name]? Please correct me or spell it if I heard wrongly.") before moving on (if they decline to give a name, say it is perfectly fine and continue); then ask their LGA ("Please, which Local Government Area of Plateau State are you calling from?"), their ward and community ("Thank you. Could you also tell me your ward and community?"), and whether the number they are calling from may be used for subsequent communication (if not, take and confirm an alternative number). Never ask their occupation or preferred language. Never guess or assume any detail — if any name, ward or community is unclear, ask the caller to repeat or spell it. Then call update-caller-profile ONCE with everything confirmed (fullName, lga, ward, community, phoneConfirmedForFollowUp, alternativePhone) and move to PHASE 3.\n` +
     `  - DO NOT SKIP PHASE 2: Even if a new caller states why they are calling first, acknowledge it warmly and complete the PHASE 2 questions first. Only an active life-threatening emergency (ongoing attack, fire, flood or injury) comes first — and even then, ask for their name and exact location/LGA right after checking safety.\n` +
@@ -974,9 +975,35 @@ export function renderWelcome(org: AgentOrganization, now?: Date, persona?: Team
   return text;
 }
 
+/**
+ * The opening for a caller nobody has looked up yet.
+ *
+ * The stored first message is spoken the moment the call connects, before the
+ * agent has called lookup-customer — so it cannot know who is calling. The
+ * Plateau opening ended "May I have your full name?", which asked EVERY caller
+ * their name, returning ones included, though they ring from the same number
+ * every time and the lookup recognises them by it a moment later. So in the
+ * stored copy a closing name question becomes "How may I help you today?":
+ * the lookup then decides — a returning caller is greeted by name and not
+ * asked again, a new caller is asked their name, LGA, ward and community.
+ *
+ * Only a CLOSING name question is replaced; any other ending is the agency's
+ * own wording and stays. The conversation-start webhook, which knows the
+ * caller is new, still uses renderWelcome as written.
+ */
+/** The WHOLE last sentence, when it asks for the caller's name ("To get started, may I kindly know your full name?"). */
+const CLOSING_NAME_QUESTION =
+  /(^|[.!?>]\s*)([^.!?<>]*\b(?:(?:may|could|can) i (?:please |kindly )?(?:have|know|get) your (?:full )?name(?:,? please)?|what is your (?:full )?name)\?)\s*$/i;
+
+export function openingForUnknownCaller(text: string): string {
+  return text.replace(CLOSING_NAME_QUESTION, (_m, before: string) =>
+    `${before}${before && !/\s$/.test(before) ? ' ' : ''}How may I help you today?`
+  );
+}
+
 export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
-  if (org.welcomeMessage) return renderWelcome(org, undefined, persona);
+  if (org.welcomeMessage) return openingForUnknownCaller(renderWelcome(org, undefined, persona));
   return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. How can I help you today?`;
 }
 
