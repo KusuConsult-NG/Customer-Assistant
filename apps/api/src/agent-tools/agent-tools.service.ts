@@ -1773,7 +1773,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
             source: combined === faq.answer.trim() ? 'faq' : 'faq+knowledge',
             instruction:
               'Give the agency answer first, then the further details, all of them. Say every name exactly as written here, ' +
-              'with all its titles and honours. If there are more than three items, say how many, give three at a time, and ask whether to continue.',
+              'with all its titles and honours. For each event, state the event name, who it is organised by, the date, and the venue ' +
+              '(or say if it is to be announced/confirmed) before moving to the next event. ' +
+              'If there are more than three items, say how many, give three at a time, and ask whether to continue.',
           },
         };
       }
@@ -1788,6 +1790,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
             instruction:
               'Say every name exactly as written here, with all its titles before and honours after. Do not shorten or drop any. ' +
               'Give the caller EVERY item and detail here that answers their question — dates, venues, organisers, offices, numbers. ' +
+              'For each event, state the event name, who it is organised by, the date, and the venue (or say if it is to be announced/confirmed) before moving to the next event. ' +
               'If there are more than three items, say how many there are, give three at a time, and ask whether to continue.',
           },
         };

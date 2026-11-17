@@ -61,8 +61,8 @@ describe('Live agent settings drift', () => {
 
   it('names every setting a refused sync left behind', () => {
     const live = liveCopy();
-    live.conversationConfig.tts.speed = 1.0;
-    live.conversationConfig.tts.supportedVoices[0].speed = 1.0;
+    live.conversationConfig.tts.speed = 0.9;
+    live.conversationConfig.tts.supportedVoices[0].speed = 0.9;
     live.conversationConfig.tts.modelId = 'eleven_v3_conversational';
     live.conversationConfig.turn.silenceEndCallTimeout = 10;
     live.conversationConfig.languagePresets = { ha: { overrides: {} } };
@@ -70,7 +70,7 @@ describe('Live agent settings drift', () => {
 
     const drift = liveSettingsDrift(live, expectedFor());
     const by = Object.fromEntries(drift.map((d) => [d.setting, d]));
-    expect(by['Speaking speed']).toEqual({ setting: 'Speaking speed', live: '1', expected: '0.9' });
+    expect(by['Speaking speed']).toEqual({ setting: 'Speaking speed', live: '0.9', expected: '1' });
     expect(by['Governor speaking speed']).toBeDefined();
     expect(by['Voice model'].live).toBe('eleven_v3_conversational');
     expect(by['Hang-up after caller silence (seconds)']).toEqual({
