@@ -6,7 +6,10 @@ import {
   outboundContactHoursFrom,
   mayContactNow,
   callbackReference,
+  isPlaceholderContactName,
 } from '@ace/database';
+import { callbackOpening } from './callback-opening';
+import { timeOfDayGreeting } from '../agent-tools/agent-tool-catalog';
 import { AceLogger } from '../config/logger';
 import { TelephonyService } from './telephony.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -148,6 +151,19 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
         held++;
         continue;
       }
+
+      // ── No ringing on a timer ──────────────────────────────────────────────
+      //
+      // The sweep dialled every promise the moment it fell due, through the
+      // assistant, with nothing to say: citizens were rung "at random", greeted
+      // as if THEY had called, and never told why. The agency's rule is to ring
+      // back only when the matter is resolved or there is news — which only an
+      // officer knows. So the queue still falls due, holds and reopens here
+      // (that is how an officer sees what is owed and how late), but the call
+      // is placed from the Callbacks page with the update typed in.
+      // CALLBACK_AUTO_DIAL=1 restores timed dialling for an agency that wants
+      // it; those calls still open with the request they are about.
+      if (process.env.CALLBACK_AUTO_DIAL !== '1') continue;
 
       // The budget is on dials, so holding costs nothing. Without the break a
       // backlog would dial hundreds of citizens inside one minute's sweep.
@@ -334,11 +350,35 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
   }
 
   /**
+   * The assistant's first words on a callback: who is calling, which request,
+   * and the officer's update. Timed redials (CALLBACK_AUTO_DIAL) have no update
+   * and say they are following up the request as promised.
+   */
+  private async openingFor(
+    row: { id: string; organizationId: string; contactId: string; reason: string },
+    update?: string
+  ): Promise<string> {
+    const [org, contact] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: row.organizationId }, select: { name: true, timezone: true } }),
+      prisma.contact.findUnique({ where: { id: row.contactId }, select: { fullName: true } }),
+    ]);
+    const name = contact?.fullName?.trim();
+    return callbackOpening({
+      greeting: timeOfDayGreeting(org?.timezone ?? 'Africa/Lagos'),
+      citizenName: name && !isPlaceholderContactName(name) ? name : null,
+      agencyName: org?.name ?? 'the State Government Contact Centre',
+      reference: callbackReference(row.id),
+      reason: row.reason,
+      update: update?.trim() || 'We are following up on your request, as we promised.',
+    });
+  }
+
+  /**
    * Claim one row and dial it. Exported for the console's "call now" button,
    * which must go through the same claim so a manual press and the sweeper
    * cannot both dial.
    */
-  async placeOne(id: string): Promise<'placed' | 'failed' | 'skipped'> {
+  async placeOne(id: string, opts: { update?: string } = {}): Promise<'placed' | 'failed' | 'skipped'> {
     // THE CLAIM. Only the caller whose count is 1 proceeds.
     const claimed = await prisma.callbackRequest.updateMany({
       where: { id, status: { in: ['PENDING', 'DUE'] } },
@@ -358,6 +398,8 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
         undefined,
         // The promise already names the citizen, so the call history does too.
         row.contactId,
+        // Why we are ringing: said first, before anything else. See callback-opening.ts.
+        { firstMessage: await this.openingFor(row, opts.update) },
       );
 
       // DIALLED, not kept.

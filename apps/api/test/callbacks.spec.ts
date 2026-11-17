@@ -71,7 +71,13 @@ describe('Callback queue', () => {
     });
   }
 
+  // The sweep tests below exercise timed dialling, which is now OFF unless an
+  // agency opts in (see "only rings with news"). They opt in; that describe
+  // block turns it off again to prove the default.
+  const priorAutoDial = process.env.CALLBACK_AUTO_DIAL;
+
   beforeAll(async () => {
+    process.env.CALLBACK_AUTO_DIAL = '1';
     process.env.JWT_SECRET ??= 'test_jwt_secret_that_is_at_least_32_chars_long';
     process.env.JWT_REFRESH_SECRET ??= 'test_jwt_refresh_secret_at_least_32_chars';
 
@@ -92,6 +98,8 @@ describe('Callback queue', () => {
   });
 
   afterAll(async () => {
+    if (priorAutoDial === undefined) delete process.env.CALLBACK_AUTO_DIAL;
+    else process.env.CALLBACK_AUTO_DIAL = priorAutoDial;
     await dropTenant(agency?.orgId);
     await dropTenant(viewer?.orgId);
     await dropTenant(other?.orgId);
@@ -181,6 +189,71 @@ describe('Callback queue', () => {
         .patch(`/api/callbacks/${row.id}/complete`)
         .set('Authorization', `Bearer ${viewer.token}`)
         .expect(403);
+    });
+  });
+
+  describe('only rings with news, and says why first', () => {
+    // Citizens were rung on a timer by an assistant that opened with the
+    // inbound greeting and never said why it was calling. A callback is now an
+    // officer's decision, made when there is something to tell, and the call
+    // opens with the request and the update.
+    const withoutAutoDial = async (fn: () => Promise<void>) => {
+      delete process.env.CALLBACK_AUTO_DIAL;
+      try { await fn(); } finally { process.env.CALLBACK_AUTO_DIAL = '1'; }
+    };
+
+    it('does not ring anybody on a timer by default — the promise falls due and waits for an officer', async () => {
+      await prisma.organization.update({
+        where: { id: agency.orgId },
+        data: { outboundOpeningHour: 0, outboundClosingHour: 24, outboundDays: [0, 1, 2, 3, 4, 5, 6] },
+      });
+      const row = await seedCallback(agency.orgId, contactId, { dueAt: new Date(Date.UTC(2020, 0, 1)) });
+      let dialled = false;
+      await withoutAutoDial(async () => {
+        await new CallbackDispatcherService(
+          { initiateOutboundCall: async () => { dialled = true; return { callId: 'x' }; } } as any,
+          { emitAsync: () => {} } as any
+        ).sweep(new Date());
+      });
+      expect(dialled).toBe(false);
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      // Still owed, and visibly late on the Callbacks page.
+      expect(after?.status).toBe('DUE');
+      expect(after?.attempts).toBe(0);
+      await prisma.callbackRequest.delete({ where: { id: row.id } });
+    });
+
+    it('refuses "Call now" without an update to give the citizen', async () => {
+      const row = await seedCallback(agency.orgId, contactId);
+      for (const body of [{}, { update: '' }, { update: 'ok' }]) {
+        const res = await request(app.getHttpServer())
+          .post(`/api/callbacks/${row.id}/call-now`)
+          .set('Authorization', `Bearer ${agency.token}`)
+          .send(body)
+          .expect(400);
+        expect(res.body.message).toMatch(/what has changed/i);
+      }
+      const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
+      expect(after?.attempts).toBe(0);
+      expect(after?.status).toBe('PENDING');
+    });
+
+    it('opens the call with who is ringing, which request, and the update', async () => {
+      const row = await seedCallback(agency.orgId, contactId, { dueAt: new Date(Date.now() - 60_000) });
+      let context: any;
+      await new CallbackDispatcherService(
+        { initiateOutboundCall: async (_o: string, _t: string, _p: any, _c: any, ctx: any) => { context = ctx; return { callId: 'CA_with_news' }; } } as any,
+        { emitAsync: () => {} } as any
+      ).placeOne(row.id, { update: 'The Water Board will repair the borehole on Friday' });
+
+      const opening: string = context?.firstMessage;
+      expect(opening).toMatch(/^Good (morning|afternoon|evening), Amina Yusuf\./);
+      expect(opening).toContain('virtual assistant calling from the');
+      expect(opening).toContain(callbackReference(row.id));
+      expect(opening).toContain('borehole has been dry for a week');
+      expect(opening).toContain('Here is the update: The Water Board will repair the borehole on Friday.');
+      // Not the inbound greeting: we rang them.
+      expect(opening).not.toMatch(/how may I help/i);
     });
   });
 

@@ -86,6 +86,14 @@ export function liveSettingsDrift(live: any, expected: any): SettingDrift[] {
     const e = num(eturn[key]);
     if (e !== undefined && !sameNumber(num(lturn[key]), e)) add(label, lturn[key], e);
   }
+  // Noisy-line handling (elevenlabs-contracts.ts): without these, a caller
+  // shouting over a generator is asked whether they are still there.
+  if (typeof eturn.retranscribeOnTurnTimeout === 'boolean' && Boolean(lturn.retranscribeOnTurnTimeout) !== eturn.retranscribeOnTurnTimeout) {
+    add('Re-listen when speech was missed (noisy lines)', lturn.retranscribeOnTurnTimeout ? 'on' : 'off', eturn.retranscribeOnTurnTimeout ? 'on' : 'off');
+  }
+  if (eturn.spellingPatience && lturn.spellingPatience !== eturn.spellingPatience) {
+    add('Patience while spelling', lturn.spellingPatience ?? '(unset)', eturn.spellingPatience);
+  }
   const emax = num(ec.conversation?.maxDurationSeconds);
   if (emax !== undefined && !sameNumber(num(lc.conversation?.maxDurationSeconds), emax)) {
     add('Maximum call length (seconds)', lc.conversation?.maxDurationSeconds, emax);

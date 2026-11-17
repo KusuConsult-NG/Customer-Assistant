@@ -88,6 +88,24 @@ describe('Live agent settings drift', () => {
     expect(drift).toEqual([{ setting: 'Caller lookup before greeting', live: 'on', expected: 'off' }]);
   });
 
+  it('catches the noisy-line settings missing from the live agent', () => {
+    // Without them a caller shouting over a generator is asked whether they
+    // are still there instead of being answered.
+    const live = liveCopy();
+    delete live.conversationConfig.turn.retranscribeOnTurnTimeout;
+    live.conversationConfig.turn.spellingPatience = 'off';
+    const by = Object.fromEntries(liveSettingsDrift(live, expectedFor()).map((d) => [d.setting, d]));
+    expect(by['Re-listen when speech was missed (noisy lines)']).toMatchObject({ live: 'off', expected: 'on' });
+    expect(by['Patience while spelling']).toMatchObject({ live: 'off', expected: 'auto' });
+  });
+
+  it('asks the agent to say when it could not hear, not to guess', () => {
+    const prompt = agentPromptFor(PLATEAU);
+    expect(prompt).toContain('NOISY LINE');
+    expect(prompt).toMatch(/do not guess and do not answer something else/);
+    expect(expectedFor().conversationConfig.turn).toMatchObject({ retranscribeOnTurnTimeout: true, spellingPatience: 'auto' });
+  });
+
   it('treats a setting missing from the live agent as drift, not as a match', () => {
     const live = liveCopy();
     delete live.conversationConfig.turn.silenceEndCallTimeout;

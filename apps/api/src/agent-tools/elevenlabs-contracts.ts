@@ -384,6 +384,20 @@ export function agentDefinition(spec: AgentSpec) {
         turnEagerness: 'normal',
         speculativeTurn: false,
         turnModel: 'turn_v3',
+        // NOISY LINES. A caller at a market, a roadside or a generator loses
+        // speech to the voice-activity detector: it hears noise, not words,
+        // the turn times out, and the agent asks "are you still there?" over
+        // somebody who just asked their question. With this on, ElevenLabs
+        // re-transcribes the audio it was holding when the turn times out, so
+        // the question is answered instead of lost.
+        retranscribeOnTurnTimeout: true,
+        // Wait for a caller spelling a name or reading a phone number digit by
+        // digit instead of taking each pause as the end of their turn — the
+        // pauses are longer when they are shouting over noise.
+        spellingPatience: 'auto',
+        // (ElevenLabs' background-voice filter is not settable here: the SDK's
+        // VadConfig has no fields and strips anything sent in it. The NOISY
+        // LINE guardrail in agentPromptFor covers what the model can do.)
       },
       tts: {
         ...(spec.voiceId ? { voiceId: spec.voiceId } : {}),

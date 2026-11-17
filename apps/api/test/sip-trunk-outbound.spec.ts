@@ -210,7 +210,7 @@ describe('SIP trunk outbound', () => {
       // The whole point: before this, a callback on a SIP-only agency failed
       // honestly and never rang.
       await provision();
-      carrier({ body: { success: true, message: 'ok', sip_call_id: 'sip_callback_1' } });
+      const sent = carrier({ body: { success: true, message: 'ok', sip_call_id: 'sip_callback_1' } });
 
       const row = await prisma.callbackRequest.create({
         data: {
@@ -223,7 +223,14 @@ describe('SIP trunk outbound', () => {
         },
       });
 
-      await app.get(CallbackDispatcherService).placeOne(row.id);
+      await app.get(CallbackDispatcherService).placeOne(row.id, { update: 'The repair team has been assigned' });
+
+      // The agent is told why it is calling, as its first words — it used to
+      // open with the inbound greeting and never say.
+      const opening = sent[0]?.body?.conversation_initiation_client_data?.conversation_config_override?.agent?.first_message;
+      expect(opening).toContain('about your request, reference CB-');
+      expect(opening).toContain('concerning borehole repair');
+      expect(opening).toContain('Here is the update: The repair team has been assigned.');
 
       const after = await prisma.callbackRequest.findUnique({ where: { id: row.id } });
       // IN_PROGRESS, not COMPLETED: the trunk accepted the call, which is not

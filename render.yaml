@@ -365,6 +365,12 @@ services:
       # the next agent sync (Agent Provisioning -> Sync configuration).
       - key: ELEVENLABS_CONVERSATION_START_WEBHOOK
         sync: false
+      # Leave UNSET. Callbacks are rung by an officer from the Callbacks page,
+      # with the update the citizen is owed; "1" brings back ringing every due
+      # callback automatically on a timer, which citizens experienced as calls
+      # "at random" with nothing to tell them.
+      - key: CALLBACK_AUTO_DIAL
+        sync: false
       # Set to a residency host (api.eu.residency.elevenlabs.io,
       # api.in.residency.elevenlabs.io) to keep conversation data in
       # jurisdiction. Unset uses the default US endpoint.
