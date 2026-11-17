@@ -8,11 +8,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Samson Ishaku Bugama",
-      "position": "Commissioner",
-      "permanentSecretary": "Dr. Jonathan B. Danladi",
-      "note": "Supervises state agrarian transformation, food security, and farmer empowerment."
+      "position": "Commissioner for Agriculture",
+      "name": "Hon. Peter Nyam Gai",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -91,11 +89,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Adams Bulus Lekshak",
-      "position": "Commissioner",
-      "permanentSecretary": "Mrs. Martha Azi",
-      "note": "Reassigned from Ministry of Works during cabinet reshuffle to lead economic planning and budget coordination."
+      "position": "Commissioner for Budget and Planning",
+      "name": "Hon. Ishaku Maren Yobo",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -172,10 +168,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Sunday Alex",
       "position": "Commissioner for Commerce and Industry",
-      "note": "Appointed January 2025 replacing Hon. Sule Musa Haruna who was disengaged in Governor Mutfwang's January 2025 cabinet reshuffle."
+      "name": "Hon. Musa Ibrahim Ashoms",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -248,10 +243,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Dr. (Mrs.)",
-      "name": "Kachollom Pyam Gang",
       "position": "Commissioner for Education",
-      "note": "Originally appointed Commissioner for Higher Education in August 2023; assumed leadership of the unified Ministry of Education following the February 2025 merger of Secondary and Higher Education."
+      "name": "Prof. Gloria Samuel Karuri",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -340,10 +334,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Peter Kanang Gwom",
-      "position": "Commissioner",
-      "note": "Leading state climate change resilience, conservation, and mineral tracking."
+      "position": "Commissioner for Environment",
+      "name": "Hon. Joshua Laven Ubandoma",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -419,11 +412,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Grace Dongkum Shwarta",
-      "position": "Commissioner",
-      "permanentSecretary": "Mrs. Ladi Agwom",
-      "note": "Reassigned from Secondary Education during cabinet restructuring to lead state public financial management."
+      "position": "Commissioner for Finance",
+      "name": "Mrs. Grace Dongkum Shwarta",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -496,11 +487,11 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Nicolas Baamlong",
       "position": "Commissioner for Health",
-      "permanentSecretary": "Dr. Cletus Bako / Dr. Agabus",
-      "note": "Appointed during cabinet restructuring to lead primary and secondary health sector renewal."
+      "name": "Dr. Nicholas Ba'amlong",
+      "asOf": "August 2026",
+      "permanentSecretary": "Bitrus Hosea",
+      "permanentSecretaryAsOf": "December 2025"
     },
     "pastLeadership": [
       {
@@ -589,10 +580,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Sylvanus Dongtoe",
-      "position": "Commissioner",
-      "note": "Appointed in the cabinet restructuring to oversee public housing schemes and urban master planning."
+      "position": "Commissioner for Housing and Urban Development",
+      "name": "Hon. Sylvester Dongtoe",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -655,10 +645,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Ishaku Maren / Prince Miaphen",
-      "position": "Commissioner",
-      "note": "Newly created ministry established in the 2025/2026 restructuring to address displacement, emergency relief, and social safety nets."
+      "position": "Commissioner for Humanitarian Affairs",
+      "name": "Dr. (Mrs.) Kachollom Pyam Gang",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -710,10 +699,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Rt. Hon.",
-      "name": "Joyce Lohya Ramnap, mni",
       "position": "Commissioner for Information and Communication",
-      "note": "Former Deputy Speaker of the Plateau State House of Assembly; appointed in cabinet restructuring."
+      "name": "Rt. Hon. Joyce Lohya Ramnap, mni",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -801,11 +789,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Barr.",
-      "name": "Philemon Audu Daffi",
       "position": "Attorney-General and Commissioner for Justice",
-      "permanentSecretary": "Barr. Julie Sanda / Ministry Solicitor General",
-      "note": "Leading state justice reform, public prosecutions, and citizens’ rights mediation."
+      "name": "Barr. Philemon Audu Daffi, SAN",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -883,11 +869,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Barr.",
-      "name": "Peter Nyam Gai",
-      "position": "Commissioner",
-      "permanentSecretary": "Surv. Bitrus Pam",
-      "note": "Leading digital land reform, title issuance, and spatial planning."
+      "position": "Commissioner for Lands, Survey and Town Planning",
+      "name": "Hon. Peter I. Gwom",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -962,10 +946,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Sunday Akpa",
-      "position": "Commissioner",
-      "note": "Inaugurated as the pioneer Commissioner following the creation of the dedicated ministry in February 2025."
+      "position": "Commissioner for Livestock and Fisheries",
+      "name": "Hon. Samson Ishaku Bugama",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1028,11 +1011,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon. Chief",
-      "name": "Ephraim Usman",
-      "position": "Commissioner",
-      "permanentSecretary": "Mr. Nanle James",
-      "note": "Leading local government administration, traditional council liaisons, and grassroots development."
+      "position": "Commissioner for Local Government and Chieftaincy Affairs",
+      "name": "Hon. Ephraim Usman",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1100,10 +1081,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Cletus Bako Shurkuk",
-      "position": "Commissioner",
-      "note": "Reassigned from Ministry of Health in cabinet restructuring to drive innovation, research, and technical education."
+      "position": "Commissioner for Science and Technology",
+      "name": "Hon. Nyalum M. Salihu",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1178,10 +1158,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Cornelius Dongnaan Doeyok",
-      "position": "Commissioner for Tourism, Culture and Hospitality",
-      "note": "Appointed January 2025 by Governor Mutfwang replacing Haj. Jamila Tukur Bitrus who was disengaged in the January 2025 cabinet reshuffle."
+      "position": "Commissioner overseeing Tourism, Culture and Hospitality (also Commissioner for Information)",
+      "name": "Rt. Hon. Joyce Lohya Ramnap, mni",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1256,11 +1235,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Jatau Davou Gyang",
-      "position": "Commissioner",
-      "permanentSecretary": "Engr. Stephen Pam",
-      "note": "Leading the rollout of urban mass transit schemes including the Tin City Metro Bus system."
+      "position": "Commissioner for Transport",
+      "name": "Hon. Jatau Davou Gyang",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1329,10 +1306,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Bashir Lawandi Datti",
-      "position": "Commissioner",
-      "note": "Reassigned from Ministry of Youth and Sports Development during cabinet restructuring."
+      "position": "Commissioner for Water Resources and Energy",
+      "name": "Hon. Bashir Lawandi Datti",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1405,11 +1381,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Caroline Panglang Dafur",
-      "position": "Commissioner",
-      "permanentSecretary": "Mrs. Mary Ishaya",
-      "note": "Leading social welfare, gender protection, and rehabilitation programs."
+      "position": "Commissioner for Women Affairs",
+      "name": "Mrs. Caroline Panglang Dafur",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1478,11 +1452,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Joshua Laven Ubandoma",
-      "position": "Commissioner",
-      "permanentSecretary": "Engr. Beedee Bot",
-      "note": "Reassigned from Housing and Urban Development during cabinet restructuring to spearhead road infrastructure."
+      "position": "Commissioner for Works",
+      "name": "Dr. Cletus Shurkuk",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1555,10 +1527,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Bashir Lawandi Datti",
       "position": "Commissioner for Youth and Sports Development",
-      "note": "Returned to cabinet June 2026 after earlier resignation to contest primaries. Previously served as Commissioner for Water Resources and Energy Development."
+      "name": "Comr. Prince Miaphen",
+      "asOf": "August 2026"
     },
     "pastLeadership": [
       {
@@ -1641,10 +1612,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Arc.",
-      "name": "Samuel Nanchang Jatau",
       "position": "Secretary to the Government of the State",
-      "note": "Coordinates all state ministries, boards, commissions, and implementation of executive council decisions."
+      "name": "Arc. Samuel Nanchang Jatau",
+      "asOf": "October 2026"
     },
     "pastLeadership": [
       {
@@ -1714,10 +1684,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Stephen Pam Gadong",
       "position": "Head of Civil Service",
-      "note": "Appointed acting August 2024 and confirmed substantive Head of Civil Service December 2024, succeeding Barr. Rauta Dakok who retired at the mandatory age of 60."
+      "name": "Mr. Stephen Pam Gadong",
+      "asOf": "July 2026"
     },
     "pastLeadership": [
       {
@@ -1774,10 +1743,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mrs.",
-      "name": "Naanret A. Manset",
-      "position": "Accountant General",
-      "note": "Chief Accounting Officer of receipts and disbursements of the Plateau State Government."
+      "position": "Accountant-General",
+      "name": "Mrs. Naanret A. Manset",
+      "asOf": "May 2026"
     },
     "pastLeadership": [
       {
@@ -1835,10 +1803,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mrs.",
-      "name": "Charity Elisha Davou (FCNA)",
       "position": "Auditor General",
-      "note": "Constitutional external auditor of the Plateau State Government."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -1896,10 +1863,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Arc.",
-      "name": "Hart Bankat",
       "position": "General Manager",
-      "note": "Leading Greater Jos urban regeneration, development control, and environmental beautification."
+      "name": "Arc. Hart Bankat",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -1968,10 +1934,9 @@
     ],
     "category": "HOSPITAL",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Dawal Solomon Kwande",
-      "position": "Director General",
-      "note": "Appointed by Governor Caleb Mutfwang. Leads universal health coverage expansion, BHCPF implementation, informal-sector enrollment, and facility accreditation."
+      "position": "Director-General",
+      "name": "Dr. Dawal Solomon Kwande",
+      "asOf": "2025"
     },
     "pastLeadership": [
       {
@@ -2034,10 +1999,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Samuel Nathaniel Dapiya",
-      "position": "Director General",
-      "note": "Leading urban waste revolution, municipal skip bin rollouts, and commercial sanitation enforcement."
+      "position": "Director-General",
+      "name": "Mr. Samuel Nathaniel Dapiya",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2100,10 +2064,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Datong Dominic Gwaman",
       "position": "Director General",
-      "note": "Leading Plateau State digital transformation, government cloud infrastructure, and tech innovation ecosystem."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2167,10 +2130,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Jim Pam Wayas",
       "position": "Executive Chairman",
-      "note": "Leading automated tax collection, taxpayer enumeration, and voluntary tax compliance."
+      "name": "Dr. Jim Wayas Pam",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2230,10 +2192,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Julie Sanda",
       "position": "Director General",
-      "note": "Leading strategic peacebuilding, inter-faith dialogue, and early-warning response systems."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2284,10 +2245,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Sunday Akson Abdu",
       "position": "Executive Secretary",
-      "note": "Overseeing disaster preparedness, humanitarian relief distribution, and IDP coordination."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2345,10 +2305,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Pharm",
-      "name": "Kim Jerry Bot",
-      "position": "Executive Secretary",
-      "note": "Leading state pooled drug procurement, drug revolving funds (DRF), and pharmaceutical quality control."
+      "position": "Director-General (Executive Secretary)",
+      "name": "Pharm. Kim Jerry Bot",
+      "asOf": "September 2026"
     },
     "pastLeadership": [
       {
@@ -2406,10 +2365,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Bomkam Ali Wuyep",
       "position": "Director General",
-      "note": "Leading MSME development, microcredit linkages, and entrepreneurship incubation."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2468,10 +2426,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Samuel Jok Gwott",
       "position": "Managing Director / CEO",
-      "note": "Leading modern fleet expansion, inter-state route revitalization, and Tin City Metro urban bus services."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2530,10 +2487,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mrs.",
-      "name": "Olivia Dazyem Esq",
       "position": "Acting Chairperson",
-      "note": "Former Commissioner for Information and leading legal luminary; spearheading anti-discrimination enforcement."
+      "name": "Mrs. Olivia Dazyam",
+      "asOf": "2025"
     },
     "pastLeadership": [
       {
@@ -2591,10 +2547,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mrs.",
-      "name": "Nankus Ngwalang Adams",
-      "position": "Executive Secretary",
-      "note": "Managing domestic bursaries, specialized foreign scholarships, and student welfare."
+      "position": "Acting Executive Secretary",
+      "name": "Mrs. Nankus Adams Ngwalang",
+      "asOf": "December 2025"
     },
     "pastLeadership": [
       {
@@ -2652,10 +2607,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Engr.",
-      "name": "Ponzing Bindong Gamde",
       "position": "Director General / Managing Director & CEO",
-      "note": "Appointed February 2024 by Governor Mutfwang. Victor During Dagett serves as Board Chairman (inaugurated July 2025)."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2714,10 +2668,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mrs.",
-      "name": "Rita Kachollom Pam",
       "position": "General Manager",
-      "note": "Managing state public television (PRTV) and radio stations (Peace 90.5 FM and AM)."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2777,10 +2730,9 @@
     ],
     "category": "HOSPITAL",
     "currentLeadership": {
-      "title": "Professor",
-      "name": "Christopher S. Yilgwan",
       "position": "Chief Medical Director",
-      "note": "Renowned consultant pediatrician leading hospital transformation, modern diagnostic upgrades, and clinical residency."
+      "name": "Prof. Christopher Sabo Yilgwan",
+      "asOf": "February 2026"
     },
     "pastLeadership": [
       {
@@ -2842,10 +2794,9 @@
     ],
     "category": "HOSPITAL",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Sumi B. Garkuwa",
       "position": "Chief Medical Director",
-      "note": "Supervising secondary public hospitals, clinical staffing, and medical equipment across all 17 LGAs."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2904,10 +2855,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mrs.",
-      "name": "Atihong Yengoet",
       "position": "Director General",
-      "note": "Leading public debt portfolio recording, debt sustainability analysis, and loan servicing."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -2962,10 +2912,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Micah S. Gongden",
       "position": "Statistician General Plateau State",
-      "note": "Leading state socioeconomic statistical surveys, demographic studies, and open data systems."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3022,10 +2971,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon. Mrs.",
-      "name": "Nanbam Esther Danjuma-Lot",
       "position": "SDGs Project Coordinator",
-      "note": "Appointed by Governor Mutfwang. Leads SDG implementation across Plateau State's 17 LGAs covering human capital, poverty alleviation, climate action, and inclusive governance."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3081,10 +3029,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Chuwang Pwajok Nyam",
       "position": "General Manager",
-      "note": "Managing major state conservation parks, wildlife resorts, and eco-tourism promotion."
+      "name": "Mr. Chuwang Pwajok",
+      "asOf": "December 2025"
     },
     "pastLeadership": [
       {
@@ -3148,10 +3095,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Chup Alexander Sunday",
       "position": "Commissioner / Chairman, Teacher's Service Commission",
-      "note": "Leading secondary school teacher welfare, promotions, postings, and discipline."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3209,10 +3155,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Chief",
-      "name": "Simon Tangni",
       "position": "Chairman, Local Government Service Commission",
-      "note": "Leading unified local government personnel administration across all 17 LGAs."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3270,10 +3215,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Matthews Dawap",
       "position": "Managing Director",
-      "note": "Leading state solid mineral exploration, joint ventures, and mineral beneficiation."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3330,10 +3274,9 @@
     ],
     "category": "TERTIARY_INSTITUTION",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Birmiap Patrick Yilpoe",
       "position": "Provost",
-      "note": "Leading academic curriculum accreditation, technical diploma programs, and IJMB tertiary preparation."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3390,10 +3333,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Dauda D. Dinju",
       "position": "General Manager",
-      "note": "Leading community-driven development micro-projects across poor rural communities."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3450,10 +3392,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Plangji Daniel Cishak",
       "position": "Executive Chairman",
-      "note": "Leading state local government electoral reforms, transparent voting technologies, and local council elections."
+      "name": "Hon. Plangji Daniel Cishak",
+      "asOf": "January 2026"
     },
     "pastLeadership": [
       {
@@ -3502,10 +3443,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Hon.",
-      "name": "Sunday Amuna",
       "position": "Executive Chairman",
-      "note": "Leading public primary and junior secondary education revitalisation and school infrastructure."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3555,10 +3495,9 @@
     ],
     "category": "SECURITY",
     "currentLeadership": {
-      "title": "Brig.-Gen.",
-      "name": "G.G. Shipi (rtd)",
-      "position": "State Coordinator",
-      "note": "Leading community neighborhood watch, early warning intelligence, and civil protection."
+      "position": "Coordinator",
+      "name": "Brig.-Gen. Nash Yakubu (rtd)",
+      "asOf": "June 2026"
     },
     "pastLeadership": [
       {
@@ -3607,10 +3546,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Engr.",
-      "name": "Eugene Pam",
       "position": "General Manager",
-      "note": "Leading urban water treatment, pipe rehabilitation, and clean drinking water distribution."
+      "name": null,
+      "unconfirmed": true
     },
     "pastLeadership": [
       {
@@ -3659,10 +3597,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Bitrus Dalyop",
       "position": "Programme Manager",
-      "note": "Directing statewide agricultural extension delivery, smallholder farmer support, and demonstration farms."
+      "name": null,
+      "unconfirmed": true
     },
     "administrativeHistory": "Established under World Bank counterpart funding to provide front-line agricultural extension services to smallholder farmers.",
     "mandate": "Deliver agricultural extension advisory to smallholder farmers; train farmers on climate-smart agronomic practices; introduce high-yield certified seeds and seedlings; manage farm demonstration plots; and monitor pest attacks.",
@@ -3703,10 +3640,9 @@
     ],
     "category": "HOSPITAL",
     "currentLeadership": {
-      "title": "Dr.",
-      "name": "Raymond Juryit",
       "position": "Executive Secretary",
-      "note": "Leading Primary Health Care Under One Roof (PHCUOR), routine immunization, and maternal healthcare."
+      "name": "Dr. Raymond Juryit",
+      "asOf": "2025"
     },
     "administrativeHistory": "Created to coordinate primary health centres across all 325 electoral wards under the Primary Health Care Under One Roof policy.",
     "mandate": "Manage, staff, and supervise all Primary Health Centres (PHCs) and basic health clinics; conduct routine childhood immunization campaigns; combat maternal and infant mortality; and deliver primary preventive healthcare.",
@@ -3747,10 +3683,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Engr.",
-      "name": "Pam Dung",
       "position": "General Manager",
-      "note": "Leading rapid response pothole patching, asphalt maintenance, and drainage clearing."
+      "name": null,
+      "unconfirmed": true
     },
     "administrativeHistory": "Dedicated road maintenance agency operating under the supervision of the Ministry of Works to keep state highways motorable.",
     "mandate": "Carry out routine and periodic road maintenance, emergency pothole repairs, culvert restorations, and storm drain clearings on all state roads across the 17 LGAs.",
@@ -3789,10 +3724,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "title": "Mr.",
-      "name": "Danladi Dalyop",
       "position": "Managing Director / CEO",
-      "note": "Leading state commercial investment portfolios, equity assets, and real estate properties."
+      "name": null,
+      "unconfirmed": true
     },
     "administrativeHistory": "The premier commercial investment vehicle of the Plateau State Government, managing state equities and commercial properties.",
     "mandate": "Manage the state government's equity portfolios in quoted and unquoted companies; develop and manage commercial real estate; promote joint venture industrial investments; and unlock wealth from state assets.",

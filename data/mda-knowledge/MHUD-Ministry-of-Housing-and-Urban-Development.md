@@ -2,8 +2,7 @@
 Also known as: Ministry of Housing
 
 ## Current Leadership
-- **Commissioner**: Hon. Sylvanus Dongtoe
-- **Role Overview**: Appointed in the cabinet restructuring to oversee public housing schemes and urban master planning.
+- **Commissioner for Housing and Urban Development**: Hon. Sylvester Dongtoe (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Joshua Laven Ubandoma (August 2023 – February 2025 (reassigned to Works))

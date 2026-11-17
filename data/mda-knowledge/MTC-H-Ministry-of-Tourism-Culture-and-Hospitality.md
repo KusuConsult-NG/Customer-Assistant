@@ -2,8 +2,7 @@
 Also known as: Ministry of Tourism and Culture, Ministry of Tourism
 
 ## Current Leadership
-- **Commissioner for Tourism, Culture and Hospitality**: Hon. Cornelius Dongnaan Doeyok
-- **Role Overview**: Appointed January 2025 by Governor Mutfwang replacing Haj. Jamila Tukur Bitrus who was disengaged in the January 2025 cabinet reshuffle.
+- **Commissioner overseeing Tourism, Culture and Hospitality (also Commissioner for Information)**: Rt. Hon. Joyce Lohya Ramnap, mni (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Mrs. Tamwakat Weli (2019 – 2023 (Lalong administration))

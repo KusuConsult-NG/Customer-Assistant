@@ -2,8 +2,7 @@
 Also known as: Plateau State Universal Basic Education Board (PSUBEB), SUBEB Plateau
 
 ## Current Leadership
-- **Executive Chairman**: Hon. Sunday Amuna
-- **Role Overview**: Leading public primary and junior secondary education revitalisation and school infrastructure.
+- **Executive Chairman**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Executive Chairman**: Prof. Matthew Sule (2015 – 2023 (Lalong administration))

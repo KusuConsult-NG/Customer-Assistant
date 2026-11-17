@@ -2,8 +2,7 @@
 Also known as: Community and Social Development Agency (CSDA), Plateau CSDA
 
 ## Current Leadership
-- **General Manager**: Mr. Dauda D. Dinju
-- **Role Overview**: Leading community-driven development micro-projects across poor rural communities.
+- **General Manager**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Mr. Daniel Chup (Pre-2023)

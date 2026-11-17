@@ -2,8 +2,7 @@
 Also known as: Ministry of Water Resources, Ministry of Water Resources and Energy
 
 ## Current Leadership
-- **Commissioner**: Hon. Bashir Lawandi Datti
-- **Role Overview**: Reassigned from Ministry of Youth and Sports Development during cabinet restructuring.
+- **Commissioner for Water Resources and Energy**: Hon. Bashir Lawandi Datti (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Noel Nkup (August 2023 – February 2025 (Mutfwang cabinet))

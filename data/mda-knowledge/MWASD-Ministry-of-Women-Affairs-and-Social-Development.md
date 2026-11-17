@@ -2,9 +2,7 @@
 Also known as: Ministry of Women Affairs
 
 ## Current Leadership
-- **Commissioner**: Hon. Caroline Panglang Dafur
-- **Permanent Secretary**: Mrs. Mary Ishaya
-- **Role Overview**: Leading social welfare, gender protection, and rehabilitation programs.
+- **Commissioner for Women Affairs**: Mrs. Caroline Panglang Dafur (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Mrs. Rebecca Sambo (2019 – 2023 (Lalong administration))

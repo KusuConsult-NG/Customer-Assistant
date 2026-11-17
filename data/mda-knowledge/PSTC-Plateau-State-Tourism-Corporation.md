@@ -2,8 +2,7 @@
 Also known as: Plateau State Tourism Corporation ( PSTC), Tourism Corporation
 
 ## Current Leadership
-- **General Manager**: Mr. Chuwang Pwajok Nyam
-- **Role Overview**: Managing major state conservation parks, wildlife resorts, and eco-tourism promotion.
+- **General Manager**: Mr. Chuwang Pwajok (as of December 2025)
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Mr. John Gabriel (Pre-2023)

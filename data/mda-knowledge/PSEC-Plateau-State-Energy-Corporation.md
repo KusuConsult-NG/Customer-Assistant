@@ -2,8 +2,7 @@
 Also known as: Plateau State Energy Corporation (PSEC), Plateau Energy Corporation
 
 ## Current Leadership
-- **Director General / Managing Director & CEO**: Engr. Ponzing Bindong Gamde
-- **Role Overview**: Appointed February 2024 by Governor Mutfwang. Victor During Dagett serves as Board Chairman (inaugurated July 2025).
+- **Director General / Managing Director & CEO**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Coordinator**: Engr. Gyang Pam (Pre-2023)

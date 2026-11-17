@@ -2,9 +2,7 @@
 Also known as: Ministry of Agriculture, Ministry of Agriculture and Rural Development
 
 ## Current Leadership
-- **Commissioner**: Hon. Samson Ishaku Bugama
-- **Permanent Secretary**: Dr. Jonathan B. Danladi
-- **Role Overview**: Supervises state agrarian transformation, food security, and farmer empowerment.
+- **Commissioner for Agriculture**: Hon. Peter Nyam Gai (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Dr. Hosea Finangwai (2019 – 2023 (Lalong administration))

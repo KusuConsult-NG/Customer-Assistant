@@ -2,8 +2,7 @@
 Also known as: Plateau Information Communication and Technology Development Agency (PICTDA), Plateau State Information and Communication Technology Development Agency, PICTDA
 
 ## Current Leadership
-- **Director General**: Mr. Datong Dominic Gwaman
-- **Role Overview**: Leading Plateau State digital transformation, government cloud infrastructure, and tech innovation ecosystem.
+- **Director General**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Director General**: Mr. Daser David (2018 – 2023 (Founding Director General))

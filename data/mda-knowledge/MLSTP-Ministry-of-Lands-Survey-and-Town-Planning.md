@@ -2,9 +2,7 @@
 Also known as: Ministry of Lands and Survey, Ministry of Lands, Survey and Town Planning
 
 ## Current Leadership
-- **Commissioner**: Barr. Peter Nyam Gai
-- **Permanent Secretary**: Surv. Bitrus Pam
-- **Role Overview**: Leading digital land reform, title issuance, and spatial planning.
+- **Commissioner for Lands, Survey and Town Planning**: Hon. Peter I. Gwom (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Yakubu Dati (2019 – 2023 (Lalong administration))

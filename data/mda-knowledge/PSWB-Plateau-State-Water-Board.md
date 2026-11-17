@@ -2,8 +2,7 @@
 Also known as: Plateau State Water Board (PSWB), State Water Board
 
 ## Current Leadership
-- **General Manager**: Engr. Eugene Pam
-- **Role Overview**: Leading urban water treatment, pipe rehabilitation, and clean drinking water distribution.
+- **General Manager**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Engr. David Wuyep (Pre-2023)

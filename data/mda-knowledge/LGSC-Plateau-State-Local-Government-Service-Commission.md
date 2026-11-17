@@ -2,8 +2,7 @@
 Also known as: Plateau State Local Government Service Commission (LGSC), LGSC
 
 ## Current Leadership
-- **Chairman, Local Government Service Commission**: Chief Simon Tangni
-- **Role Overview**: Leading unified local government personnel administration across all 17 LGAs.
+- **Chairman, Local Government Service Commission**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Chairman**: Hon. Robert Taple (2015 – 2023 (Lalong administration))

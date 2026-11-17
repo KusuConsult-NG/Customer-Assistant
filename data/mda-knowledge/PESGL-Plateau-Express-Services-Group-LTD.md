@@ -2,8 +2,7 @@
 Also known as: Plateau Express Services Group LTD (PESGL), Plateau Riders, Plateau Express Services
 
 ## Current Leadership
-- **Managing Director / CEO**: Hon. Samuel Jok Gwott
-- **Role Overview**: Leading modern fleet expansion, inter-state route revitalization, and Tin City Metro urban bus services.
+- **Managing Director / CEO**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Hon. Samuel Jok Gwott (2019 – 2023)

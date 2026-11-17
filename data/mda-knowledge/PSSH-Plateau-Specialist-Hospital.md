@@ -2,8 +2,7 @@
 Also known as: Plateau Specialist Hospital (PSSH JOS), Plateau State Specialist Hospital, PSSH
 
 ## Current Leadership
-- **Chief Medical Director**: Professor Christopher S. Yilgwan
-- **Role Overview**: Renowned consultant pediatrician leading hospital transformation, modern diagnostic upgrades, and clinical residency.
+- **Chief Medical Director**: Prof. Christopher Sabo Yilgwan (as of February 2026)
 
 ## Past Leadership & Administrative History
 - **Former Chief Medical Director**: Dr. Philemon Golwa (2015 – 2023 (Lalong administration))

@@ -2,8 +2,7 @@
 Also known as: Ministry of Humanitarian Affairs, Ministry of Humanitarian Affairs, Disaster Management and Social Development
 
 ## Current Leadership
-- **Commissioner**: Hon. Ishaku Maren / Prince Miaphen
-- **Role Overview**: Newly created ministry established in the 2025/2026 restructuring to address displacement, emergency relief, and social safety nets.
+- **Commissioner for Humanitarian Affairs**: Dr. (Mrs.) Kachollom Pyam Gang (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Supervisory Coordinator**: Hon. Caroline Panglang Dafur (2023 – 2025 (as Women Affairs & Social Welfare))

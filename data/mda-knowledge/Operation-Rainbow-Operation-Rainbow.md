@@ -2,8 +2,7 @@
 Also known as: Operation Rainbow Plateau State, Plateau State Neighborhood Watch
 
 ## Current Leadership
-- **State Coordinator**: Brig.-Gen. G.G. Shipi (rtd)
-- **Role Overview**: Leading community neighborhood watch, early warning intelligence, and civil protection.
+- **Coordinator**: Brig.-Gen. Nash Yakubu (rtd) (as of June 2026)
 
 ## Past Leadership & Administrative History
 - **Former Coordinator**: Maj.-Gen. Nicholas Rogers (rtd) (2019 – 2023)

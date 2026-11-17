@@ -2,9 +2,7 @@
 Also known as: Plateau State Ministry of Works
 
 ## Current Leadership
-- **Commissioner**: Hon. Joshua Laven Ubandoma
-- **Permanent Secretary**: Engr. Beedee Bot
-- **Role Overview**: Reassigned from Housing and Urban Development during cabinet restructuring to spearhead road infrastructure.
+- **Commissioner for Works**: Dr. Cletus Shurkuk (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Adams Bulus Lekshak (August 2023 – February 2025 (reassigned to Budget & Planning))

@@ -2,8 +2,7 @@
 Also known as: Ministry of Environment, Ministry of Environment and Mineral Development
 
 ## Current Leadership
-- **Commissioner**: Hon. Peter Kanang Gwom
-- **Role Overview**: Leading state climate change resilience, conservation, and mineral tracking.
+- **Commissioner for Environment**: Hon. Joshua Laven Ubandoma (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Usman Idi (2019 – 2023 (Lalong administration))

@@ -2,8 +2,7 @@
 Also known as: Plateau State Sustainable Development Goals, Plateau SDGs Unit
 
 ## Current Leadership
-- **SDGs Project Coordinator**: Hon. Mrs. Nanbam Esther Danjuma-Lot
-- **Role Overview**: Appointed by Governor Mutfwang. Leads SDG implementation across Plateau State's 17 LGAs covering human capital, poverty alleviation, climate action, and inclusive governance.
+- **SDGs Project Coordinator**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Project Coordinator**: Mr. Sam Damla (2015 – 2023 (Lalong administration))

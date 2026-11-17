@@ -1,10 +1,10 @@
 # Plateau State House of Assembly & Government Leadership Directory
 
 ## Plateau State House of Assembly (Legislative Arm)
-- **Current Speaker**: Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency).
+- **Current Speaker**: Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency) (as of April 2026).
   - Unanimously elected as Speaker of the 10th Plateau State House of Assembly on **July 2, 2025**.
   - Succeeded former Speaker **Hon. Gabriel Dewan** (representing Young Progressives Party, YPP, for Pankshin North / Plateau Central), who served from November 2023 until his resignation on July 2, 2025 to balance political stability and power-sharing across geopolitical zones.
-- **Deputy Speaker**: Hon. Timothy Dantong.
+- **Deputy Speaker**: Not confirmed in our records (reports from 2025 name different people). Please confirm with the House of Assembly.
 - **Clerk of the House**: Managed under the administrative structure of the Assembly Service Commission.
 - **Location**: Plateau State House of Assembly Complex, John Mark Samchi Road, Jos, Plateau State, Nigeria.
 - **Mandate**: Lawmaking, legislative oversight over executive MDAs, budget appropriation and vetting, confirmation of commissioner nominees, and representation of Plateau citizens across all 24 state constituencies.
@@ -12,56 +12,57 @@
 ---
 
 ## Executive Arm — Principal Officers
-- **Executive Governor**: His Excellency, Barr. Caleb Manasseh Mutfwang ("The Time is Now" administration).
+- **Executive Governor**: His Excellency, Barr. Caleb Manasseh Mutfwang.
 - **Deputy Governor**: Her Excellency, Ngo Josephine Chundung Piyo.
-- **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau.
-- **Chief of Staff to the Governor**: Engr. Jeremiah Satmark.
-- **Permanent Secretary, Government House**: Mrs. Helen Chundusu.
-- **Head of Civil Service**: Mr. Stephen Pam Gadong (confirmed substantive Head of Civil Service in December 2024, succeeding Barr. Mrs. Rauta Joshua Dakok who retired at the statutory age of 60).
-- **Attorney-General and Commissioner for Justice**: Hon. Philemon Audu Daffi.
+- **Speaker, Plateau State House of Assembly**: Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency) (as of April 2026).
+- **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau (as of October 2026).
+- **Head of Civil Service**: Mr. Stephen Pam Gadong (as of July 2026).
+- **Permanent Secretary, Government House**: Mrs. Helen Chundusu (as of November 2026).
+- **Attorney-General and Commissioner for Justice**: Barr. Philemon Audu Daffi, SAN (as of August 2026).
 
 ---
 
 ## Key Executive Agencies and Parastatals
-- **PLASCHEMA (Plateau State Contributory Healthcare Management Agency)**:
-  - **Director-General**: Dr. Dawal Solomon Kwande (appointed by Governor Caleb Mutfwang).
-  - Predecessor: Dr. Agabus Nanfwang Manasseh.
-  - Core Focus: Universal Health Coverage, Basic Health Care Provision Fund (BHCPF), informal sector enrollment, and healthcare provider accreditation.
-- **Plateau State Energy Corporation (PSEC)**:
-  - **Director-General / CEO**: Engr. Ponzing Bindong Gamde (appointed February 2024).
-  - **Board Chairman**: Hon. Victor During Dagett (inaugurated July 2025).
-- **Plateau Environmental Protection and Sanitation Agency (PEPSA)**:
-  - **Director-General**: Samuel Nathaniel Dapiya.
-- **Plateau Information Communication and Technology Development Agency (PICTDA)**:
-  - **Director-General**: Datong Dominic Gwaman.
-- **Plateau State Internal Revenue Service (PSIRS)**:
-  - **Executive Chairman**: Jim Pam Wayas.
-- **Plateau Peace Building Agency (PPBA)**:
-  - **Director-General**: Dr. Julie Sanda.
-- **Plateau State Sustainable Development Goals Project Support Unit (SDGs-PSU)**:
-  - **Project Coordinator**: Hon. Mrs. Nanbam Esther Danjuma-Lot.
+Names below are confirmed by published sources dated 2025-2026 (checked 2026-11-17). Where an agency is not listed, its head's name is not confirmed in our records.
+- **Secretary to the Government of the State, Office of the Secretary to the Government of the State (OSGS)**: Arc. Samuel Nanchang Jatau (as of October 2026)
+- **Head of Civil Service, Office of the Head of Civil Service (OHCS)**: Mr. Stephen Pam Gadong (as of July 2026)
+- **Accountant-General, Office of the Accountant General (OAG)**: Mrs. Naanret A. Manset (as of May 2026)
+- **General Manager, Jos Metropolitan Development Board (JMDB)**: Arc. Hart Bankat (as of 2026)
+- **Director-General, Plateau State Contributory Healthcare Management Agency (PLASCHEMA)**: Dr. Dawal Solomon Kwande (as of 2025)
+- **Director-General, Plateau Environmental Protection And Sanitation Agency (PEPSA)**: Mr. Samuel Nathaniel Dapiya (as of 2026)
+- **Executive Chairman, Plateau State Internal Revenue Service (PSIRS)**: Dr. Jim Wayas Pam (as of 2026)
+- **Director-General (Executive Secretary), Plateau State Drugs and Medical Commodities Management Agency (PSDMCMA)**: Pharm. Kim Jerry Bot (as of September 2026)
+- **Acting Chairperson, Plateau State Gender and Equal Opportunities Commission (PLAGEO)**: Mrs. Olivia Dazyam (as of 2025)
+- **Acting Executive Secretary, Plateau State Scholarship Board (PSSB)**: Mrs. Nankus Adams Ngwalang (as of December 2025)
+- **Chief Medical Director, Plateau Specialist Hospital (PSSH)**: Prof. Christopher Sabo Yilgwan (as of February 2026)
+- **General Manager, Plateau State Tourism Corporation (PSTC)**: Mr. Chuwang Pwajok (as of December 2025)
+- **Executive Chairman, Plateau State Independent Electoral Commission (PLASIEC)**: Hon. Plangji Daniel Cishak (as of January 2026)
+- **Coordinator, Operation Rainbow (Operation Rainbow)**: Brig.-Gen. Nash Yakubu (rtd) (as of June 2026)
+- **Executive Secretary, Plateau State Primary Health Care Board (PSPHCB)**: Dr. Raymond Juryit (as of 2025)
 
 ---
 
 ## Current State Commissioners (Executive Council)
-- **Agriculture**: Hon. Samson Ishaku Bugama / Hon. Peter Nyam Gai
-- **Budget and Economic Planning**: Sylvanus Dongtoe
-- **Commerce and Industry**: Dr. Sunday Alex (appointed January 2025 replacing Sule Musa Haruna)
-- **Education**: Kachollom Pyam Gang
-- **Environment, Climate Change and Mineral Development**: Peter Kanang Gwom
-- **Finance**: Hon. Grace Dongkum Shwarta
-- **Health**: Dr. Nicholas Ba'amlong (appointed February 2025, succeeding Dr. Cletus Bako Shurkuk)
-- **Housing and Urban Development**: Sylvanus Dongtoe
-- **Humanitarian Affairs and Poverty Alleviation**: Ishaku Maren / Prince Miaphen
-- **Information and Communication**: Rt. Hon. Joyce Lohya Ramnap, mni
-- **Justice**: Hon. Philemon Audu Daffi
-- **Lands, Survey and Town Planning**: Peter Nyam Gai
-- **Livestock Development, Veterinary Services, and Fisheries**: Sunday Akpa
-- **Local Government and Chieftaincy Affairs**: Ephraim Usman Gar
-- **Science, Technology and Innovation**: Dr. Cletus Bako Shurkuk (reassigned to Works in restructuring)
-- **Tourism, Culture and Hospitality**: Hon. Cornelius Dongnaan Doeyok (appointed January 2025 replacing Jamila Tukur Bitrus)
-- **Transport**: Jatau Davou Gyang
-- **Water Resources and Energy Development**: Bashir Lawandi Datti
-- **Women Affairs and Social Development**: Caroline Panglang Dafur
-- **Works**: Dr. Cletus Bako Shurkuk (succeeding Joshua Laven Ubandoma)
-- **Youth and Sports Development**: Hon. Bashir Lawandi Datti (replacing Noel Nkup)
+After the August 2026 cabinet reshuffle. Names below are confirmed by published sources dated 2025-2026 (checked 2026-11-17). Where an agency is not listed, its head's name is not confirmed in our records.
+- **Attorney-General and Commissioner for Justice**: Barr. Philemon Audu Daffi, SAN (as of August 2026)
+- **Commissioner for Agriculture**: Hon. Peter Nyam Gai (as of August 2026)
+- **Commissioner for Budget and Planning**: Hon. Ishaku Maren Yobo (as of August 2026)
+- **Commissioner for Commerce and Industry**: Hon. Musa Ibrahim Ashoms (as of August 2026)
+- **Commissioner for Education**: Prof. Gloria Samuel Karuri (as of August 2026)
+- **Commissioner for Environment**: Hon. Joshua Laven Ubandoma (as of August 2026)
+- **Commissioner for Finance**: Mrs. Grace Dongkum Shwarta (as of August 2026)
+- **Commissioner for Health**: Dr. Nicholas Ba'amlong (as of August 2026)
+- **Commissioner for Housing and Urban Development**: Hon. Sylvester Dongtoe (as of August 2026)
+- **Commissioner for Humanitarian Affairs**: Dr. (Mrs.) Kachollom Pyam Gang (as of August 2026)
+- **Commissioner for Information and Communication**: Rt. Hon. Joyce Lohya Ramnap, mni (as of August 2026)
+- **Commissioner for Lands, Survey and Town Planning**: Hon. Peter I. Gwom (as of August 2026)
+- **Commissioner for Livestock and Fisheries**: Hon. Samson Ishaku Bugama (as of August 2026)
+- **Commissioner for Local Government and Chieftaincy Affairs**: Hon. Ephraim Usman (as of August 2026)
+- **Commissioner for Science and Technology**: Hon. Nyalum M. Salihu (as of August 2026)
+- **Commissioner for Transport**: Hon. Jatau Davou Gyang (as of August 2026)
+- **Commissioner for Water Resources and Energy**: Hon. Bashir Lawandi Datti (as of August 2026)
+- **Commissioner for Women Affairs**: Mrs. Caroline Panglang Dafur (as of August 2026)
+- **Commissioner for Works**: Dr. Cletus Shurkuk (as of August 2026)
+- **Commissioner for Youth and Sports Development**: Comr. Prince Miaphen (as of August 2026)
+- **Commissioner overseeing Tourism, Culture and Hospitality (also Commissioner for Information)**: Rt. Hon. Joyce Lohya Ramnap, mni (as of August 2026)
+

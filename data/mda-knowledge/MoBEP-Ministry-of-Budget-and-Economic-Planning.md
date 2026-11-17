@@ -2,9 +2,7 @@
 Also known as: Ministry of Budget and Planning
 
 ## Current Leadership
-- **Commissioner**: Hon. Adams Bulus Lekshak
-- **Permanent Secretary**: Mrs. Martha Azi
-- **Role Overview**: Reassigned from Ministry of Works during cabinet reshuffle to lead economic planning and budget coordination.
+- **Commissioner for Budget and Planning**: Hon. Ishaku Maren Yobo (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Chrysanthus Dawam (August 2023 – February 2025 (Mutfwang cabinet))

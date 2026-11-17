@@ -2,8 +2,7 @@
 Also known as: Plateau State Road Maintenance Agency (PLARAMA), PLARAMA
 
 ## Current Leadership
-- **General Manager**: Engr. Pam Dung
-- **Role Overview**: Leading rapid response pothole patching, asphalt maintenance, and drainage clearing.
+- **General Manager**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - Predecessor leadership records maintained under historical state gazettes and executive transition archives.
