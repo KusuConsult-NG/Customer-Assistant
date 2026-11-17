@@ -45,7 +45,7 @@ import { Prisma, encryptSecret, isEncrypted, prisma, secretFingerprint } from '@
 import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import { lastNameRotation, NameRotationRecord, recordNameRotation } from './plateau-name-rotation';
-import { CallHealth, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
+import { CallHealth, ConversationEnding, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
 import {
   agentDefinitionFor,
   isPlateauStateOrg,
@@ -1135,7 +1135,7 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     }
     const client = this.client(apiKey);
     const after = Math.floor(Date.now() / 1000) - windowHours * 3600;
-    const seen: { terminationReason?: string | null; status?: string | null }[] = [];
+    const seen: ConversationEnding[] = [];
     let cursor: string | undefined;
     try {
       for (let page = 0; page < CALL_HEALTH_MAX_PAGES; page++) {
@@ -1148,7 +1148,16 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
         for (const c of res?.conversations ?? []) {
           // A conversation still in progress has not ended, normally or otherwise.
           if (c?.status === 'in-progress' || c?.status === 'initiated') continue;
-          seen.push({ terminationReason: c?.terminationReason ?? null, status: c?.status ?? null });
+          // Identity and timing only — the summary carries a transcript
+          // summary and title too, and those are content.
+          seen.push({
+            terminationReason: c?.terminationReason ?? null,
+            status: c?.status ?? null,
+            conversationId: c?.conversationId ?? null,
+            startTimeUnixSecs: c?.startTimeUnixSecs ?? null,
+            direction: c?.direction ?? null,
+            callDurationSecs: c?.callDurationSecs ?? null,
+          });
         }
         if (!res?.hasMore || !res?.nextCursor) break;
         cursor = res.nextCursor;
@@ -1156,7 +1165,21 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       this.fail('the recent calls', err);
     }
-    const value = { ...summariseCallHealth(seen, windowHours), checkedAt: new Date().toISOString() };
+    // What the LIVE agent hangs up after, so calls cut off by a setting that
+    // has since been corrected stop being reported (endedUnderOldSetting).
+    // Unreadable means nothing is left out.
+    let liveSilenceSeconds: number | null = null;
+    try {
+      const live: any = await client.conversationalAi.agents.get(config.agentId);
+      const v = Number(live?.conversationConfig?.turn?.silenceEndCallTimeout);
+      liveSilenceSeconds = Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      liveSilenceSeconds = null;
+    }
+    const value = {
+      ...summariseCallHealth(seen, windowHours, { liveSilenceSeconds }),
+      checkedAt: new Date().toISOString(),
+    };
     this.callHealthCache.set(organizationId, { at: Date.now(), value });
     if (value.alert) {
       // Counts and reasons only — never a caller, a number or a transcript.
