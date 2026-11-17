@@ -52,7 +52,7 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from './agent-tool-catalog';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, bestFaqMatch, combineFaqAndKnowledge, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, bestFaqMatch, combineFaqAndKnowledge, stitchChunks, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { ElevenLabsApi } from './elevenlabs-client';
@@ -193,6 +193,9 @@ function isSlotClash(err: unknown): boolean {
  * characters); relevantPassage still keeps only the lines that answer.
  */
 export const SEARCH_KNOWLEDGE_PASSAGE_CHARS = 4_000;
+
+/** A matched document this short (in chunks) is read whole; the WhatsApp engine uses the same limit. */
+const WHOLE_DOCUMENT_MAX_CHUNKS = 8;
 
 @Injectable()
 export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
@@ -1659,6 +1662,48 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
    * Markdown is stripped from chunk content — a voice agent must never read
    * '#', '**', or '---' aloud.
    */
+  /**
+   * The text of each matched document, WHOLE when the document is short.
+   *
+   * Search returns chunks, cut every ~1,800 characters. The December events
+   * lineup is three of them and this tool was given the first: a caller asking
+   * about the December events heard the November ones, or one event, because
+   * the rest were in chunks the search had not ranked. relevantPassage still
+   * picks the lines that answer the question — but only from what it is given.
+   * The same widening the WhatsApp engine applies (wholeShortDocuments in the
+   * orchestrator), with the same limit. Any failure keeps the chunks as found.
+   */
+  private async wholeShortDocuments(results: any[]): Promise<string[]> {
+    const chunkText = (r: any) => (r?.content ? String(r.content) : '');
+    try {
+      const out: string[] = [];
+      const done = new Set<string>();
+      for (const r of results) {
+        const documentId = r?.documentId;
+        if (!documentId) {
+          out.push(chunkText(r));
+          continue;
+        }
+        if (done.has(documentId)) continue;
+        const rows = await prisma.documentChunk.findMany({
+          where: { documentId },
+          orderBy: { chunkIndex: 'asc' },
+          take: WHOLE_DOCUMENT_MAX_CHUNKS + 1,
+          select: { content: true },
+        });
+        if (rows.length > 0 && rows.length <= WHOLE_DOCUMENT_MAX_CHUNKS) {
+          done.add(documentId);
+          out.push(stitchChunks(rows.map((row) => row.content)));
+        } else {
+          out.push(chunkText(r));
+        }
+      }
+      return out.filter(Boolean);
+    } catch {
+      return results.map(chunkText).filter(Boolean);
+    }
+  }
+
   async searchKnowledge(organizationId: string, query: string): Promise<ToolResult> {
     try {
       const q = (query ?? '').trim();
@@ -1711,9 +1756,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // The passage that answers the question, not the first 500 characters
       // of whichever document ranked first. See relevant-passage.ts.
       const results = await this.knowledge.searchPlayground(organizationId, q).catch(() => null);
-      const contents = (Array.isArray(results) ? results : [])
-        .slice(0, 5)
-        .map((r: any) => (r?.content ? stripMd(String(r.content)) : ''))
+      const contents = (await this.wholeShortDocuments(Array.isArray(results) ? results.slice(0, 5) : []))
+        .map((c) => stripMd(c))
         .filter(Boolean);
       // Room for a whole list (every event of a lineup, every commissioner):
       // 1,200 characters stopped part-way through one, and the caller was given

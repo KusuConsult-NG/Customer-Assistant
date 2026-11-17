@@ -113,6 +113,7 @@ export * from './enrollment';
 export * from './phone-number';
 export * from './ticket-number';
 export * from './faq-match';
+export * from './document-chunks';
 export * from './state-geography';
 export * from './service-locations';
 export * from './booking-conflicts';

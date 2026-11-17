@@ -29,6 +29,8 @@ import { AppModule } from '../src/app.module';
 import { AgentToolsService } from '../src/agent-tools/agent-tools.service';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { createTenant, dropTenant, TestTenant } from './support/tenant';
 
 describe('FAQ order', () => {
@@ -222,6 +224,48 @@ describe('FAQ order', () => {
         const result = await agentTools.searchKnowledge(agency.orgId, 'What events are happening in Plateau State in December?');
         expect(result.speak).not.toContain('premium');
         expect(result.speak).toContain('Urban Fest');
+      } finally {
+        await prisma.documentChunk.deleteMany({ where: { documentId: doc.id } });
+        await prisma.knowledgeDocument.delete({ where: { id: doc.id } });
+      }
+    });
+
+    it('gives the caller EVERY event when the lineup is stored in chunks, as production stores it', async () => {
+      // Production cuts the lineup into three ~1,800-character chunks. The tool
+      // was handed only the chunk search ranked first — the title and the
+      // November events — so a caller asking about December heard one event.
+      // Every earlier test passed the WHOLE file to relevantPassage, which is
+      // why none of them saw it.
+      const body = readFileSync(
+        join(__dirname, '..', '..', '..', 'data', 'mda-knowledge', 'December-Tourism-Month-2026-Events.md'),
+        'utf8',
+      );
+      const chunks: string[] = [];
+      for (let i = 0; i < body.length; i += 1800 - 180) chunks.push(body.slice(i, Math.min(i + 1800, body.length)).trim());
+      expect(chunks.length).toBeGreaterThan(1);
+      const doc = await prisma.knowledgeDocument.create({
+        data: {
+          organizationId: agency.orgId, title: 'December Tourism Month 2026 — Plateau State Events Lineup',
+          fileName: 'lineup.md', fileSize: body.length, mimeType: 'text/markdown', storageUrl: 'test/lineup.md', status: 'INDEXED',
+          chunkCount: chunks.length,
+        },
+      });
+      await prisma.documentChunk.createMany({
+        data: chunks.map((content, chunkIndex) => ({ organizationId: agency.orgId, documentId: doc.id, chunkIndex, content })),
+      });
+      try {
+        for (const question of ['What events are happening in December?', 'Tell me about the December Tourism Month events']) {
+          const { speak } = await agentTools.searchKnowledge(agency.orgId, question);
+          for (const event of [
+            'PRTV Christmas Tree Lighting', 'Plateau Cultural Carnival', 'Jos Family Christmas Festival', 'Jos Food Festival',
+            'Plateau Unity Lunch', 'ONE Movie Fest', 'Urban Fest', 'New Year Crossover',
+          ]) {
+            expect(speak).toContain(event);
+          }
+          // The chunks overlap; a line read twice is announced as two events.
+          expect(speak.match(/Urban Fest/g)).toHaveLength(1);
+          expect(speak).toContain('Azi Nyako Youth Centre');
+        }
       } finally {
         await prisma.documentChunk.deleteMany({ where: { documentId: doc.id } });
         await prisma.knowledgeDocument.delete({ where: { id: doc.id } });

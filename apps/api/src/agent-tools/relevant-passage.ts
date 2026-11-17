@@ -47,9 +47,18 @@ export function relevantPassage(contents: string[], query: string, budget = 1200
     ? terms.length
     : Math.max(1, Math.ceil(terms.length / 2));
 
+  // A document the question names by its title is read before excerpts from
+  // others: it is what was asked for, and in rank order the budget could be
+  // spent on stray matching lines elsewhere before reaching it.
+  const titleMatches = (c: string) => {
+    const first = c.split('\n').map((l) => l.trim()).find(Boolean);
+    return first ? hitsIn(first) >= threshold : false;
+  };
+  const ordered = [...contents.filter(titleMatches), ...contents.filter((c) => !titleMatches(c))];
+
   const picked: string[] = [];
   let used = 0;
-  for (const content of contents) {
+  for (const content of ordered) {
     const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
     const keep = new Set<number>();
     // A question about the DOCUMENT as a whole — its title carries the
