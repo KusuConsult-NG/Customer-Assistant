@@ -122,6 +122,28 @@ const RAG_TOP_K = 3;
 // Read through llmConfig() so a free OpenAI-compatible provider can be used
 // without editing code (see llm.ts). Read per call, not captured at import:
 // tests and scripts set these after this module is loaded.
+/**
+ * Whether `kw` starts a word in `text`: 'word' when it is the whole word,
+ * 'prefix' when a longer word begins with it ("fest" in "festival"), null
+ * when it only appears inside another word ("fest" in "manifest").
+ */
+function wordHit(text: string, kw: string): 'word' | 'prefix' | null {
+  const at = new RegExp(`(^|[^a-z0-9])${kw.replace(/[^a-z0-9]/g, '')}([a-z0-9]?)`, 'g');
+  let found: 'word' | 'prefix' | null = null;
+  for (const m of text.matchAll(at)) {
+    if (!m[2]) return 'word';
+    found = 'prefix';
+  }
+  return found;
+}
+
+/**
+ * A keyword found in more than this share of an agency's knowledge chunks is
+ * too common to choose between documents ("plateau", "state"). See
+ * postgresFullTextFallback.
+ */
+const COMMON_KEYWORD_SHARE = 0.2;
+
 const EMBEDDING_MODEL = () => llmConfig().embeddingModel;
 const EMBEDDING_DIMENSIONS = () => llmConfig().embeddingDimensions;
 
@@ -750,6 +772,10 @@ export class QdrantRAGService {
               },
               take: topK,
               orderBy: { chunkIndex: 'asc' },
+              // The title names the source in the excerpt the model is given
+              // ("From …"); this pass dropped it, so a word-for-word match
+              // reached the model unattributed.
+              include: { document: { select: { title: true } } },
             });
 
       // Fallback: if no exact phrase match, search for meaningful keywords (≥4 chars)
@@ -777,9 +803,19 @@ export class QdrantRAGService {
         const wordCount = (query.match(/[A-Za-z0-9&]{2,}/g) ?? []).length;
         const caseIsMeaningful =
           (/[a-z]/.test(query) && /[A-Z]/.test(query)) || (wordCount === 1 && /[A-Z]/.test(query));
+        // A RUN of capitalised words is a name written in capitals, not a
+        // row of acronyms: "What is ONE PLATEAU FEST?" made ONE, PLATEAU and
+        // FEST three agency names, so "one" (in everything) survived the
+        // length rule and "plateau" escaped the common-word rule, and the
+        // events lineup lost to a health board.
+        const capsRun = new Set<string>();
+        for (const run of query.match(/\b[A-Z0-9&]{2,}(?:\s+[A-Z0-9&]{2,})+\b/g) ?? []) {
+          for (const w of run.split(/\s+/)) capsRun.add(w);
+        }
         const acronyms = new Set<string>(
           caseIsMeaningful
             ? (query.match(/[A-Za-z0-9&]{2,10}/g) ?? [])
+                .filter((tok) => !capsRun.has(tok))
                 .filter((tok) => (tok.match(/[A-Z]/g) ?? []).length >= 2)
                 .map((tok) => tok.toLowerCase().replace(/[^a-z0-9]/g, ''))
                 .filter(Boolean)
@@ -827,6 +863,60 @@ export class QdrantRAGService {
           // retrieved nothing at all.
           .filter((w) => (w.length >= 4 || acronyms.has(w)) && !stopWords.has(w));
 
+        // Words nearly every document holds say nothing about WHICH one is
+        // wanted. "Plateau" is in the title of almost every agency, so "When
+        // is the Plateau Cultural Carnival?" ranked the Agricultural
+        // Development Programme first on a title hit for "plateau", and "Tell
+        // me about Urban Fest" returned Housing and URBAN Development — while
+        // the December events lineup, which holds every word of both
+        // questions, came fourth or not at all. The JMDB note above predicted
+        // it: length is a proxy for specificity, and rarity is the real thing.
+        //
+        // So count, per keyword, how many of this agency's chunks contain it.
+        // A word in more than a fifth of them is COMMON: it neither selects
+        // candidates (with 60 candidates and "plateau" in all of them, the
+        // right chunk need not be fetched at all) nor earns title weight. It
+        // still adds a little to the rank, so it breaks ties. When EVERY
+        // keyword is common, none is dropped — the question is just vague.
+        const common = new Set<string>();
+        const countChunks = (prisma as any).documentChunk?.count;
+        if (keywords.length > 1 && typeof countChunks === 'function') {
+          try {
+            const total: number = await countChunks.call((prisma as any).documentChunk, { where: { organizationId } });
+            if (total >= 10) {
+              const freq: number[] = await Promise.all(
+                keywords.map((kw) =>
+                  countChunks.call((prisma as any).documentChunk, {
+                    where: {
+                      organizationId,
+                      OR: [
+                        { content: { contains: kw, mode: 'insensitive' } },
+                        { document: { title: { contains: kw, mode: 'insensitive' } } },
+                      ],
+                    },
+                  })
+                )
+              );
+              keywords.forEach((kw, i) => {
+                if (freq[i] / total > COMMON_KEYWORD_SHARE && !acronyms.has(kw)) common.add(kw);
+              });
+              if (common.size === keywords.length) common.clear();
+            }
+          } catch {
+            // Ranking without rarity is the old behaviour, not a failure.
+            common.clear();
+          }
+        }
+        const selective = keywords.filter((kw) => !common.has(kw));
+        // Adjacent word pairs of the question, stop words dropped but short
+        // words kept ("one plateau fest" -> "one plateau", "plateau fest").
+        const queryWords = query
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/)
+          .filter((w) => w.length >= 2 && !stopWords.has(w) && w !== 'is' && w !== 'the');
+        const bigrams = queryWords.slice(1).map((w, i) => `${queryWords[i]} ${w}`);
+
         if (keywords.length > 0) {
           // RANKED, not just matched.
           //
@@ -852,7 +942,7 @@ export class QdrantRAGService {
           const candidates = await prisma.documentChunk.findMany({
             where: {
               organizationId,
-              OR: keywords.flatMap((kw) => [
+              OR: selective.flatMap((kw) => [
                 { content: { contains: kw, mode: 'insensitive' } },
                 { document: { title: { contains: kw, mode: 'insensitive' } } },
               ]),
@@ -869,23 +959,42 @@ export class QdrantRAGService {
             let bodyHits = 0;
             let longestMatch = 0;
             let acronymHit = false;
+            let commonHits = 0;
+            let partialHits = 0;
             for (const kw of keywords) {
-              const hit = title.includes(kw) ? 'title' : body.includes(kw) ? 'body' : null;
-              if (!hit) continue;
-              if (hit === 'title') titleHits++;
+              // At the START of a word, not anywhere inside one: "fest" is in
+              // "manifest", and that matched an express-services company for
+              // "Tell me about Urban Fest". The SQL candidate query is still a
+              // substring match; this is where a match is decided.
+              const inTitle = wordHit(title, kw);
+              const inBody = inTitle ? null : wordHit(body, kw);
+              const kind = inTitle ?? inBody;
+              if (!kind) continue;
+              if (common.has(kw)) { commonHits++; continue; }
+              if (inTitle) titleHits++;
               else bodyHits++;
+              // "fest" as a word outranks "fest" as the start of "festival".
+              if (kind === 'prefix') partialHits++;
               longestMatch = Math.max(longestMatch, kw.length);
               if (acronyms.has(kw)) acronymHit = true;
             }
+            // Two of the question's words side by side, in its order, are the
+            // strongest sign a chunk is about the thing asked: "ONE PLATEAU
+            // FEST" is a name, and only the lineup holds "plateau fest".
+            const phraseHits = bigrams.filter((bg) => body.includes(bg) || title.includes(bg)).length;
             return {
               chunk,
               titleHits,
               longestMatch,
               acronymHit,
               matched: titleHits + bodyHits,
+              phraseHits,
               // An acronym outranks an ordinary body word: naming the agency is
-              // a stronger signal than mentioning one of its topics.
-              rank: titleHits * 3 + bodyHits + (acronymHit ? 2 : 0),
+              // a stronger signal than mentioning one of its topics. A common
+              // word only breaks ties.
+              rank:
+                titleHits * 3 + bodyHits - partialHits * 0.5 + (acronymHit ? 2 : 0) +
+                commonHits * 0.25 + phraseHits * 2,
             };
           });
 
@@ -908,8 +1017,21 @@ export class QdrantRAGService {
           // Returning nothing remains honest: the caller handles an empty
           // result by asking one narrowing question rather than guessing.
           docChunks = scored
-            .filter((s) => s.titleHits > 0 || s.matched >= 2 || s.longestMatch >= 7 || s.acronymHit)
-            .sort((a, b) => b.rank - a.rank || a.chunk.chunkIndex - b.chunk.chunkIndex)
+            .filter(
+              (s) =>
+                s.titleHits > 0 || s.matched >= 2 || s.longestMatch >= 7 || s.acronymHit ||
+                // The question's own words, together, in the question's order.
+                (s.matched >= 1 && s.phraseHits > 0)
+            )
+            // COVERAGE first: a chunk holding more of the question's distinct
+            // (uncommon) words outranks one with a single heavily-weighted
+            // title hit. "Tell me about Urban Fest" matched Housing and URBAN
+            // Development on its title (3) above the events lineup, which
+            // holds both words in its body (2).
+            .sort(
+              (a, b) =>
+                b.matched - a.matched || b.rank - a.rank || a.chunk.chunkIndex - b.chunk.chunkIndex
+            )
             .slice(0, topK)
             .map((s) => s.chunk);
         }
