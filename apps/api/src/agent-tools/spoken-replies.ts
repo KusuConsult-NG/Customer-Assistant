@@ -12,6 +12,16 @@
 
 export type IncidentKind = 'security' | 'fire' | 'disaster' | 'medical';
 
+/**
+ * A reference as it should be SPOKEN: digit by digit ("4 8 2 1 3"), the way
+ * the phone numbers below are written. Read as a number it is "forty-eight
+ * thousand two hundred and thirteen", which nobody writes down correctly.
+ * A prefix (REF-BK) is kept as written.
+ */
+export function spokenReference(reference: string): string {
+  return reference.replace(/\d{2,}/g, (run) => run.split('').join(' '));
+}
+
 /** Who to call depends on what is happening. 112 leads every time. */
 export function incidentAuthorityLine(kind: IncidentKind): string {
   return kind === 'security'
@@ -26,7 +36,7 @@ export function incidentAuthorityLine(kind: IncidentKind): string {
 /** create-ticket's reply for an emergency still happening. */
 export function urgentReportReply(ticketNumber: string, kind: IncidentKind): string {
   return (
-    `Thank you for your patience. Your report has now been registered in our system as urgent and flagged to our team. Your unique reference number is ${ticketNumber}. Please keep this number safe, as it will help you track the progress of your report. ` +
+    `Thank you for your patience. Your report has now been registered in our system as urgent and flagged to our team. Your unique reference number is ${spokenReference(ticketNumber)}. I repeat, ${spokenReference(ticketNumber)}. Please keep this number safe, as it will help you track the progress of your report. ` +
     incidentAuthorityLine(kind)
   );
 }
@@ -40,10 +50,10 @@ export function reportRegisteredReply(ticketNumber: string, callerDisplayName?: 
   const thanks = callerDisplayName ? `Once again, thank you, ${callerDisplayName}, for` : 'Once again, thank you for';
   return (
     `Thank you for your patience. Your report has now been registered in our system. ` +
-    `Your unique complaint reference number is ${ticketNumber}. Please keep this number safe, as it will ` +
+    `Your unique complaint reference number is ${spokenReference(ticketNumber)}. I repeat, ${spokenReference(ticketNumber)}. Please keep this number safe, as it will ` +
     `help you track the progress of your report and make subsequent enquiries. ` +
     `${thanks} contacting the Plateau State Government Citizen Contact Centre. Your report has been recorded under ` +
-    `reference number ${ticketNumber}. We appreciate your contribution towards improving governance and ` +
+    `reference number ${spokenReference(ticketNumber)}. We appreciate your contribution towards improving governance and ` +
     `public service delivery across Plateau State. Your voice matters, and we encourage you to continue using this ` +
     `platform to communicate your concerns, seek information and provide feedback on government services. ` +
     `Is there anything else I can assist you with today, or may I go ahead and end the call?`

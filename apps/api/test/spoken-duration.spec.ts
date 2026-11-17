@@ -133,3 +133,18 @@ describe('The silence timeout outlasts everything the agent says', () => {
     expect(longest).toBeGreaterThan(10);
   });
 });
+
+describe('Reading a reference to a caller', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { spokenReference, reportRegisteredReply } = require('../src/agent-tools/spoken-replies');
+
+  it('reads it digit by digit, not as a large number', () => {
+    expect(spokenReference('48213')).toBe('4 8 2 1 3');
+    expect(spokenReference('REF-BK-48213')).toBe('REF-BK-4 8 2 1 3');
+  });
+
+  it('says the reference twice, so the caller can write it down', () => {
+    const reply: string = reportRegisteredReply('48213');
+    expect(reply).toContain('reference number is 4 8 2 1 3. I repeat, 4 8 2 1 3.');
+  });
+});

@@ -15,42 +15,27 @@
 import { generateTicketNumber, createTicketWithUniqueNumber } from '../src/ticket-number';
 
 describe('generateTicketNumber', () => {
-  it('does not repeat across a burst in the same millisecond', () => {
-    // The old scheme was the last six digits of Date.now(). Every number in a
-    // burst like this one was identical, and all but the first insert failed.
-    //
-    // 5,000 is not arbitrary, and this assertion is exact rather than
-    // approximate on purpose: within one millisecond the timestamp component is
-    // constant, so the whole burst leans on the random suffix and the BIRTHDAY
-    // bound decides it, not the raw key space. At three random bytes (2^24) the
-    // expected collisions here are 5000² / (2 · 2^24) ≈ 0.75 — a repeat more
-    // often than not — and CI duly returned 4,999. At five bytes (2^40) it is
-    // ≈ 1.1e-5, which is the difference between the retry being a safety net and
-    // the retry being part of normal operation. Loosening this to
-    // `toBeGreaterThan(4990)` would let the suffix silently shrink again.
-    const numbers = new Set(Array.from({ length: 5000 }, () => generateTicketNumber()));
-    expect(numbers.size).toBe(5000);
-  });
-
-  it('sorts chronologically, which is what makes a reference readable', async () => {
-    const first = generateTicketNumber();
-    await new Promise((r) => setTimeout(r, 2));
-    const second = generateTicketNumber();
-
-    // Base-36 milliseconds, so lexical order is time order within a fixed width.
-    expect(second > first).toBe(true);
+  it('is FIVE digits a caller can remember, never starting with 0', () => {
+    // The previous form ("TCK-MI3K2Q1A-9F3C2B71D4") was read to callers on the
+    // phone and nobody could keep it.
+    for (let i = 0; i < 2000; i++) expect(generateTicketNumber()).toMatch(/^[1-9]\d{4}$/);
   });
 
   it('keeps the prefix, which is how staff tell a refund from a complaint', () => {
-    expect(generateTicketNumber('REF-BK')).toMatch(/^REF-BK-/);
-    expect(generateTicketNumber()).toMatch(/^TCK-/);
+    expect(generateTicketNumber('REF-BK')).toMatch(/^REF-BK-[1-9]\d{4}$/);
+    expect(generateTicketNumber('REF-RS')).toMatch(/^REF-RS-[1-9]\d{4}$/);
   });
 
-  it('carries entropy beyond the timestamp', () => {
-    // Same millisecond, different numbers — the property the old scheme lacked.
-    const a = generateTicketNumber();
-    const b = generateTicketNumber();
-    expect(a).not.toBe(b);
+  it('spreads across the whole five-digit range', () => {
+    const seen = new Set(Array.from({ length: 2000 }, () => generateTicketNumber()));
+    // Random, not sequential: a guessable number lets anyone ask about
+    // somebody else's case.
+    expect(seen.size).toBeGreaterThan(1950);
+  });
+
+  it('can still give the long form, used only when the short numbers are taken', () => {
+    expect(generateTicketNumber('', 6)).toMatch(/^[1-9]\d{5}$/);
+    expect(generateTicketNumber('', 0)).toMatch(/^[0-9A-Z]+-[0-9A-F]{10}$/);
   });
 });
 
@@ -80,10 +65,28 @@ describe('createTicketWithUniqueNumber', () => {
       createTicketWithUniqueNumber(async () => {
         calls++;
         throw p2002();
-      })
+      }, '', 5)
     ).rejects.toMatchObject({ code: 'P2002' });
 
     expect(calls).toBe(5);
+  });
+
+  it('grows the number rather than failing when five digits keep colliding', async () => {
+    // 90,000 five-digit numbers are shared by every agency. A full range must
+    // cost the citizen a longer reference, never a complaint that is not filed.
+    const seen: string[] = [];
+    const result = await createTicketWithUniqueNumber(async (ticketNumber) => {
+      seen.push(ticketNumber);
+      if (/^\d{5}$/.test(ticketNumber)) throw p2002();
+      return { ticketNumber };
+    });
+    expect(result.ticketNumber).toMatch(/^[1-9]\d{5}$/);
+    expect(seen.filter((n) => /^\d{5}$/.test(n)).length).toBe(12);
+  });
+
+  it('tries five digits first', async () => {
+    const result = await createTicketWithUniqueNumber(async (ticketNumber) => ({ ticketNumber }));
+    expect(result.ticketNumber).toMatch(/^[1-9]\d{4}$/);
   });
 
   it('rethrows a unique violation on a DIFFERENT field untouched', async () => {
@@ -125,6 +128,6 @@ describe('createTicketWithUniqueNumber', () => {
     );
 
     expect(seen).toHaveLength(2);
-    for (const n of seen) expect(n).toMatch(/^REF-BK-/);
+    for (const n of seen) expect(n).toMatch(/^REF-BK-[1-9]\d{4}$/);
   });
 });
