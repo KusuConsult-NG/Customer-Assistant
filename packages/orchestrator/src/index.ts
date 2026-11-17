@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap, bestFaqMatch, combineFaqAndKnowledge } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap, bestFaqMatch, combineFaqAndKnowledge, stitchChunks } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -521,7 +521,13 @@ export class QdrantRAGService {
 
     if (this.openAiKey) {
       try {
-        return await this.onlyPublished(organizationId, await this.vectorSearch(collectionName, clampedQuery, topK));
+        const found = await this.onlyPublished(organizationId, await this.vectorSearch(collectionName, clampedQuery, topK));
+        // Nothing in the vector index is not "nothing in the knowledge base":
+        // documents written by the scripts/ loaders have no vectors until
+        // Knowledge -> Reindex is run, and a missing or empty collection
+        // answered every question about them with silence. The text search
+        // reads the same approved rows.
+        if (found.length > 0) return found;
       } catch (vectorErr: any) {
         console.error(JSON.stringify({
           level: 'warn',
@@ -1370,16 +1376,23 @@ export class ConversationOrchestrator {
       // Matched documents in the order retrieval ranked them.
       for (const r of results) {
         const whole = r.documentId ? byDoc.get(r.documentId) : undefined;
-        if (whole && whole.length <= RAG_WHOLE_DOCUMENT_MAX_CHUNKS) {
-          for (const c of whole.sort((a, b) => a.chunkIndex - b.chunkIndex)) {
-            add({
-              chunkId: c.id,
-              documentId: c.documentId,
-              title: c.document?.title ?? r.title,
-              content: c.content,
-              score: r.score,
-            });
-          }
+        if (whole && whole.length > 0 && whole.length <= RAG_WHOLE_DOCUMENT_MAX_CHUNKS) {
+          // ONE excerpt, stitched where the chunks overlap: given chunk by
+          // chunk, the ~180 characters each shares with the next were read
+          // twice, and a repeated event line is listed as two events.
+          const ordered = whole.sort((a, b) => a.chunkIndex - b.chunkIndex);
+          const docKey = `doc:${r.documentId}`;
+          if (seen.has(docKey)) continue;
+          const before = out.length;
+          add({
+            chunkId: docKey,
+            documentId: r.documentId,
+            title: ordered[0]?.document?.title ?? r.title,
+            content: stitchChunks(ordered.map((c) => String(c.content ?? ''))),
+            score: r.score,
+          });
+          // Too long for what is left of the budget: keep the matched chunk.
+          if (out.length === before) add(r);
         } else {
           add(r);
         }

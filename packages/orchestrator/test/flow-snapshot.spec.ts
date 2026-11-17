@@ -38,6 +38,7 @@ jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/credentials'),
   ...jest.requireActual('../../database/src/ticket-number'),
   ...jest.requireActual('../../database/src/faq-match'),
+  ...jest.requireActual('../../database/src/document-chunks'),
   ...jest.requireActual('../../database/src/outbound-hours'),
   // `ensureContactForPhone` lives here, and these suites replace the whole
   // module: leaving it out makes it `undefined`, the flow throws where it

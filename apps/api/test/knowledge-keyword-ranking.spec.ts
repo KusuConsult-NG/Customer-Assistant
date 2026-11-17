@@ -125,6 +125,8 @@ describe('Keyword retrieval picks the document that answers', () => {
     expect(prompt).toContain('2nd Plateau Youth Tourism Roundtable');
     expect(prompt).toContain('Azi Nyako Youth Centre');
     expect(prompt).toContain('PLAFEST');
+    // As ONE excerpt: chunk by chunk, the overlap between chunks was read twice.
+    expect(prompt.split(`From "${LINEUP_TITLE}"`).length - 1).toBe(1);
     expect(prompt).toContain('GIVE THE COMPLETE ANSWER');
     expect(synthesis[0].max_tokens).toBeGreaterThanOrEqual(1500);
   });
@@ -165,5 +167,20 @@ describe('Keyword retrieval picks the document that answers', () => {
   it('still answers a question about an agency by its own title', async () => {
     const results = await new QdrantRAGService().searchKnowledgeBase(orgId, 'urban planning approvals', 5);
     expect(results[0]?.title).toMatch(/Housing and Urban Development/);
+  });
+  it('searches the text when the vector index holds nothing for the question', async () => {
+    // Documents loaded by the scripts/ have no vectors until Knowledge ->
+    // Reindex is run. Vector search then came back EMPTY — not failing — and
+    // an empty answer was returned as if the knowledge base had nothing, so
+    // the lineup was never found on a deployment with OpenAI configured.
+    process.env.OPENAI_API_KEY = 'sk-test-vectors-configured';
+    try {
+      const rag: any = new QdrantRAGService();
+      rag.vectorSearch = async () => [];
+      const results = await rag.searchKnowledgeBase(orgId, 'What events are happening in December?', 6);
+      expect(results[0]?.title).toBe(LINEUP_TITLE);
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
   });
 });
