@@ -629,6 +629,51 @@ async function main() {
     console.log(`   ✓ Governor Mutfwang Projects & Achievements indexed successfully (${projectsChunks.length} chunks).`);
   }
 
+  // 10. Index the December Tourism Month 2026 events lineup
+  console.log('\n10. Indexing December Tourism Month 2026 events lineup...');
+  const tourismPath = path.join(__dirname, '..', 'data', 'mda-knowledge', 'December-Tourism-Month-2026-Events.md');
+  if (fs.existsSync(tourismPath)) {
+    const tourismBody = fs.readFileSync(tourismPath, 'utf8');
+    const tourismChunks = chunkText(tourismBody);
+    const tourismTitle = 'December Tourism Month 2026 — Plateau State Events Lineup';
+
+    const existingTourismDoc = await prisma.knowledgeDocument.findFirst({
+      where: { organizationId: org.id, title: tourismTitle },
+      select: { id: true },
+    });
+
+    const tourismDocPayload = {
+      organizationId: org.id,
+      title: tourismTitle,
+      fileName: 'December-Tourism-Month-2026-Events.md',
+      mimeType: 'text/markdown',
+      fileSize: Buffer.byteLength(tourismBody, 'utf8'),
+      storageUrl: 'https://plateaustate.gov.ng/tourism',
+      status: 'INDEXED',
+      chunkCount: tourismChunks.length,
+      errorMessage: null,
+    };
+
+    const tourismDoc = existingTourismDoc
+      ? await prisma.knowledgeDocument.update({ where: { id: existingTourismDoc.id }, data: tourismDocPayload })
+      : await prisma.knowledgeDocument.create({ data: tourismDocPayload });
+
+    await prisma.documentChunk.deleteMany({ where: { documentId: tourismDoc.id } });
+    if (tourismChunks.length > 0) {
+      await prisma.documentChunk.createMany({
+        data: tourismChunks.map((content, chunkIndex) => ({
+          organizationId: org.id,
+          documentId: tourismDoc.id,
+          chunkIndex,
+          content,
+        })),
+      });
+    }
+    console.log(`   ✓ December Tourism Month 2026 events indexed successfully (${tourismChunks.length} chunks).`);
+  } else {
+    console.log('   ⚠ December Tourism Month 2026 events lineup not found, skipping.');
+  }
+
   console.log('\n======================================================');
   console.log('🎉 SUCCESS: Plateau State Government Citizen Contact Centre is live and fully synchronized!');
   console.log('======================================================\n');
