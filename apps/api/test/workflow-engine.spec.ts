@@ -222,6 +222,46 @@ describe('Workflow engine', () => {
     expect(after?.tags ?? []).not.toContain('was-not-urgent');
   });
 
+  // TAG_CONTACT read the tags, merged them in JavaScript and wrote the whole
+  // array back, so two workflows tagging one contact at once lost a tag — the
+  // CI failure of the test above, where this file's earlier "automation-proof"
+  // workflow fires on the same TICKET_CREATED and its write erased
+  // "was-urgent". Ten concurrent taggings must leave all ten tags.
+  it('keeps every tag when several workflows tag the same contact at once', async () => {
+    const target = await prisma.contact.create({
+      data: { organizationId: agency.orgId, phoneNumber: phone(), fullName: 'Tagged Concurrently', tags: ['existing'] },
+    });
+    const actions = app.get(WorkflowActionsService);
+    const tags = Array.from({ length: 10 }, (_, i) => `concurrent-${i}`);
+    await Promise.all(
+      tags.map((tag, i) =>
+        actions.execute(
+          { id: `n${i}`, kind: 'ACTION', action: 'TAG_CONTACT', config: { tags: [tag], contactId: target.id } } as any,
+          { organizationId: agency.orgId, payload: { contactId: target.id } } as any
+        )
+      )
+    );
+    const after = await prisma.contact.findUnique({ where: { id: target.id } });
+    expect([...(after?.tags ?? [])].sort()).toEqual(['existing', ...tags].sort());
+  });
+
+  it('tags a contact only in its own agency, and adds nothing twice', async () => {
+    const actions = app.get(WorkflowActionsService);
+    const node = { id: 'n', kind: 'ACTION', action: 'TAG_CONTACT', config: { tags: ['once', 'once'], contactId } } as any;
+    await actions.execute(node, { organizationId: agency.orgId, payload: { contactId } } as any);
+    await actions.execute(node, { organizationId: agency.orgId, payload: { contactId } } as any);
+    const after = await prisma.contact.findUnique({ where: { id: contactId } });
+    expect((after?.tags ?? []).filter((t) => t === 'once')).toHaveLength(1);
+
+    // Another agency naming this contact is refused, and the contact is untouched.
+    const other = { ...node, config: { tags: ['from-another-agency'], contactId } };
+    await expect(
+      actions.execute(other, { organizationId: 'another-agency-id', payload: { contactId } } as any)
+    ).rejects.toThrow(/could not resolve a contact|not found in this organization/);
+    const untouched = await prisma.contact.findUnique({ where: { id: contactId } });
+    expect(untouched?.tags ?? []).not.toContain('from-another-agency');
+  });
+
   it('does not run a workflow belonging to another agency', async () => {
     const other = await createTenant(app, 'wf-other', { role: 'OWNER' });
     try {

@@ -217,12 +217,27 @@ export class WorkflowActionsService {
     const contactId = await this.resolveContactId(config, ctx);
     if (!contactId) throw new Error('TAG_CONTACT: could not resolve a contact.');
 
-    const contact = await prisma.contact.findFirst({ where: { id: contactId, organizationId: ctx.organizationId } });
+    // ONE statement, appending only the tags the row does not already hold.
+    //
+    // This read the contact's tags, merged in JavaScript and wrote the whole
+    // array back. Two workflows tagging the same contact at once — two
+    // automations on one TICKET_CREATED is the ordinary case — both read the
+    // old array and the second write erased the first's tag, with both runs
+    // reported SUCCEEDED. Postgres appends under the row lock instead, so a
+    // concurrent tag cannot be lost. Scoped to the organization in the same
+    // statement: no row means not found in THIS organization.
+    const rows = await prisma.$queryRaw<{ id: string; tags: string[] }[]>`
+      UPDATE "contacts"
+         SET "tags" = "tags" || ARRAY(
+               SELECT DISTINCT t FROM unnest(${tags}::text[]) AS t
+                WHERE NOT (t = ANY("contacts"."tags"))
+             ),
+             "updatedAt" = NOW()
+       WHERE "id" = ${contactId} AND "organizationId" = ${ctx.organizationId}
+   RETURNING "id", "tags"`;
+    const contact = rows[0];
     if (!contact) throw new Error('TAG_CONTACT: contact not found in this organization.');
-
-    const merged = Array.from(new Set([...(contact.tags ?? []), ...tags]));
-    await prisma.contact.update({ where: { id: contact.id }, data: { tags: merged } });
-    return { output: { contactId: contact.id, tags: merged } };
+    return { output: { contactId: contact.id, tags: contact.tags } };
   }
 
   private async setHandoff(config: any, ctx: ActionContext): Promise<ActionResult> {
