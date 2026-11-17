@@ -42,9 +42,9 @@ export interface FaqCandidate {
 /**
  * The best FAQ for `input`, or null. `faqs` must already be in the agency's
  * order (sortOrder asc): on a tie the earlier one wins, which is the lever the
- * agency is told it controls. `agencyName`'s words are ignored inside FAQ
- * questions, so "What does the Plateau Contact Centre do?" is not matched on
- * the agency's own name alone.
+ * agency is told it controls. An FAQ is never matched on words of
+ * `agencyName` alone, so "What does the Plateau Contact Centre do?" does not
+ * answer every message that names the agency.
  */
 export function bestFaqMatch(
   faqs: FaqCandidate[],
@@ -57,11 +57,18 @@ export function bestFaqMatch(
 
   let best: { answer: string; score: number; overlap: number } | null = null;
   for (const faq of faqs) {
-    const allTokens = tokenize(faq.question);
-    const stripped = allTokens.filter((t) => !brandTokens.has(t));
-    const questionTokens = stripped.length > 0 ? stripped : allTokens;
+    // Each word once: "Who is the Commissioner for Health (head) of the
+    // Ministry of Health?" counted "health" twice and outranked the FAQ that
+    // actually answered "What does the Ministry of Health do?".
+    const questionTokens = [...new Set(tokenize(faq.question))];
     if (questionTokens.length === 0) continue;
-    const overlap = questionTokens.filter((t) => queryTokens.has(t)).length;
+    const shared = questionTokens.filter((t) => queryTokens.has(t));
+    // Words of the agency's own name still COUNT — "contact" is in "Citizen
+    // Contact Centre", and dropping it sent "How can I contact the Water
+    // Board?" to the Water Board's mandate — but an FAQ never matches on them
+    // ALONE, which is what stripping them was for.
+    if (!shared.some((t) => !brandTokens.has(t))) continue;
+    const overlap = shared.length;
     const score = overlap / questionTokens.length;
     // Or the other way round: EVERY content word of the question is in this
     // FAQ (two at least). "How much is the PLASCHEMA premium?" is wholly inside
