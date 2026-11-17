@@ -291,6 +291,16 @@ describe('ElevenLabs agent provisioning', () => {
       }
     });
 
+    it('sends the noisy-line turn settings, in snake_case', async () => {
+      // A setting the SDK does not know is stripped in transit, silently —
+      // which is why the background-voice filter is not attempted at all.
+      stubWorkspace();
+      await service.syncAgent(orgId);
+      const turn = posts('/v1/convai/agents/create')[0].body.conversation_config.turn;
+      expect(turn.retranscribe_on_turn_timeout).toBe(true);
+      expect(turn.spelling_patience).toBe('auto');
+    });
+
     it('binds the caller phone number on the wire, in snake_case', async () => {
       stubWorkspace();
       await service.syncAgent(orgId);
