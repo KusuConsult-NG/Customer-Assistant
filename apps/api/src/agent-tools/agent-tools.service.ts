@@ -52,7 +52,7 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from './agent-tool-catalog';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, bestFaqMatch, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { ElevenLabsApi } from './elevenlabs-client';
@@ -1679,7 +1679,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
           .replace(/\n{3,}/g, '\n\n')
           .trim();
 
-      // Score every active FAQ by keyword overlap with the query.
+      // Match the agency's FAQs first.
       //
       // ORDERED BY sortOrder, like the orchestrator. This query had no
       // ordering at all, so on a score tie the answer a citizen got was
@@ -1687,30 +1687,24 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // question on WhatsApp got the one the agency had put at the top. Two
       // engines, two answers, from the same FAQ table.
       //
-      // `.sort()` is stable per spec, so sorting by score below preserves this
-      // order within a tie: position decides, exactly as it does on the other
-      // path. Both paths must keep the same guarantees, and what an agency is
-      // told its ordering controls is one of them.
-      const faqs = await prisma.faqEntry.findMany({
-        where: { organizationId, isActive: true },
-        select: { question: true, answer: true },
-        orderBy: { sortOrder: 'asc' },
-      });
-      const needle = q.toLowerCase();
-      const needleWords = needle.split(/\s+/).filter((w) => w.length > 3);
-
-      const scored = faqs
-        .map((f) => {
-          const qLower = f.question.toLowerCase();
-          if (qLower.includes(needle) || needle.includes(qLower)) return { f, score: 100 };
-          const hits = needleWords.filter((w) => qLower.includes(w)).length;
-          return { f, score: hits };
-        })
-        .filter((s) => s.score > 0)
-        .sort((a, b) => b.score - a.score);
-
-      if (scored.length > 0) {
-        return { ok: true, speak: speakableHonours(scored[0].f.answer), data: { source: 'faq' } };
+      // On a tie the earlier FAQ wins (bestFaqMatch keeps the first), so
+      // position decides exactly as it does on WhatsApp.
+      const [faqs, org] = await Promise.all([
+        prisma.faqEntry.findMany({
+          where: { organizationId, isActive: true },
+          select: { question: true, answer: true },
+          orderBy: { sortOrder: 'asc' },
+        }),
+        prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+      ]);
+      // The SAME rule WhatsApp uses (faq-match.ts). This used to accept any
+      // FAQ sharing one 4+ letter word with the question — "what", "plateau",
+      // "state" — so "What events are happening in Plateau State in December?"
+      // was read the PLASCHEMA premium FAQ and the knowledge base holding the
+      // December lineup was never searched.
+      const faq = bestFaqMatch(faqs, q, org?.name);
+      if (faq) {
+        return { ok: true, speak: speakableHonours(faq.answer), data: { source: 'faq' } };
       }
 
       // Knowledge base fallback — strip markdown before speaking

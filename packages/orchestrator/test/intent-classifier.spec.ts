@@ -46,6 +46,7 @@ jest.mock('@ace/database', () => ({
   ...jest.requireActual('../../database/src/service-hours'),
   ...jest.requireActual('../../database/src/service-catalogue'),
   ...jest.requireActual('../../database/src/ticket-number'),
+  ...jest.requireActual('../../database/src/faq-match'),
   ...jest.requireActual('../../database/src/booking-conflicts'),
   prisma: mockPrisma,
   // Stubbed, not required actual: audit.ts imports the real prisma client

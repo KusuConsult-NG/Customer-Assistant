@@ -112,6 +112,7 @@ export * from './credentials';
 export * from './enrollment';
 export * from './phone-number';
 export * from './ticket-number';
+export * from './faq-match';
 export * from './state-geography';
 export * from './service-locations';
 export * from './booking-conflicts';
