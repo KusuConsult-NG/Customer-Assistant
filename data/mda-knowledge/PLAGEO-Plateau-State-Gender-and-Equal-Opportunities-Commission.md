@@ -2,8 +2,7 @@
 Also known as: Plateau State Gender and Equal Opportunities Commission (PLAGEO), Plateau Gender Commission
 
 ## Current Leadership
-- **Acting Chairperson**: Mrs. Olivia Dazyem Esq
-- **Role Overview**: Former Commissioner for Information and leading legal luminary; spearheading anti-discrimination enforcement.
+- **Acting Chairperson**: Mrs. Olivia Dazyam (as of 2025)
 
 ## Past Leadership & Administrative History
 - **Former Pioneer Head**: Mrs. Olivia Dazyem Esq (2023 – Present)

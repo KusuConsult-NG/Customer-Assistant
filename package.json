@@ -40,7 +40,8 @@
     "catalogue:seed": "node scripts/seed-service-catalogue.js",
     "db:sync-enums": "node scripts/sync-enum-values.js",
     "mdas:seed": "node scripts/seed-plateau-mdas.js",
-    "faqs:seed": "node scripts/seed-state-faqs.js"
+    "faqs:seed": "node scripts/seed-state-faqs.js",
+    "leadership:apply": "node scripts/apply-verified-leadership.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",

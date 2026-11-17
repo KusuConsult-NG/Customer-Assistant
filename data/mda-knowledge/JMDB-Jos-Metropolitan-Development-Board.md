@@ -2,8 +2,7 @@
 Also known as: The Jos Metropolitan Development Board (JMDB), Jos Metropolitan Development Board
 
 ## Current Leadership
-- **General Manager**: Arc. Hart Bankat
-- **Role Overview**: Leading Greater Jos urban regeneration, development control, and environmental beautification.
+- **General Manager**: Arc. Hart Bankat (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Arc. Sukukum Burdap (2019 – 2023 (Lalong administration))

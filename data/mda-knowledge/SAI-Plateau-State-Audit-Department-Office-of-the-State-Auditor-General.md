@@ -2,8 +2,7 @@
 Also known as: Office of the State Auditor General, Plateau State Audit Department (SAI)
 
 ## Current Leadership
-- **Auditor General**: Mrs. Charity Elisha Davou (FCNA)
-- **Role Overview**: Constitutional external auditor of the Plateau State Government.
+- **Auditor General**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Auditor General**: Mr. Ezekiel Dung (Pre-2023)

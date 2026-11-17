@@ -2,8 +2,7 @@
 Also known as: Plateau State Micro, Small and Medium Enterprises Development Agency (PLASMEDA), Plateau State Microfinance Development Agency
 
 ## Current Leadership
-- **Director General**: Mr. Bomkam Ali Wuyep
-- **Role Overview**: Leading MSME development, microcredit linkages, and entrepreneurship incubation.
+- **Director General**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Director General**: Mr. Haggai Haruna Gutap (2016 – 2023 (Lalong administration))

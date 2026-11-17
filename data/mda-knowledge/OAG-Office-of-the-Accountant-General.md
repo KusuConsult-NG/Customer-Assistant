@@ -2,8 +2,7 @@
 Also known as: Office of the Accountant General (OAG), Accountant General's Office
 
 ## Current Leadership
-- **Accountant General**: Mrs. Naanret A. Manset
-- **Role Overview**: Chief Accounting Officer of receipts and disbursements of the Plateau State Government.
+- **Accountant-General**: Mrs. Naanret A. Manset (as of May 2026)
 
 ## Past Leadership & Administrative History
 - **Former Accountant General**: Mr. Cyril Tsenyil (2015 – 2023 (Lalong administration))

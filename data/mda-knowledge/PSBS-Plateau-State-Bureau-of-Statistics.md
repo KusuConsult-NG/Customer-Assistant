@@ -2,8 +2,7 @@
 Also known as: Plateau State Bureau of Statistics (PSBS), Bureau of Statistics
 
 ## Current Leadership
-- **Statistician General Plateau State**: Mr. Micah S. Gongden
-- **Role Overview**: Leading state socioeconomic statistical surveys, demographic studies, and open data systems.
+- **Statistician General Plateau State**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Statistician General**: Mr. Gyang Dalyop (Pre-2023)

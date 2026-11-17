@@ -2,8 +2,7 @@
 Also known as: Plateau Radio Television Corporation Jos (PRTVC), PRTV, PRTVC Jos
 
 ## Current Leadership
-- **General Manager**: Mrs. Rita Kachollom Pam
-- **Role Overview**: Managing state public television (PRTV) and radio stations (Peace 90.5 FM and AM).
+- **General Manager**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Mr. Jephtha Jackden (2015 – 2023 (Lalong administration))

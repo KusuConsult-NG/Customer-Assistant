@@ -2,8 +2,7 @@
 Also known as: Ministry of Information
 
 ## Current Leadership
-- **Commissioner for Information and Communication**: Rt. Hon. Joyce Lohya Ramnap, mni
-- **Role Overview**: Former Deputy Speaker of the Plateau State House of Assembly; appointed in cabinet restructuring.
+- **Commissioner for Information and Communication**: Rt. Hon. Joyce Lohya Ramnap, mni (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Musa Ibrahim Ashoms (August 2023 – February 2025 (reassigned to Youth & Sports))

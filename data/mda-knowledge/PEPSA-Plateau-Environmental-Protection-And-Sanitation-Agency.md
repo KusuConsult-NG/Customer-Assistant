@@ -2,8 +2,7 @@
 Also known as: Plateau Environmental Protection And Sanitation Agency (PEPSA), Plateau State Environmental Protection and Sanitation Agency
 
 ## Current Leadership
-- **Director General**: Mr. Samuel Nathaniel Dapiya
-- **Role Overview**: Leading urban waste revolution, municipal skip bin rollouts, and commercial sanitation enforcement.
+- **Director-General**: Mr. Samuel Nathaniel Dapiya (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Director General**: Hon. Gabriel Bako (2019 – 2023 (Lalong administration))

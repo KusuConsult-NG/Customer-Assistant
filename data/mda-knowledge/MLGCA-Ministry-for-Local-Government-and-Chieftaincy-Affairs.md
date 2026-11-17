@@ -2,9 +2,7 @@
 Also known as: Ministry of Local Government and Chieftaincy Affairs (MLGCA), Ministry of Local Government
 
 ## Current Leadership
-- **Commissioner**: Hon. Chief Ephraim Usman
-- **Permanent Secretary**: Mr. Nanle James
-- **Role Overview**: Leading local government administration, traditional council liaisons, and grassroots development.
+- **Commissioner for Local Government and Chieftaincy Affairs**: Hon. Ephraim Usman (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Alh. Dayyabu Garga (2019 – 2023 (Lalong administration))

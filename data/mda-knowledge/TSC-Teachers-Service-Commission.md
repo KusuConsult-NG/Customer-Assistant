@@ -2,8 +2,7 @@
 Also known as: Teachers' Service Commission (TSC), Plateau TSC
 
 ## Current Leadership
-- **Commissioner / Chairman, Teacher's Service Commission**: Mr. Chup Alexander Sunday
-- **Role Overview**: Leading secondary school teacher welfare, promotions, postings, and discipline.
+- **Commissioner / Chairman, Teacher's Service Commission**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Chairman**: Mr. Sylvester Wallangko (Pre-2023)

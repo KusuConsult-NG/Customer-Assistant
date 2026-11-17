@@ -2,8 +2,7 @@
 Also known as: Ministry of Education (MoE), Ministry of Basic and Secondary Education, Ministry of Higher Education
 
 ## Current Leadership
-- **Commissioner for Education**: Dr. (Mrs.) Kachollom Pyam Gang
-- **Role Overview**: Originally appointed Commissioner for Higher Education in August 2023; assumed leadership of the unified Ministry of Education following the February 2025 merger of Secondary and Higher Education.
+- **Commissioner for Education**: Prof. Gloria Samuel Karuri (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner (Secondary Education)**: Mrs. Grace Dongkum (August 2023 – February 2025 (reassigned to Finance))

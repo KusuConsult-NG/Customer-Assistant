@@ -2,8 +2,7 @@
 Also known as: Plateau State Primary Health Care Board (PSPHCB), Plateau Primary Health Care Development Board
 
 ## Current Leadership
-- **Executive Secretary**: Dr. Raymond Juryit
-- **Role Overview**: Leading Primary Health Care Under One Roof (PHCUOR), routine immunization, and maternal healthcare.
+- **Executive Secretary**: Dr. Raymond Juryit (as of 2025)
 
 ## Past Leadership & Administrative History
 - Predecessor leadership records maintained under historical state gazettes and executive transition archives.

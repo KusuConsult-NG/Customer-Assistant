@@ -2,8 +2,7 @@
 Also known as: Office of the Secretary to the State Government, SSG Office
 
 ## Current Leadership
-- **Secretary to the Government of the State**: Arc. Samuel Nanchang Jatau
-- **Role Overview**: Coordinates all state ministries, boards, commissions, and implementation of executive council decisions.
+- **Secretary to the Government of the State**: Arc. Samuel Nanchang Jatau (as of October 2026)
 
 ## Past Leadership & Administrative History
 - **Former Secretary to the State Government**: Prof. Danladi Abok Atu (2019 – 2023 (Lalong administration))

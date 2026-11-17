@@ -2,8 +2,7 @@
 Also known as: Ministry of Livestock Development, Ministry of Livestock and Fisheries
 
 ## Current Leadership
-- **Commissioner**: Hon. Sunday Akpa
-- **Role Overview**: Inaugurated as the pioneer Commissioner following the creation of the dedicated ministry in February 2025.
+- **Commissioner for Livestock and Fisheries**: Hon. Samson Ishaku Bugama (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Supervisory Commissioner (as Agric)**: Hon. Samson Ishaku Bugama (2023 – 2025)

@@ -2,8 +2,7 @@
 Also known as: Head of Service
 
 ## Current Leadership
-- **Head of Civil Service**: Mr. Stephen Pam Gadong
-- **Role Overview**: Appointed acting August 2024 and confirmed substantive Head of Civil Service December 2024, succeeding Barr. Rauta Dakok who retired at the mandatory age of 60.
+- **Head of Civil Service**: Mr. Stephen Pam Gadong (as of July 2026)
 
 ## Past Leadership & Administrative History
 - **Former Head of Civil Service**: Engr. Sunday Hyat (2021 – 2023 (Lalong administration))

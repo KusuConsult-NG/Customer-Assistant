@@ -2,8 +2,7 @@
 Also known as: Plateau state Debt Management Department (DMO), Plateau DMO
 
 ## Current Leadership
-- **Director General**: Mrs. Atihong Yengoet
-- **Role Overview**: Leading public debt portfolio recording, debt sustainability analysis, and loan servicing.
+- **Director General**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Director General**: Mr. Emmanuel Rurum (Pre-2023)

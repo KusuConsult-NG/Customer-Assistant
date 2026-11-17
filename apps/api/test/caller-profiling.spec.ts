@@ -25,9 +25,7 @@ import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createHash, randomBytes } from 'crypto';
-import { readFileSync } from 'fs';
 import { join } from 'path';
-import { runInNewContext } from 'vm';
 import { prisma } from '@ace/database';
 import { AgentToolsModule } from '../src/agent-tools/agent-tools.module';
 import { AgentToolsService } from '../src/agent-tools/agent-tools.service';
@@ -55,18 +53,16 @@ const SCRIPT_FIELDS = ['fullName', 'lga', 'ward', 'community'];
 
 /**
  * The Plateau tenant's greeting and persona live in a script that writes them
- * to the database (`scripts/update-state-info-center.js`), and the script runs
- * `main()` against a database when it is loaded. So each constant's expression
- * is read out of its source and evaluated alone, in an empty context. If the
- * script is restructured so these can no longer be found, this fails by saying
- * so — not by passing.
+ * to the database (`scripts/update-state-info-center.js`). It runs `main()`
+ * only when executed directly, so its exports can be loaded here. (It used to
+ * run on load, and the constants were read out of its source by regex and
+ * evaluated alone — which broke the day the persona's leadership list became
+ * generated from data/verified-leadership.json.)
  */
 function plateauConstant(name: 'STATE_WELCOME_MESSAGE' | 'STATE_PERSONA_PROMPT'): string {
-  const source = readFileSync(join(__dirname, '..', '..', '..', 'scripts', 'update-state-info-center.js'), 'utf8');
-  const match = new RegExp(`const ${name} =\\s*([\\s\\S]*?\`);\\n`).exec(source);
-  if (!match) throw new Error(`${name} was not found in scripts/update-state-info-center.js`);
-  const value = runInNewContext(match[1], {});
-  if (typeof value !== 'string') throw new Error(`${name} did not evaluate to a string`);
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const value = require(join(__dirname, '..', '..', '..', 'scripts', 'update-state-info-center.js'))[name];
+  if (typeof value !== 'string') throw new Error(`${name} is not exported as a string by scripts/update-state-info-center.js`);
   return value;
 }
 

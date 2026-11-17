@@ -2,8 +2,7 @@
 Also known as: Plateau State Internal Revenue Service (PSIRS), Plateau Board of Internal Revenue
 
 ## Current Leadership
-- **Executive Chairman**: Dr. Jim Pam Wayas
-- **Role Overview**: Leading automated tax collection, taxpayer enumeration, and voluntary tax compliance.
+- **Executive Chairman**: Dr. Jim Wayas Pam (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Executive Chairman**: Mr. Dashe Arlat (2015 – 2023 (Lalong administration))

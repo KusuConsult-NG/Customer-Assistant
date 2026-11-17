@@ -2,8 +2,7 @@
 Also known as: Plateau State Scholarship Board (PSSB), State Scholarship Board
 
 ## Current Leadership
-- **Executive Secretary**: Mrs. Nankus Ngwalang Adams
-- **Role Overview**: Managing domestic bursaries, specialized foreign scholarships, and student welfare.
+- **Acting Executive Secretary**: Mrs. Nankus Adams Ngwalang (as of December 2025)
 
 ## Past Leadership & Administrative History
 - **Former Executive Secretary**: Mr. David Mwelbish (2015 – 2023 (Lalong administration))

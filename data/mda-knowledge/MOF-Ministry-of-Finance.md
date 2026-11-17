@@ -2,9 +2,7 @@
 Also known as: Plateau State Ministry of Finance
 
 ## Current Leadership
-- **Commissioner**: Hon. Grace Dongkum Shwarta
-- **Permanent Secretary**: Mrs. Ladi Agwom
-- **Role Overview**: Reassigned from Secondary Education during cabinet restructuring to lead state public financial management.
+- **Commissioner for Finance**: Mrs. Grace Dongkum Shwarta (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Mrs. Grace Shwarka (August 2023 – February 2025 (Mutfwang cabinet))

@@ -2,8 +2,7 @@
 Also known as: Plateau Investment and Property Development Company (PIPC), PIPC
 
 ## Current Leadership
-- **Managing Director / CEO**: Mr. Danladi Dalyop
-- **Role Overview**: Leading state commercial investment portfolios, equity assets, and real estate properties.
+- **Managing Director / CEO**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - Predecessor leadership records maintained under historical state gazettes and executive transition archives.

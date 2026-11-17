@@ -2,8 +2,7 @@
 Also known as: Plateau State Independent Electoral Commission (PLASIEC), PLASIEC
 
 ## Current Leadership
-- **Executive Chairman**: Hon. Plangji Daniel Cishak
-- **Role Overview**: Leading state local government electoral reforms, transparent voting technologies, and local council elections.
+- **Executive Chairman**: Hon. Plangji Daniel Cishak (as of January 2026)
 
 ## Past Leadership & Administrative History
 - **Former Chairman**: Mr. Fabian Ntung (2017 – 2023 (Lalong administration))

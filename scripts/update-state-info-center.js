@@ -10,6 +10,7 @@
  */
 
 const path = require('path');
+const { leadershipLines } = require('./apply-verified-leadership');
 const fs = require('fs');
 
 require(path.join(__dirname, '..', 'apps', 'api', 'dist', 'config', 'load-env.js'));
@@ -78,22 +79,9 @@ function documentFor(m) {
   if (alsoWritten.length) lines.push(`Alternative names: ${alsoWritten.join(', ')}`);
   lines.push('');
 
-  const leaderTitle = curLeader.title || '';
-  const leaderName = curLeader.name || '';
-  const leaderPos = curLeader.position || '';
-  const leaderWho = [leaderTitle, leaderName].filter(Boolean).join(' ').trim();
-
-  if (leaderWho || leaderPos) {
-    lines.push('## Current Leadership');
-    lines.push(`- **${leaderPos || 'Head of Agency'}**: ${leaderWho}`);
-    if (curLeader.permanentSecretary) {
-      lines.push(`- **Permanent Secretary**: ${curLeader.permanentSecretary}`);
-    }
-    if (curLeader.note) {
-      lines.push(`- **Portfolio Overview**: ${curLeader.note}`);
-    }
-    lines.push('');
-  }
+  // Leadership comes from the verified table (scripts/apply-verified-leadership.js):
+  // a confirmed head with the date it was confirmed, or an honest "not confirmed".
+  lines.push(...leadershipLines(curLeader));
 
   if (pastLeadership.length || adminHistory) {
     lines.push('## Past Leadership & Administrative History');
@@ -182,31 +170,22 @@ function documentFor(m) {
   return { title, body: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() };
 }
 
+// Every name the persona states comes from the verified table (checked
+// against published 2025-2026 sources). An office not in it is NOT named:
+// the agent says the name is not confirmed and gives the office instead.
+const VERIFIED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'verified-leadership.json'), 'utf8'));
+const PERSONA_LEADERSHIP = [
+  ...VERIFIED.principalOfficers.map((o) => `- ${o.position}: ${o.name}${o.asOf ? ` (as of ${o.asOf})` : ''}.`),
+  ...Object.entries(VERIFIED.leaders)
+    .filter(([abbr]) => !['OSGS', 'OHCS'].includes(abbr)) // already among the principal officers
+    .map(([abbr, l]) => `- ${l.position}${/^Commissioner|^Attorney-General/.test(l.position) ? '' : ` (${abbr})`}: ${l.name} (as of ${l.asOf}).`),
+  '- For ANY office not listed here (a Deputy Speaker, a Permanent Secretary, an agency head), say plainly that the name is not confirmed in our records and give the office\'s contact details. NEVER guess or recall a name from memory.',
+].join('\n');
+
 const STATE_PERSONA_PROMPT = `You are {{representative_name}}, the official AI virtual assistant of the Plateau State Government Citizen Contact Centre (Ministry of Information), serving citizens and visitors of Plateau State on behalf of the Plateau State Government, the Ministry of Information and Communication, and all 58 Ministries, Departments, and Agencies (MDAs).
 
-Core State Leadership (Always use these current, verified figures):
-- Executive Governor: His Excellency, Barr. Caleb Manasseh Mutfwang ("The Time is Now" administration).
-- Deputy Governor: Her Excellency, Ngo Josephine Chundung Piyo.
-- Speaker, Plateau State House of Assembly: Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency; unanimously elected Speaker on July 2, 2025, succeeding former Speaker Hon. Gabriel Dewan of the YPP who served from 2023 to July 2025).
-- Deputy Speaker, House of Assembly: Hon. Timothy Dantong.
-- Secretary to the Government of the State (SGS): Arc. Samuel Nanchang Jatau.
-- Chief of Staff: Engr. Jeremiah Satmark.
-- Permanent Secretary, Government House: Mrs. Helen Chundusu.
-- Head of Civil Service: Mr. Stephen Pam Gadong (confirmed December 2024, succeeding Barr. Rauta Dakok who retired).
-- Attorney-General and Commissioner for Justice: Philemon Audu Daffi.
-- Director-General, Plateau State Contributory Healthcare Management Agency (PLASCHEMA): Dr. Dawal Solomon Kwande.
-- Commissioner for Health: Dr. Nicholas Ba'amlong.
-- Commissioner for Works: Dr. Cletus Bako Shurkuk.
-- Commissioner for Commerce and Industry: Dr. Sunday Alex (appointed January 2025).
-- Commissioner for Tourism, Culture and Hospitality: Hon. Cornelius Dongnaan Doeyok (appointed January 2025).
-- Commissioner for Youth and Sports Development: Hon. Bashir Lawandi Datti.
-- Commissioner for Information and Communication: Rt. Hon. Joyce Lohya Ramnap, mni.
-- Director-General, Plateau State Energy Corporation: Engr. Ponzing Bindong Gamde (Board Chairman: Hon. Victor During Dagett).
-- Project Coordinator, SDGs Project Support Unit: Hon. Mrs. Nanbam Esther Danjuma-Lot.
-- Director-General, PEPSA: Samuel Nathaniel Dapiya.
-- Director-General, PICTDA: Datong Dominic Gwaman.
-- Executive Chairman, PSIRS: Jim Pam Wayas.
-- Director-General, Plateau Peace Building Agency (PPBA): Dr. Julie Sanda.
+Core State Leadership (confirmed by published sources; generated from data/verified-leadership.json):
+${PERSONA_LEADERSHIP}
 
 Your core mandate is to serve as the State's central knowledge and public inquiry desk:
 1. Follow the Standard Operating Script (Phases 1 to 10) in the system prompt, ONE question at a time. Speak ENGLISH ONLY for the whole call, whatever language the caller uses: never switch to Hausa, Pidgin, Yoruba, Igbo or a Plateau indigenous language.
@@ -356,25 +335,19 @@ async function main() {
   console.log('\n4. Indexing Master Plateau State Executive Directory document...');
   const masterLines = [];
   masterLines.push('# Plateau State Government — Master Leadership Directory & Executive Council');
-  masterLines.push('Complete listing of current Commissioners, Directors-General, Chairmen, and executive heads of all 58 MDAs in Plateau State:');
+  masterLines.push(`Current heads of all 58 MDAs in Plateau State, each confirmed by a published source (checked ${VERIFIED.checkedOn}). Where a name is not confirmed, the record says so.`);
   masterLines.push('');
   masterLines.push('## Principal Officers of Plateau State Government (Executive & Legislative)');
-  masterLines.push('- **Executive Governor of Plateau State**: His Excellency, Barr. Caleb Manasseh Mutfwang ("The Time is Now" administration)');
-  masterLines.push('- **Deputy Governor of Plateau State**: Her Excellency, Ngo Josephine Chundung Piyo');
-  masterLines.push('- **Speaker, Plateau State House of Assembly**: Rt. Hon. Na\'anlong Daniel (representing Mikang State Constituency; unanimously elected Speaker on July 2, 2025, succeeding former Speaker Hon. Gabriel Dewan of the YPP who served from 2023 to July 2025)');
-  masterLines.push('- **Deputy Speaker, Plateau State House of Assembly**: Hon. Timothy Dantong');
-  masterLines.push('- **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau');
-  masterLines.push('- **Chief of Staff to the Governor**: Engr. Jeremiah Satmark');
-  masterLines.push('- **Permanent Secretary, Government House**: Mrs. Helen Chundusu');
-  masterLines.push('- **Head of Civil Service**: Mr. Stephen Pam Gadong (confirmed substantive Head of Civil Service in December 2024, succeeding Barr. Rauta Dakok who reached mandatory retirement age)');
-  masterLines.push('- **Attorney-General and Commissioner for Justice**: Hon. Philemon Audu Daffi');
-  masterLines.push('- **Director-General, Plateau State Contributory Healthcare Management Agency (PLASCHEMA)**: Dr. Dawal Solomon Kwande');
+  for (const o of VERIFIED.principalOfficers) {
+    masterLines.push(`- **${o.position}**: ${o.name}${o.asOf ? ` (as of ${o.asOf})` : ''}`);
+  }
   masterLines.push('');
   masterLines.push('## All 58 Ministries, Departments, and Agencies (MDAs)');
   for (const mda of catalog) {
     const leader = mda.currentLeadership || {};
     const who = [leader.title, leader.name].filter(Boolean).join(' ').trim();
-    masterLines.push(`- **${mda.abbreviation ? `${mda.abbreviation} — ` : ''}${mda.name}**: ${leader.position || 'Head'}: ${who || 'N/A'}`);
+    const head = who ? `${who}${leader.asOf ? ` (as of ${leader.asOf})` : ''}` : 'name not confirmed in our records';
+    masterLines.push(`- **${mda.abbreviation ? `${mda.abbreviation} — ` : ''}${mda.name}**: ${leader.position || 'Head'}: ${head}`);
     if (mda.pastLeadership && mda.pastLeadership.length > 0) {
       const pastStr = mda.pastLeadership.map(p => `${p.role}: ${[p.title, p.name].filter(Boolean).join(' ')} (${p.period})`).join('; ');
       masterLines.push(`  - Former Leadership: ${pastStr}`);
@@ -679,9 +652,15 @@ async function main() {
   console.log('======================================================\n');
 }
 
-main()
-  .catch((err) => {
-    console.error('Update failed:', err);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+module.exports = { STATE_PERSONA_PROMPT, STATE_WELCOME_MESSAGE, documentFor };
+
+// Only when run as a script: loading this file to read its persona must not
+// rewrite a database.
+if (require.main === module) {
+  main()
+    .catch((err) => {
+      console.error('Update failed:', err);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}

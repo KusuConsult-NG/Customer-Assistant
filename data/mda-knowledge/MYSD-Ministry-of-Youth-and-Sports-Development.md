@@ -2,8 +2,7 @@
 Also known as: Ministry of Youth Development, Ministry of Youth and Sports, Ministry of Youth and Sports Development (MYSD)
 
 ## Current Leadership
-- **Commissioner for Youth and Sports Development**: Hon. Bashir Lawandi Datti
-- **Role Overview**: Returned to cabinet June 2026 after earlier resignation to contest primaries. Previously served as Commissioner for Water Resources and Energy Development.
+- **Commissioner for Youth and Sports Development**: Comr. Prince Miaphen (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Mr. Bashir Lawandi Datti (August 2023 – February 2025 (reassigned to Water Resources))

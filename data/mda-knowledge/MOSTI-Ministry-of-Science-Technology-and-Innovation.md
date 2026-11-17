@@ -2,8 +2,7 @@
 Also known as: Ministry of Science and Technology
 
 ## Current Leadership
-- **Commissioner**: Dr. Cletus Bako Shurkuk
-- **Role Overview**: Reassigned from Ministry of Health in cabinet restructuring to drive innovation, research, and technical education.
+- **Commissioner for Science and Technology**: Hon. Nyalum M. Salihu (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Danladi Mann (2019 – 2023 (Lalong administration))

@@ -2,9 +2,7 @@
 Also known as: Ministry of Justice, Plateau State (MOJ), Office of the Attorney-General and Ministry of Justice
 
 ## Current Leadership
-- **Attorney-General and Commissioner for Justice**: Barr. Philemon Audu Daffi
-- **Permanent Secretary**: Barr. Julie Sanda / Ministry Solicitor General
-- **Role Overview**: Leading state justice reform, public prosecutions, and citizens’ rights mediation.
+- **Attorney-General and Commissioner for Justice**: Barr. Philemon Audu Daffi, SAN (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Attorney-General & Commissioner**: Hon. Chrysanthus Senlong (2019 – 2023 (Lalong administration))

@@ -1,0 +1,272 @@
+{
+  "_about": "Current heads of Plateau State MDAs, each CONFIRMED by a published source dated 2025-2026 (or by the agency itself), checked on 2026-11-17. Applied by `npm run leadership:apply`. An agency NOT listed here has its head's name REMOVED and shown as not confirmed: a wrong name said with confidence is worse than none (the Ministry of Health record named 'Dr. Cletus Bako / Dr. Agabus' as Permanent Secretary). Permanent Secretaries are removed everywhere except where one is confirmed, because no published 2025-2026 source maps them to ministries.",
+  "checkedOn": "2026-11-17",
+  "cabinetSource": {
+    "description": "State Executive Council after the August 2026 reshuffle",
+    "urls": [
+      "https://mathewtegha.com/see-list-as-gov-mutfwang-reshuffles-cabinet-inaugurates-new-commissioners-in-plateau/",
+      "https://gazettengr.com/?p=495775"
+    ],
+    "asOf": "August 2026"
+  },
+  "leaders": {
+    "MARD": {
+      "position": "Commissioner for Agriculture",
+      "name": "Hon. Peter Nyam Gai",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MoBEP": {
+      "position": "Commissioner for Budget and Planning",
+      "name": "Hon. Ishaku Maren Yobo",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOCI": {
+      "position": "Commissioner for Commerce and Industry",
+      "name": "Hon. Musa Ibrahim Ashoms",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MoE": {
+      "position": "Commissioner for Education",
+      "name": "Prof. Gloria Samuel Karuri",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MECCMD": {
+      "position": "Commissioner for Environment",
+      "name": "Hon. Joshua Laven Ubandoma",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOF": {
+      "position": "Commissioner for Finance",
+      "name": "Mrs. Grace Dongkum Shwarta",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOH": {
+      "position": "Commissioner for Health",
+      "name": "Dr. Nicholas Ba'amlong",
+      "asOf": "August 2026",
+      "source": "cabinet",
+      "permanentSecretary": {
+        "name": "Bitrus Hosea",
+        "asOf": "December 2025",
+        "source": "https://viewpointnigeria.org/plateau-state-reviews-2025-malaria-campaign-retains-top-position-nationally/"
+      }
+    },
+    "MHUD": {
+      "position": "Commissioner for Housing and Urban Development",
+      "name": "Hon. Sylvester Dongtoe",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MHAPA": {
+      "position": "Commissioner for Humanitarian Affairs",
+      "name": "Dr. (Mrs.) Kachollom Pyam Gang",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOIC": {
+      "position": "Commissioner for Information and Communication",
+      "name": "Rt. Hon. Joyce Lohya Ramnap, mni",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOJ": {
+      "position": "Attorney-General and Commissioner for Justice",
+      "name": "Barr. Philemon Audu Daffi, SAN",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MLSTP": {
+      "position": "Commissioner for Lands, Survey and Town Planning",
+      "name": "Hon. Peter I. Gwom",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MLDVSF": {
+      "position": "Commissioner for Livestock and Fisheries",
+      "name": "Hon. Samson Ishaku Bugama",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MLGCA": {
+      "position": "Commissioner for Local Government and Chieftaincy Affairs",
+      "name": "Hon. Ephraim Usman",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOSTI": {
+      "position": "Commissioner for Science and Technology",
+      "name": "Hon. Nyalum M. Salihu",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MTC&H": {
+      "position": "Commissioner overseeing Tourism, Culture and Hospitality (also Commissioner for Information)",
+      "name": "Rt. Hon. Joyce Lohya Ramnap, mni",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOT": {
+      "position": "Commissioner for Transport",
+      "name": "Hon. Jatau Davou Gyang",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MWRED": {
+      "position": "Commissioner for Water Resources and Energy",
+      "name": "Hon. Bashir Lawandi Datti",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MWASD": {
+      "position": "Commissioner for Women Affairs",
+      "name": "Mrs. Caroline Panglang Dafur",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "MOW": {
+      "position": "Commissioner for Works",
+      "name": "Dr. Cletus Shurkuk",
+      "asOf": "August 2026",
+      "source": "cabinet; confirmed by the agency"
+    },
+    "MYSD": {
+      "position": "Commissioner for Youth and Sports Development",
+      "name": "Comr. Prince Miaphen",
+      "asOf": "August 2026",
+      "source": "cabinet"
+    },
+    "OSGS": {
+      "position": "Secretary to the Government of the State",
+      "name": "Arc. Samuel Nanchang Jatau",
+      "asOf": "October 2026",
+      "source": "https://www.channelstv.com/2026/10/24/plateau-trains-public-sector-executives-in-ai-for-digital-governance/"
+    },
+    "OHCS": {
+      "position": "Head of Civil Service",
+      "name": "Mr. Stephen Pam Gadong",
+      "asOf": "July 2026",
+      "source": "https://gazettengr.com/plateau-govt-trains-civil-servants-in-office-procedures-service-delivery/"
+    },
+    "OAG": {
+      "position": "Accountant-General",
+      "name": "Mrs. Naanret A. Manset",
+      "asOf": "May 2026",
+      "source": "https://hthtmljimmypamjerry.blogspot.com/2026/05/plateau-trains-treasury-staff-seeks.html"
+    },
+    "JMDB": {
+      "position": "General Manager",
+      "name": "Arc. Hart Bankat",
+      "asOf": "2026",
+      "source": "https://gazettengr.com/2027-jmdb-warns-politicians-against-pasting-posters-on-public-facilities/"
+    },
+    "PLASCHEMA": {
+      "position": "Director-General",
+      "name": "Dr. Dawal Solomon Kwande",
+      "asOf": "2025",
+      "source": "https://hthtmljimmypamjerry.blogspot.com/2025/09/kwande-solomon-dawal-honoured-as-health.html"
+    },
+    "PEPSA": {
+      "position": "Director-General",
+      "name": "Mr. Samuel Nathaniel Dapiya",
+      "asOf": "2026",
+      "source": "https://newsontheplateau.com/?p=3980"
+    },
+    "PSIRS": {
+      "position": "Executive Chairman",
+      "name": "Dr. Jim Wayas Pam",
+      "asOf": "2026",
+      "source": "https://daybreak.ng/plateau-hits-₦40bn-revenue-milestone-sets-₦65bn-target-for-2026/"
+    },
+    "PSDMCMA": {
+      "position": "Director-General (Executive Secretary)",
+      "name": "Pharm. Kim Jerry Bot",
+      "asOf": "September 2026",
+      "source": "https://allafrica.com/stories/202609080365.html"
+    },
+    "PLAGEO": {
+      "position": "Acting Chairperson",
+      "name": "Mrs. Olivia Dazyam",
+      "asOf": "2025",
+      "source": "https://hthtmljimmypamjerry.blogspot.com/2025/11/plateau-state-gender-commission-engages.html"
+    },
+    "PSSB": {
+      "position": "Acting Executive Secretary",
+      "name": "Mrs. Nankus Adams Ngwalang",
+      "asOf": "December 2025",
+      "source": "https://hthtmljimmypamjerry.blogspot.com/2025/12/mutfwang-legacy-scholarship-scheme.html"
+    },
+    "PSSH": {
+      "position": "Chief Medical Director",
+      "name": "Prof. Christopher Sabo Yilgwan",
+      "asOf": "February 2026",
+      "source": "https://newsontheplateau.com/one-year-on-cmd-highlights-achievements-seeks-continued-support/"
+    },
+    "PSTC": {
+      "position": "General Manager",
+      "name": "Mr. Chuwang Pwajok",
+      "asOf": "December 2025",
+      "source": "https://www.premiumtimesng.com/entertainment/naija-fashion/844728-yuletide-plateau-targets-20000-tourists-at-jos-family-funfair.html"
+    },
+    "PLASIEC": {
+      "position": "Executive Chairman",
+      "name": "Hon. Plangji Daniel Cishak",
+      "asOf": "January 2026",
+      "source": "https://www.vanguardngr.com/2026/01/plasiec-unveils-updated-timetable-for-2026-lg-elections/"
+    },
+    "Operation Rainbow": {
+      "position": "Coordinator",
+      "name": "Brig.-Gen. Nash Yakubu (rtd)",
+      "asOf": "June 2026",
+      "source": "https://www.thisdaylive.com/2026/06/30/plateau-gov-restructures-security-architecture-appoints-new-operation-rainbow-coordinator/"
+    },
+    "PSPHCB": {
+      "position": "Executive Secretary",
+      "name": "Dr. Raymond Juryit",
+      "asOf": "2025",
+      "source": "https://plateaustate.gov.ng/uploads/HOPE/HOPE-PHC/DLI5-RECRUITMENT_DEPLOYMENT_AND_TRAINING_PLAN-PHC.pdf"
+    }
+  },
+  "principalOfficers": [
+    {
+      "position": "Executive Governor",
+      "name": "His Excellency, Barr. Caleb Manasseh Mutfwang"
+    },
+    {
+      "position": "Deputy Governor",
+      "name": "Her Excellency, Ngo Josephine Chundung Piyo"
+    },
+    {
+      "position": "Speaker, Plateau State House of Assembly",
+      "name": "Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency)",
+      "asOf": "April 2026",
+      "source": "https://allafrica.com/stories/202604020104.html"
+    },
+    {
+      "position": "Secretary to the Government of the State (SGS)",
+      "name": "Arc. Samuel Nanchang Jatau",
+      "asOf": "October 2026"
+    },
+    {
+      "position": "Head of Civil Service",
+      "name": "Mr. Stephen Pam Gadong",
+      "asOf": "July 2026"
+    },
+    {
+      "position": "Permanent Secretary, Government House",
+      "name": "Mrs. Helen Chundusu",
+      "asOf": "November 2026",
+      "source": "provided by the agency"
+    },
+    {
+      "position": "Attorney-General and Commissioner for Justice",
+      "name": "Barr. Philemon Audu Daffi, SAN",
+      "asOf": "August 2026"
+    }
+  ]
+}

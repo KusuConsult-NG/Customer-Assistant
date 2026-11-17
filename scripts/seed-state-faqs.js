@@ -6,7 +6,9 @@
  *
  * Every answer is assembled from `data/plateau-mdas-knowledge-base.json` (the
  * same record the knowledge documents are built from) and the December events
- * lineup, so an FAQ can never say something the knowledge base does not. Fields
+ * lineup, so an FAQ can never say something the knowledge base does not. Run
+ * `npm run leadership:apply` first: leaders' names come only from the verified
+ * table, and an agency whose head is not confirmed gets no "who heads" FAQ. Fields
  * scraped from the old website (`raw*`) are NOT used: they are unreliable — the
  * Ministry of Agriculture's `rawLeader` is a college provost.
  *
@@ -63,12 +65,17 @@ function agencyFaqs(a) {
   const label = agencyLabel(a);
   const out = [];
 
+  // Only a head CONFIRMED by a published source (data/verified-leadership.json,
+  // applied by `npm run leadership:apply`), and with the date it was
+  // confirmed. An unconfirmed head gets no FAQ: the knowledge base says the
+  // name is not confirmed and gives the office, which is the honest answer.
   const lead = a.currentLeadership;
-  if (lead && clean(lead.name) && clean(lead.position)) {
+  if (lead && !lead.unconfirmed && clean(lead.name) && clean(lead.position)) {
     const who = clean([lead.title, lead.name].filter(Boolean).join(' '));
-    let answer = `The ${clean(lead.position)} of the ${label} is ${who}.`;
-    if (clean(lead.permanentSecretary)) answer += ` The Permanent Secretary is ${clean(lead.permanentSecretary)}.`;
-    if (clean(lead.note)) answer += ` Role: ${sentence(lead.note)}`;
+    let answer = `As of ${clean(lead.asOf) || 'our latest confirmed record'}, the ${clean(lead.position)} of the ${label} is ${who}.`;
+    if (clean(lead.permanentSecretary)) {
+      answer += ` The Permanent Secretary is ${clean(lead.permanentSecretary)}${lead.permanentSecretaryAsOf ? ` (as of ${clean(lead.permanentSecretaryAsOf)})` : ''}.`;
+    }
     out.push({
       question: `Who is the ${clean(lead.position)} (head) of the ${label}?`,
       answer,

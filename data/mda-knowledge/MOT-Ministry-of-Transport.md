@@ -2,9 +2,7 @@
 Also known as: Plateau State Ministry of Transport
 
 ## Current Leadership
-- **Commissioner**: Hon. Jatau Davou Gyang
-- **Permanent Secretary**: Engr. Stephen Pam
-- **Role Overview**: Leading the rollout of urban mass transit schemes including the Tin City Metro Bus system.
+- **Commissioner for Transport**: Hon. Jatau Davou Gyang (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Muhammad Muhammad (2019 – 2023 (Lalong administration))

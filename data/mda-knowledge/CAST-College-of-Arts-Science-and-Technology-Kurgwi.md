@@ -2,8 +2,7 @@
 Also known as: College of Arts, Science and Technology, Kurgwi (CAST), CAST Kurgwi
 
 ## Current Leadership
-- **Provost**: Mr. Birmiap Patrick Yilpoe
-- **Role Overview**: Leading academic curriculum accreditation, technical diploma programs, and IJMB tertiary preparation.
+- **Provost**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Provost**: Dr. Stephen Hirse (Pre-2023)

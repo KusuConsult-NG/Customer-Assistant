@@ -2,8 +2,7 @@
 Also known as: Plateau State Contributory Healthcare Management Agency (PLASCHEMA), Plateau State Contributory Health Insurance Management Agency, PLASCHEMA
 
 ## Current Leadership
-- **Director General**: Dr. Dawal Solomon Kwande
-- **Role Overview**: Appointed by Governor Caleb Mutfwang. Leads universal health coverage expansion, BHCPF implementation, informal-sector enrollment, and facility accreditation.
+- **Director-General**: Dr. Dawal Solomon Kwande (as of 2025)
 
 ## Past Leadership & Administrative History
 - **Former Director General**: Dr. Fabong Jemchang Yildam (2019 – 2023 (Founding Director General))

@@ -2,8 +2,7 @@
 Also known as: Plateau State Drugs and Medical Commodities Management Agency (PSDMCMA), Plateau State Drugs and Commodities Management Agency
 
 ## Current Leadership
-- **Executive Secretary**: Pharm Kim Jerry Bot
-- **Role Overview**: Leading state pooled drug procurement, drug revolving funds (DRF), and pharmaceutical quality control.
+- **Director-General (Executive Secretary)**: Pharm. Kim Jerry Bot (as of September 2026)
 
 ## Past Leadership & Administrative History
 - **Former Director (Pharmaceutical Services)**: Pharm Gyang Pam (Pre-creation of Agency)

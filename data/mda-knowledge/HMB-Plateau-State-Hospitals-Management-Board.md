@@ -2,8 +2,7 @@
 Also known as: Plateau State Hospitals Management Board (HMB), Hospitals Management Board
 
 ## Current Leadership
-- **Chief Medical Director**: Dr. Sumi B. Garkuwa
-- **Role Overview**: Supervising secondary public hospitals, clinical staffing, and medical equipment across all 17 LGAs.
+- **Chief Medical Director**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
 
 ## Past Leadership & Administrative History
 - **Former Chief Medical Director**: Dr. Barkin Ladi (Pre-2023)

@@ -2,9 +2,8 @@
 Also known as: Plateau State Ministry of Health (MOH)
 
 ## Current Leadership
-- **Commissioner for Health**: Dr. Nicolas Baamlong
-- **Permanent Secretary**: Dr. Cletus Bako / Dr. Agabus
-- **Role Overview**: Appointed during cabinet restructuring to lead primary and secondary health sector renewal.
+- **Commissioner for Health**: Dr. Nicholas Ba'amlong (as of August 2026)
+- **Permanent Secretary**: Bitrus Hosea (as of December 2025)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Dr. Cletus Bako Shurkuk (August 2023 – February 2025 (reassigned to MOSTI))

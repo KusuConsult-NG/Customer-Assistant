@@ -3,14 +3,12 @@
 ## 1. Executive Leadership of Plateau State ("The Time is Now" Administration)
 - **Executive Governor**: His Excellency, Barr. Caleb Manasseh Mutfwang.
 - **Deputy Governor**: Her Excellency, Ngo Josephine Chundung Piyo.
-- **Speaker, Plateau State House of Assembly**: Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency; elected July 2, 2025, succeeding former Speaker Hon. Gabriel Dewan of the YPP).
-- **Deputy Speaker, House of Assembly**: Hon. Timothy Dantong.
-- **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau.
-- **Chief of Staff to the Governor**: Engr. Jeremiah Satmark.
-- **Permanent Secretary, Government House**: Mrs. Helen Chundusu.
-- **Head of Civil Service**: Mr. Stephen Pam Gadong (confirmed December 2024, succeeding Barr. Mrs. Rauta Joshua Dakok who retired).
-- **Attorney-General and Commissioner for Justice**: Hon. Philemon Audu Daffi.
-- **Director-General, PLASCHEMA**: Dr. Dawal Solomon Kwande (succeeding Dr. Agabus Nanfwang Manasseh).
+- **Speaker, Plateau State House of Assembly**: Rt. Hon. Na'anlong Daniel (representing Mikang State Constituency) (as of April 2026).
+- **Secretary to the Government of the State (SGS)**: Arc. Samuel Nanchang Jatau (as of October 2026).
+- **Head of Civil Service**: Mr. Stephen Pam Gadong (as of July 2026).
+- **Permanent Secretary, Government House**: Mrs. Helen Chundusu (as of November 2026).
+- **Attorney-General and Commissioner for Justice**: Barr. Philemon Audu Daffi, SAN (as of August 2026).
+- **Director-General, PLASCHEMA**: Dr. Dawal Solomon Kwande (as of 2025).
 
 ---
 
@@ -128,7 +126,7 @@ Plateau State comprises 17 Local Government Areas distributed across three Senat
 The Plateau State Contributory Healthcare Management Agency (PLASCHEMA) is established under Plateau State Law No. 7 of 2019 to provide universal, affordable, and high-quality healthcare coverage to every resident of the state.
 
 ### Director-General
-- **Current DG**: Dr. Dawal Solomon Kwande (appointed by Governor Caleb Mutfwang).
+- **Current DG**: Dr. Dawal Solomon Kwande (as of 2025).
 - **Headquarters**: Plot 14, Joseph Gomwalk Road, Jos, Plateau State.
 
 ### Health Insurance Plans & Premium Pricing

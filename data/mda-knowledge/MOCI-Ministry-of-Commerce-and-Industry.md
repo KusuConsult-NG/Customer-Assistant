@@ -2,8 +2,7 @@
 Also known as: Ministry of Commerce, Ministry of Commerce and Industries, Ministry of Commerce and Energy
 
 ## Current Leadership
-- **Commissioner for Commerce and Industry**: Dr. Sunday Alex
-- **Role Overview**: Appointed January 2025 replacing Hon. Sule Musa Haruna who was disengaged in Governor Mutfwang's January 2025 cabinet reshuffle.
+- **Commissioner for Commerce and Industry**: Hon. Musa Ibrahim Ashoms (as of August 2026)
 
 ## Past Leadership & Administrative History
 - **Former Commissioner**: Hon. Abe Aku (2015 – 2023 (Lalong administration))
