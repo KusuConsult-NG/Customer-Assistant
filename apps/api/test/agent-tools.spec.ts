@@ -208,7 +208,8 @@ describe('Agent tools', () => {
         const ticket = await prisma.ticket.findUnique({ where: { id: res.body.data.ticketId } });
         expect(ticket).not.toBeNull();
         expect(res.body.data.ticketNumber).toBe(ticket!.ticketNumber);
-        expect(res.body.speak).toContain(ticket!.ticketNumber);
+        // Read digit by digit, so the caller can write it down.
+        expect(res.body.speak).toContain(ticket!.ticketNumber.split('').join(' '));
         expect(res.body.speak).not.toContain(res.body.data.ticketId.slice(0, 8));
         expect(ticket!.priority).toBe('HIGH');
         expect(ticket!.organizationId).toBe(orgA);
@@ -595,8 +596,9 @@ describe('Agent tools', () => {
       // The reference the citizen is told must be the one an officer can
       // search: the dashboard's ticket table shows `ticketNumber`.
       const ref = filed.body.data.ticketNumber;
-      expect(ref).toMatch(/^TCK-/);
-      expect(filed.body.speak).toContain(ref);
+      // Five digits a caller can remember, read to them digit by digit.
+      expect(ref).toMatch(/^[1-9]\d{4}$/);
+      expect(filed.body.speak).toContain(ref.split('').join(' '));
 
       const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
       expect(res.body.data.openTickets).toBe(1);

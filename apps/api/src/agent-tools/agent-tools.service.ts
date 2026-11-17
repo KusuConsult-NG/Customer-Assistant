@@ -24,7 +24,7 @@
  * Tenant scoping comes from the agent key (see agent-key.guard.ts) and is passed
  * in as organizationId — never read from the request body.
  */
-import { reportRegisteredReply, urgentReportReply } from './spoken-replies';
+import { reportRegisteredReply, urgentReportReply, spokenReference } from './spoken-replies';
 import { rotatePlateauAssistantName } from './plateau-name-rotation';
 import { speakableHonours } from './spoken-names';
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
@@ -1876,7 +1876,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       });
       return {
         ok: true,
-        speak: `I cannot put you through myself, but I have logged this for our team. Your reference is ${ticket.ticketNumber}, and someone will call you back on this number.`,
+        speak: `I cannot put you through myself, but I have logged this for our team. Your reference is ${spokenReference(ticket.ticketNumber)}, and someone will call you back on this number.`,
         handoff: true,
         data: { transferred: false, ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
       };
