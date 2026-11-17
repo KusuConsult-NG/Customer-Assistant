@@ -3,7 +3,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { MIN_UPDATE_CHARS } from './callback-opening';
-import { prisma, callbackReference, normalizePhoneNumber, phoneNumberVariants, outboundContactHoursFrom, nextServiceTime, nextAttemptAt } from '@ace/database';
+import { prisma, callbackReference, newReference, normalizePhoneNumber, phoneNumberVariants, outboundContactHoursFrom, nextServiceTime, nextAttemptAt } from '@ace/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -25,6 +25,12 @@ import { outboundLineFor, INFOBIP_RETIRED_REASON } from './outbound-line';
  * before authentication populated `request.user`), and `@Roles` without it is
  * metadata nothing reads.
  */
+/** The reference the citizen holds: their five digits, or the older CB- form. */
+async function referenceOf(id: string): Promise<string> {
+  const row = await prisma.callbackRequest.findUnique({ where: { id }, select: { id: true, reference: true } });
+  return callbackReference(row ?? id);
+}
+
 @Controller('api/callbacks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CallbacksController {
@@ -54,7 +60,7 @@ export class CallbacksController {
       const open = ['PENDING', 'DUE'].includes(r.status);
       return {
         ...r,
-        reference: callbackReference(r.id),
+        reference: callbackReference(r),
         // Computed, not stored: "late" is a fact about now, and a stored flag
         // would be wrong the moment it was read.
         overdue: r.dueAt.getTime() < now && open,
@@ -95,6 +101,7 @@ export class CallbacksController {
     const row = await prisma.callbackRequest.create({
       data: {
         organizationId: req.user.organizationId,
+        reference: await newReference(prisma.callbackRequest, req.user.organizationId),
         contactId: contact.id,
         phoneNumber: normalizePhoneNumber(body.phoneNumber || contact.phoneNumber),
         reason: body.reason.trim().slice(0, 1000),
@@ -102,7 +109,7 @@ export class CallbacksController {
         dueAt,
       },
     });
-    return { ...row, reference: callbackReference(row.id) };
+    return { ...row, reference: callbackReference(row) };
   }
 
   /**
@@ -151,7 +158,7 @@ export class CallbacksController {
       status: after?.status,
       attempts: after?.attempts,
       failureReason: after?.failureReason ?? null,
-      reference: callbackReference(id),
+      reference: callbackReference(after ?? id),
     };
   }
 
@@ -224,7 +231,7 @@ export class CallbacksController {
       return true;
     });
     if (!updated) throw new ConflictException('This callback changed while you were recording it. Refresh and try again.');
-    return { reference: callbackReference(id), status, attempts, dueAt: status === 'PENDING' ? dueAt : null };
+    return { reference: callbackReference(row), status, attempts, dueAt: status === 'PENDING' ? dueAt : null };
   }
 
   /** Who is going to keep this promise. */
@@ -241,7 +248,7 @@ export class CallbacksController {
       data: { assignedUserId: userId },
     });
     if (updated.count !== 1) throw new BadRequestException('That callback is already closed, or is not in this agency');
-    return { ok: true, reference: callbackReference(id) };
+    return { ok: true, reference: await referenceOf(id) };
   }
 
   /** Move the promise to a time agreed with the citizen. Does not spend an attempt. */
@@ -258,7 +265,7 @@ export class CallbacksController {
       },
     });
     if (updated.count !== 1) throw new BadRequestException('Only an open or failed callback can be rescheduled.');
-    return { ok: true, reference: callbackReference(id) };
+    return { ok: true, reference: await referenceOf(id) };
   }
 
   /** Close one off by hand — the officer rang from their own phone. */
@@ -270,7 +277,7 @@ export class CallbacksController {
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
     if (updated.count !== 1) throw new BadRequestException('That callback is already closed, or is not in this agency');
-    return { ok: true, reference: callbackReference(id) };
+    return { ok: true, reference: await referenceOf(id) };
   }
 
   @Patch(':id/cancel')
@@ -281,6 +288,6 @@ export class CallbacksController {
       data: { status: 'CANCELLED', failureReason: body?.reason?.slice(0, 500) ?? null },
     });
     if (updated.count !== 1) throw new BadRequestException('That callback is already closed, or is not in this agency');
-    return { ok: true, reference: callbackReference(id) };
+    return { ok: true, reference: await referenceOf(id) };
   }
 }

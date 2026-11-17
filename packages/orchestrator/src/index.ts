@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -2148,7 +2148,7 @@ export class ConversationOrchestrator {
           `• Date & Time: ${timeStr}\n` +
           `• Staff: ${booking.staffName ?? 'Any available'}\n` +
           `• Status: ${booking.status}\n` +
-          `• Reference: ${bookingReference(booking.id)}\n\n` +
+          `• Reference: ${bookingReference(booking)}\n\n` +
           `To *cancel* or *reschedule*, just say so and I'll handle it for you.`,
       };
     }
@@ -2316,7 +2316,7 @@ export class ConversationOrchestrator {
       return {
         replyText: t(lang, 'booking_cancelled', {
           service: booking.serviceName,
-          ref: bookingReference(booking.id),
+          ref: bookingReference(booking),
         }),
         intentDetected: 'CANCEL_BOOKING',
         confidenceScore: 1.0,
@@ -2714,11 +2714,13 @@ export class ConversationOrchestrator {
     const serviceName = serviceOf(collected);
 
     let booking;
+    const reference = await newReference((prisma as any).booking, context.organizationId);
     try {
       booking = await withDeadlockRetry(() =>
         prisma.booking.create({
           data: {
             organizationId: context.organizationId,
+            reference,
             contactId: contact.id,
             serviceName,
             startTime: new Date(slot.startIso),
@@ -2752,7 +2754,7 @@ export class ConversationOrchestrator {
       replyText: t(lang, 'booking_confirmed', {
         service: serviceName,
         when: slot.label,
-        ref: bookingReference(booking.id),
+        ref: bookingReference(booking),
       }),
       intentDetected: 'BOOK_APPOINTMENT',
       confidenceScore: 1.0,
@@ -3103,7 +3105,7 @@ export class ConversationOrchestrator {
     if (existing) {
       return {
         replyText: t(lang, 'callback_already_open', {
-          ref: callbackReference(existing.id),
+          ref: callbackReference(existing),
           when: existing.promisedText,
         }),
         intentDetected: 'REQUEST_CALLBACK',
@@ -3209,6 +3211,7 @@ export class ConversationOrchestrator {
     const record = await prisma.callbackRequest.create({
       data: {
         organizationId: context.organizationId,
+        reference: await newReference((prisma as any).callbackRequest, context.organizationId),
         contactId: contact.id,
         phoneNumber: normalizePhoneNumber(phone),
         // The reason an officer reads, with who and where alongside it — the
@@ -3230,7 +3233,7 @@ export class ConversationOrchestrator {
 
     return {
       replyText: t(lang, 'callback_confirmed', {
-        ref: callbackReference(record.id),
+        ref: callbackReference(record),
         number: normalizePhoneNumber(phone),
         when: promisedText.toLowerCase(),
       }),
@@ -4064,7 +4067,7 @@ export class ConversationOrchestrator {
           `Done — ${target.label} has moved.\n\n` +
           `• Was: ${target.startLabel}\n` +
           `• Now: ${option.label}\n\n` +
-          `Reference: ${bookingReference(booking.id)}`,
+          `Reference: ${bookingReference(booking)}`,
         intentDetected: 'RESCHEDULE_BOOKING',
         confidenceScore: 1.0,
         shouldHandoff: false,

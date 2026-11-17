@@ -213,7 +213,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
         ],
       },
       take: CallbackDispatcherService.SCAN_LIMIT,
-      select: { id: true, organizationId: true, attempts: true, maxAttempts: true, callSid: true },
+      select: { id: true, reference: true, organizationId: true, attempts: true, maxAttempts: true, callSid: true },
     });
 
     let reopened = 0;
@@ -236,7 +236,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
         reopened++;
         log.warn('callback_dial_outcome_never_reported', {
           organizationId: row.organizationId,
-          reference: callbackReference(row.id),
+          reference: callbackReference(row),
           attempts: row.attempts,
           resolved: exhausted ? 'FAILED' : 'requeued',
         });
@@ -269,7 +269,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
     if (!row) return false;
     if (organizationId && row.organizationId !== organizationId) {
       log.warn('callback_reconcile_wrong_tenant', {
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         organizationId,
       });
       return false;
@@ -290,13 +290,13 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
       });
       log.info('callback_kept', {
         organizationId: row.organizationId,
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         attempts: row.attempts,
         durationSeconds: durationSeconds ?? null,
       });
       await this.workflows.emitAsync(row.organizationId, 'CALLBACK_PLACED', {
         callbackId: row.id,
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         contactId: row.contactId,
         attempts: row.attempts,
       });
@@ -318,13 +318,13 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
       });
       log.warn('callback_failed_unreached', {
         organizationId: row.organizationId,
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         attempts: row.attempts,
         reason,
       });
       await this.workflows.emitAsync(row.organizationId, 'CALLBACK_FAILED', {
         callbackId: row.id,
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         contactId: row.contactId,
         reason,
       });
@@ -342,7 +342,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
     });
     log.info('callback_unreached_will_retry', {
       organizationId: row.organizationId,
-      reference: callbackReference(row.id),
+      reference: callbackReference(row),
       attempts: row.attempts,
       reason,
     });
@@ -355,7 +355,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
    * and say they are following up the request as promised.
    */
   private async openingFor(
-    row: { id: string; organizationId: string; contactId: string; reason: string },
+    row: { id: string; reference?: string | null; organizationId: string; contactId: string; reason: string },
     update?: string
   ): Promise<string> {
     const [org, contact] = await Promise.all([
@@ -367,7 +367,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
       greeting: timeOfDayGreeting(org?.timezone ?? 'Africa/Lagos'),
       citizenName: name && !isPlaceholderContactName(name) ? name : null,
       agencyName: org?.name ?? 'the State Government Contact Centre',
-      reference: callbackReference(row.id),
+      reference: callbackReference(row),
       reason: row.reason,
       update: update?.trim() || 'We are following up on your request, as we promised.',
     });
@@ -427,7 +427,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
 
       log.info('callback_dialled', {
         organizationId: row.organizationId,
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         callSid: call?.callId ?? null,
         attempts,
       });
@@ -446,12 +446,12 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
         });
         log.error('callback_failed_permanently', err instanceof Error ? err : new Error(reason), {
           organizationId: row.organizationId,
-          reference: callbackReference(row.id),
+          reference: callbackReference(row),
           attempts,
         });
         await this.workflows.emitAsync(row.organizationId, 'CALLBACK_FAILED', {
           callbackId: row.id,
-          reference: callbackReference(row.id),
+          reference: callbackReference(row),
           contactId: row.contactId,
           reason,
         });
@@ -470,7 +470,7 @@ export class CallbackDispatcherService implements OnModuleInit, OnModuleDestroy 
       });
       log.warn('callback_attempt_failed_will_retry', {
         organizationId: row.organizationId,
-        reference: callbackReference(row.id),
+        reference: callbackReference(row),
         attempts,
         reason,
       });

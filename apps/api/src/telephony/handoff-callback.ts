@@ -28,6 +28,7 @@
  * carried their call. A copy per carrier would be a second place for the
  * wording, the reference format or the withheld-number rule to drift.
  */
+import { spokenReference } from '../agent-tools/spoken-replies';
 import {
   prisma,
   ensureContactForPhone,
@@ -35,8 +36,7 @@ import {
   callbackReference,
   nextServiceTime,
   outboundContactHoursFrom,
-  OPEN_CALLBACK_STATUSES,
-} from '@ace/database';
+  OPEN_CALLBACK_STATUSES, newReference } from '@ace/database';
 
 /** Leads the reason of any callback raised by an emergency, so the queue reads it first. */
 export const EMERGENCY_PREFIX = 'EMERGENCY REPORTED — check the caller is safe and that 112 was called. ';
@@ -98,7 +98,7 @@ export async function queueHandoffCallback(params: {
         status: { in: [...OPEN_CALLBACK_STATUSES] as any },
       },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, dueAt: true, reason: true },
+      select: { id: true, reference: true, dueAt: true, reason: true },
     });
     if (open) {
       // An emergency on a second call makes the request they already hold
@@ -115,7 +115,7 @@ export async function queueHandoffCallback(params: {
       }
       return {
         kind: 'queued',
-        reference: callbackReference(open.id),
+        reference: callbackReference(open),
         dueAt: open.dueAt,
         outsideHours: open.dueAt.getTime() > now.getTime() + 60_000,
         existing: true,
@@ -134,6 +134,7 @@ export async function queueHandoffCallback(params: {
     const record = await prisma.callbackRequest.create({
       data: {
         organizationId: params.organizationId,
+        reference: await newReference(prisma.callbackRequest, params.organizationId),
         contactId: contact.id,
         phoneNumber: normalizePhoneNumber(params.fromNumber) || params.fromNumber,
         reason:
@@ -151,7 +152,7 @@ export async function queueHandoffCallback(params: {
 
     return {
       kind: 'queued',
-      reference: callbackReference(record.id),
+      reference: callbackReference(record),
       dueAt,
       outsideHours,
       existing: false,
@@ -173,9 +174,9 @@ export async function queueHandoffCallback(params: {
 export function handoffCallbackPromise(result: HandoffCallbackResult): string {
   switch (result.kind) {
     case 'queued': {
-      // Read exactly as the orchestrator's own callback confirmation reads it,
-      // so a citizen quoting it back at a desk quotes the same string.
-      const ref = result.reference;
+      // The same reference the orchestrator quotes, SPOKEN digit by digit
+      // ("4 8 2 1 3") because this is read aloud on a call.
+      const ref = spokenReference(result.reference);
       if (result.existing) {
         return (
           `You already have a callback request with us, reference ${ref}. ` +

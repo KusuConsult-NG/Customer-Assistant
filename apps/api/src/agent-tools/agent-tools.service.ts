@@ -52,7 +52,7 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from './agent-tool-catalog';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { ElevenLabsApi } from './elevenlabs-client';
@@ -378,7 +378,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
             startTime: { gte: now },
           },
           orderBy: { startTime: 'asc' },
-          select: { id: true, serviceName: true, startTime: true, staffName: true },
+          select: { id: true, reference: true, serviceName: true, startTime: true, staffName: true },
         }),
         prisma.callbackRequest.findFirst({
           where: {
@@ -387,7 +387,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
             status: { in: [...OPEN_CALLBACK_STATUSES] },
           },
           orderBy: { dueAt: 'asc' },
-          select: { id: true, promisedText: true, dueAt: true, reason: true },
+          select: { id: true, reference: true, promisedText: true, dueAt: true, reason: true },
         }),
         prisma.ticket.count({
           where: {
@@ -437,7 +437,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       if (openCallback) {
         sentences.push(
           `We also owe you a call back about ${openCallback.reason.trim()} — reference ` +
-          `${callbackReference(openCallback.id)}, ${openCallback.promisedText.toLowerCase()}.`
+          `${spokenReference(callbackReference(openCallback))}, ${openCallback.promisedText.toLowerCase()}.`
         );
       }
       if (openTickets > 0) {
@@ -489,7 +489,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
           openCallback: openCallback
             ? {
                 callbackId: openCallback.id,
-                reference: callbackReference(openCallback.id),
+                reference: callbackReference(openCallback),
                 promisedText: openCallback.promisedText,
                 dueAt: openCallback.dueAt.toISOString(),
               }
@@ -976,8 +976,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       });
       return {
         ok: true,
-        speak: `You are booked for ${booking.serviceName} on ${when}. Your reference is ${bookingReference(booking.id)}.`,
-        data: { bookingId: booking.id, reference: bookingReference(booking.id), startTime: booking.startTime },
+        speak: `You are booked for ${booking.serviceName} on ${when}. Your reference is ${spokenReference(bookingReference(booking))}.`,
+        data: { bookingId: booking.id, reference: bookingReference(booking), startTime: booking.startTime },
       };
     } catch (e: any) {
       // A slot clash is a legitimate answer, not a malfunction — say so and let
@@ -1039,14 +1039,14 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       },
       orderBy: { startTime: 'asc' },
       take: 10,
-      select: { id: true, serviceName: true, startTime: true },
+      select: { id: true, reference: true, serviceName: true, startTime: true },
     });
 
     if (upcoming.length === 0) return { kind: 'none' };
 
     const options = upcoming.map((b) => ({
       bookingId: b.id,
-      reference: bookingReference(b.id),
+      reference: bookingReference(b),
       serviceName: b.serviceName,
       startTime: b.startTime.toISOString(),
       label: formatLagos(b.startTime),
@@ -1089,7 +1089,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     options: Array<{ reference: string; serviceName: string; label: string }>
   ): string {
     const parts = options.map(
-      (o) => `${o.serviceName} on ${o.label}, reference ${o.reference}`
+      (o) => `${o.serviceName} on ${o.label}, reference ${spokenReference(o.reference)}`
     );
     if (parts.length === 1) return parts[0];
     return `${parts.slice(0, -1).join('; ')}; and ${parts[parts.length - 1]}`;
@@ -1154,7 +1154,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       return {
         ok: true,
         speak: `Your ${booking.serviceName} appointment on ${formatLagos(booking.startTime)} has been cancelled.`,
-        data: { bookingId: booking.id, reference: bookingReference(booking.id) },
+        data: { bookingId: booking.id, reference: bookingReference(booking) },
       };
     } catch (e) {
       return this.failed('cancel_booking', e);
@@ -1300,9 +1300,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         return {
           ok: true,
           speak:
-            `You already have a callback booked, reference ${callbackReference(existing.id)}, ` +
+            `You already have a callback booked, reference ${spokenReference(callbackReference(existing))}, ` +
             `${existing.promisedText.toLowerCase()} on ${targetNumber.replace(/\D/g, '').split('').join(' ')}. I have not booked a second one.`,
-          data: { callbackId: existing.id, reference: callbackReference(existing.id), duplicate: true, callbackNumber: targetNumber },
+          data: { callbackId: existing.id, reference: callbackReference(existing), duplicate: true, callbackNumber: targetNumber },
         };
       }
 
@@ -1319,6 +1319,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       const row = await prisma.callbackRequest.create({
         data: {
           organizationId,
+          reference: await newReference(prisma.callbackRequest, organizationId),
           contactId: contact.id,
           phoneNumber: targetNumber,
           reason: input.reason.trim().slice(0, 1000),
@@ -1330,9 +1331,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       return {
         ok: true,
         speak:
-          `That is arranged — your reference is ${callbackReference(row.id)}. ` +
+          `That is arranged — your reference is ${spokenReference(callbackReference(row))}. ` +
           `Someone will call you back ${promisedText.toLowerCase()} on ${targetNumber.replace(/\D/g, '').split('').join(' ')}.`,
-        data: { callbackId: row.id, reference: callbackReference(row.id), dueAt: dueAt.toISOString(), callbackNumber: targetNumber },
+        data: { callbackId: row.id, reference: callbackReference(row), dueAt: dueAt.toISOString(), callbackNumber: targetNumber },
       };
     } catch (err) {
       return this.failed('request-callback', err);

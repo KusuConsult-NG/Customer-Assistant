@@ -8,6 +8,7 @@
  * recomputes the due time on every retry. Two copies of "when did we say" is
  * how a promise and the thing that keeps it drift apart.
  */
+import { randomInt } from 'crypto';
 import { DEFAULT_SERVICE_HOURS, isWithinServiceHours, type ServiceHours } from './availability';
 
 /** Statuses that mean "somebody still owes this citizen a call". */
@@ -22,8 +23,37 @@ export const OPEN_CALLBACK_STATUSES = ['PENDING', 'DUE', 'IN_PROGRESS'] as const
  * and a uuid is already unique. Upper case because it gets read aloud on a
  * phone call and dictated back at a desk.
  */
-export function callbackReference(id: string): string {
+export function callbackReference(row: string | { id: string; reference?: string | null }): string {
+  if (typeof row !== 'string' && row.reference) return row.reference;
+  const id = typeof row === 'string' ? row : row.id;
   return `CB-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+/**
+ * A new citizen reference: five digits ("48213"), not used by this agency yet.
+ *
+ * "CB-3F2B91CD" and "AP-3F2B91CD" were derived from row ids and could not be
+ * remembered by a caller; a complaint reference had already become five
+ * digits (ticket-number.ts), and these follow it. Stored on the row, because a
+ * five-digit number cannot be derived from a uuid without colliding.
+ *
+ * Uniqueness is per agency and checked here (`taken`) rather than by a unique
+ * constraint — adding one to an existing table makes `db push` demand
+ * --accept-data-loss. Every lookup by reference is also scoped to the caller's
+ * OWN records, so even a duplicate born of two simultaneous writes could not
+ * send one citizen to another's appointment. Six digits after twelve misses,
+ * never a failure to book.
+ */
+export async function allocateReference(taken: (reference: string) => Promise<boolean>): Promise<string> {
+  for (const [digits, tries] of [[5, 12], [6, 8], [7, 8]] as const) {
+    for (let i = 0; i < tries; i++) {
+      const candidate = String(randomInt(10 ** (digits - 1), 10 ** digits));
+      if (!(await taken(candidate))) return candidate;
+    }
+  }
+  // Seven-digit space exhausted for one agency: unreachable in practice, but a
+  // booking is never refused over a reference.
+  return String(randomInt(10_000_000, 99_999_999));
 }
 
 const HOUR = 60 * 60 * 1000;
@@ -102,6 +132,29 @@ export function isOverdue(dueAt: Date, now: Date = new Date()): boolean {
  * callback's, because these get read aloud and dictated at a desk, and
  * "AP-3F2B91CD" survives that where a bare hex string does not.
  */
-export function bookingReference(id: string): string {
+export function bookingReference(row: string | { id: string; reference?: string | null }): string {
+  if (typeof row !== 'string' && row.reference) return row.reference;
+  const id = typeof row === 'string' ? row : row.id;
   return `AP-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
+/**
+ * A fresh reference for a booking or callback in this agency. `model` is the
+ * delegate the row will be written through (`prisma.booking`,
+ * `tx.callbackRequest`), so a transaction checks inside itself. A lookup that
+ * fails counts as "not taken": a reference is never a reason to refuse a
+ * booking, and the scoped lookups make a rare duplicate harmless.
+ */
+export function newReference(
+  model: { findFirst: (args: any) => Promise<unknown> } | undefined,
+  organizationId: string
+): Promise<string> {
+  return allocateReference(async (reference) => {
+    if (!model || typeof model.findFirst !== 'function') return false;
+    try {
+      return Boolean(await model.findFirst({ where: { organizationId, reference }, select: { id: true } }));
+    } catch {
+      return false;
+    }
+  });
 }

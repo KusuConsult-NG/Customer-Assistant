@@ -629,6 +629,15 @@ model CallbackRequest {
   updatedAt      DateTime          @updatedAt
   attemptLog     CallbackAttempt[]
 
+  /// The five digits the citizen is given ("48213"), unique within the
+  /// agency — checked by `allocateReference`, NOT by a unique constraint:
+  /// adding one to an existing table makes `db push` demand
+  /// --accept-data-loss, which does not belong in the deploy path. Null on rows
+  /// made before references were stored: those keep the CB-XXXXXXXX form
+  /// derived from the id (callbackReference).
+  reference      String?
+
+  @@index([organizationId, reference])
   @@index([organizationId, status, dueAt])
   @@index([contactId])
   @@index([assignedUserId])
@@ -813,6 +822,15 @@ model Booking {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  /// The five digits the citizen is given ("48213"), unique within the
+  /// agency — checked by `allocateReference`, NOT by a unique constraint:
+  /// adding one to an existing table makes `db push` demand
+  /// --accept-data-loss, which does not belong in the deploy path. Null on rows
+  /// made before references were stored: those keep the AP-XXXXXXXX form
+  /// derived from the id (bookingReference).
+  reference      String?
+
+  @@index([organizationId, reference])
   @@index([organizationId, startTime])
   @@index([contactId])
   @@index([status, startTime])

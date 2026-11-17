@@ -59,6 +59,8 @@ type ScheduleStatus = 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | 
 
 interface Booking {
   id: string;
+  /** The five digits the citizen was given; null on bookings made before references were stored. */
+  reference?: string | null;
   contactId: string;
   contact?: Contact | null;
   serviceName: string;
@@ -689,7 +691,13 @@ export default function SchedulingPage() {
                       <User className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:text-blue-400" />
                       {b.contact?.fullName ?? 'Unknown contact'}
                     </td>
-                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.serviceName}</td>
+                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
+                      {b.serviceName}
+                      {/* What the citizen quotes; an older booking shows the AP- form it was given. */}
+                      <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                        Ref {b.reference || `AP-${b.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-mono text-xs">{new Date(b.startTime).toLocaleString()}</td>
                     <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{b.staffName || <span className="text-slate-500 dark:text-slate-400">unassigned</span>}</td>
                     <td className="px-6 py-4">{getStatusBadge(b.status)}</td>

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import {
   prisma, phoneNumberVariants, BUSY_BOOKING_STATUSES,
-  isOverlapViolation, isDeadlock, withDeadlockRetry, recordAgencyAudit, type AuditActor } from '@ace/database';
+  isOverlapViolation, isDeadlock, withDeadlockRetry, recordAgencyAudit, type AuditActor, newReference } from '@ace/database';
 import { BookingStatus } from '@ace/shared-types';
 import { AppointmentReminderService } from './appointment-reminder.service';
 import { WorkflowTriggerService } from '../workflows/workflow-trigger.service';
@@ -220,6 +220,7 @@ export class SchedulingService {
             return tx.booking.create({
               data: {
                 organizationId,
+                reference: await newReference(tx.booking, organizationId),
                 contactId: data.contactId,
                 serviceName: data.serviceName,
                 staffName: data.staffName,
