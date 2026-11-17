@@ -34,16 +34,26 @@ export function relevantPassage(contents: string[], query: string, budget = 1200
   const terms = queryTerms(query);
   if (terms.length === 0) return null;
 
+  const hitsIn = (line: string) => {
+    const lower = line.toLowerCase();
+    return terms.filter((t) => lower.includes(t)).length;
+  };
+  // A line must carry most of the question's words, not one common one — and
+  // when some line carries EVERY one, only such lines answer. Otherwise a word
+  // shared by many lines fills the budget in document order first: "Tell me
+  // about Urban Fest" returned lines about ONE PLATEAU FEST and never reached
+  // the one Urban Fest line.
+  const threshold = contents.some((c) => c.split('\n').some((l) => hitsIn(l) === terms.length))
+    ? terms.length
+    : Math.max(1, Math.ceil(terms.length / 2));
+
   const picked: string[] = [];
   let used = 0;
   for (const content of contents) {
     const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
     const keep = new Set<number>();
     lines.forEach((line, i) => {
-      const lower = line.toLowerCase();
-      const hits = terms.filter((t) => lower.includes(t)).length;
-      // A line must carry most of the question's words, not one common one.
-      if (hits >= Math.max(1, Math.ceil(terms.length / 2))) {
+      if (hitsIn(line) >= threshold) {
         if (i > 0) keep.add(i - 1);
         keep.add(i);
       }
