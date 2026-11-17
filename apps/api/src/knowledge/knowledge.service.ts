@@ -10,6 +10,7 @@ import { QdrantRAGService } from '@ace/orchestrator';
 import { Queue } from 'bullmq';
 import { AceLogger } from '../config/logger';
 import { KNOWLEDGE_BUCKET, deleteObject, signedUrl, uploadObject } from '../common/object-storage';
+import { extractText } from './document.worker';
 
 const log = new AceLogger('KnowledgeService');
 
@@ -266,7 +267,7 @@ export class KnowledgeService {
 
       try {
         const result = await this.indexDocumentInline(
-          organizationId, doc.id, data.fileBuffer, data.mimeType
+          organizationId, doc.id, data.fileBuffer, data.mimeType, data.fileName
         );
         vectorised = result.vectorised;
       } catch (inlineErr: any) {
@@ -275,8 +276,7 @@ export class KnowledgeService {
           data: { status: 'FAILED', errorMessage: String(inlineErr?.message).slice(0, 500) },
         });
         throw new ServiceUnavailableException(
-          `Document was uploaded but could not be indexed: ${inlineErr?.message}. ` +
-          `It is marked FAILED — retry once REDIS_URL is reachable.`
+          `Document was uploaded but could not be indexed: ${inlineErr?.message}. It is marked FAILED.`
         );
       }
     }
@@ -306,13 +306,29 @@ export class KnowledgeService {
     organizationId: string,
     documentId: string,
     fileBuffer: Buffer,
-    mimeType: string
+    mimeType: string,
+    fileName = 'document'
   ): Promise<{ chunkCount: number; vectorised: boolean }> {
-    const text = extractPlainText(fileBuffer, mimeType);
+    // PDF and DOCX through the worker's OWN extractor (pdf-parse / mammoth),
+    // not a second one here. The inline path used to refuse them with "PDF and
+    // DOCX extraction requires the background worker" — but that worker runs
+    // in this same process and needs Redis only for its QUEUE, not to read a
+    // file. With Redis gone (a spent Upstash quota), every Word and PDF upload
+    // failed while the parsers sat installed. Text types keep the cheap path.
+    let text: string;
+    if (INLINE_EXTRACTABLE.includes(mimeType)) {
+      text = extractPlainText(fileBuffer, mimeType);
+    } else {
+      try {
+        text = await extractText(fileBuffer, mimeType, fileName);
+      } catch (err: any) {
+        throw new Error(`No text could be extracted from this ${mimeType} file: ${err?.message ?? err}`);
+      }
+    }
     if (!text.trim()) {
       throw new Error(
-        `No text could be extracted from this ${mimeType} file. ` +
-        `PDF and DOCX extraction requires the background worker.`
+        `No text could be extracted from this ${mimeType} file` +
+          (mimeType === 'application/pdf' ? ' (a scanned PDF has no text layer to read).' : '.')
       );
     }
 
@@ -795,9 +811,7 @@ export class KnowledgeService {
 
     if (isPdf) {
       // Handed to the SAME path an uploaded PDF takes, rather than a second
-      // extractor here. `indexDocumentInline` cannot read a PDF and says so
-      // ("PDF and DOCX extraction requires the background worker"), because
-      // pdf-parse runs in the worker. Routing the bytes through
+      // extractor here. Routing the bytes through
       // uploadAndIndexDocument stores the file and queues that worker, so a
       // crawled PDF is indexed exactly as an uploaded one is — one
       // implementation, which cannot drift from the other.
