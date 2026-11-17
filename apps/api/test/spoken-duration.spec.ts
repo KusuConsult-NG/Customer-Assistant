@@ -141,6 +141,9 @@ describe('Reading a reference to a caller', () => {
   it('reads it digit by digit, not as a large number', () => {
     expect(spokenReference('48213')).toBe('4 8 2 1 3');
     expect(spokenReference('REF-BK-48213')).toBe('REF-BK-4 8 2 1 3');
+    // An older reference keeps the form the citizen was given.
+    expect(spokenReference('CB-9DF9421E')).toBe('CB-9DF9421E');
+    expect(spokenReference('AP-3F2B9100')).toBe('AP-3F2B9100');
   });
 
   it('says the reference twice, so the caller can write it down', () => {

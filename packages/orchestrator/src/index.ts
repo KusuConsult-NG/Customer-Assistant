@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap, bestFaqMatch, combineFaqAndKnowledge } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -1284,32 +1284,7 @@ export class ConversationOrchestrator {
     organizationId: string,
     input: string
   ): Promise<{ answer: string; score: number } | null> {
-    const STOPWORDS = new Set([
-      'what', 'is', 'a', 'an', 'the', 'i', 'you', 'do', 'does', 'how', 'can',
-      'where', 'who', 'to', 'for', 'of', 'in', 'on', 'my', 'your', 'it', 'and',
-      'or', 'me', 'we', 'be', 'are', 'get', 'much', 'about', 'please',
-    ]);
-    // Crude singularisation, deliberately: without it "does it work for my
-    // business" misses an FAQ titled "…work for businesses?" — a plural is not
-    // a different question. Only trailing -es/-s on words long enough that the
-    // suffix is unlikely to be part of the stem.
-    const singular = (t: string) =>
-      t.length > 4 && t.endsWith('es') ? t.slice(0, -2)
-      : t.length > 3 && t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1)
-      : t;
-
-    const tokenize = (text: string) =>
-      text
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .filter((t) => t.length > 1 && !STOPWORDS.has(t))
-        .map(singular);
-
     try {
-      const queryTokens = new Set(tokenize(input));
-      if (queryTokens.size === 0) return null;
-
       const [faqs, org] = await Promise.all([
         prisma.faqEntry.findMany({
           where: { organizationId, isActive: true },
@@ -1322,43 +1297,10 @@ export class ConversationOrchestrator {
           select: { name: true },
         }),
       ]);
-
-      // The organization's own name is implicit context, not a keyword the
-      // customer has to supply. Someone on GateKipa's website asking "how much
-      // does it cost?" means GateKipa; requiring them to say the brand made an
-      // FAQ titled "How much does GateKipa cost?" unreachable, and the
-      // assistant handed off a question it had a curated answer for.
-      const brandTokens = new Set(tokenize(org?.name ?? ''));
-
-      let best: { answer: string; score: number; overlap: number } | null = null;
-      for (const faq of faqs) {
-        const allTokens = tokenize(faq.question);
-        // Score against the question WITHOUT the brand, falling back to the
-        // full set when an FAQ is nothing but the brand name.
-        const stripped = allTokens.filter((t) => !brandTokens.has(t));
-        const questionTokens = stripped.length > 0 ? stripped : allTokens;
-        if (questionTokens.length === 0) continue;
-        const overlap = questionTokens.filter((t) => queryTokens.has(t)).length;
-        const score = overlap / questionTokens.length;
-        if (score < 0.6) continue;
-        // A single-content-word question ("What is GateKipa?" → {gatekipa})
-        // would otherwise win against EVERY message that mentions the brand.
-        // It only answers when the visitor's message adds nothing beyond that
-        // same word set — "who built gatekipa" must fall through, not get the
-        // what-is answer.
-        if (
-          questionTokens.length === 1 &&
-          ![...queryTokens].every((t) => questionTokens.includes(t))
-        ) {
-          continue;
-        }
-        // More shared content words beats a higher coverage ratio: the pricing
-        // question (2-word overlap) must outrank the brand question (1-word).
-        if (!best || overlap > best.overlap || (overlap === best.overlap && score > best.score)) {
-          best = { answer: faq.answer, score, overlap };
-        }
-      }
-      return best ? { answer: best.answer, score: best.score } : null;
+      // The ONE rule, shared with the phone agent's search-knowledge
+      // (faq-match.ts) — the phone's own looser copy read callers an unrelated
+      // FAQ instead of searching the knowledge base.
+      return bestFaqMatch(faqs ?? [], input, org?.name);
     } catch {
       // FAQ lookup is an optimization, never a failure mode — fall through to RAG.
       return null;
@@ -1889,15 +1831,12 @@ export class ConversationOrchestrator {
     // match on a curated Q→A pair beats LLM synthesis anyway — it is the
     // operator's own wording, deterministic, free, and works with no OpenAI
     // key configured (the exact state of a fresh demo tenant).
+    //
+    // The FAQ no longer ENDS the turn: the knowledge base is searched as well,
+    // and when it holds detail behind the FAQ the citizen gets both — the
+    // agency's wording first, then the rest (combineFaqAndKnowledge). With
+    // nothing more in the knowledge base the FAQ answer is returned as before.
     const faqMatch = await this.tryFaqMatch(context.organizationId, cleanInput);
-    if (faqMatch) {
-      return {
-        replyText: faqMatch.answer,
-        intentDetected: 'FAQ_MATCH',
-        confidenceScore: faqMatch.score,
-        shouldHandoff: false,
-      };
-    }
 
     // ── 12.6 LLM intent routing — the second chance the keywords never had ───
     //
@@ -1914,7 +1853,9 @@ export class ConversationOrchestrator {
     // failure — no key, timeout, junk JSON, low confidence — the message falls
     // through to the RAG path exactly as before, so the feature degrades to
     // the status quo, never below it.
-    const classified = await this.classifyIntentWithLlm(cleanInput);
+    // An FAQ match means the citizen asked for information; it is not routed
+    // to an action.
+    const classified = faqMatch ? null : await this.classifyIntentWithLlm(cleanInput);
     if (classified) {
       const routed = await this.dispatchClassifiedIntent(classified, context, cleanInput, lang);
       if (routed) return routed;
@@ -1938,6 +1879,22 @@ export class ConversationOrchestrator {
       // agency was asked about.
       .map((r) => (r.title ? `From "${r.title}":\n${r.content}` : r.content))
       .join('\n---\n');
+
+    // The FAQ answered it and the knowledge base has nothing to add.
+    if (faqMatch && !kbContextText) {
+      return {
+        replyText: faqMatch.answer,
+        intentDetected: 'FAQ_MATCH',
+        confidenceScore: faqMatch.score,
+        shouldHandoff: false,
+      };
+    }
+
+    // What the model is given: the agency's FAQ answer FIRST, marked as its
+    // own wording, then the knowledge base excerpts.
+    const modelContext = faqMatch
+      ? `The agency's own approved answer to this question — give it FIRST, in these words, then add every further detail below that answers the question:\n${faqMatch.answer}\n---\n${kbContextText}`
+      : kbContextText;
 
     // Nothing approved answered it: count it as a knowledge gap so an officer
     // can find the answer and publish it (PRD §12). Not awaited for the reply.
@@ -2007,11 +1964,11 @@ export class ConversationOrchestrator {
           basePrompt,
           lang,
           channel: context.channel,
-          hasKnowledge: Boolean(kbContextText),
+          hasKnowledge: Boolean(modelContext),
         });
 
-        const userContent = kbContextText
-          ? `The following information from our knowledge base may be relevant:\n\n${kbContextText}\n\n---\n\nCustomer message: ${cleanInput}`
+        const userContent = modelContext
+          ? `The following information from our knowledge base may be relevant:\n\n${modelContext}\n\n---\n\nCustomer message: ${cleanInput}`
           : cleanInput;
 
         // Feed prior turns to the model.
@@ -2056,7 +2013,7 @@ export class ConversationOrchestrator {
           if (aiReply) {
             return {
               replyText: aiReply,
-              intentDetected: kbContextText ? 'KB_ANSWER' : 'GENERAL_INQUIRY',
+              intentDetected: faqMatch ? 'FAQ_KB_ANSWER' : kbContextText ? 'KB_ANSWER' : 'GENERAL_INQUIRY',
               confidenceScore: kbContextText ? 0.92 : 0.78,
               shouldHandoff: false,
             };
@@ -2096,7 +2053,7 @@ export class ConversationOrchestrator {
     // would have silently swallowed every inbound customer message.
     if (kbContextText) {
       return {
-        replyText: `${kbContextText}\n\nIs there anything else I can help you with?`,
+        replyText: `${faqMatch ? combineFaqAndKnowledge(faqMatch.answer, kbContextText) : kbContextText}\n\nIs there anything else I can help you with?`,
         intentDetected: 'KB_ANSWER_DEGRADED',
         confidenceScore: 0.6,
         shouldHandoff: false,
@@ -2148,7 +2105,7 @@ export class ConversationOrchestrator {
           `• Date & Time: ${timeStr}\n` +
           `• Staff: ${booking.staffName ?? 'Any available'}\n` +
           `• Status: ${booking.status}\n` +
-          `• Reference: ${bookingReference(booking.id)}\n\n` +
+          `• Reference: ${bookingReference(booking)}\n\n` +
           `To *cancel* or *reschedule*, just say so and I'll handle it for you.`,
       };
     }
@@ -2316,7 +2273,7 @@ export class ConversationOrchestrator {
       return {
         replyText: t(lang, 'booking_cancelled', {
           service: booking.serviceName,
-          ref: bookingReference(booking.id),
+          ref: bookingReference(booking),
         }),
         intentDetected: 'CANCEL_BOOKING',
         confidenceScore: 1.0,
@@ -2714,11 +2671,13 @@ export class ConversationOrchestrator {
     const serviceName = serviceOf(collected);
 
     let booking;
+    const reference = await newReference((prisma as any).booking, context.organizationId);
     try {
       booking = await withDeadlockRetry(() =>
         prisma.booking.create({
           data: {
             organizationId: context.organizationId,
+            reference,
             contactId: contact.id,
             serviceName,
             startTime: new Date(slot.startIso),
@@ -2752,7 +2711,7 @@ export class ConversationOrchestrator {
       replyText: t(lang, 'booking_confirmed', {
         service: serviceName,
         when: slot.label,
-        ref: bookingReference(booking.id),
+        ref: bookingReference(booking),
       }),
       intentDetected: 'BOOK_APPOINTMENT',
       confidenceScore: 1.0,
@@ -3103,7 +3062,7 @@ export class ConversationOrchestrator {
     if (existing) {
       return {
         replyText: t(lang, 'callback_already_open', {
-          ref: callbackReference(existing.id),
+          ref: callbackReference(existing),
           when: existing.promisedText,
         }),
         intentDetected: 'REQUEST_CALLBACK',
@@ -3209,6 +3168,7 @@ export class ConversationOrchestrator {
     const record = await prisma.callbackRequest.create({
       data: {
         organizationId: context.organizationId,
+        reference: await newReference((prisma as any).callbackRequest, context.organizationId),
         contactId: contact.id,
         phoneNumber: normalizePhoneNumber(phone),
         // The reason an officer reads, with who and where alongside it — the
@@ -3230,7 +3190,7 @@ export class ConversationOrchestrator {
 
     return {
       replyText: t(lang, 'callback_confirmed', {
-        ref: callbackReference(record.id),
+        ref: callbackReference(record),
         number: normalizePhoneNumber(phone),
         when: promisedText.toLowerCase(),
       }),
@@ -4064,7 +4024,7 @@ export class ConversationOrchestrator {
           `Done — ${target.label} has moved.\n\n` +
           `• Was: ${target.startLabel}\n` +
           `• Now: ${option.label}\n\n` +
-          `Reference: ${bookingReference(booking.id)}`,
+          `Reference: ${bookingReference(booking)}`,
         intentDetected: 'RESCHEDULE_BOOKING',
         confidenceScore: 1.0,
         shouldHandoff: false,

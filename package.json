@@ -39,7 +39,8 @@
     "agencies:seed": "node scripts/seed-agencies.js",
     "catalogue:seed": "node scripts/seed-service-catalogue.js",
     "db:sync-enums": "node scripts/sync-enum-values.js",
-    "mdas:seed": "node scripts/seed-plateau-mdas.js"
+    "mdas:seed": "node scripts/seed-plateau-mdas.js",
+    "faqs:seed": "node scripts/seed-state-faqs.js"
   },
   "dependencies": {
     "turbo": "^2.4.0",

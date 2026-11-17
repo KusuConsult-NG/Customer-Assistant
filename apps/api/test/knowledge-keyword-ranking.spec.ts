@@ -129,6 +129,39 @@ describe('Keyword retrieval picks the document that answers', () => {
     expect(synthesis[0].max_tokens).toBeGreaterThanOrEqual(1500);
   });
 
+  it('on WhatsApp, gives the model the FAQ answer FIRST and the knowledge base details with it', async () => {
+    const { ConversationOrchestrator } = require('@ace/orchestrator');
+    const faq = await prisma.faqEntry.create({
+      data: { organizationId: orgId, question: 'When is December Tourism Month?', answer: 'December is Tourism Month in Plateau State.', sortOrder: 0, isActive: true },
+    });
+    const priorFetch = global.fetch;
+    process.env.OPENAI_API_KEY = 'sk-test-faq-and-kb';
+    const synthesis: any[] = [];
+    global.fetch = (async (url: any, init: any) => {
+      if (String(url).includes('/embeddings')) return { ok: false, status: 503, text: async () => 'unavailable' } as any;
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      const isSynthesis = (body.messages ?? []).some((m: any) => String(m.content).includes('knowledge base may be relevant'));
+      if (isSynthesis) synthesis.push(body);
+      const content = isSynthesis ? 'Both.' : '{"intent":"NONE","confidence":0.9}';
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' } as any;
+    }) as any;
+    try {
+      const res = await new ConversationOrchestrator().processIncomingMessage(
+        { conversationId: `faq-kb-${randomBytes(3).toString('hex')}`, organizationId: orgId, customerPhoneNumber: '+2348000000098', channel: 'WHATSAPP', history: [], slots: {}, isHumanHandoffActive: false },
+        'When is December Tourism Month?'
+      );
+      expect(res.intentDetected).toBe('FAQ_KB_ANSWER');
+    } finally {
+      global.fetch = priorFetch;
+      delete process.env.OPENAI_API_KEY;
+      await prisma.faqEntry.delete({ where: { id: faq.id } });
+    }
+    const prompt = synthesis[0].messages.map((m: any) => m.content).join('\n');
+    expect(prompt).toContain("The agency's own approved answer to this question — give it FIRST");
+    expect(prompt).toContain('December is Tourism Month in Plateau State.');
+    expect(prompt).toContain('Urban Fest');
+  });
+
   it('still answers a question about an agency by its own title', async () => {
     const results = await new QdrantRAGService().searchKnowledgeBase(orgId, 'urban planning approvals', 5);
     expect(results[0]?.title).toMatch(/Housing and Urban Development/);

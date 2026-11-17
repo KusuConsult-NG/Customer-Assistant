@@ -200,6 +200,65 @@ describe('FAQ order', () => {
         .toBe('We open at 8am.');
     });
 
+    it('does not answer an events question with an unrelated FAQ that shares one word', async () => {
+      // Callers asked about the December events and heard an FAQ instead: the
+      // phone path took ANY FAQ sharing one 4+ letter word ("what", "plateau",
+      // "state") and never searched the knowledge base. WhatsApp's stricter
+      // rule (most of the FAQ's own words) did not have the problem.
+      await addFaq('What is the PLASCHEMA premium in Plateau State?', 'The premium is N12,000 a year.', 0);
+      const doc = await prisma.knowledgeDocument.create({
+        data: {
+          organizationId: agency.orgId, title: 'December Tourism Month 2026 — Plateau State Events Lineup',
+          fileName: 'events.md', fileSize: 1, mimeType: 'text/markdown', storageUrl: 'test/events.md', status: 'INDEXED',
+        },
+      });
+      await prisma.documentChunk.create({
+        data: {
+          organizationId: agency.orgId, documentId: doc.id, chunkIndex: 0,
+          content: '# December Tourism Month 2026 — Plateau State Events Lineup\n- **22 to 27 December 2026 — Urban Fest** (graffiti, music). Venue: Azi Nyako Youth Centre, Jos.',
+        },
+      });
+      try {
+        const result = await agentTools.searchKnowledge(agency.orgId, 'What events are happening in Plateau State in December?');
+        expect(result.speak).not.toContain('premium');
+        expect(result.speak).toContain('Urban Fest');
+      } finally {
+        await prisma.documentChunk.deleteMany({ where: { documentId: doc.id } });
+        await prisma.knowledgeDocument.delete({ where: { id: doc.id } });
+      }
+    });
+
+    it('answers from the FAQ AND the knowledge base when both hold something', async () => {
+      await addFaq('When is December Tourism Month?', 'December is Tourism Month in Plateau State.', 0);
+      const doc = await prisma.knowledgeDocument.create({
+        data: {
+          organizationId: agency.orgId, title: 'December Tourism Month 2026 Events',
+          fileName: 'events2.md', fileSize: 1, mimeType: 'text/markdown', storageUrl: 'test/events2.md', status: 'INDEXED',
+        },
+      });
+      await prisma.documentChunk.create({
+        data: {
+          organizationId: agency.orgId, documentId: doc.id, chunkIndex: 0,
+          content: '# December Tourism Month 2026 Events\n- 22 to 27 December 2026 — Urban Fest. Venue: Azi Nyako Youth Centre, Jos.',
+        },
+      });
+      try {
+        const result = await agentTools.searchKnowledge(agency.orgId, 'When is December Tourism Month?');
+        expect(result.speak.startsWith('December is Tourism Month in Plateau State.')).toBe(true);
+        expect(result.speak).toContain('Urban Fest');
+        expect(result.data?.source).toBe('faq+knowledge');
+      } finally {
+        await prisma.documentChunk.deleteMany({ where: { documentId: doc.id } });
+        await prisma.knowledgeDocument.delete({ where: { id: doc.id } });
+      }
+    });
+
+    it('still answers a question its FAQ really asks', async () => {
+      await addFaq('What is the PLASCHEMA premium in Plateau State?', 'The premium is N12,000 a year.', 0);
+      const result = await agentTools.searchKnowledge(agency.orgId, 'How much is the PLASCHEMA premium?');
+      expect(result.speak).toBe('The premium is N12,000 a year.');
+    });
+
     it('never reads another agency’s FAQs', async () => {
       await addFaq('What are the opening hours?', 'Ours: 8am.', 0);
       await addFaq('What are the opening hours?', 'Theirs: 6am.', 0, other.orgId);

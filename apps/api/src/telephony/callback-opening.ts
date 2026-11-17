@@ -14,6 +14,8 @@
  * that matter rather than treating the call as a new enquiry.
  */
 
+import { spokenReference } from '../agent-tools/spoken-replies';
+
 /** The citizen's words can be long; the opening names the matter, it does not repeat it. */
 const MAX_REASON_CHARS = 140;
 
@@ -23,7 +25,7 @@ export interface CallbackOpeningInput {
   /** The citizen's name, or null when we only hold a placeholder. */
   citizenName: string | null;
   agencyName: string;
-  /** The CB- reference they were given. */
+  /** The reference they were given: five digits, or CB-… on an older request. */
   reference: string;
   /** Why they asked for a callback, in their words. */
   reason: string;
@@ -48,7 +50,7 @@ export function callbackOpening(input: CallbackOpeningInput): string {
   return [
     who,
     `This is the virtual assistant calling from the ${input.agencyName},`,
-    `about your request, reference ${input.reference}, concerning ${shorten(input.reason, MAX_REASON_CHARS).replace(/[.!?]+$/, '')}.`,
+    `about your request, reference ${spokenReference(input.reference)}, concerning ${shorten(input.reason, MAX_REASON_CHARS).replace(/[.!?]+$/, '')}.`,
     `Here is the update: ${sentence(input.update)}`,
     'Do you have any questions about this?',
   ].join(' ');

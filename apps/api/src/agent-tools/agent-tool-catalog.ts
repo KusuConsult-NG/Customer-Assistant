@@ -464,7 +464,7 @@ export function agentToolCatalog(
         newStartTime: askedOf('string', 'The new start time as an ISO 8601 timestamp.'),
         reference: askedOf(
           'string',
-          'The reference of the appointment to move (AP-XXXXXXXX), when the caller has more than one.'
+          'The reference of the appointment to move (five digits, or AP-XXXXXXXX for an older booking), when the caller has more than one.'
         ),
       },
       ['phoneNumber', 'newStartTime']
@@ -480,7 +480,7 @@ export function agentToolCatalog(
         reason: askedOf('string', 'The reason they gave, if any.'),
         reference: askedOf(
           'string',
-          'The reference of the appointment to cancel (AP-XXXXXXXX), when the caller has more than one.'
+          'The reference of the appointment to cancel (five digits, or AP-XXXXXXXX for an older booking), when the caller has more than one.'
         ),
       },
       ['phoneNumber']
