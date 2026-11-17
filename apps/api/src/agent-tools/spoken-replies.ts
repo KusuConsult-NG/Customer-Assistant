@@ -19,7 +19,12 @@ export type IncidentKind = 'security' | 'fire' | 'disaster' | 'medical';
  * A prefix (REF-BK) is kept as written.
  */
 export function spokenReference(reference: string): string {
-  return reference.replace(/\d{2,}/g, (run) => run.split('').join(' '));
+  // Only a reference that ENDS in a run of digits after its label: "48213",
+  // "REF-BK-48213". An older mixed one ("CB-9DF9421E") is left as written —
+  // spacing the digits inside it gave "CB-9DF9 4 2 1E".
+  const m = /^(.*?)(\d+)$/.exec(reference);
+  if (!m || (m[1] && !m[1].endsWith('-'))) return reference;
+  return m[1] + m[2].split('').join(' ');
 }
 
 /** Who to call depends on what is happening. 112 leads every time. */

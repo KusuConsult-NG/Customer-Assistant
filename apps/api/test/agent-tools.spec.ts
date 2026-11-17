@@ -575,7 +575,7 @@ describe('Agent tools', () => {
         reason: 'wants to know about the levy',
       }).expect(201);
       const reference = asked.body.data.reference;
-      expect(reference).toMatch(/^CB-/);
+      expect(reference).toMatch(/^[1-9]\d{4}$/);
 
       const res = await post('lookup-customer', keyA, { phoneNumber: phone }).expect(201);
       expect(res.body.data.openCallback).toBeTruthy();
@@ -709,7 +709,8 @@ describe('Agent tools', () => {
       expect(res.body.data.needsChoice).toBe(true);
       expect(res.body.speak).toContain('Clinic Review');
       expect(res.body.speak).toContain('Land Registration');
-      expect(res.body.speak).toContain(first.reference);
+      // Read digit by digit, so the caller can say it back.
+      expect(res.body.speak).toContain(first.reference.split('').join(' '));
 
       // And nothing was cancelled while the caller decides.
       for (const id of [first.bookingId, second.bookingId]) {

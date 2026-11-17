@@ -114,11 +114,12 @@ describe('Callback queue', () => {
         .send({ contactId, reason: 'water supply has been off for three days', dueInMinutes: 60 })
         .expect(201);
 
-      expect(res.body.reference).toMatch(/^CB-[A-Z0-9]{8}$/);
+      // Five digits a caller can remember.
+      expect(res.body.reference).toMatch(/^[1-9]\d{4}$/);
       expect(res.body.status).toBe('PENDING');
       expect(new Date(res.body.dueAt).getTime()).toBeGreaterThan(Date.now());
       // The reference the citizen is told must find the row an officer opens.
-      expect(callbackReference(res.body.id)).toBe(res.body.reference);
+      expect(callbackReference(res.body)).toBe(res.body.reference);
     });
 
     it('refuses one with no reason, because somebody has to ring about something', async () => {
