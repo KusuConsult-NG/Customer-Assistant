@@ -208,7 +208,8 @@ describe('Agent tools', () => {
         const ticket = await prisma.ticket.findUnique({ where: { id: res.body.data.ticketId } });
         expect(ticket).not.toBeNull();
         expect(res.body.data.ticketNumber).toBe(ticket!.ticketNumber);
-        expect(res.body.speak).toContain(ticket!.ticketNumber);
+        // Read digit by digit, so the caller can write it down.
+        expect(res.body.speak).toContain(ticket!.ticketNumber.split('').join(' '));
         expect(res.body.speak).not.toContain(res.body.data.ticketId.slice(0, 8));
         expect(ticket!.priority).toBe('HIGH');
         expect(ticket!.organizationId).toBe(orgA);

@@ -455,7 +455,10 @@ describe('The Contact Centre script on the phone line', () => {
         const res = await post('create-ticket', report());
         expect(res.body.ok).toBe(true);
         const ref = res.body.data.ticketNumber;
-        expect(res.body.speak).toContain(`Your unique complaint reference number is ${ref}`);
+        // Five digits, read digit by digit and repeated (spokenReference).
+        expect(ref).toMatch(/^[1-9]\d{4}$/);
+        const spoken = ref.split('').join(' ');
+        expect(res.body.speak).toContain(`Your unique complaint reference number is ${spoken}. I repeat, ${spoken}.`);
         expect(res.body.speak).toMatch(/Please keep this number safe/);
         // Phase 8 in the document's words, and nothing more: the office is
         // recorded on the case, not announced.
@@ -466,7 +469,7 @@ describe('The Contact Centre script on the phone line', () => {
         // Phase 10, then the question main added so nobody is hung up on.
         expect(res.body.speak).toContain(
           `Once again, thank you, Nanret Davou, for contacting the Plateau State Government Citizen Contact Centre. ` +
-            `Your report has been recorded under reference number ${ref}.`
+            `Your report has been recorded under reference number ${spoken}.`
         );
         expect(res.body.speak).toMatch(/Your voice matters/);
         expect(res.body.speak).toMatch(/Is there anything else I can assist you with today, or may I go ahead and end the call\?$/);

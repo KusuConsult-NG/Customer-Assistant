@@ -151,8 +151,8 @@ describe('Workflow engine', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(ticket).toBeTruthy();
-    // Same generator as every other ticket: prefix, base-36 time, five bytes.
-    expect(ticket!.ticketNumber).toMatch(/^WF-[0-9A-Z]+-[0-9A-F]{10}$/);
+    // Same generator as every other ticket: its prefix, then five digits.
+    expect(ticket!.ticketNumber).toMatch(/^WF-[1-9]\d{4}$/);
   });
 
   it('keeps a record of what an automation said to a citizen', async () => {
