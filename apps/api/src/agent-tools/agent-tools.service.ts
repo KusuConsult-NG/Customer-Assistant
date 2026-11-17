@@ -52,7 +52,7 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from './agent-tool-catalog';
-import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, bestFaqMatch, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
+import { prisma, normalizePhoneNumber, phoneNumberVariants, ensureContactForPhone, isPlaceholderContactName, loadServiceCatalogue, locationsInLga, resolveLocation, resolveLga, upsertEnrollee, findAvailableSlots, serviceHoursFrom, formatLagos, BUSY_BOOKING_STATUSES, callbackReference, bookingReference, newReference, bestFaqMatch, combineFaqAndKnowledge, nextServiceTime, outboundContactHoursFrom, OPEN_CALLBACK_STATUSES, wantsAnonymity } from '@ace/database';
 import { TicketPriority } from '@ace/shared-types';
 import { SchedulingService } from '../scheduling/scheduling.service';
 import { ElevenLabsApi } from './elevenlabs-client';
@@ -1703,11 +1703,11 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // was read the PLASCHEMA premium FAQ and the knowledge base holding the
       // December lineup was never searched.
       const faq = bestFaqMatch(faqs, q, org?.name);
-      if (faq) {
-        return { ok: true, speak: speakableHonours(faq.answer), data: { source: 'faq' } };
-      }
 
-      // Knowledge base fallback — strip markdown before speaking
+      // The knowledge base is searched EVEN WHEN an FAQ matched: the FAQ is
+      // the agency's short answer and the knowledge base often holds the
+      // detail behind it, so the caller is given both (combineFaqAndKnowledge).
+      // Strip markdown before speaking.
       // The passage that answers the question, not the first 500 characters
       // of whichever document ranked first. See relevant-passage.ts.
       const results = await this.knowledge.searchPlayground(organizationId, q).catch(() => null);
@@ -1720,6 +1720,19 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // the first few as if they were all. The COMPLETE ANSWERS guardrail paces
       // a long one on the call.
       const passage = relevantPassage(contents, q, SEARCH_KNOWLEDGE_PASSAGE_CHARS);
+      if (faq) {
+        const combined = combineFaqAndKnowledge(faq.answer, passage);
+        return {
+          ok: true,
+          speak: speakableHonours(combined),
+          data: {
+            source: combined === faq.answer.trim() ? 'faq' : 'faq+knowledge',
+            instruction:
+              'Give the agency answer first, then the further details, all of them. Say every name exactly as written here, ' +
+              'with all its titles and honours. If there are more than three items, say how many, give three at a time, and ask whether to continue.',
+          },
+        };
+      }
       if (passage) {
         // Honours spelled out so the voice says them ("mni" -> "M N I"), and
         // the instruction to read names whole. spoken-names.ts.

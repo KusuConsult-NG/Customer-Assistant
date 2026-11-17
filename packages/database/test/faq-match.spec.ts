@@ -4,7 +4,7 @@
  * December events were read an unrelated FAQ and the knowledge base holding
  * the lineup was never searched.
  */
-import { bestFaqMatch } from '../src/faq-match';
+import { bestFaqMatch, combineFaqAndKnowledge } from '../src/faq-match';
 
 const FAQS = [
   { question: 'What is the PLASCHEMA premium in Plateau State?', answer: 'premium answer' },
@@ -31,5 +31,23 @@ describe('bestFaqMatch', () => {
       { question: 'What are the opening hours?', answer: 'second' },
     ];
     expect(bestFaqMatch(tie, 'What are the opening hours?')?.answer).toBe('first');
+  });
+});
+
+describe('combineFaqAndKnowledge', () => {
+  it('gives the FAQ answer first, then what the knowledge base adds', () => {
+    const out = combineFaqAndKnowledge(
+      'December is Tourism Month in Plateau State.',
+      '22 to 27 December 2026 — Urban Fest. Venue: Azi Nyako Youth Centre, Jos.'
+    );
+    expect(out.startsWith('December is Tourism Month in Plateau State.')).toBe(true);
+    expect(out).toContain('Further details from our records:');
+    expect(out).toContain('Urban Fest');
+  });
+
+  it('does not repeat what the FAQ already said', () => {
+    const faq = 'The premium is N12,000 a year.';
+    expect(combineFaqAndKnowledge(faq, 'The premium is N12,000 a year.')).toBe(faq);
+    expect(combineFaqAndKnowledge(faq, null)).toBe(faq);
   });
 });

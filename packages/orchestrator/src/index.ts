@@ -4,7 +4,7 @@ import {
   HandoffReason,
   ChannelType,
 } from '@ace/shared-types';
-import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap, bestFaqMatch } from '@ace/database';
+import { createSelfieRequest, prisma, selfieUploadUrl, withWhatsAppCredentials, normalizePhoneNumber, phoneNumberVariants, createTicketWithUniqueNumber, upsertEnrollee, Prisma, isOverlapViolation as isSlotTakenError, withDeadlockRetry, findAvailableSlots, serviceHoursFrom, callbackReference, bookingReference, newReference, nextServiceTime, outboundContactHoursFrom, ensureContactForPhone, loadServiceCatalogue, seedCatalogue, canRegister, formatLagos, BUSY_BOOKING_STATUSES, recordAgencyAuditBestEffort, isPlaceholderContactName, classifyComplaint, wantsAnonymity, looksLikeComplaint, PLATEAU_LGAS, recordKnowledgeGap, bestFaqMatch, combineFaqAndKnowledge } from '@ace/database';
 import {
   detectLanguage, asLanguage, t, LANGUAGE_NAMES, SPEAKABLE_LANGUAGES,
   explicitLanguageRequest, wantsLanguageMenu, parseLanguageChoice, LANGUAGE_MENU_MARKER,
@@ -1831,15 +1831,12 @@ export class ConversationOrchestrator {
     // match on a curated Q→A pair beats LLM synthesis anyway — it is the
     // operator's own wording, deterministic, free, and works with no OpenAI
     // key configured (the exact state of a fresh demo tenant).
+    //
+    // The FAQ no longer ENDS the turn: the knowledge base is searched as well,
+    // and when it holds detail behind the FAQ the citizen gets both — the
+    // agency's wording first, then the rest (combineFaqAndKnowledge). With
+    // nothing more in the knowledge base the FAQ answer is returned as before.
     const faqMatch = await this.tryFaqMatch(context.organizationId, cleanInput);
-    if (faqMatch) {
-      return {
-        replyText: faqMatch.answer,
-        intentDetected: 'FAQ_MATCH',
-        confidenceScore: faqMatch.score,
-        shouldHandoff: false,
-      };
-    }
 
     // ── 12.6 LLM intent routing — the second chance the keywords never had ───
     //
@@ -1856,7 +1853,9 @@ export class ConversationOrchestrator {
     // failure — no key, timeout, junk JSON, low confidence — the message falls
     // through to the RAG path exactly as before, so the feature degrades to
     // the status quo, never below it.
-    const classified = await this.classifyIntentWithLlm(cleanInput);
+    // An FAQ match means the citizen asked for information; it is not routed
+    // to an action.
+    const classified = faqMatch ? null : await this.classifyIntentWithLlm(cleanInput);
     if (classified) {
       const routed = await this.dispatchClassifiedIntent(classified, context, cleanInput, lang);
       if (routed) return routed;
@@ -1880,6 +1879,22 @@ export class ConversationOrchestrator {
       // agency was asked about.
       .map((r) => (r.title ? `From "${r.title}":\n${r.content}` : r.content))
       .join('\n---\n');
+
+    // The FAQ answered it and the knowledge base has nothing to add.
+    if (faqMatch && !kbContextText) {
+      return {
+        replyText: faqMatch.answer,
+        intentDetected: 'FAQ_MATCH',
+        confidenceScore: faqMatch.score,
+        shouldHandoff: false,
+      };
+    }
+
+    // What the model is given: the agency's FAQ answer FIRST, marked as its
+    // own wording, then the knowledge base excerpts.
+    const modelContext = faqMatch
+      ? `The agency's own approved answer to this question — give it FIRST, in these words, then add every further detail below that answers the question:\n${faqMatch.answer}\n---\n${kbContextText}`
+      : kbContextText;
 
     // Nothing approved answered it: count it as a knowledge gap so an officer
     // can find the answer and publish it (PRD §12). Not awaited for the reply.
@@ -1949,11 +1964,11 @@ export class ConversationOrchestrator {
           basePrompt,
           lang,
           channel: context.channel,
-          hasKnowledge: Boolean(kbContextText),
+          hasKnowledge: Boolean(modelContext),
         });
 
-        const userContent = kbContextText
-          ? `The following information from our knowledge base may be relevant:\n\n${kbContextText}\n\n---\n\nCustomer message: ${cleanInput}`
+        const userContent = modelContext
+          ? `The following information from our knowledge base may be relevant:\n\n${modelContext}\n\n---\n\nCustomer message: ${cleanInput}`
           : cleanInput;
 
         // Feed prior turns to the model.
@@ -1998,7 +2013,7 @@ export class ConversationOrchestrator {
           if (aiReply) {
             return {
               replyText: aiReply,
-              intentDetected: kbContextText ? 'KB_ANSWER' : 'GENERAL_INQUIRY',
+              intentDetected: faqMatch ? 'FAQ_KB_ANSWER' : kbContextText ? 'KB_ANSWER' : 'GENERAL_INQUIRY',
               confidenceScore: kbContextText ? 0.92 : 0.78,
               shouldHandoff: false,
             };
@@ -2038,7 +2053,7 @@ export class ConversationOrchestrator {
     // would have silently swallowed every inbound customer message.
     if (kbContextText) {
       return {
-        replyText: `${kbContextText}\n\nIs there anything else I can help you with?`,
+        replyText: `${faqMatch ? combineFaqAndKnowledge(faqMatch.answer, kbContextText) : kbContextText}\n\nIs there anything else I can help you with?`,
         intentDetected: 'KB_ANSWER_DEGRADED',
         confidenceScore: 0.6,
         shouldHandoff: false,

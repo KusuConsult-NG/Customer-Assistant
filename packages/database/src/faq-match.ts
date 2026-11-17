@@ -84,3 +84,25 @@ export function bestFaqMatch(
   }
   return best ? { answer: best.answer, score: best.score } : null;
 }
+
+/**
+ * The FAQ's answer AND what the knowledge base adds, as one reply.
+ *
+ * An FAQ is the agency's own short answer; the knowledge base often holds the
+ * detail behind it (venues, dates, offices). Answering from only one of them
+ * left callers with either a one-liner or no approved wording. The FAQ comes
+ * first because it is what the agency chose to say; knowledge lines that only
+ * repeat it are dropped, and when nothing new remains the FAQ stands alone.
+ */
+export function combineFaqAndKnowledge(faqAnswer: string, passage: string | null | undefined): string {
+  const faq = faqAnswer.trim();
+  if (!passage?.trim()) return faq;
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const faqNorm = norm(faq);
+  const extra = passage
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && norm(l).length > 0 && !faqNorm.includes(norm(l)));
+  if (extra.length === 0) return faq;
+  return `${faq}\n\nFurther details from our records:\n${extra.join('\n')}`;
+}
