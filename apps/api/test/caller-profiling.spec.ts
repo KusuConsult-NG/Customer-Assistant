@@ -45,6 +45,7 @@ import {
   firstMessageFor,
   pickPlateauMalePersona,
   renderWelcome,
+  storedPersonaFor,
   timeOfDayGreeting,
   welcomeBackMessageFor,
 } from '../src/agent-tools/agent-tool-catalog';
@@ -942,9 +943,12 @@ describe('The Contact Centre script on the phone line', () => {
 
     it('the script\'s rules come after the agency persona, and say they supersede older wording', () => {
       const prompt = agentPromptFor(plateau);
-      const personaAt = prompt.indexOf(plateau.aiPersonaPrompt);
+      // The persona as it is written into the prompt: its honours spelled out
+      // for the voice ("mni" -> "M N I", spoken-names.ts).
+      const persona = storedPersonaFor(plateau)!;
+      const personaAt = prompt.indexOf(persona);
       expect(personaAt).toBeGreaterThan(-1);
-      const afterPersona = personaAt + plateau.aiPersonaPrompt.length;
+      const afterPersona = personaAt + persona.length;
       const ruleAt = prompt.indexOf('THIS SCRIPT SUPERSEDES OLDER WORDING ABOVE', afterPersona);
       expect(ruleAt).toBeGreaterThan(-1);
       expect(prompt.slice(ruleAt)).toMatch(/the agency's own text included/);

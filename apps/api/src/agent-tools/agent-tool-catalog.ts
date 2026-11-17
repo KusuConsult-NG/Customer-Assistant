@@ -26,6 +26,7 @@
  *    credential and no tool takes an organizationId. That is why the catalogue
  *    is built per organization.
  */
+import { speakableHonours } from './spoken-names';
 import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 import {
   agentDefinition,
@@ -878,7 +879,10 @@ export interface AgentOrganization {
 export function storedPersonaFor(org: AgentOrganization): string | undefined {
   const text = org.aiPersonaPrompt?.trim();
   if (!text) return undefined;
-  return isPlateauStateOrg(org) ? text.replace(/\bNanpan\b/g, '{{representative_name}}') : text;
+  // Honours in the stored leadership list are spelled out ("mni" -> "M N I")
+  // so the agent says them, the same as in a knowledge lookup. spoken-names.ts.
+  const speakable = speakableHonours(text);
+  return isPlateauStateOrg(org) ? speakable.replace(/\bNanpan\b/g, '{{representative_name}}') : speakable;
 }
 
 export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): string {
@@ -902,6 +906,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `  - DO NOT SKIP PHASE 2: Even if a new caller states why they are calling first, acknowledge it warmly and complete the PHASE 2 questions first. Only an active life-threatening emergency (ongoing attack, fire, flood or injury) comes first — and even then, ask for their name and exact location/LGA right after checking safety.\n` +
     `  - COMPLAINTS: always read back the PHASE 6 summary and get the caller's confirmation before calling create-ticket (except in an active emergency), then give the reference exactly as PHASE 8 says.\n` +
     `  - LANGUAGE: ENGLISH ONLY, the whole call, whatever the caller speaks or asks for. Never switch and never offer to. If they cannot continue in English, offer a desk-officer callback (see Language — ENGLISH ONLY).\n` +
+    `- NAMES AND TITLES: when you give an official's name, say it EXACTLY as written in what a tool returned or in this prompt — every title before the name (His Excellency, Rt. Hon., Hon., Barr., Arc., Engr., Dr., Prof., Alhaji, Chief, Mrs.) and every honour after it, letter by letter as written (for example "Rt. Hon. Joyce Lohya Ramnap, M N I", "Edward Pwajok, S A N", "Gyang Buba, C F R"). Never shorten a name, never drop a title or an honour, and never add one that is not written.\n` +
     `- THE NAME IS OPTIONAL. Ask for it once, kindly. If the caller declines, say "That is perfectly fine. We can proceed with your report. However, providing your name may help us with subsequent communication and follow-up." and carry on. Never make help depend on it.\n` +
     `- KNOW WHO IS CALLING BEFORE ASKING: read the caller status at the top of this prompt. returning = do not ask their name or profile again, confirm the location in one question; partial = ask only what is missing; new = PHASE 1 and PHASE 2 in full; unknown = follow what lookup-customer returns (if it fails, treat them as new).\n` +
     `- NEVER REGISTER AN UNCONFIRMED REPORT: create-ticket is called with summaryConfirmed=true only after you read the PHASE 6 summary back and the caller said it is accurate — the tool refuses otherwise. The one exception is an active emergency (still happening, someone in danger), registered as soon as you have the essentials. Read the reference it returns slowly and exactly.\n` +
