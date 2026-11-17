@@ -1156,7 +1156,21 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       this.fail('the recent calls', err);
     }
-    const value = { ...summariseCallHealth(seen, windowHours), checkedAt: new Date().toISOString() };
+    // What the LIVE agent hangs up after, so calls cut off by a setting that
+    // has since been corrected stop being reported (endedUnderOldSetting).
+    // Unreadable means nothing is left out.
+    let liveSilenceSeconds: number | null = null;
+    try {
+      const live: any = await client.conversationalAi.agents.get(config.agentId);
+      const v = Number(live?.conversationConfig?.turn?.silenceEndCallTimeout);
+      liveSilenceSeconds = Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      liveSilenceSeconds = null;
+    }
+    const value = {
+      ...summariseCallHealth(seen, windowHours, { liveSilenceSeconds }),
+      checkedAt: new Date().toISOString(),
+    };
     this.callHealthCache.set(organizationId, { at: Date.now(), value });
     if (value.alert) {
       // Counts and reasons only — never a caller, a number or a transcript.

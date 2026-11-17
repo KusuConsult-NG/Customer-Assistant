@@ -20,6 +20,7 @@ import {
   describeSettingDrift,
   liveSettingsDrift,
   summariseCallHealth,
+  endedUnderOldSetting,
 } from '../src/agent-tools/agent-health';
 
 const PLATEAU: AgentOrganization = {
@@ -158,6 +159,31 @@ describe('How calls ended', () => {
     expect(summariseCallHealth([{ terminationReason: 'Internal error', status: 'failed' }], 24).alert).toBe(false);
   });
 
+  it('stops counting calls cut off by a silence timeout the live agent no longer has', () => {
+    // The 10-second hang-up was fixed; its endings kept the dashboard red for
+    // a day afterwards. ElevenLabs names the timeout in force in the reason.
+    const day = [
+      { terminationReason: 'Ending conversation after 10 seconds of silence', status: 'done' },
+      { terminationReason: 'Ending conversation after 10 seconds of silence', status: 'done' },
+      { terminationReason: 'end_call tool was called.', status: 'done' },
+      { terminationReason: '', status: 'failed' },
+    ];
+    const fixed = summariseCallHealth(day, 24, { liveSilenceSeconds: SILENCE_END_CALL_TIMEOUT_SECONDS });
+    expect(fixed).toMatchObject({ superseded: 2, total: 2, abnormal: 1, normal: 1 });
+    expect(fixed.reasons.map((r) => r.reason)).not.toContain('Ending conversation after 10 seconds of silence');
+    // Nothing fixed about a failed call: it stays.
+    expect(fixed.reasons.map((r) => r.reason)).toContain('(no reason; status failed)');
+  });
+
+  it('keeps them when the live agent is STILL on the old timeout, or cannot be read', () => {
+    // A refused sync leaves the agent on 10: those endings are current.
+    expect(endedUnderOldSetting('Ending conversation after 10 seconds of silence', 10)).toBe(false);
+    expect(endedUnderOldSetting('Ending conversation after 10 seconds of silence', null)).toBe(false);
+    // A silence ending at the CURRENT value is a real one and is counted.
+    expect(endedUnderOldSetting(`Ending conversation after ${SILENCE_END_CALL_TIMEOUT_SECONDS} seconds of silence`, SILENCE_END_CALL_TIMEOUT_SECONDS)).toBe(false);
+    expect(endedUnderOldSetting('Internal error', SILENCE_END_CALL_TIMEOUT_SECONDS)).toBe(false);
+  });
+
   it('reports no calls as no calls, not as a rate', () => {
     expect(summariseCallHealth([], 24)).toMatchObject({ total: 0, abnormalRate: null, alert: false, reasons: [] });
   });
@@ -219,5 +245,30 @@ describe('ElevenLabsAgentService.getCallHealth', () => {
     expect(requests[1].cursor).toBe('page2');
     expect(requests[0].callStartAfterUnix).toBeGreaterThan(Date.now() / 1000 - 25 * 3600);
     expect(health).toMatchObject({ total: 2, abnormal: 1, normal: 1 });
+  });
+
+  it('asks the LIVE agent for its silence timeout before leaving old endings out', async () => {
+    const day = {
+      conversations: [
+        { status: 'done', terminationReason: 'Ending conversation after 10 seconds of silence' },
+        { status: 'done', terminationReason: 'end_call tool was called.' },
+      ],
+      hasMore: false,
+    };
+    const withLive = (seconds: number) => {
+      const api = new ElevenLabsApi();
+      (api as any).for = () => ({
+        conversationalAi: {
+          conversations: { list: async () => day },
+          agents: { get: async () => ({ conversationConfig: { turn: { silenceEndCallTimeout: seconds } } }) },
+        },
+      });
+      return new ElevenLabsAgentService(api);
+    };
+    expect(await withLive(SILENCE_END_CALL_TIMEOUT_SECONDS).getCallHealth(orgId, 24, { fresh: true }))
+      .toMatchObject({ superseded: 1, total: 1, abnormal: 0 });
+    // Sync refused: still 10 on the live agent, so it is still a problem.
+    expect(await withLive(10).getCallHealth(orgId, 24, { fresh: true }))
+      .toMatchObject({ superseded: 0, total: 2, abnormal: 1 });
   });
 });

@@ -154,6 +154,11 @@ export function classifyEnding(reason: string | undefined | null, status?: strin
 
 export interface CallHealth {
   windowHours: number;
+  /**
+   * Calls left out of every count below because they ended under a setting
+   * that has since been corrected on the live agent (see `endedUnderOldSetting`).
+   */
+  superseded: number;
   total: number;
   normal: number;
   abnormal: number;
@@ -171,15 +176,43 @@ export const CALL_HEALTH_MIN_CALLS = 5;
 /** Share of abnormal endings at which the dashboard raises the alarm. */
 export const CALL_HEALTH_ALERT_RATE = 0.1;
 
+/**
+ * Whether a call ended on a silence timeout OTHER than the one the live agent
+ * has now. ElevenLabs writes the timeout in force into the reason ("Ending
+ * conversation after 10 seconds of silence"), so a call cut off by the old
+ * 10-second setting says so — and once the live agent is confirmed on the
+ * current value, that ending describes a problem already fixed, not one
+ * callers still meet. Reporting it for a day after the fix taught officers
+ * the list was stale.
+ *
+ * `liveSilenceSeconds` must be what the LIVE agent holds, read from
+ * ElevenLabs, never what this platform expects: if a sync was refused and the
+ * agent is still on 10, those endings are current and must stay counted.
+ */
+export function endedUnderOldSetting(reason: string | null | undefined, liveSilenceSeconds: number | null): boolean {
+  if (liveSilenceSeconds === null) return false;
+  const m = /after\s+(\d+(?:\.\d+)?)\s*seconds?\s+of\s+silence/i.exec(reason ?? '');
+  return !!m && Number(m[1]) !== liveSilenceSeconds;
+}
+
 export function summariseCallHealth(
   conversations: { terminationReason?: string | null; status?: string | null }[],
-  windowHours: number
+  windowHours: number,
+  options: { liveSilenceSeconds?: number | null } = {}
 ): CallHealth {
   const tally = new Map<string, { kind: EndingKind; count: number }>();
   let normal = 0;
   let abnormal = 0;
   let unknown = 0;
-  for (const c of conversations) {
+  let superseded = 0;
+  const current = conversations.filter((c) => {
+    if (endedUnderOldSetting(c.terminationReason, options.liveSilenceSeconds ?? null)) {
+      superseded++;
+      return false;
+    }
+    return true;
+  });
+  for (const c of current) {
     const kind = classifyEnding(c.terminationReason, c.status);
     if (kind === 'normal') normal++;
     else if (kind === 'abnormal') abnormal++;
@@ -189,10 +222,11 @@ export function summariseCallHealth(
     t.count++;
     tally.set(reason, t);
   }
-  const total = conversations.length;
+  const total = current.length;
   const abnormalRate = total ? abnormal / total : null;
   return {
     windowHours,
+    superseded,
     total,
     normal,
     abnormal,
