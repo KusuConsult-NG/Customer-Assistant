@@ -168,7 +168,40 @@ export interface CallHealth {
   /** True when enough calls ended abnormally that someone should look. */
   alert: boolean;
   /** Every reason seen, most frequent first, so nothing hides behind a category. */
-  reasons: { reason: string; kind: EndingKind; count: number }[];
+  reasons: {
+    reason: string;
+    kind: EndingKind;
+    count: number;
+    /** When this ending was last seen (ISO), so an old problem can be told from a new one. */
+    lastAt?: string | null;
+    /**
+     * For an ending that is NOT normal: the most recent calls that ended this
+     * way, enough to open each in ElevenLabs' Call History and read why. "Failed,
+     * no reason" was otherwise impossible to trace from here. Never a caller, a
+     * number or a transcript.
+     */
+    calls?: EndedCall[];
+  }[];
+}
+
+/** One call's identity, never its content. */
+export interface EndedCall {
+  conversationId: string;
+  at: string | null;
+  direction: 'inbound' | 'outbound' | null;
+  durationSecs: number | null;
+}
+
+/** How many calls are listed under one abnormal reason. */
+export const CALLS_LISTED_PER_REASON = 5;
+
+export interface ConversationEnding {
+  terminationReason?: string | null;
+  status?: string | null;
+  conversationId?: string | null;
+  startTimeUnixSecs?: number | null;
+  direction?: string | null;
+  callDurationSecs?: number | null;
 }
 
 /** Below this many calls one bad ending is noise, not a pattern. */
@@ -196,11 +229,11 @@ export function endedUnderOldSetting(reason: string | null | undefined, liveSile
 }
 
 export function summariseCallHealth(
-  conversations: { terminationReason?: string | null; status?: string | null }[],
+  conversations: ConversationEnding[],
   windowHours: number,
   options: { liveSilenceSeconds?: number | null } = {}
 ): CallHealth {
-  const tally = new Map<string, { kind: EndingKind; count: number }>();
+  const tally = new Map<string, { kind: EndingKind; count: number; last: number; calls: EndedCall[] }>();
   let normal = 0;
   let abnormal = 0;
   let unknown = 0;
@@ -218,8 +251,18 @@ export function summariseCallHealth(
     else if (kind === 'abnormal') abnormal++;
     else unknown++;
     const reason = (c.terminationReason ?? '').trim() || (c.status ? `(no reason; status ${c.status})` : '(no reason given)');
-    const t = tally.get(reason) ?? { kind, count: 0 };
+    const t = tally.get(reason) ?? { kind, count: 0, last: 0, calls: [] };
     t.count++;
+    const startedAt = Number(c.startTimeUnixSecs) > 0 ? Number(c.startTimeUnixSecs) : 0;
+    t.last = Math.max(t.last, startedAt);
+    if (kind !== 'normal' && c.conversationId) {
+      t.calls.push({
+        conversationId: c.conversationId,
+        at: startedAt ? new Date(startedAt * 1000).toISOString() : null,
+        direction: c.direction === 'inbound' || c.direction === 'outbound' ? c.direction : null,
+        durationSecs: Number.isFinite(Number(c.callDurationSecs)) && c.callDurationSecs !== null ? Number(c.callDurationSecs) : null,
+      });
+    }
     tally.set(reason, t);
   }
   const total = current.length;
@@ -234,7 +277,19 @@ export function summariseCallHealth(
     abnormalRate,
     alert: total >= CALL_HEALTH_MIN_CALLS && abnormalRate !== null && abnormalRate >= CALL_HEALTH_ALERT_RATE,
     reasons: [...tally.entries()]
-      .map(([reason, t]) => ({ reason, kind: t.kind, count: t.count }))
+      .map(([reason, t]) => ({
+        reason,
+        kind: t.kind,
+        count: t.count,
+        lastAt: t.last ? new Date(t.last * 1000).toISOString() : null,
+        ...(t.kind === 'normal'
+          ? {}
+          : {
+              calls: t.calls
+                .sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))
+                .slice(0, CALLS_LISTED_PER_REASON),
+            }),
+      }))
       .sort((a, b) => b.count - a.count),
   };
 }

@@ -2403,15 +2403,28 @@ function CallHealthPanel({ health, error }: { health: any; error: string | null 
       )}
       <ul className="space-y-1.5">
         {health.reasons.map((r: any, i: number) => (
-          <li key={i} className="flex items-start justify-between gap-3 text-xs">
+          <li key={i} className="flex flex-wrap items-start justify-between gap-x-3 text-xs">
             <span className={r.kind === 'abnormal' ? 'text-red-700 dark:text-red-300' : r.kind === 'unknown' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-300'}>
               {r.reason}
               <span className="ml-1.5 text-slate-500 dark:text-slate-400">({r.kind === 'abnormal' ? 'abnormal' : r.kind === 'unknown' ? 'not recognised' : 'normal'})</span>
             </span>
             <span className="font-semibold text-slate-700 dark:text-slate-300 tabular-nums">{r.count}</span>
+            {r.kind !== 'normal' && (r.lastAt || r.calls?.length) ? (
+              <div className="basis-full text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 mt-0.5">
+                {r.lastAt && <p>Last: {new Date(r.lastAt).toLocaleString()}</p>}
+                {/* Open each in ElevenLabs → Agents → Call History to read why it ended this way. */}
+                {(r.calls ?? []).map((c: any) => (
+                  <p key={c.conversationId} className="font-mono">
+                    {c.at ? new Date(c.at).toLocaleString() : 'time unknown'} · {c.direction ?? 'direction unknown'}
+                    {c.durationSecs !== null && c.durationSecs !== undefined ? ` · ${c.durationSecs}s` : ''} · {c.conversationId}
+                  </p>
+                ))}
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>
+
     </div>
   );
 }

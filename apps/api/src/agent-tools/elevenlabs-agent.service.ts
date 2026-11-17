@@ -45,7 +45,7 @@ import { Prisma, encryptSecret, isEncrypted, prisma, secretFingerprint } from '@
 import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import { lastNameRotation, NameRotationRecord, recordNameRotation } from './plateau-name-rotation';
-import { CallHealth, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
+import { CallHealth, ConversationEnding, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
 import {
   agentDefinitionFor,
   isPlateauStateOrg,
@@ -1135,7 +1135,7 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     }
     const client = this.client(apiKey);
     const after = Math.floor(Date.now() / 1000) - windowHours * 3600;
-    const seen: { terminationReason?: string | null; status?: string | null }[] = [];
+    const seen: ConversationEnding[] = [];
     let cursor: string | undefined;
     try {
       for (let page = 0; page < CALL_HEALTH_MAX_PAGES; page++) {
@@ -1148,7 +1148,16 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
         for (const c of res?.conversations ?? []) {
           // A conversation still in progress has not ended, normally or otherwise.
           if (c?.status === 'in-progress' || c?.status === 'initiated') continue;
-          seen.push({ terminationReason: c?.terminationReason ?? null, status: c?.status ?? null });
+          // Identity and timing only — the summary carries a transcript
+          // summary and title too, and those are content.
+          seen.push({
+            terminationReason: c?.terminationReason ?? null,
+            status: c?.status ?? null,
+            conversationId: c?.conversationId ?? null,
+            startTimeUnixSecs: c?.startTimeUnixSecs ?? null,
+            direction: c?.direction ?? null,
+            callDurationSecs: c?.callDurationSecs ?? null,
+          });
         }
         if (!res?.hasMore || !res?.nextCursor) break;
         cursor = res.nextCursor;

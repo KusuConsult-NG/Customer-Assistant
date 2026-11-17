@@ -147,7 +147,7 @@ describe('How calls ended', () => {
     expect(health).toMatchObject({ total: 10, abnormal: 6, normal: 4, unknown: 0, alert: true });
     expect(health.abnormalRate).toBeCloseTo(0.6);
     // Every raw reason is shown, most frequent first.
-    expect(health.reasons[0]).toEqual({ reason: 'Call ended due to silence timeout', kind: 'abnormal', count: 6 });
+    expect(health.reasons[0]).toMatchObject({ reason: 'Call ended due to silence timeout', kind: 'abnormal', count: 6 });
   });
 
   it('stays quiet on an ordinary day and on too few calls to tell', () => {
@@ -182,6 +182,28 @@ describe('How calls ended', () => {
     // A silence ending at the CURRENT value is a real one and is counted.
     expect(endedUnderOldSetting(`Ending conversation after ${SILENCE_END_CALL_TIMEOUT_SECONDS} seconds of silence`, SILENCE_END_CALL_TIMEOUT_SECONDS)).toBe(false);
     expect(endedUnderOldSetting('Internal error', SILENCE_END_CALL_TIMEOUT_SECONDS)).toBe(false);
+  });
+
+  it('says when, which way and which call, for every ending that is not normal', () => {
+    // "(no reason; status failed)" could not be traced from the dashboard.
+    const health = summariseCallHealth(
+      [
+        { status: 'failed', conversationId: 'conv_old', startTimeUnixSecs: 1_800_000_000, direction: 'outbound', callDurationSecs: 0 },
+        { status: 'failed', conversationId: 'conv_new', startTimeUnixSecs: 1_800_000_600, direction: 'inbound', callDurationSecs: 3 },
+        { status: 'done', terminationReason: 'end_call tool was called.', conversationId: 'conv_ok', startTimeUnixSecs: 1_800_000_300 },
+      ],
+      24
+    );
+    const failed = health.reasons.find((r) => r.reason === '(no reason; status failed)')!;
+    expect(failed.lastAt).toBe(new Date(1_800_000_600_000).toISOString());
+    expect(failed.calls).toEqual([
+      { conversationId: 'conv_new', at: new Date(1_800_000_600_000).toISOString(), direction: 'inbound', durationSecs: 3 },
+      { conversationId: 'conv_old', at: new Date(1_800_000_000_000).toISOString(), direction: 'outbound', durationSecs: 0 },
+    ]);
+    // A normal ending lists no calls: there is nothing to investigate.
+    expect(health.reasons.find((r) => r.kind === 'normal')!.calls).toBeUndefined();
+    // Identity only, never content.
+    expect(JSON.stringify(health)).not.toMatch(/summary|transcript/i);
   });
 
   it('reports no calls as no calls, not as a rate', () => {
