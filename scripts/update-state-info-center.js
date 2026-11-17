@@ -652,7 +652,7 @@ async function main() {
   console.log('======================================================\n');
 }
 
-module.exports = { STATE_PERSONA_PROMPT, documentFor };
+module.exports = { STATE_PERSONA_PROMPT, STATE_WELCOME_MESSAGE, documentFor };
 
 // Only when run as a script: loading this file to read its persona must not
 // rewrite a database.
