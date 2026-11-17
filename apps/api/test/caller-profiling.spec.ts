@@ -44,7 +44,9 @@ import {
   dynamicVariablesFor,
   firstMessageFor,
   pickPlateauMalePersona,
+  openingForUnknownCaller,
   renderWelcome,
+  storedPersonaFor,
   timeOfDayGreeting,
   welcomeBackMessageFor,
 } from '../src/agent-tools/agent-tool-catalog';
@@ -223,6 +225,8 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.data.prompt).toContain('still calling from Angwan Rogo, Ali Kazaure ward, Jos South');
         // A saved language changes nothing: the line is English only.
         expect(res.body.speak).toMatch(/It is a pleasure speaking with you again/);
+        // Recognised by number, not by an answer: "Welcome back", never "Thank you".
+        expect(res.body.speak).toMatch(/^Welcome back, /);
         expect(res.body.speak).not.toMatch(/Barka/);
         expect(res.body.data.prompt).not.toMatch(/language_detection/);
         expect(res.body.data.prompt).toMatch(/Speak English only/);
@@ -839,6 +843,27 @@ describe('The Contact Centre script on the phone line', () => {
       expect(firstMessageFor(plateau)).toMatch(/^<governor>Hello, and welcome/);
     });
 
+    // Returning callers were asked their name on every call: the stored opening
+    // is spoken before lookup-customer runs, and it ended "May I have your full
+    // name?". Callers ring from the same number, so the lookup recognises them —
+    // the opening must not ask first.
+    it('the stored opening does not ask for a name before the caller has been looked up', () => {
+      const stored = firstMessageFor(plateau);
+      expect(stored).not.toMatch(/your (full )?name/i);
+      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. How may I help you today\?$/);
+      // The agency's own variant of the closing question is caught too.
+      expect(
+        openingForUnknownCaller("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. May I have your full name?")
+      ).toBe("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. How may I help you today?");
+      // The whole closing sentence goes, not just the question inside it.
+      expect(openingForUnknownCaller('Hello, and welcome. My name is Nanpan. To get started, may I kindly know your full name?'))
+        .toBe('Hello, and welcome. My name is Nanpan. How may I help you today?');
+      // Any other ending is the agency's own wording and stays.
+      expect(openingForUnknownCaller("I'm Gwaman, the virtual assistant.")).toBe("I'm Gwaman, the virtual assistant.");
+      // The rule the agent works to says the same.
+      expect(agentPromptFor(plateau)).toMatch(/NEVER ask for a name before lookup-customer has answered/);
+    });
+
     // By the agency's decision the Governor greets and hands over: he does not
     // say his name or his title.
     it('the Governor greets without his name or title', () => {
@@ -942,9 +967,12 @@ describe('The Contact Centre script on the phone line', () => {
 
     it('the script\'s rules come after the agency persona, and say they supersede older wording', () => {
       const prompt = agentPromptFor(plateau);
-      const personaAt = prompt.indexOf(plateau.aiPersonaPrompt);
+      // The persona as it is written into the prompt: its honours spelled out
+      // for the voice ("mni" -> "M N I", spoken-names.ts).
+      const persona = storedPersonaFor(plateau)!;
+      const personaAt = prompt.indexOf(persona);
       expect(personaAt).toBeGreaterThan(-1);
-      const afterPersona = personaAt + plateau.aiPersonaPrompt.length;
+      const afterPersona = personaAt + persona.length;
       const ruleAt = prompt.indexOf('THIS SCRIPT SUPERSEDES OLDER WORDING ABOVE', afterPersona);
       expect(ruleAt).toBeGreaterThan(-1);
       expect(prompt.slice(ruleAt)).toMatch(/the agency's own text included/);

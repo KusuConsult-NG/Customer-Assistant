@@ -22,6 +22,7 @@ import { prisma } from '@ace/database';
 import {
   dynamicVariablesFor,
   isPlateauStateOrg,
+  openingForUnknownCaller,
   pickPlateauMalePersona,
   renderWelcome,
 } from './agent-tool-catalog';
@@ -95,7 +96,7 @@ export async function rotatePlateauAssistantName(
       body: JSON.stringify({
         conversation_config: {
           agent: {
-            first_message: renderWelcome(org, new Date(), next),
+            first_message: openingForUnknownCaller(renderWelcome(org, new Date(), next)),
             dynamic_variables: { dynamic_variable_placeholders: dynamicVariablesFor(org, next) },
           },
         },

@@ -26,6 +26,7 @@
  */
 import { reportRegisteredReply, urgentReportReply } from './spoken-replies';
 import { rotatePlateauAssistantName } from './plateau-name-rotation';
+import { speakableHonours } from './spoken-names';
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { relevantPassage } from './relevant-passage';
 import { AgentKeyGuard } from './agent-key.guard';
@@ -413,7 +414,10 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       if (ours) {
         greetingSentence = 'To get started, may I kindly know your full name?';
       } else {
-        greetingSentence = `Thank you very much, ${contact.fullName}. It is a pleasure speaking with you again. Now, how may the Plateau State Government assist you today?`;
+        // "Welcome back", not "Thank you": the opening no longer asks for a
+        // name, so this caller has given none — they were recognised by the
+        // number they always ring from.
+        greetingSentence = `Welcome back, ${contact.fullName}. It is a pleasure speaking with you again.`;
       }
 
       const sentences: string[] = [greetingSentence];
@@ -1698,7 +1702,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         .sort((a, b) => b.score - a.score);
 
       if (scored.length > 0) {
-        return { ok: true, speak: scored[0].f.answer, data: { source: 'faq' } };
+        return { ok: true, speak: speakableHonours(scored[0].f.answer), data: { source: 'faq' } };
       }
 
       // Knowledge base fallback — strip markdown before speaking
@@ -1711,7 +1715,17 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         .filter(Boolean);
       const passage = relevantPassage(contents, q);
       if (passage) {
-        return { ok: true, speak: passage, data: { source: 'knowledge' } };
+        // Honours spelled out so the voice says them ("mni" -> "M N I"), and
+        // the instruction to read names whole. spoken-names.ts.
+        return {
+          ok: true,
+          speak: speakableHonours(passage),
+          data: {
+            source: 'knowledge',
+            instruction:
+              'Say every name exactly as written here, with all its titles before and honours after. Do not shorten or drop any.',
+          },
+        };
       }
 
       return {
