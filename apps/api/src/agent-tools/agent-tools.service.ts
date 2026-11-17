@@ -187,6 +187,13 @@ function isSlotClash(err: unknown): boolean {
   return err instanceof HttpException && err.getStatus() === HttpStatus.CONFLICT;
 }
 
+/**
+ * How much of the knowledge base search-knowledge hands the agent. Large
+ * enough for the State's longest lists (the 14-event lineup is about 2,000
+ * characters); relevantPassage still keeps only the lines that answer.
+ */
+export const SEARCH_KNOWLEDGE_PASSAGE_CHARS = 4_000;
+
 @Injectable()
 export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('AgentTools');
@@ -1710,10 +1717,14 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // of whichever document ranked first. See relevant-passage.ts.
       const results = await this.knowledge.searchPlayground(organizationId, q).catch(() => null);
       const contents = (Array.isArray(results) ? results : [])
-        .slice(0, 3)
+        .slice(0, 5)
         .map((r: any) => (r?.content ? stripMd(String(r.content)) : ''))
         .filter(Boolean);
-      const passage = relevantPassage(contents, q);
+      // Room for a whole list (every event of a lineup, every commissioner):
+      // 1,200 characters stopped part-way through one, and the caller was given
+      // the first few as if they were all. The COMPLETE ANSWERS guardrail paces
+      // a long one on the call.
+      const passage = relevantPassage(contents, q, SEARCH_KNOWLEDGE_PASSAGE_CHARS);
       if (passage) {
         // Honours spelled out so the voice says them ("mni" -> "M N I"), and
         // the instruction to read names whole. spoken-names.ts.
@@ -1723,7 +1734,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
           data: {
             source: 'knowledge',
             instruction:
-              'Say every name exactly as written here, with all its titles before and honours after. Do not shorten or drop any.',
+              'Say every name exactly as written here, with all its titles before and honours after. Do not shorten or drop any. ' +
+              'Give the caller EVERY item and detail here that answers their question — dates, venues, organisers, offices, numbers. ' +
+              'If there are more than three items, say how many there are, give three at a time, and ask whether to continue.',
           },
         };
       }

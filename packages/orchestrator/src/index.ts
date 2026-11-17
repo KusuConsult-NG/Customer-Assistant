@@ -108,10 +108,31 @@ export interface QdrantSearchResult {
 const RAG_QUERY_MAX_CHARS = 500;
 
 /**
- * Maximum number of vector chunks to retrieve per query.
- * Keeping this tight (3) prevents context window bloat in the LLM prompt.
+ * Maximum number of chunks to retrieve per query.
+ *
+ * Was 3, "to prevent context bloat" — and the answers were incomplete because
+ * of it: a question whose answer spans a document (a whole events lineup, every
+ * commissioner) got a third of it, and the model answered from the third. The
+ * context is bounded by RAG_CONTEXT_MAX_CHARS instead.
  */
-const RAG_TOP_K = 3;
+const RAG_TOP_K = 6;
+
+/**
+ * A document this short is given to the model WHOLE when any part of it
+ * matched, so a list is never answered from its first chunk. Chunks are about
+ * 1,800 characters, so eight is roughly a 14,000-character document.
+ */
+const RAG_WHOLE_DOCUMENT_MAX_CHUNKS = 8;
+
+/** Upper bound on the knowledge text placed in one prompt. */
+const RAG_CONTEXT_MAX_CHARS = 24_000;
+
+/**
+ * Reply budget for a TEXT channel. 400 tokens (~300 words) cut a complete
+ * answer off mid-list. Voice keeps the short budget: it is spoken.
+ */
+const TEXT_REPLY_MAX_TOKENS = 1_600;
+const VOICE_REPLY_MAX_TOKENS = 400;
 
 /**
  * Embedding model and its output dimensionality.
@@ -1134,6 +1155,27 @@ export function describeConversationFlow(
  * The guardrails stay last, after the tenant's own persona, so a persona that
  * instructs the opposite loses the conflict.
  */
+/**
+ * Answer in FULL on a text channel.
+ *
+ * Citizens asking on WhatsApp were given part of what the records hold: a few
+ * events "and more", two commissioners of fourteen. The shared persona was
+ * written for the phone ("Never read long lists out loud", "short, natural
+ * sentences") and the model obeyed it in writing too. A written reply has no
+ * such limit, so on a text channel this rule wins.
+ */
+function completeAnswerRule(hasKnowledge?: boolean): string {
+  if (!hasKnowledge) return '';
+  return (
+    `- GIVE THE COMPLETE ANSWER. Include every detail in the information above that answers the question: ` +
+    `every item of a list, and for each its date, time, venue, organiser, name and title, fee, requirement, ` +
+    `office address and phone number where given. Never shorten a list, never write "and more", "among ` +
+    `others" or "etc." in place of items you have, and never leave details out to be brief. Use a numbered ` +
+    `list for several items. Where a detail is marked "to be announced" or "to be confirmed", say exactly that. ` +
+    `This overrides any instruction above to keep replies short or to avoid lists — those are for phone calls.\n`
+  );
+}
+
 export function buildSynthesisSystemPrompt(input: {
   basePrompt: string;
   lang: Language;
@@ -1195,6 +1237,7 @@ export function buildSynthesisSystemPrompt(input: {
     `- If asked whether you are an AI, a bot, or a human, say plainly that you are an AI assistant. Never claim to be a person.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If you do not have a fact, say so and offer a human colleague.\n` +
     `- Only state something as confirmed when the information above shows it was actually done.\n` +
+    (onACall ? '' : completeAnswerRule(input.hasKnowledge)) +
     unknownRule +
     languageRule
   );
@@ -1337,6 +1380,72 @@ export class ConversationOrchestrator {
       shouldHandoff: true,
       handoffReason: HandoffReason.TOOL_FAILURE,
     };
+  }
+
+  /**
+   * Give the model the WHOLE of any short document that matched, in order.
+   *
+   * Retrieval returns chunks, and a chunk is a cut every ~1,800 characters, not
+   * a unit of meaning: the December events lineup is three chunks, and a
+   * question about "the events" retrieved one of them, so the citizen was told
+   * a third of the lineup as if it were all of it. A document short enough is
+   * now included whole; a long one keeps only its matching chunks. Everything
+   * stays within RAG_CONTEXT_MAX_CHARS, matched documents first. Any failure
+   * returns the original results — this widens an answer, it never blocks one.
+   */
+  private async wholeShortDocuments(results: QdrantSearchResult[]): Promise<QdrantSearchResult[]> {
+    if (results.length === 0) return results;
+    try {
+      const docIds = [...new Set(results.map((r) => r.documentId).filter(Boolean))];
+      if (docIds.length === 0) return results;
+      // One bounded read per document (at most RAG_TOP_K of them): taking one
+      // more chunk than the limit is how a long document is recognised without
+      // reading all of it, and a shared `take` would let one long document
+      // crowd the others out.
+      const byDoc = new Map<string, any[]>();
+      await Promise.all(
+        docIds.map(async (documentId) => {
+          const rows: any[] = await (prisma as any).documentChunk.findMany({
+            where: { documentId },
+            orderBy: { chunkIndex: 'asc' },
+            take: RAG_WHOLE_DOCUMENT_MAX_CHUNKS + 1,
+            include: { document: { select: { title: true } } },
+          });
+          if (Array.isArray(rows)) {
+            byDoc.set(documentId, rows.filter((row) => row?.documentId === documentId));
+          }
+        })
+      );
+      const out: QdrantSearchResult[] = [];
+      const seen = new Set<string>();
+      let used = 0;
+      const add = (r: QdrantSearchResult) => {
+        if (seen.has(r.chunkId) || used + r.content.length > RAG_CONTEXT_MAX_CHARS) return;
+        seen.add(r.chunkId);
+        used += r.content.length;
+        out.push(r);
+      };
+      // Matched documents in the order retrieval ranked them.
+      for (const r of results) {
+        const whole = r.documentId ? byDoc.get(r.documentId) : undefined;
+        if (whole && whole.length <= RAG_WHOLE_DOCUMENT_MAX_CHUNKS) {
+          for (const c of whole.sort((a, b) => a.chunkIndex - b.chunkIndex)) {
+            add({
+              chunkId: c.id,
+              documentId: c.documentId,
+              title: c.document?.title ?? r.title,
+              content: c.content,
+              score: r.score,
+            });
+          }
+        } else {
+          add(r);
+        }
+      }
+      return out.length ? out : results;
+    } catch {
+      return results;
+    }
   }
 
   async processIncomingMessage(
@@ -1821,8 +1930,7 @@ export class ConversationOrchestrator {
     // Keep reasonably-confident results. The threshold is `>=` because the Postgres
     // ILIKE fallback assigns descending scores 0.6 / 0.55 / 0.5 — a strict `>` threw
     // away its third hit every time, for no reason.
-    const kbContextText = searchResults
-      .filter((r) => r.score >= 0.5)
+    const kbContextText = (await this.wholeShortDocuments(searchResults.filter((r) => r.score >= 0.5)))
       // Name the SOURCE of each excerpt. Chunking cuts at 1800 characters
       // regardless of structure, so an excerpt from the middle of an entry
       // often names nobody — and an unattributed paragraph of offices and
@@ -1931,7 +2039,7 @@ export class ConversationOrchestrator {
           },
           body: JSON.stringify({
             model: llmConfig().chatModel,
-            max_tokens: 400,
+            max_tokens: context.channel === ChannelType.VOICE ? VOICE_REPLY_MAX_TOKENS : TEXT_REPLY_MAX_TOKENS,
             temperature: 0.6,
             messages: [
               { role: 'system', content: systemPrompt },

@@ -9,6 +9,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { relevantPassage } from '../src/agent-tools/relevant-passage';
+import { SEARCH_KNOWLEDGE_PASSAGE_CHARS } from '../src/agent-tools/agent-tools.service';
+import { agentPromptFor } from '../src/agent-tools/agent-tool-catalog';
 
 const DOC = readFileSync(
   join(__dirname, '..', '..', '..', 'data', 'mda-knowledge', 'December-Tourism-Month-2026-Events.md'),
@@ -26,6 +28,21 @@ describe('December Tourism Month 2026 events', () => {
   ])('%s', (question, answer) => {
     const passage = relevantPassage([DOC], question);
     expect(passage).toMatch(answer);
+  });
+
+  it('hands the phone agent EVERY event for a broad question, not the first few', () => {
+    // 1,200 characters stopped part-way through the lineup and the caller was
+    // given the first events as if they were all of them.
+    const passage = relevantPassage([DOC], 'What events are happening in December?', SEARCH_KNOWLEDGE_PASSAGE_CHARS)!;
+    for (const event of ['Jos Family Christmas Festival', 'Jos Food Festival', 'Urban Fest', 'New Year Crossover', 'Plateau Cultural Carnival', 'ONE Movie Fest']) {
+      expect(passage).toContain(event);
+    }
+  });
+
+  it('tells the phone agent to give all of it, paced, rather than shorten it', () => {
+    const prompt = agentPromptFor({ name: 'Plateau State Government Citizen Contact Centre', slug: 'plateau-state', timezone: 'Africa/Lagos', welcomeMessage: null, aiPersonaPrompt: null } as any);
+    expect(prompt).toContain('COMPLETE ANSWERS');
+    expect(prompt).toMatch(/give three at a time, then ask "Shall I continue\?"/);
   });
 
   it('lists all thirteen events and PLAFEST', () => {
