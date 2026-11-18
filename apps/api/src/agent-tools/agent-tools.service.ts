@@ -1755,7 +1755,18 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // Strip markdown before speaking.
       // The passage that answers the question, not the first 500 characters
       // of whichever document ranked first. See relevant-passage.ts.
-      const results = await this.knowledge.searchPlayground(organizationId, q).catch(() => null);
+      const searchPromise = this.knowledge.searchPlayground(organizationId, q).catch(() => null);
+      const results = faq
+        ? await (() => {
+            let timer: NodeJS.Timeout | undefined;
+            return Promise.race([
+              searchPromise,
+              new Promise<null>((resolve) => {
+                timer = setTimeout(() => resolve(null), 1_500);
+              }),
+            ]).finally(() => clearTimeout(timer));
+          })()
+        : await searchPromise;
       const contents = (await this.wholeShortDocuments(Array.isArray(results) ? results.slice(0, 5) : []))
         .map((c) => stripMd(c))
         .filter(Boolean);
