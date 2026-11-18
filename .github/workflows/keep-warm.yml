@@ -51,9 +51,9 @@ name: Keep API warm
 
 on:
   schedule:
-    # Every 10 minutes. Render's free tier sleeps after 15 minutes idle, so
-    # this leaves room for a late run without the instance dropping off.
-    - cron: '*/10 * * * *'
+    # Every 5 minutes. Render's free tier sleeps after 15 minutes idle, so
+    # this leaves 10 minutes of headroom for GitHub Actions queue delays.
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:
