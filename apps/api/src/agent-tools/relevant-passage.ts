@@ -51,8 +51,9 @@ export function relevantPassage(contents: string[], query: string, budget = 1200
   // others: it is what was asked for, and in rank order the budget could be
   // spent on stray matching lines elsewhere before reaching it.
   const titleMatches = (c: string) => {
-    const first = c.split('\n').map((l) => l.trim()).find(Boolean);
-    return first ? hitsIn(first) >= threshold : false;
+    const [first, second] = c.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!first) return false;
+    return hitsIn(/^also known as\b/i.test(second ?? '') ? `${first} ${second}` : first) >= threshold;
   };
   const ordered = [...contents.filter(titleMatches), ...contents.filter((c) => !titleMatches(c))];
 
@@ -68,7 +69,11 @@ export function relevantPassage(contents: string[], query: string, budget = 1200
     // caller was told what Tourism Month is and not one event in it. A question
     // about one thing in it ("Urban Fest") does not match the title and still
     // gets just its line.
-    if (lines.length > 0 && hitsIn(lines[0]) >= threshold) {
+    // The heading is the title plus an "Also known as" line straight under it:
+    // "What can I do in Jos this Christmas?" names the lineup by one of its
+    // other names ("Christmas events in Jos") and got four lines, not the list.
+    const heading = /^also known as\b/i.test(lines[1] ?? '') ? `${lines[0]} ${lines[1]}` : lines[0] ?? '';
+    if (lines.length > 0 && hitsIn(heading) >= threshold) {
       lines.forEach((_, i) => keep.add(i));
     }
     lines.forEach((line, i) => {

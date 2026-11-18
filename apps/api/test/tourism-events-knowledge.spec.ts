@@ -39,6 +39,27 @@ describe('December Tourism Month 2026 events', () => {
     }
   });
 
+  it.each([
+    'What can I do in Jos this Christmas?',
+    'What are the activities for the festive season?',
+    'What is on for ONE PLATEAU FEST?',
+  ])('gives every event when the question names the lineup by another of its names: %s', (question) => {
+    // These matched only the "Also known as" line, so the caller got the
+    // introduction and four lines instead of the events.
+    const passage = relevantPassage([DOC], question, SEARCH_KNOWLEDGE_PASSAGE_CHARS)!;
+    for (const event of ['Jos Family Christmas Festival', 'Urban Fest', 'New Year Crossover']) {
+      expect(passage).toContain(event);
+    }
+  });
+
+  it('tells the phone agent to search before ever saying it does not have something', () => {
+    // A caller heard the whole lineup one evening and was told it was not
+    // there the next morning: whether to search was left to the model.
+    const prompt = agentPromptFor({ name: 'Plateau State Government Citizen Contact Centre', slug: 'plateau-state', timezone: 'Africa/Lagos', welcomeMessage: null, aiPersonaPrompt: null } as any);
+    expect(prompt).toContain('SEARCH EVERY TIME');
+    expect(prompt).toMatch(/Never tell a caller something is not available[^\n]*unless search-knowledge was called for it in this call/);
+  });
+
   it('tells the phone agent to give all of it, paced, rather than shorten it', () => {
     const prompt = agentPromptFor({ name: 'Plateau State Government Citizen Contact Centre', slug: 'plateau-state', timezone: 'Africa/Lagos', welcomeMessage: null, aiPersonaPrompt: null } as any);
     expect(prompt).toContain('COMPLETE ANSWERS');
