@@ -381,7 +381,7 @@ export function agentDefinition(spec: AgentSpec) {
         turnTimeout: 3.5,
         silenceEndCallTimeout: SILENCE_END_CALL_TIMEOUT_SECONDS,
         mode: 'turn',
-        turnEagerness: 'normal',
+        turnEagerness: 'patient',
         speculativeTurn: false,
         turnModel: 'turn_v3',
         // NOISY LINES. A caller at a market, a roadside or a generator loses
@@ -424,7 +424,9 @@ export function agentDefinition(spec: AgentSpec) {
         ],
         // ulaw_8000 = G.711 μ-law 8kHz — the universal format for telephony / PSTN networks.
         agentOutputAudioFormat: 'ulaw_8000',
-        optimizeStreamingLatency: 1,
+        // 0 = full buffer smoothing; eleven_flash_v2 is already low-latency,
+        // and >0 chunking causes choppy/broken audio over ulaw_8000 SIP.
+        optimizeStreamingLatency: 0,
         // Phoneme rules in the pronunciation dictionary (Mutfwang, Nanpan, …).
         enablePhonemeTags: true,
         ...VOICE_SETTINGS,
