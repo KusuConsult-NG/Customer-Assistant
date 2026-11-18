@@ -120,6 +120,10 @@ export default function TelephonyPage() {
   // Call Logs state
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
+  // Why the call list could not be read. A failed load is NOT an empty list:
+  // "No calls yet" while the API was restarting told an officer the line had
+  // never taken a call.
+  const [logsError, setLogsError] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<CallLog | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [role, setRole] = useState<string>('');
@@ -149,6 +153,14 @@ export default function TelephonyPage() {
         const raw = await logsRes.value.json();
         const list = Array.isArray(raw) ? raw : (raw?.data || []);
         setCallLogs(list);
+        setLogsError(null);
+      } else {
+        // Keep whatever was last shown; say the list could not be read.
+        setLogsError(
+          logsRes.status === 'fulfilled'
+            ? `The call history could not be loaded (the server answered ${logsRes.value.status}). Try again in a moment.`
+            : 'The call history could not be loaded: the server could not be reached. It may be restarting after an update — try again in a minute.',
+        );
       }
       if (orgRes.status === 'fulfilled' && orgRes.value.ok) {
         const orgData = await orgRes.value.json();
@@ -183,7 +195,7 @@ export default function TelephonyPage() {
         setProviders(null);
       }
     } catch {
-      setCallLogs([]);
+      setLogsError('The call history could not be loaded. Try again in a moment.');
     } finally {
       setLogsLoading(false);
     }
@@ -443,6 +455,12 @@ export default function TelephonyPage() {
           <div className="p-6 space-y-3">
             {[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 dark:bg-slate-800/40 rounded-xl animate-pulse" />)}
           </div>
+        ) : logsError && callLogs.length === 0 ? (
+          <div role="alert" className="flex flex-col items-center justify-center py-20 text-center">
+            <p className="text-slate-700 dark:text-slate-300 font-bold mb-1">Call history unavailable</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-4">{logsError}</p>
+            <button onClick={fetchCallLogs} className="px-4 py-2 rounded-lg bg-purple-700 text-white text-sm font-bold">Try again</button>
+          </div>
         ) : callLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-4">
@@ -452,6 +470,10 @@ export default function TelephonyPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">Calls appear here once a phone number is pointed at this platform. Add your carrier credentials and webhook URL below to start receiving them.</p>
           </div>
         ) : (
+          <>
+          {logsError && (
+            <p role="alert" className="px-6 text-sm text-amber-700 dark:text-amber-400">{logsError} The calls below are from the last successful load.</p>
+          )}
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               <tr>
@@ -519,6 +541,7 @@ export default function TelephonyPage() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
 

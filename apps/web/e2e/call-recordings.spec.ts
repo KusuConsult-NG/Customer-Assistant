@@ -199,4 +199,22 @@ test.describe('Playing call recordings', () => {
     await expect(row).toContainText(s.anonPhone);
     await expect(row.getByRole('button', { name: /Transcript/ })).toBeEnabled();
   });
+  test('a call history that could not be loaded is never shown as "No calls yet"', async ({ page }) => {
+    // While the API restarted after a deploy every request was dropped, and
+    // the screen said "No calls yet" — a statement about the line made when
+    // nothing was known about it.
+    const s = await seed();
+    await page.route('**/api/telephony/calls*', (route) => route.abort('connectionclosed'));
+    await signIn(page, s.token);
+    await page.goto('/telephony');
+    await expect(page.getByText('Call history unavailable')).toBeVisible();
+    await expect(page.getByText('No calls yet')).toHaveCount(0);
+
+    // Once the server answers again, Try again shows the real calls.
+    await page.unroute('**/api/telephony/calls*');
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.getByText('Call history unavailable')).toHaveCount(0);
+    await expect(page.getByText('No calls yet')).toHaveCount(0);
+    await expect(page.locator('table tbody tr').first()).toBeVisible();
+  });
 });
