@@ -41,6 +41,7 @@ describe('State FAQs', () => {
 
   it.each([
     ['What events are happening in December in Plateau?', /December Tourism Month/],
+    ['events for November, December in Plateau State', /December Tourism Month/],
     ['events in Jos', /December Tourism Month/],
     ['activities by the Ministry of Tourism for December', /December Tourism Month/],
     ['ONE PLATEAU FEST', /December Tourism Month/],

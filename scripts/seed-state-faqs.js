@@ -127,6 +127,7 @@ function eventsFaq(eventsMd) {
     (note ? `\n${note[0].trim()}` : '');
   return [
     'What events are happening in Plateau State for December Tourism Month?',
+    'What events are happening in Plateau State in November and December?',
     'What events are happening in Jos in December?',
     'What is ONE PLATEAU FEST?',
     'What are the Ministry of Tourism activities for December?',
