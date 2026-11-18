@@ -119,22 +119,23 @@ function eventsFaq(eventsMd) {
     .split('\n')
     .filter((l) => /^- \*\*/.test(l))
     .map((l) => l.replace(/^- /, '').replace(/\*\*/g, '').trim());
-  if (lines.length === 0) return null;
+  if (lines.length === 0) return [];
   const note = /Dates and venues may change[^\n]*/.exec(eventsMd || '');
-  return {
-    question: 'What events are happening in Plateau State for December Tourism Month?',
-    answer:
-      `December is Plateau State's official Tourism Month, coordinated under ONE PLATEAU FEST. The events are:\n` +
-      lines.map((l, i) => `${i + 1}. ${l}`).join('\n') +
-      (note ? `\n${note[0].trim()}` : ''),
-  };
+  const answer =
+    `December is Plateau State's official Tourism Month, coordinated under ONE PLATEAU FEST. The events are:\n` +
+    lines.map((l, i) => `${i + 1}. ${l}`).join('\n') +
+    (note ? `\n${note[0].trim()}` : '');
+  return [
+    'What events are happening in Plateau State for December Tourism Month?',
+    'What events are happening in Jos in December?',
+    'What is ONE PLATEAU FEST?',
+    'What are the Ministry of Tourism activities for December?',
+  ].map((question) => ({ question, answer }));
 }
 
 /** Every generated FAQ, in a stable order. Pure, so it can be tested. */
 function buildStateFaqs(agencies, eventsMd) {
-  const faqs = [];
-  const events = eventsFaq(eventsMd);
-  if (events) faqs.push(events);
+  const faqs = [...eventsFaq(eventsMd)];
   for (const a of agencies || []) faqs.push(...agencyFaqs(a));
   // One FAQ per question: two agencies can never share one, but guard anyway.
   const seen = new Set();

@@ -256,7 +256,10 @@ async function main() {
   const obsoleteDocs = await prisma.knowledgeDocument.findMany({
     where: {
       organizationId: org.id,
-      title: { contains: 'MDA Directory', mode: 'insensitive' },
+      OR: [
+        { title: { contains: 'MDA Directory', mode: 'insensitive' } },
+        { title: 'December_Tourism_Month_2026_Events_Lineup' },
+      ],
     },
     select: { id: true, title: true },
   });

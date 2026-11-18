@@ -206,7 +206,7 @@ export interface AgentSpec {
 }
 
 /** The text-to-speech model: English, because the phone agent speaks only English. */
-export const VOICE_MODEL_ID = 'eleven_turbo_v2';
+export const VOICE_MODEL_ID = 'eleven_flash_v2';
 
 /** Nanpan — every word the agent says outside the Governor's opening. */
 export const NANPAN_VOICE_ID = 'KpLREcAbIIKFKpEkPEIR';
@@ -216,12 +216,12 @@ export const GOVERNOR_VOICE_ID = 'pAqGcXrGBThHKNv6yJnM';
 
 /**
  * The settings both voices are spoken with. Stability and similarity are the
- * values they sounded like their originals on. Speed 0.9, by the agency's
- * decision: at 1.0 callers heard both the Governor and the assistant as too
- * fast. ElevenLabs accepts 0.7–1.2. ONE definition: a post-sync PATCH used to
- * re-apply its own, different numbers right after the sync wrote these.
+ * values they sounded like their originals on. Speed 1.0: running the older
+ * English model at 0.9 caused dropped words in TTS audio. ElevenLabs accepts
+ * 0.7–1.2. ONE definition: a post-sync PATCH used to re-apply its own,
+ * different numbers right after the sync wrote these.
  */
-export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 0.9 } as const;
+export const VOICE_SETTINGS = { stability: 0.5, similarityBoost: 0.8, speed: 1.0 } as const;
 
 /**
  * Seconds after the CALLER last spoke before ElevenLabs hangs up.
@@ -405,9 +405,9 @@ export function agentDefinition(spec: AgentSpec) {
         // adopted to speak Hausa; with expressiveMode, lowered stability and an
         // off-1.0 speed on top, neither cloned voice sounded like its original.
         // The phone agent no longer speaks anything but English (the agency's
-        // decision), so the multilingual model buys nothing. eleven_turbo_v2 is
-        // what ElevenLabs accepts for English agents and what these voices
-        // sounded right on.
+        // decision), so the multilingual model buys nothing. eleven_flash_v2 is
+        // ElevenLabs' current low-latency English model (replacing deprecated
+        // eleven_turbo_v2) and avoids dropped-word artifacts.
         modelId: VOICE_MODEL_ID,
         // The Governor's opening only: `<governor>…</governor>` in the first
         // message. Every other word is Nanpan's voice (spec.voiceId). No other
