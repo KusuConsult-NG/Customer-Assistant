@@ -69,6 +69,11 @@ rtp_symmetric = yes
 force_rport = yes
 rewrite_contact = yes
 dtmf_mode = rfc4733
+; Keep RTP alive during long agent turns when the caller's mic is muted or on GSM DTX,
+; and allow up to 300s before declaring an RTP leg dead.
+rtp_keepalive = 10
+rtp_timeout = 300
+rtp_timeout_hold = 300
 ; Trust the caller ID the PBX sends (the citizen's number) — needed for callbacks.
 trust_id_inbound = yes
 send_pai = yes
@@ -111,6 +116,9 @@ rtp_symmetric = yes
 force_rport = yes
 rewrite_contact = yes
 dtmf_mode = rfc4733
+rtp_keepalive = 10
+rtp_timeout = 300
+rtp_timeout_hold = 300
 send_pai = yes
 send_rpid = yes
 trust_id_outbound = yes
