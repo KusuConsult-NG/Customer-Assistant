@@ -45,6 +45,8 @@ describe('State FAQs', () => {
     ['events in Jos', /December Tourism Month/],
     ['activities by the Ministry of Tourism for December', /December Tourism Month/],
     ['ONE PLATEAU FEST', /December Tourism Month/],
+    ["What are Governor Mutfwang's projects and achievements?", /projects and achievements/],
+    ['What road and infrastructure projects has Governor Mutfwang done?', /projects and achievements/],
     ['Who is the commissioner of health?', /head\) of the Ministry of Health/],
     ['What does the Ministry of Health do?', /^What does the Ministry of Health/],
     ['How can I contact the Water Board?', /office of the Plateau State Water Board/],

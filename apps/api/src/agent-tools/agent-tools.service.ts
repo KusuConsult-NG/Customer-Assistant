@@ -195,7 +195,7 @@ function isSlotClash(err: unknown): boolean {
 export const SEARCH_KNOWLEDGE_PASSAGE_CHARS = 4_000;
 
 /** A matched document this short (in chunks) is read whole; the WhatsApp engine uses the same limit. */
-const WHOLE_DOCUMENT_MAX_CHUNKS = 8;
+const WHOLE_DOCUMENT_MAX_CHUNKS = 12;
 
 @Injectable()
 export class AgentToolsService implements OnModuleInit, OnModuleDestroy {

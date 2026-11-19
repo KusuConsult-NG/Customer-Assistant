@@ -134,9 +134,25 @@ function eventsFaq(eventsMd) {
   ].map((question) => ({ question, answer }));
 }
 
+/** Concrete FAQs for Governor Caleb Mutfwang's projects, infrastructure and achievements (2023–2026). */
+function projectsFaqs() {
+  const fullSummary =
+    `Governor Caleb Manasseh Mutfwang's key projects and achievements (May 2023 to date, 2026) include:\n` +
+    `1. Roads, Bridges & Urban Renewal: Flagged off the 41 km Bisichi–Fan–Mangu Halle asphalt highway (linking all 3 Senatorial Districts across Barkin Ladi and Mangu), the 39.7 km Jebbu Bassa–Binchin–Buyo road in Bassa LGA, and the 2.3 km Sabon Layi–Corner Shagari road in Jos North; commissioned the Utonkon Bridge and adjoining Namus Junction–Rayfield roads (June 12, 2025); revived 49 abandoned legacy roads across 6 LGAs; rehabilitated 35+ Jos–Bukuru metropolitan roads (Farin Gada–Gada Biyu–Polo Roundabout–Police HQ, Gold & Base–Rayfield, Bukuru Low-Cost–Sabon Barki, Tudun Wada–Kabong–Rukuba, Jenta–Katako–Laranto, Rantya–State Lowcost–Domkat Bali, Terminus–Ahmadu Bello Way); and approved ₦2 Billion counterpart funding for 335 km of RAAMP rural roads plus Agro-Logistics Centres in Shendam, Mangu, and Bassa (Jengre).\n` +
+    `2. Transport, Rail & Aviation: Deployed 15 German-engineered Tin City Metro buses (Phase 1) and the Metro Buses 2.0 fleet (June 2025) across 8 Jos–Bukuru corridors at a subsidized ₦200 flat fare with NFC Smart Cards; upgraded Plateau Riders interstate buses; revived the Jos–Bukuru–Kuru commuter rail service with NRC; restored Abuja–Jos commercial flights with ValueJet; and signed an MoU with FAAN to upgrade Yakubu Gowon Airport, Heipang into an International Agro-Cargo Airport.\n` +
+    `3. Healthcare: Commissioned the new Modern Diagnostic Laboratory Complex, Paediatric Ward, and Administrative Office Complex at Plateau State Specialist Hospital, Jos (June 2025); revitalized 105+ Primary Healthcare Centres (PHCs) across the 17 LGAs; upgraded Tudun Wada and Wase facilities into Cottage Hospitals; commissioned the Pharma-Grade Central Medical Commodities Warehouse in Jos; and enrolled 100,000+ vulnerable citizens and retirees on free PLASCHEMA healthcare.\n` +
+    `4. Agriculture & Food Security: Distributed 200+ truckloads (120,000+ bags) of subsidized fertilizers and inputs; cultivated 6,000+ hectares of conflict-affected farmlands in Bokkos, Mangu, Barkin Ladi, Riyom, and Bassa with new tractors and Agro-Rangers; reclaimed Wase grazing/agricultural zones; revived ASTC and Irish potato tissue-culture/cold-storage centers; partnered with AfDB on the Special Agro-Industrial Processing Zone (SAPZ); and created the Ministry of Livestock Development (2025).\n` +
+    `5. Education, Water, Energy & Governance: Commissioned the new 1-Storey Administrative Block and refurbished Joshua Dariye Hall at Plateau State Polytechnic (June 2025); created the Senior Secondary Education Board; built/renovated 400+ PSUBEB classrooms and upgraded PLASU Bokkos; increased student bursaries and Law School grants; rehabilitated and commissioned the Yelwa Water Treatment Plant serving Bukuru and Gyel alongside Lamingo and Yakubu Gowon Dam overhauls; deployed the 50kW solar mini-grid in Qua'an Pan LGA; expanded broadband fibre to 2,500 km with Solutron and launched PLAGIS e-C of O; kitted 600+ Operation Rainbow operatives; cleared inherited salary arrears and implemented the ₦70,000 minimum wage; grew IGR to ₦38.36B+ via PSIRS digital CBS; conducted peaceful elections in all 17 LGAs (October 9, 2024); and signed the 2024 (₦314.86B), 2025 (₦468.49B), and 2026 ("Budget of Consolidation and Sustainability 2.0") budgets.`;
+  return [
+    "What are Governor Caleb Mutfwang's projects and achievements in Plateau State?",
+    'What road, bridge and infrastructure projects has Governor Mutfwang done?',
+    'What projects has the Plateau State Government completed since 2023?',
+  ].map((question) => ({ question, answer: fullSummary }));
+}
+
 /** Every generated FAQ, in a stable order. Pure, so it can be tested. */
 function buildStateFaqs(agencies, eventsMd) {
-  const faqs = [...eventsFaq(eventsMd)];
+  const faqs = [...eventsFaq(eventsMd), ...projectsFaqs()];
   for (const a of agencies || []) faqs.push(...agencyFaqs(a));
   // One FAQ per question: two agencies can never share one, but guard anyway.
   const seen = new Set();

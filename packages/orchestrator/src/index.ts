@@ -122,7 +122,7 @@ const RAG_TOP_K = 6;
  * matched, so a list is never answered from its first chunk. Chunks are about
  * 1,800 characters, so eight is roughly a 14,000-character document.
  */
-const RAG_WHOLE_DOCUMENT_MAX_CHUNKS = 8;
+const RAG_WHOLE_DOCUMENT_MAX_CHUNKS = 12;
 
 /** Upper bound on the knowledge text placed in one prompt. */
 const RAG_CONTEXT_MAX_CHARS = 24_000;
