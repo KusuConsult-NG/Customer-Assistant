@@ -1803,9 +1803,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Auditor General",
-      "name": null,
-      "unconfirmed": true
+      "position": "Auditor-General",
+      "name": "Mrs. Charity Elisha Davou, FCNA",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2064,9 +2064,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Director General",
-      "name": null,
-      "unconfirmed": true
+      "position": "Director-General",
+      "name": "Engr. Dominic Datong Gwaman",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2192,9 +2192,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Director General",
-      "name": null,
-      "unconfirmed": true
+      "position": "Director-General",
+      "name": "Dr. Julie G. Sanda",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2246,8 +2246,8 @@
     "category": "GOVERNMENT",
     "currentLeadership": {
       "position": "Executive Secretary",
-      "name": null,
-      "unconfirmed": true
+      "name": "Mr. Sunday Akson Abdu",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2365,9 +2365,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Director General",
-      "name": null,
-      "unconfirmed": true
+      "position": "Director-General",
+      "name": "Mr. Bomkam Ali Wuyep",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2426,9 +2426,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Managing Director / CEO",
-      "name": null,
-      "unconfirmed": true
+      "position": "General Manager / Managing Director",
+      "name": "Hon. Samuel Jok Gwott",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2607,9 +2607,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Director General / Managing Director & CEO",
-      "name": null,
-      "unconfirmed": true
+      "position": "Managing Director / CEO",
+      "name": "Engr. Ponzing Bindong Gamde",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2669,8 +2669,8 @@
     "category": "GOVERNMENT",
     "currentLeadership": {
       "position": "General Manager",
-      "name": null,
-      "unconfirmed": true
+      "name": "Mrs. Rita Kachollom Pam",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -2971,9 +2971,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "SDGs Project Coordinator",
-      "name": null,
-      "unconfirmed": true
+      "position": "Project Coordinator",
+      "name": "Hon. Mrs. Nanbam Esther Danjuma-Lot",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -3095,9 +3095,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "Commissioner / Chairman, Teacher's Service Commission",
-      "name": null,
-      "unconfirmed": true
+      "position": "Executive Chairman",
+      "name": "Hon. Alex Sunday Chup",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -3216,8 +3216,8 @@
     "category": "GOVERNMENT",
     "currentLeadership": {
       "position": "Managing Director",
-      "name": null,
-      "unconfirmed": true
+      "name": "Mr. Matthews Dawap",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -3444,8 +3444,8 @@
     "category": "GOVERNMENT",
     "currentLeadership": {
       "position": "Executive Chairman",
-      "name": null,
-      "unconfirmed": true
+      "name": "Hon. Bldr. Sunday Samuel Amuna",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -3546,9 +3546,9 @@
     ],
     "category": "GOVERNMENT",
     "currentLeadership": {
-      "position": "General Manager",
-      "name": null,
-      "unconfirmed": true
+      "position": "Managing Director (Jos Water Services Corporation)",
+      "name": "Engr. Apollos Solomon Samchi",
+      "asOf": "2026"
     },
     "pastLeadership": [
       {
@@ -3598,8 +3598,8 @@
     "category": "GOVERNMENT",
     "currentLeadership": {
       "position": "Programme Manager",
-      "name": null,
-      "unconfirmed": true
+      "name": "Mr. Ishaku Jilemsam",
+      "asOf": "2026"
     },
     "administrativeHistory": "Established under World Bank counterpart funding to provide front-line agricultural extension services to smallholder farmers.",
     "mandate": "Deliver agricultural extension advisory to smallholder farmers; train farmers on climate-smart agronomic practices; introduce high-yield certified seeds and seedlings; manage farm demonstration plots; and monitor pest attacks.",
@@ -3725,8 +3725,8 @@
     "category": "GOVERNMENT",
     "currentLeadership": {
       "position": "Managing Director / CEO",
-      "name": null,
-      "unconfirmed": true
+      "name": "Hon. Danlami Zakari Jelka",
+      "asOf": "2026"
     },
     "administrativeHistory": "The premier commercial investment vehicle of the Plateau State Government, managing state equities and commercial properties.",
     "mandate": "Manage the state government's equity portfolios in quoted and unquoted companies; develop and manage commercial real estate; promote joint venture industrial investments; and unlock wealth from state assets.",

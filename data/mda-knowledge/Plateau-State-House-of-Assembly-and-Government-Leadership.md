@@ -39,6 +39,21 @@ Names below are confirmed by published sources dated 2025-2026 (checked 2026-11-
 - **Executive Chairman, Plateau State Independent Electoral Commission (PLASIEC)**: Hon. Plangji Daniel Cishak (as of January 2026)
 - **Coordinator, Operation Rainbow (Operation Rainbow)**: Brig.-Gen. Nash Yakubu (rtd) (as of June 2026)
 - **Executive Secretary, Plateau State Primary Health Care Board (PSPHCB)**: Dr. Raymond Juryit (as of 2025)
+- **Director-General, Plateau Information Communication and Technology Development Agency (PICTDA)**: Engr. Dominic Datong Gwaman (as of 2026)
+- **Director-General, Plateau State Micro, Small and Medium Enterprises Development Agency (PLASMEDA)**: Mr. Bomkam Ali Wuyep (as of 2026)
+- **General Manager / Managing Director, Plateau Express Services Group LTD (PESGL)**: Hon. Samuel Jok Gwott (as of 2026)
+- **Managing Director / CEO, Plateau State Energy Corporation (PSEC)**: Engr. Ponzing Bindong Gamde (as of 2026)
+- **Executive Chairman, Plateau State Universal Basic Education Board (PSUBEB)**: Hon. Bldr. Sunday Samuel Amuna (as of 2026)
+- **Director-General, Plateau State Peace Building Agency (PSPBA)**: Dr. Julie G. Sanda (as of 2026)
+- **General Manager, Plateau Radio Television Corporation (PRTVC)**: Mrs. Rita Kachollom Pam (as of 2026)
+- **Executive Secretary, Plateau State Emergency Management Agency (PLASEMA)**: Mr. Sunday Akson Abdu (as of 2026)
+- **Managing Director / CEO, Plateau Investment and Property Development Company (PIPC)**: Hon. Danlami Zakari Jelka (as of 2026)
+- **Programme Manager, Plateau Agricultural Development Programme (PADP)**: Mr. Ishaku Jilemsam (as of 2026)
+- **Managing Director, Plateau Minerals Development Company Limited (PMDC)**: Mr. Matthews Dawap (as of 2026)
+- **Executive Chairman, Teachers' Service Commission (TSC)**: Hon. Alex Sunday Chup (as of 2026)
+- **Project Coordinator, Plateau State Sustainable Development Goals Project Support Unit (SDGs-PSU)**: Hon. Mrs. Nanbam Esther Danjuma-Lot (as of 2026)
+- **Managing Director (Jos Water Services Corporation), Plateau State Water Board (PSWB)**: Engr. Apollos Solomon Samchi (as of 2026)
+- **Auditor-General, Plateau State Audit Department (Office of the State Auditor General) (SAI)**: Mrs. Charity Elisha Davou, FCNA (as of 2026)
 
 ---
 

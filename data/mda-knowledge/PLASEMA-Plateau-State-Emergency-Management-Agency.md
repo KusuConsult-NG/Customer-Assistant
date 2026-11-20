@@ -2,7 +2,7 @@
 Also known as: Plateau State Emergency Management Agency (PLASEMA), State Emergency Management Agency, SEMA
 
 ## Current Leadership
-- **Executive Secretary**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **Executive Secretary**: Mr. Sunday Akson Abdu (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Executive Secretary**: Alh. Alhassan Barde (2015 – 2023 (Lalong administration))

@@ -2,7 +2,7 @@
 Also known as: Plateau Radio Television Corporation Jos (PRTVC), PRTV, PRTVC Jos
 
 ## Current Leadership
-- **General Manager**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **General Manager**: Mrs. Rita Kachollom Pam (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former General Manager**: Mr. Jephtha Jackden (2015 – 2023 (Lalong administration))

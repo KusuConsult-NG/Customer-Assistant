@@ -2,7 +2,7 @@
 Also known as: Plateau State Energy Corporation (PSEC), Plateau Energy Corporation
 
 ## Current Leadership
-- **Director General / Managing Director & CEO**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **Managing Director / CEO**: Engr. Ponzing Bindong Gamde (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Coordinator**: Engr. Gyang Pam (Pre-2023)

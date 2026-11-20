@@ -2,7 +2,7 @@
 Also known as: Plateau Minerals Development Company Limited (PMDC), Plateau Minerals Development Company
 
 ## Current Leadership
-- **Managing Director**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **Managing Director**: Mr. Matthews Dawap (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Managing Director**: Mr. Gyang Dalyop (Pre-2023)

@@ -2,7 +2,7 @@
 Also known as: Plateau State Sustainable Development Goals, Plateau SDGs Unit
 
 ## Current Leadership
-- **SDGs Project Coordinator**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **Project Coordinator**: Hon. Mrs. Nanbam Esther Danjuma-Lot (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Project Coordinator**: Mr. Sam Damla (2015 – 2023 (Lalong administration))

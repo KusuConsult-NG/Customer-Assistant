@@ -2,7 +2,7 @@
 Also known as: Plateau State Peace Building Agency (PSPBA), Plateau Peace Building Agency
 
 ## Current Leadership
-- **Director General**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **Director-General**: Dr. Julie G. Sanda (as of 2026)
 
 ## Past Leadership & Administrative History
 - **Former Director General**: Mr. Joseph Lengmang (2016 – 2023 (Founding Director General))

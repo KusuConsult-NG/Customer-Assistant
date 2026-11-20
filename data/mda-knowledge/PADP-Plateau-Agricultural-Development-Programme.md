@@ -2,7 +2,7 @@
 Also known as: Plateau Agricultural Development Programme (PADP), PADP Jos
 
 ## Current Leadership
-- **Programme Manager**: The current head's name is not confirmed in our records. Please confirm with the office before relying on any name.
+- **Programme Manager**: Mr. Ishaku Jilemsam (as of 2026)
 
 ## Past Leadership & Administrative History
 - Predecessor leadership records maintained under historical state gazettes and executive transition archives.
