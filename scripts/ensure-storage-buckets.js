@@ -41,8 +41,8 @@ async function main() {
   if (!url || !key) {
     console.error(
       '\nSUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set.\n\n' +
-      'Without them this platform stores uploads on local disk instead, which is fine\n' +
-      'for development and wrong for a deployment with more than one instance.\n'
+      'Without them uploads go to STORAGE_DIR (a persistent directory, as on the single\n' +
+      'server), to ./uploads in development, and are refused in production with neither.\n'
     );
     process.exit(2);
   }

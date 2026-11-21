@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { configuredTtsModels } from '../telephony/tts-models';
 import { prisma, withTelephonyCredentials, withWhatsAppCredentials, decryptSecret } from '@ace/database';
 import { resolveEmailProvider, emailProviderProblem, verifyEmailProvider } from '../common/mailer';
+import { storageDriver, storageRoot } from '../common/object-storage';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Does each provider actually answer us?
@@ -332,6 +335,7 @@ export class ProviderHealthService {
   private async objectStorage(): Promise<ProviderCheck> {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (storageDriver() !== 'supabase') return this.localStorageCheck();
     const base = {
       id: 'supabase-storage',
       label: 'File storage (Supabase)',
@@ -396,6 +400,58 @@ export class ProviderHealthService {
           ? `Supabase answered, but these buckets do not exist: ${missing.join(', ')}. Run npm run storage:buckets -- --apply.`
           : `Supabase answered; both buckets exist and are private.`,
     };
+  }
+
+  /**
+   * This server's own disk, when files are kept there (STORAGE_DIR). Asked the
+   * same way the others are: by DOING the thing — writing, reading back and
+   * removing a probe file — not by noticing the variable is set. A directory
+   * that is read-only, full or missing fails here, not on an officer's upload.
+   */
+  private localStorageCheck(): ProviderCheck {
+    const base = {
+      id: 'file-storage',
+      label: 'File storage (this server)',
+      consequence:
+        'Knowledge uploads and citizen selfies cannot be stored. An upload is refused with the ' +
+        'reason rather than written somewhere it would be lost.',
+    };
+    if (storageDriver() === 'none') {
+      return {
+        ...base,
+        state: 'not_configured',
+        detail:
+          'Neither STORAGE_DIR nor SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY is set, so uploads are refused. ' +
+          'Set STORAGE_DIR to a persistent, backed-up directory.',
+      };
+    }
+    const root = storageRoot();
+    const probeFile = path.join(root, `.health-${process.pid}-${Date.now()}`);
+    try {
+      fs.mkdirSync(root, { recursive: true });
+      fs.writeFileSync(probeFile, 'ok');
+      const back = fs.readFileSync(probeFile, 'utf8');
+      fs.unlinkSync(probeFile);
+      if (back !== 'ok') throw new Error('a file written there read back differently');
+    } catch (e: any) {
+      return { ...base, state: 'failed', detail: `Files cannot be written to ${root}: ${e?.message ?? e}` };
+    }
+
+    let space = '';
+    try {
+      const st = fs.statfsSync(root);
+      const freeGb = (st.bavail * st.bsize) / 1024 ** 3;
+      space = ` ${freeGb.toFixed(1)} GB free.`;
+      if (freeGb < 1) {
+        return { ...base, state: 'failed', detail: `${root} has only${space} Uploads will start failing when it is full.` };
+      }
+    } catch {
+      // statfs is informational; a disk that accepted the write is working.
+    }
+    const where = process.env.STORAGE_DIR?.trim()
+      ? `${root}.`
+      : `${root} (the development default — set STORAGE_DIR on a server).`;
+    return { ...base, state: 'ok', detail: `Files are written to and read back from ${where}${space}` };
   }
 
   /** Whichever email provider is configured. Every route into a staff account is an email. */

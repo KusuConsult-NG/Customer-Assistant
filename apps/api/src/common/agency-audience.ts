@@ -65,6 +65,7 @@ const PLATFORM_PROVIDERS: Record<string, { consequence: string }> = {
   openai: { consequence: 'Free-form questions get a fixed reply instead of an answer from the knowledge base.' },
   qdrant: { consequence: 'Knowledge search matches exact words only, so differently phrased questions may find nothing.' },
   'supabase-storage': { consequence: 'Documents and photos cannot be uploaded.' },
+  'file-storage': { consequence: 'Documents and photos cannot be uploaded.' },
   email: { consequence: 'Staff invitations and password resets cannot be emailed.' },
 };
 

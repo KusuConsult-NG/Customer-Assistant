@@ -23,6 +23,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
 import { RedisThrottlerStorage } from './config/redis-throttler-storage';
 import { WorkflowTriggerModule } from './workflows/workflow-trigger.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     WorkflowTriggerModule,
     // Global: WhatsApp inbound and the workflow engine both attach selfies.
     OnboardingModule,
+    StorageModule,
     AuthModule,
     OrganizationsModule,
     PlatformModule,

@@ -41,6 +41,7 @@
 
 import { Worker, Job } from 'bullmq';
 import { reportRedisQuotaOnce } from '../common/redis-quota';
+import { KNOWLEDGE_BUCKET, downloadObject } from '../common/object-storage';
 import { embeddingsUrl, llmConfig } from '@ace/orchestrator';
 
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
@@ -173,14 +174,14 @@ async function getPrisma() {
   return prisma;
 }
 
-const SUPABASE_BUCKET = 'knowledge-documents';
-
 /**
  * Downloads a queued document.
  *
- * `storageUrl` is a Supabase Storage object path unless it is an absolute http(s)
- * URL (crawled pages). Supabase objects are in a PRIVATE bucket, so they are fetched
- * with the service-role key rather than anonymously.
+ * `storageUrl` is a storage path unless it is an absolute http(s) URL (crawled
+ * pages). Stored files are read through the same module that wrote them, so
+ * the worker reads from wherever uploads go — Supabase or this server's disk —
+ * rather than assuming Supabase and failing every document on a server
+ * without it.
  */
 async function downloadDocument(storageUrl: string): Promise<Buffer> {
   if (/^https?:\/\//i.test(storageUrl)) {
@@ -188,33 +189,7 @@ async function downloadDocument(storageUrl: string): Promise<Buffer> {
     if (!res.ok) throw new Error(`Failed to download document: HTTP ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
   }
-
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error(
-      'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are required to download queued documents.'
-    );
-  }
-
-  const res = await fetch(
-    `${supabaseUrl}/storage/v1/object/${SUPABASE_BUCKET}/${storageUrl}`,
-    {
-      // Supabase Storage requires BOTH headers — Authorization alone yields a
-      // misleading 400/403 ("Invalid Compact JWS"). See common/object-storage.ts.
-      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-      signal: AbortSignal.timeout(60_000),
-    }
-  );
-
-  if (!res.ok) {
-    throw new Error(
-      `Failed to download "${storageUrl}" from Supabase Storage (HTTP ${res.status}). ` +
-      `Confirm the "${SUPABASE_BUCKET}" bucket exists and the service-role key is valid.`
-    );
-  }
-
-  return Buffer.from(await res.arrayBuffer());
+  return downloadObject(KNOWLEDGE_BUCKET, storageUrl);
 }
 
 /**
