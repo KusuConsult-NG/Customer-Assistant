@@ -28,6 +28,8 @@ import { reportRegisteredReply, urgentReportReply, spokenReference } from './spo
 import { rotatePlateauAssistantName } from './plateau-name-rotation';
 import { speakableHonours } from './spoken-names';
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { plainSpokenText } from './spoken-text';
+import { SPOKEN_FORM_INSTRUCTION } from './agent-tool-catalog';
 import { relevantPassage } from './relevant-passage';
 import { AgentKeyGuard } from './agent-key.guard';
 import { caseClassFor } from './call-report';
@@ -1711,18 +1713,9 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         return { ok: true, speak: 'Could you tell me a little more about what you need?', data: {} };
       }
 
-      /** Strip markdown so Sarah speaks clean plain-English sentences */
-      const stripMd = (text: string): string =>
-        text
-          .replace(/^#{1,6}\s+/gm, '')
-          .replace(/\*\*(.+?)\*\*/g, '$1')
-          .replace(/\*(.+?)\*/g, '$1')
-          .replace(/^[-*]\s+/gm, '')
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-          .replace(/`{1,3}[^`]*`{1,3}/g, '')
-          .replace(/---+/g, '')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim();
+      // Markdown and list markers out of everything handed to the voice —
+      // see spoken-text.ts. The FAQ answer is cleaned too; it was not.
+      const stripMd = plainSpokenText;
 
       // Match the agency's FAQs first.
       //
@@ -1776,7 +1769,7 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       // a long one on the call.
       const passage = relevantPassage(contents, q, SEARCH_KNOWLEDGE_PASSAGE_CHARS);
       if (faq) {
-        const combined = combineFaqAndKnowledge(faq.answer, passage);
+        const combined = combineFaqAndKnowledge(plainSpokenText(faq.answer), passage);
         return {
           ok: true,
           speak: speakableHonours(combined),
@@ -1786,7 +1779,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
               'Give the agency answer first, then the further details, all of them. Say every name exactly as written here, ' +
               'with all its titles and honours. For each event, state the event name, who it is organised by, the date, and the venue ' +
               '(or say if it is to be announced/confirmed) before moving to the next event. ' +
-              'If there are more than three items, say how many, give two or three at a time (keep each spoken turn under 20 seconds so the phone line stays active), and ask whether to continue.',
+              'If there are more than three items, say how many, give two or three at a time (keep each spoken turn under 20 seconds so the phone line stays active), and ask whether to continue. ' +
+              SPOKEN_FORM_INSTRUCTION,
           },
         };
       }
@@ -1802,7 +1796,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
               'Say every name exactly as written here, with all its titles before and honours after. Do not shorten or drop any. ' +
               'Give the caller EVERY item and detail here that answers their question — dates, venues, organisers, offices, numbers. ' +
               'For each event, state the event name, who it is organised by, the date, and the venue (or say if it is to be announced/confirmed) before moving to the next event. ' +
-              'If there are more than three items, say how many there are, give two or three at a time (keep each spoken turn under 20 seconds so the phone line stays active), and ask whether to continue.',
+              'If there are more than three items, say how many there are, give two or three at a time (keep each spoken turn under 20 seconds so the phone line stays active), and ask whether to continue. ' +
+              SPOKEN_FORM_INSTRUCTION,
           },
         };
       }
