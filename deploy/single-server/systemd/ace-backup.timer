@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Customer Care Platform backup every night
+
+[Timer]
+# 02:30 in Nigeria: the quietest hour on the lines.
+OnCalendar=*-*-* 02:30:00 Africa/Lagos
+# A night missed while the server was off runs at the next boot.
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

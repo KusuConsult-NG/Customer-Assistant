@@ -174,6 +174,13 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/telephony/status/twilio', calledBy: 'Twilio status callback' },
   { method: 'POST', path: '/api/telephony/status/telnyx', calledBy: 'Telnyx status callback' },
 
+  // ── Signed file links ──────────────────────────────────────────────────
+  //
+  // Nothing in the dashboard builds this path: an authenticated endpoint
+  // MINTS the link (knowledge download, selfie image) and the browser opens
+  // what it was handed. Only used when files are kept on the server's disk.
+  { method: 'GET', path: '/api/files/:bucket/*', calledBy: 'Browser opening a signed link minted by an authenticated endpoint' },
+
   // ── Probes ─────────────────────────────────────────────────────────────
   //
   // Liveness is shallow because the only remedy for failing it is a restart;

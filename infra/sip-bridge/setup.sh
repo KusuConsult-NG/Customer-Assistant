@@ -18,33 +18,14 @@ while IFS= read -r line || [ -n "$line" ]; do
   export "${BASH_REMATCH[1]}=$val"
 done < bridge.env
 
-if [ -z "${ALPHATECH_IP:-}" ]; then
-  ALPHATECH_IP="$(getent ahostsv4 "$ALPHATECH_HOST" | awk 'NR==1{print $1}')"
-  export ALPHATECH_IP
-fi
-for v in ALPHATECH_HOST ALPHATECH_IP ALPHATECH_EXTENSION ALPHATECH_PASSWORD ELEVENLABS_SIP_HOST \
-         ELEVENLABS_SIP_USERNAME ELEVENLABS_SIP_PASSWORD TOLLFREE_E164; do
-  [ -n "${!v:-}" ] || { echo "bridge.env: $v is empty"; exit 1; }
-done
-[[ "$TOLLFREE_E164" =~ ^\+[0-9]{8,15}$ ]] || { echo "TOLLFREE_E164 must be E.164, e.g. +2348000000456"; exit 1; }
-FALLBACK_SOUND="${FALLBACK_SOUND:-all-circuits-busy-now}"
-INTRO_SOUND="${INTRO_SOUND:-}"
-if [ -z "${PUBLIC_IP:-}" ]; then
-  PUBLIC_IP="$(curl -fsS -4 --max-time 10 https://api.ipify.org || true)"
-  [ -n "$PUBLIC_IP" ] || { echo "Could not detect the public IP; set PUBLIC_IP in bridge.env"; exit 1; }
-fi
-export PUBLIC_IP FALLBACK_SOUND INTRO_SOUND
-
 echo "==> Installing Asterisk"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq asterisk gettext-base ufw curl >/dev/null
 
-echo "==> Rendering configuration (public IP ${PUBLIC_IP})"
-VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND}'
-for f in pjsip extensions rtp modules; do
-  envsubst "$VARS" < "templates/${f}.conf.template" > "/etc/asterisk/${f}.conf"
-done
+# Validated and rendered by render.sh, which the single-server container uses too.
+./render.sh /etc/asterisk
+PUBLIC_IP="$(grep -m1 '^external_media_address' /etc/asterisk/pjsip.conf | awk '{print $3}')"
 chown asterisk:asterisk /etc/asterisk/{pjsip,extensions,rtp,modules}.conf
 chmod 640 /etc/asterisk/pjsip.conf
 

@@ -1,26 +1,35 @@
-# Multi-stage Dockerfile for Next.js Web Dashboard (@ace/web)
-FROM node:20-alpine AS base
+# The staff dashboard (@ace/web).
+#
+# NEXT_PUBLIC_API_URL is compiled INTO the bundle by `next build` — setting it
+# when the container starts changes nothing — so it is a build argument. The
+# previous version hardcoded http://localhost:4000, which in any browser but
+# the server's own points at the officer's laptop. It also installed only the
+# web app's dependencies and never built @ace/shared-types, which it imports.
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
-
-FROM base AS dependencies
-COPY package.json package-lock.json ./
-COPY apps/web/package.json ./apps/web/
-RUN npm ci
-
-FROM dependencies AS build
 COPY . .
-ENV NEXT_PUBLIC_API_URL=http://localhost:4000
-RUN npm run build --workspace=apps/web
+# A network that inspects TLS (common on government networks) re-signs the
+# package registry's certificate with its own CA, and npm refuses it. Such a
+# CA can be given as the optional build secret `extra_ca` (EXTRA_CA_CERT in
+# server.env); without it nothing changes. Never by turning verification off.
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
+    npm ci --no-audit --no-fund
+ARG NEXT_PUBLIC_API_URL=http://localhost:4000
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npx turbo run build --filter=@ace/web...
 
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-
-COPY --from=build /app/apps/web/.next ./apps/web/.next
-COPY --from=build /app/apps/web/public ./apps/web/public
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
-
+COPY --from=build /app/apps/web/package.json ./apps/web/package.json
+COPY --from=build /app/apps/web/.next ./apps/web/.next
+COPY --from=build /app/apps/web/public ./apps/web/public
+COPY --from=build /app/packages/shared-types ./packages/shared-types
 EXPOSE 3000
 CMD ["npm", "run", "start", "--workspace=apps/web"]

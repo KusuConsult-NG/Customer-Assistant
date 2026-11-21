@@ -1,0 +1,168 @@
+# The whole platform on ONE server.
+#
+#   cp server.env.example server.env    # fill it in (see README.md)
+#   ./deploy.sh                         # build, start, update the schema, check
+#
+# Only Caddy publishes ports (80 and 443). The database, Redis, Qdrant, the API
+# and the dashboard are reachable only on this compose network — the old
+# root docker-compose.yml published PostgreSQL on 5432 and Redis on 6379 to
+# every interface, which on a public server is the database on the internet.
+#
+# The call bridge (Asterisk) uses the HOST network, because SIP and RTP carry
+# the server's public address inside the messages and need the 10000–20000
+# UDP range; Docker's port publishing of ten thousand ports is slow and
+# rewrites addresses the SIP messages still claim. It gets 4x the CPU share
+# of everything else, so a busy dashboard cannot make a call stutter.
+
+name: ace
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in server.env}
+      POSTGRES_DB: ace
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=1GB", "-c", "effective_cache_size=3GB"]
+    shm_size: 512mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ace -d ace"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # BullMQ needs noeviction: an evicted job key is a document that is never indexed.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in server.env}
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    logging: *logging
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.api
+      secrets: [extra_ca]
+    image: ace-api:latest
+    restart: unless-stopped
+    env_file: server.env
+    environment:
+      # Fixed by this layout, so not left to server.env to get wrong.
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://ace:${POSTGRES_PASSWORD}@postgres:5432/ace?connection_limit=20
+      DIRECT_URL: postgresql://ace:${POSTGRES_PASSWORD}@postgres:5432/ace
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      API_BASE_URL: https://${DOMAIN}
+      WEB_BASE_URL: https://${DOMAIN}
+      WEB_INTERNAL_URL: http://web:3000
+      CORS_ORIGIN: https://${DOMAIN}
+      # Caddy is the one proxy in front: trust exactly one hop of X-Forwarded-For.
+      TRUST_PROXY: "1"
+      STORAGE_DIR: /data/files
+      # Empty unless EXTRA_CA_CERT is set (a network that re-signs TLS): then
+      # the API's calls to OpenAI, ElevenLabs, Meta, … trust that CA as well.
+      NODE_EXTRA_CA_CERTS: /etc/ssl/extra-ca.pem
+      # Files live on this server's disk (the `files` volume, backed up
+      # nightly). Blank here so a SUPABASE_URL copied over from the old
+      # environment cannot quietly send uploads back to Supabase.
+      SUPABASE_URL: ""
+      SUPABASE_SERVICE_ROLE_KEY: ""
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - files:/data/files
+      - ./.extra-ca.pem:/etc/ssl/extra-ca.pem:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      qdrant: { condition: service_started }
+    logging: *logging
+
+  web:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+      secrets: [extra_ca]
+      args:
+        # The dashboard and the API share this one origin (Caddy routes /api).
+        NEXT_PUBLIC_API_URL: https://${DOMAIN:?set DOMAIN in server.env}
+    image: ace-web:latest
+    restart: unless-stopped
+    depends_on: [api]
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in server.env (certificate expiry notices)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, web]
+    logging: *logging
+
+  bridge:
+    build:
+      context: ../..
+      dockerfile: deploy/single-server/bridge/Dockerfile
+    image: ace-bridge:latest
+    restart: unless-stopped
+    network_mode: host
+    # The calls come first. Default share is 1024; this is four times that, so
+    # under contention the kernel gives the bridge the CPU before anything else.
+    cpu_shares: 4096
+    env_file:
+      - path: ../../infra/sip-bridge/bridge.env
+        required: false
+    volumes:
+      - ./bridge/sounds:/opt/bridge/sounds:ro
+    profiles: ["bridge"]
+    logging: *logging
+
+secrets:
+  # Only for a network that re-signs TLS (see Dockerfile.api). Empty by default.
+  # deploy.sh copies EXTRA_CA_CERT here (empty when unset): the build may
+  # read only files inside this folder.
+  extra_ca:
+    file: ./.extra-ca.pem
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  files:
+  caddy_data:
+  caddy_config:

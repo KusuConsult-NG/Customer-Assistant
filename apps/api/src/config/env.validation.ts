@@ -67,8 +67,9 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'TWILIO_ACCOUNT_SID', required: false, description: 'Twilio Account SID (required for Voice AI telephony)' },
   { key: 'TWILIO_AUTH_TOKEN', required: false, description: 'Twilio Auth Token (required for Voice AI telephony)' },
   { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
-  { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
-  { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
+  { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL — with SUPABASE_SERVICE_ROLE_KEY, uploaded documents and selfies are stored in Supabase Storage' },
+  { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (see SUPABASE_URL)' },
+  { key: 'STORAGE_DIR', required: false, description: 'A PERSISTENT directory for uploaded documents and selfies when Supabase is not used (the single-server deployment mounts a backed-up volume here). In production with neither this nor Supabase, uploads are REFUSED rather than written to a disk a redeploy wipes' },
   // ── Email, over HTTPS, from whichever provider is configured ──────────────
   //
   // SMTP is NOT an alternative on this host: Render blocks outbound traffic to

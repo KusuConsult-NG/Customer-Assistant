@@ -9,7 +9,7 @@ import { assertPublicHttpUrl } from '../common/url-safety';
 import { QdrantRAGService } from '@ace/orchestrator';
 import { Queue } from 'bullmq';
 import { AceLogger } from '../config/logger';
-import { KNOWLEDGE_BUCKET, deleteObject, signedUrl, uploadObject } from '../common/object-storage';
+import { KNOWLEDGE_BUCKET, deleteObject, signedUrl, storageDriver, uploadObject } from '../common/object-storage';
 import { extractText } from './document.worker';
 
 const log = new AceLogger('KnowledgeService');
@@ -205,7 +205,7 @@ export class KnowledgeService {
       );
     }
 
-    // ── Upload to Supabase Storage ────────────────────────────────────────
+    // ── Store the file (Supabase or this server's disk: common/object-storage) ─
     const storagePath = await uploadObject(KNOWLEDGE_BUCKET, 
       organizationId,
       data.fileName,
@@ -215,7 +215,8 @@ export class KnowledgeService {
 
     log.info('knowledge_file_uploaded', {
       organizationId,
-      event: 'file_uploaded_to_supabase',
+      event: 'file_stored',
+      storage: storageDriver(),
       fileName: data.fileName,
       storagePath,
       fileSizeKb: Math.round(data.fileSize / 1024),
@@ -229,7 +230,7 @@ export class KnowledgeService {
         fileName: data.fileName,
         fileSize: data.fileSize,
         mimeType: data.mimeType,
-        storageUrl: storagePath, // Supabase Storage path (not a public URL)
+        storageUrl: storagePath, // a storage path (not a public URL)
         status: 'PENDING',
         // PRD §12: a draft when the agency requires a second person's approval.
         ...(await initialPublication(organizationId, data.createdByUserId)),

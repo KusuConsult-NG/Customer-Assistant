@@ -10,3 +10,9 @@ noload = cdr_radius.so
 noload = cel_radius.so
 noload = res_phoneprov.so
 noload = res_pjsip_phoneprov_provider.so
+; Sound-card and desktop-audio channels: a bridge has no sound card, and
+; loading them only prints ALSA/JACK errors into the log.
+noload = chan_alsa.so
+noload = chan_console.so
+noload = chan_oss.so
+noload = app_jack.so

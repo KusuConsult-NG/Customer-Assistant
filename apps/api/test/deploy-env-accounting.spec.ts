@@ -40,6 +40,10 @@ const ENV_VALIDATION = join(__dirname, '..', 'src', 'config', 'env.validation.ts
  * whether it was a decision or an oversight.
  */
 const DELIBERATELY_OMITTED: Record<string, string> = {
+  STORAGE_DIR:
+    'Files on the server\'s own disk. Render\'s disk is wiped on every deploy, so ' +
+    'Render keeps files in Supabase Storage; only the single-server deployment ' +
+    'sets it, to a backed-up volume (deploy/single-server/docker-compose.yml).',
   ELEVENLABS_ALLOW_SHARED_WORKSPACE:
     'Single-tenant opt-in. Setting it here would put every tenant\'s numbers, ' +
     'WhatsApp lines and transcripts in one ElevenLabs workspace.',
