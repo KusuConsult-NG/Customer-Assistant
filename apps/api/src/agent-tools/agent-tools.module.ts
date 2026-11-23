@@ -63,6 +63,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
   ],
   exports: [
     AgentToolsService,
+    ElevenLabsApi,
     ElevenLabsAgentService,
     ElevenLabsLiveService,
     ElevenLabsNumbersService,

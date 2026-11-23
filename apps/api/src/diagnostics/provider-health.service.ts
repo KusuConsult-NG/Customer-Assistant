@@ -339,6 +339,27 @@ export class ProviderHealthService {
         'Knowledge uploads and citizen selfies cannot be stored. A binary upload is marked ' +
         'FAILED rather than silently lost, but nothing is captured.',
     };
+    if ((!url || !key) && process.env.STORAGE_DIR?.trim()) {
+      // The single-server deployment: files on the server's own disk. Proven
+      // by writing and removing a file, not by the variable being set.
+      const dir = process.env.STORAGE_DIR.trim();
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        fs.mkdirSync(dir, { recursive: true });
+        const probeFile = path.join(dir, `.health-${process.pid}-${Date.now()}`);
+        fs.writeFileSync(probeFile, 'ok');
+        fs.unlinkSync(probeFile);
+        return { ...base, label: 'File storage (server disk)', state: 'ok', detail: `Files are stored on this server at ${dir}, and it is writable.` };
+      } catch (e: any) {
+        return {
+          ...base,
+          label: 'File storage (server disk)',
+          state: 'failed',
+          detail: `STORAGE_DIR (${dir}) cannot be written: ${e?.message ?? e}`,
+        };
+      }
+    }
     if (!url || !key) {
       return {
         ...base,

@@ -174,6 +174,19 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/telephony/status/twilio', calledBy: 'Twilio status callback' },
   { method: 'POST', path: '/api/telephony/status/telnyx', calledBy: 'Telnyx status callback' },
 
+  // ── The server's own voice line (voice-local) ──────────────────────────
+  //
+  // Asterisk's CURL() on the same server, with the shared LOCAL_VOICE_SECRET:
+  // register before AudioSocket, read the outcome after it.
+  { method: 'POST', path: '/api/voice-local/register', calledBy: 'Asterisk dialplan CURL (same server)' },
+  { method: 'GET', path: '/api/voice-local/outcome/:uuid', calledBy: 'Asterisk dialplan CURL (same server)' },
+
+  // ── Signed file links (single-server storage) ────────────────────────
+  //
+  // Opened by an <img> or a download link the dashboard was handed by
+  // signedUrl(); the HMAC and expiry in the query are the credential.
+  { method: 'GET', path: '/api/storage/:bucket/:folder/:file', calledBy: 'Browser following a signed file link' },
+
   // ── Probes ─────────────────────────────────────────────────────────────
   //
   // Liveness is shallow because the only remedy for failing it is a restart;

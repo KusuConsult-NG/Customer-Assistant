@@ -42,6 +42,7 @@
 import { Worker, Job } from 'bullmq';
 import { reportRedisQuotaOnce } from '../common/redis-quota';
 import { embeddingsUrl, llmConfig } from '@ace/orchestrator';
+import { downloadObject } from '../common/object-storage';
 
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
 const CHUNK_SIZE_CHARS = 1800; // ~450 tokens at ~4 chars/token
@@ -188,33 +189,9 @@ async function downloadDocument(storageUrl: string): Promise<Buffer> {
     if (!res.ok) throw new Error(`Failed to download document: HTTP ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
   }
-
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error(
-      'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are required to download queued documents.'
-    );
-  }
-
-  const res = await fetch(
-    `${supabaseUrl}/storage/v1/object/${SUPABASE_BUCKET}/${storageUrl}`,
-    {
-      // Supabase Storage requires BOTH headers — Authorization alone yields a
-      // misleading 400/403 ("Invalid Compact JWS"). See common/object-storage.ts.
-      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-      signal: AbortSignal.timeout(60_000),
-    }
-  );
-
-  if (!res.ok) {
-    throw new Error(
-      `Failed to download "${storageUrl}" from Supabase Storage (HTTP ${res.status}). ` +
-      `Confirm the "${SUPABASE_BUCKET}" bucket exists and the service-role key is valid.`
-    );
-  }
-
-  return Buffer.from(await res.arrayBuffer());
+  // Supabase on Render, the server's own disk on the single-VPS deployment:
+  // the same driver the upload used, so the worker cannot look somewhere else.
+  return downloadObject(SUPABASE_BUCKET, storageUrl);
 }
 
 /**

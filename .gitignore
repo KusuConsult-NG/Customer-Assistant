@@ -63,3 +63,7 @@ data/qdrant/qdrant
 storage/
 .qdrant-initialized
 infra/sip-bridge/bridge.env
+
+# Speech cache written by the local voice line when no STORAGE_DIR is set
+tts-cache/
+uploads/

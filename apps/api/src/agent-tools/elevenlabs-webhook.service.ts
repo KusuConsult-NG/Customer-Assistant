@@ -548,6 +548,24 @@ export class ElevenLabsWebhookService {
     return { handled: false, reason: 'conversation carries no phone or WhatsApp identity' };
   }
 
+  /**
+   * A call this platform answered ITSELF (voice-local), recorded through the
+   * same path as an ElevenLabs call so the two cannot be stored differently.
+   * No agent attribution: the organization is known from the dialled number
+   * at registration, not claimed by a payload.
+   */
+  async ingestForOrganization(
+    organizationId: string,
+    payload: PostCallPayload,
+    correlationId: string
+  ): Promise<IngestOutcome> {
+    const data = payload?.data;
+    if (!data?.conversation_id || !data.metadata?.phone_call) {
+      return { handled: false, reason: 'a locally answered call must carry a conversation id and a phone call' };
+    }
+    return this.ingestCall(organizationId, data, correlationId);
+  }
+
   // ── A call that never happened ─────────────────────────────────────────────
 
   /**

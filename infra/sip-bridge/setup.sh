@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install and configure the Alphatech → ElevenLabs SIP bridge on Ubuntu 22.04/24.04.
+# Install and configure the Alphatech SIP bridge on Ubuntu 22.04/24.04: calls to the
+# server's own voice line (LOCAL_VOICE=1) with ElevenLabs as the fallback, or to ElevenLabs only.
 #   cp bridge.env.example bridge.env && nano bridge.env && sudo ./setup.sh
 # Safe to re-run: it re-renders the config from bridge.env and restarts Asterisk.
 set -euo pipefail
@@ -29,6 +30,17 @@ done
 [[ "$TOLLFREE_E164" =~ ^\+[0-9]{8,15}$ ]] || { echo "TOLLFREE_E164 must be E.164, e.g. +2348000000456"; exit 1; }
 FALLBACK_SOUND="${FALLBACK_SOUND:-all-circuits-busy-now}"
 INTRO_SOUND="${INTRO_SOUND:-}"
+# The server's own voice line. Off unless LOCAL_VOICE=1, and then only when the
+# API answers "ok" for a call — see templates/extensions.conf.template.
+LOCAL_VOICE="${LOCAL_VOICE:-0}"
+LOCAL_VOICE_SECRET="${LOCAL_VOICE_SECRET:-}"
+API_PORT="${API_PORT:-4000}"
+AUDIOSOCKET_PORT="${AUDIOSOCKET_PORT:-9092}"
+if [ "$LOCAL_VOICE" = "1" ]; then
+  [ ${#LOCAL_VOICE_SECRET} -ge 24 ] || { echo "LOCAL_VOICE=1 needs LOCAL_VOICE_SECRET (24+ chars, the same value as the API's)"; exit 1; }
+  [[ "$LOCAL_VOICE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "LOCAL_VOICE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
+fi
+export LOCAL_VOICE LOCAL_VOICE_SECRET API_PORT AUDIOSOCKET_PORT
 if [ -z "${PUBLIC_IP:-}" ]; then
   PUBLIC_IP="$(curl -fsS -4 --max-time 10 https://api.ipify.org || true)"
   [ -n "$PUBLIC_IP" ] || { echo "Could not detect the public IP; set PUBLIC_IP in bridge.env"; exit 1; }
@@ -41,12 +53,12 @@ apt-get update -qq
 apt-get install -y -qq asterisk gettext-base ufw curl >/dev/null
 
 echo "==> Rendering configuration (public IP ${PUBLIC_IP})"
-VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND}'
+VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND} ${LOCAL_VOICE} ${LOCAL_VOICE_SECRET} ${API_PORT} ${AUDIOSOCKET_PORT}'
 for f in pjsip extensions rtp modules; do
   envsubst "$VARS" < "templates/${f}.conf.template" > "/etc/asterisk/${f}.conf"
 done
 chown asterisk:asterisk /etc/asterisk/{pjsip,extensions,rtp,modules}.conf
-chmod 640 /etc/asterisk/pjsip.conf
+chmod 640 /etc/asterisk/pjsip.conf /etc/asterisk/extensions.conf
 
 echo "==> Firewall: SSH, SIP 5060 (UDP+TCP), RTP 10000-20000/UDP"
 ufw allow OpenSSH >/dev/null
