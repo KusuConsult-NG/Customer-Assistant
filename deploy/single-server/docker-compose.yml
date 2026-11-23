@@ -95,6 +95,16 @@ services:
       SUPABASE_URL: ""
       SUPABASE_SERVICE_ROLE_KEY: ""
       QDRANT_API_KEY: ${QDRANT_API_KEY}
+      # The voice line's AudioSocket must accept the bridge's connection,
+      # which reaches the container through the localhost port below.
+      AUDIOSOCKET_HOST: 0.0.0.0
+    # LOCALHOST ONLY: for the phone bridge, which runs on the host's network
+    # (network_mode: host) and asks the API who is calling before the agent
+    # answers (/api/sip-bridge/caller), and for the voice line's AudioSocket.
+    # Nothing outside this server can reach either; Caddy stays the only door.
+    ports:
+      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:9092:9092"
     volumes:
       - files:/data/files
       - ./.extra-ca.pem:/etc/ssl/extra-ca.pem:ro
@@ -110,8 +120,12 @@ services:
       dockerfile: Dockerfile.web
       secrets: [extra_ca]
       args:
-        # The dashboard and the API share this one origin (Caddy routes /api).
-        NEXT_PUBLIC_API_URL: https://${DOMAIN:?set DOMAIN in server.env}
+        # The dashboard and the API share one origin (Caddy routes /api), so the
+        # dashboard calls the API on whatever address it was loaded from. A
+        # fixed address was compiled in before, and the site is reached through
+        # a tunnel whose address changes on every restart: each new address
+        # left every officer's dashboard calling the old one until a rebuild.
+        NEXT_PUBLIC_API_URL: same-origin
     image: ace-web:latest
     restart: unless-stopped
     depends_on: [api]

@@ -1,0 +1,19 @@
+[Unit]
+Description=Qdrant vector search
+After=network-online.target
+
+[Service]
+User=qdrant
+Group=qdrant
+WorkingDirectory=/var/lib/qdrant
+ExecStart=/usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml
+Restart=always
+RestartSec=3
+CPUWeight=100
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/qdrant
+
+[Install]
+WantedBy=multi-user.target

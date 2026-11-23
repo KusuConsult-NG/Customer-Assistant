@@ -100,7 +100,8 @@ describe('Plateau name rotation', () => {
     expect(first).toContain(`I'm ${name}, the virtual assistant.`);
     // The next caller is not asked their name before they are looked up.
     expect(first).not.toMatch(/your (full )?name/i);
-    expect(first).toMatch(/How may I help you today\?$/);
+    // Ends with the bridge's welcome line ("How may I help you today?" unless recognised).
+    expect(first).toMatch(/\{\{sip_welcome\}\}$/);
   });
 
   it('does not switch the conversation-start webhook itself', async () => {

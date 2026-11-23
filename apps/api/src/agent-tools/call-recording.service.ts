@@ -8,7 +8,9 @@ import {
   elevenLabsConversationFrom,
   elevenLabsRecordingRef,
   isErasedCall,
+  localRecordingFrom,
 } from '../common/call-recording';
+import { CALL_RECORDING_BUCKET, downloadObject } from '../common/object-storage';
 
 /** How far either side of a call's start a conversation may begin and still be it. */
 const MATCH_WINDOW_SECS = 10 * 60;
@@ -52,6 +54,19 @@ export class CallRecordingService {
     if (!call) throw new NotFoundException('No such call.');
     if (isErasedCall(call)) throw new NotFoundException('This call was erased at the citizen’s request; there is nothing to play.');
     await this.assertMayHear(user, call.id);
+
+    // Answered by this server's own voice pipeline: the audio is ours.
+    const localPath = localRecordingFrom(call.recordingUrl);
+    if (localPath) {
+      let audio: Buffer;
+      try {
+        audio = await downloadObject(CALL_RECORDING_BUCKET, localPath);
+      } catch {
+        throw new NotFoundException('No recording is held for this call: the stored audio could not be found.');
+      }
+      this.log.log(`call_recording_served org=${organizationId} call=${call.id} bytes=${audio.length} source=local`);
+      return { audio, contentType: 'audio/wav' };
+    }
 
     const config = await prisma.hostedAgentConfig.findUnique({
       where: { organizationId },

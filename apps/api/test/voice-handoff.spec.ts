@@ -13,6 +13,7 @@
  * actually happened to their call.
  */
 
+import { spokenReference } from '../src/agent-tools/spoken-replies';
 import { TwilioMediaStreamHandler } from '../src/telephony/twilio-media-stream.handler';
 import { VoiceAiService } from '../src/telephony/voice-ai.service';
 import { prisma } from '@ace/database';
@@ -230,14 +231,21 @@ describe('Voice handoff to a human', () => {
     const row = await callbackFor(session.fromNumber);
     expect(row).toBeTruthy();
     expect(row!.reason).toContain('my pension');
-    const ref = `CB-${row!.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    // The reference the caller hears is the one STORED on the row — the one
+    // officers see on the Callbacks page — read digit by digit. This test used
+    // to rebuild the old "CB-<id>" form, which pinned the bug in place and
+    // failed only when the id happened to start with eight digits.
+    expect(row!.reference).toMatch(/^\d{5,8}$/);
+    const ref = spokenReference(row!.reference!);
 
     expect(spoken).toHaveLength(1);
     expect(spoken[0]).toContain(ref);
+    expect(spoken[0]).not.toMatch(/CB-/);
     expect(spoken[0]).toMatch(/call you back/i);
 
     const handoff = broadcastEvents.find((e) => e.event === 'human_handoff');
-    expect(handoff?.payload).toMatchObject({ transferred: false, callback: ref });
+    // The console shows it as written, the same digits officers search for.
+    expect(handoff?.payload).toMatchObject({ transferred: false, callback: row!.reference });
   });
 
   it('never claims the call is being put through', async () => {

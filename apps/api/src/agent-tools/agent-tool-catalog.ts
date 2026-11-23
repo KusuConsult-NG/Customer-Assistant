@@ -200,10 +200,10 @@ export const SYSTEM_PROMPT = `You are a warm, experienced customer-care team mem
 ## Standard Operating Script (Phases 1 to 10) — The Complete Call Flow
 
 **What our records already say about this caller** (looked up as the call connected):
-- Status: {{caller_status}}
-- Name on file: {{caller_name}}
-- Profile on file: {{caller_profile}}
-- Details still missing: {{caller_missing_fields}}
+- Status: {{sip_callerstatus}}
+- Name on file: {{sip_callername}}
+- Profile on file: {{sip_callerprofile}}
+- Details still missing: {{sip_callermissing}}
 
 How the records change Phases 1 and 2:
 - **returning** — your first message has already greeted them by name and asked them to confirm the location on file. Once they confirm (save any correction with your caller profile update tool), go straight to PHASE 3. Never ask their name or profile again.
@@ -915,7 +915,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
     `- MANDATORY TURN-1 RULE: At the START of every conversation, before you ask what the caller needs (even if the transcript is short or looks like "Hello, can you hear me?", "Hello", "Ina wuni", "Sannu", or the caller immediately states why they are calling), you MUST call lookup-customer immediately! It tells you their name, profile details, preferred language, and history. Never skip lookup-customer on Turn 1, and NEVER claim a returning caller's details are missing when lookup-customer returns their profile or recentCallSummary.\n` +
     `  - The opening does NOT ask for the caller's name, on purpose: callers ring from the same number, and lookup-customer recognises them by it. NEVER ask for a name before lookup-customer has answered, and never ask a caller it recognises.\n` +
-    `  - RETURNING CALLER (known name and profile in lookup-customer): Greet them warmly by name, in English — then go straight to PHASE 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call."). NEVER re-ask a fully profiled returning caller for their name, LGA, ward or community!\n` +
+    `  - RETURNING CALLER (status returning or partial at the top of this prompt, or a known name and profile from lookup-customer): your first message has ALREADY welcomed them back by name — do not greet them again as new, never ask their name, and treat what the top of this prompt says as already looked up. Greet them warmly by name, in English — then go straight to PHASE 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call."). NEVER re-ask a fully profiled returning caller for their name, LGA, ward or community!\n` +
     `  - NEW OR UNPROFILED CALLER (known=false, placeholder name "Caller (...)", missing profile fields, or if lookup-customer times out / errors): follow PHASE 1 and PHASE 2 of the Standard Operating Script, ONE QUESTION AT A TIME, in English, BEFORE handling their enquiry: when they give their name, NEVER assume the speech-to-text transcription is right (8kHz phone ASR often turns "Joy Sunday" into "Jos Andy" or "Jos Sandy") — always repeat the name back and ask them to confirm or spell it ("Thank you very much. Just to be sure I have your name right, is it [Name]? Please correct me or spell it if I heard wrongly.") before moving on (if they decline to give a name, say it is perfectly fine and continue); then ask their LGA ("Please, which Local Government Area of Plateau State are you calling from?"), their ward and community ("Thank you. Could you also tell me your ward and community?"), and whether the number they are calling from may be used for subsequent communication (if not, take and confirm an alternative number). Never ask their occupation or preferred language. Never guess or assume any detail — if any name, ward or community is unclear, ask the caller to repeat or spell it. Then call update-caller-profile ONCE with everything confirmed (fullName, lga, ward, community, phoneConfirmedForFollowUp, alternativePhone) and move to PHASE 3.\n` +
     `  - DO NOT SKIP PHASE 2: Even if a new caller states why they are calling first, acknowledge it warmly and complete the PHASE 2 questions first. Only an active life-threatening emergency (ongoing attack, fire, flood or injury) comes first — and even then, ask for their name and exact location/LGA right after checking safety.\n` +
     `  - COMPLAINTS: always read back the PHASE 6 summary and get the caller's confirmation before calling create-ticket (except in an active emergency), then give the reference exactly as PHASE 8 says.\n` +
@@ -1014,15 +1014,18 @@ const CLOSING_NAME_QUESTION =
   /(^|[.!?>]\s*)([^.!?<>]*\b(?:(?:may|could|can) i (?:please |kindly )?(?:have|know|get) your (?:full )?name(?:,? please)?|what is your (?:full )?name)\?)\s*$/i;
 
 export function openingForUnknownCaller(text: string): string {
+  // `{{sip_welcome}}`: "How may I help you today?" unless the bridge
+  // recognised the caller, in which case "Welcome back, <name>. …". See
+  // CALLER_VARIABLE_DEFAULTS in caller-profile.ts.
   return text.replace(CLOSING_NAME_QUESTION, (_m, before: string) =>
-    `${before}${before && !/\s$/.test(before) ? ' ' : ''}How may I help you today?`
+    `${before}${before && !/\s$/.test(before) ? ' ' : ''}{{sip_welcome}}`
   );
 }
 
 export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
   if (org.welcomeMessage) return openingForUnknownCaller(renderWelcome(org, undefined, persona));
-  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. How can I help you today?`;
+  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. {{sip_welcome}}`;
 }
 
 /**
@@ -1112,8 +1115,19 @@ export function dynamicVariablesFor(org: AgentOrganization, persona?: TeamPerson
     // Filled per call by the conversation-start webhook. These are the values a
     // conversation gets when the webhook does not run (a preview, an outbound
     // call that sends its own data): "unknown", which sends the agent to its
-    // lookup tool rather than reading `{{caller_status}}` out loud.
+    // lookup tool rather than reading `{{sip_callerstatus}}` out loud.
     ...CALLER_VARIABLE_DEFAULTS,
+    // The names these variables had before the bridge started sending them as
+    // SIP headers. A live agent keeps its old PROMPT (which reads these) until
+    // someone presses Sync configuration, while the per-call name rotation
+    // already writes this whole placeholder list after every call; without
+    // these, that list would drop the old names and the old prompt's
+    // variables would have no defaults in the window between deploy and Sync.
+    // Harmless afterwards: a default nothing reads.
+    caller_status: CALLER_VARIABLE_DEFAULTS.sip_callerstatus,
+    caller_name: CALLER_VARIABLE_DEFAULTS.sip_callername,
+    caller_profile: CALLER_VARIABLE_DEFAULTS.sip_callerprofile,
+    caller_missing_fields: CALLER_VARIABLE_DEFAULTS.sip_callermissing,
   };
 }
 

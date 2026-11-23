@@ -34,6 +34,22 @@ export function elevenLabsConversationFrom(recordingUrl: string | null | undefin
   return recordingUrl?.startsWith(PREFIX) ? recordingUrl.slice(PREFIX.length) || null : null;
 }
 
+/**
+ * A call answered by the server's own voice pipeline (voice-local) is recorded
+ * by this platform, into the `call-recordings` bucket of object storage. Its
+ * reference is `local:<storage path>` — still not a URL, for the same reason:
+ * the endpoint checks who may hear it before a byte is read.
+ */
+const LOCAL_PREFIX = 'local:';
+
+export function localRecordingRef(storagePath: string): string {
+  return `${LOCAL_PREFIX}${storagePath}`;
+}
+
+export function localRecordingFrom(recordingUrl: string | null | undefined): string | null {
+  return recordingUrl?.startsWith(LOCAL_PREFIX) ? recordingUrl.slice(LOCAL_PREFIX.length) || null : null;
+}
+
 /** Erasure (data-rights.service) marks a call this way; nothing about it may be played. */
 export function isErasedCall(call: { fromNumber?: string | null }): boolean {
   return call.fromNumber === 'erased';
@@ -50,6 +66,6 @@ export function recordingPlayable(
   agencyHasAgent: boolean
 ): boolean {
   if (isErasedCall(call)) return false;
-  if (elevenLabsConversationFrom(call.recordingUrl)) return true;
+  if (elevenLabsConversationFrom(call.recordingUrl) || localRecordingFrom(call.recordingUrl)) return true;
   return agencyHasAgent && call.status === 'COMPLETED' && (call.durationSeconds ?? 0) > 0;
 }

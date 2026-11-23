@@ -24,6 +24,15 @@ import WebSocket from 'ws';
  * Validated rather than interpolated raw: a value with a slash or a space in
  * it does not fail as "bad model", it corrupts the query string.
  */
+/**
+ * The ONE place a live (streaming) Deepgram transcription URL is built. The
+ * phone handlers and the server's own voice line (voice-local/stt.ts) pass
+ * their own parameters; the endpoint itself is written nowhere else.
+ */
+export function deepgramListenUrl(params: URLSearchParams): string {
+  return `wss://api.deepgram.com/v1/listen?${params}`;
+}
+
 export function deepgramModel(): string {
   const configured = process.env.DEEPGRAM_MODEL?.trim();
   if (!configured) return 'nova-2';
@@ -103,7 +112,7 @@ export class VoiceAiService {
     });
 
     try {
-      const ws = new WebSocket(`wss://api.deepgram.com/v1/listen?${params}`, {
+      const ws = new WebSocket(deepgramListenUrl(params), {
         headers: { Authorization: `Token ${apiKey}` },
       });
       return ws;

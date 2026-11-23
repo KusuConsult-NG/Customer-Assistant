@@ -79,10 +79,27 @@ describe('the booking-constraint boot check', () => {
 
   it('starts when the constraint is there', async () => {
     process.env.NODE_ENV = 'production';
-    query.mockResolvedValue([{ one: 1 }]);
+    query.mockResolvedValue([{ def: "EXCLUDE USING gist (\"organizationId\" WITH =, COALESCE(\"staffName\", ''::text) WITH =, tsrange(\"startTime\", \"endTime\") WITH &&) WHERE ((status = ANY (ARRAY['CONFIRMED'::\"BookingStatus\", 'RESCHEDULED'::\"BookingStatus\"])))" }]);
 
     await expect(assertDatabaseGuarantees()).resolves.toBeUndefined();
     expect(exit).not.toHaveBeenCalled();
+  });
+
+  // The live deployment had exactly this: the FIRST version of the
+  // constraint, so a check by name passed while every unstaffed booking —
+  // every one the phone agent makes — was covered by nothing.
+  it('says, at ERROR level, when the constraint is the old one that skips unstaffed bookings', async () => {
+    process.env.NODE_ENV = 'production';
+    query.mockResolvedValue([{ def: "EXCLUDE USING gist (\"organizationId\" WITH =, \"staffName\" WITH =, tsrange(\"startTime\", \"endTime\") WITH &&) WHERE (((status = ANY (ARRAY['CONFIRMED'::\"BookingStatus\", 'RESCHEDULED'::\"BookingStatus\"])) AND (\"staffName\" IS NOT NULL)))" }]);
+    const errors: string[] = [];
+    jest
+      .spyOn(require('@nestjs/common').Logger.prototype, 'error')
+      .mockImplementation(((m: string) => errors.push(String(m))) as any);
+
+    // Not a refusal: a running deployment must not be taken down by this check.
+    await expect(assertDatabaseGuarantees()).resolves.toBeUndefined();
+    expect(exit).not.toHaveBeenCalled();
+    expect(errors.join('\n')).toMatch(/OUTDATED[\s\S]*no staff assigned[\s\S]*SQL-ONLY-MIGRATION/);
   });
 
   it('REFUSES to start in production when it is missing', async () => {
@@ -108,7 +125,7 @@ describe('the booking-constraint boot check', () => {
     // Whoever reads this log is mid-deployment and needs the command, not a
     // diagnosis they have to go and research.
     const logged = errors.join('\n');
-    expect(logged).toContain('EXCLUDE USING');
+    expect(logged).toContain('SQL-ONLY-MIGRATION');
     expect(logged).toContain('psql');
     expect(logged).toMatch(/caller is told their appointment was made/i);
   });

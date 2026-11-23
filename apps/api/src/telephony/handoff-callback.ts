@@ -147,7 +147,10 @@ export async function queueHandoffCallback(params: {
         promisedText: outsideHours ? 'When the office next opens' : 'As soon as an officer is free',
         dueAt,
       },
-      select: { id: true },
+      // `reference` too: with `id` alone, callbackReference() fell back to the
+      // old "CB-<id>" form, so the caller was read a reference that matched
+      // nothing on the Callbacks page, where officers see the stored digits.
+      select: { id: true, reference: true },
     });
 
     return {

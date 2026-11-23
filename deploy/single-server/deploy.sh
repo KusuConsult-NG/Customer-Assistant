@@ -24,10 +24,15 @@ say "Updating the database schema"
 dc run --rm --no-deps -T api npx prisma db push --skip-generate --schema=packages/database/prisma/schema.prisma
 
 # db push cannot express the booking EXCLUDE constraint; without it eight
-# callers can each be told they hold the same slot. Applied only when absent
-# (a restored or migrated database already carries it).
-if [ "$(dc exec -T postgres psql -U ace -d ace -tAc "select count(*) from pg_constraint where conname = 'bookings_no_staff_overlap'")" != "1" ]; then
-  say "Adding the booking overlap constraint"
+# callers can each be told they hold the same slot. Applied when absent OR when
+# it is the first version (`"staffName" IS NOT NULL`), which left every booking
+# without a staff name unguarded — every one the phone agent and WhatsApp make.
+# Production carried that version until 23 Nov 2026, so a database copied from
+# it before then still does; checking only that the name exists missed it.
+# Both migrations drop and re-create, so applying them again is safe.
+def="$(dc exec -T postgres psql -U ace -d ace -tAc "select pg_get_constraintdef(oid) from pg_constraint where conname = 'bookings_no_staff_overlap'")"
+if [[ "$def" != *'COALESCE("staffName"'* ]]; then
+  if [ -n "$def" ]; then say "Replacing the old booking overlap constraint"; else say "Adding the booking overlap constraint"; fi
   for m in $(grep -l 'SQL-ONLY-MIGRATION' ../../packages/database/prisma/migrations/*/migration.sql | sort); do
     dc exec -T postgres psql -U ace -d ace -v ON_ERROR_STOP=1 -q < "$m"
   done

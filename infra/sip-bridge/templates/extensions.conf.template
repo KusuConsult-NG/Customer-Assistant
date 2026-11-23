@@ -17,15 +17,66 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  same => n,Set(CN=${CALLERID(num)})
  same => n,ExecIf($[${REGEX("^0[789][01][0-9]{8}$" ${CN})}]?Set(CALLERID(num)=+234${CN:1}))
  same => n,ExecIf($[${REGEX("^234[0-9]{10}$" ${CN})}]?Set(CALLERID(num)=+${CN}))
+ same => n,GotoIf($["${LOCAL_VOICE}" != "1"]?elevenlabs)
+
+ ; ── The server's own voice line (LOCAL_VOICE=1) ──────────────────────────
+ ; Ask the API whether it can take this call. Anything but "ok <uuid>" — the
+ ; API down, a provider key missing, an unknown number, a wrong secret — sends
+ ; the call to ElevenLabs below, exactly as before this existed.
+ same => n,Set(CURLOPT(conntimeout)=2)
+ same => n,Set(CURLOPT(httptimeout)=4)
+ same => n,Set(LV=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/register,secret=${LOCAL_VOICE_SECRET}&from=${URIENCODE(${CALLERID(num)})}&to=${URIENCODE(${TOLLFREE_E164})})})
+ same => n,NoOp(voice-local register: ${LV})
+ same => n,GotoIf($["${LV:0:3}" != "ok "]?elevenlabs)
+ same => n,Answer()
+ ; Dial(AudioSocket/…), NOT the AudioSocket() application: tested on Asterisk
+ ; 20.6, the application HANGS UP the caller when the server closes, so the
+ ; fallback below could never run. A dialled AudioSocket leg ending returns
+ ; here (option g), whatever the reason.
+ same => n,Dial(AudioSocket/127.0.0.1:${AUDIOSOCKET_PORT}/${LV:3},,g)
+ ; The local leg ended. "fallback" means it failed (the caller is still on
+ ; the line): hand them to the ElevenLabs agent. Anything else: hang up.
+ same => n,Set(LVO=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/outcome/${LV:3}?secret=${LOCAL_VOICE_SECRET})})
+ same => n,NoOp(voice-local outcome: ${LVO})
+ same => n,GotoIf($["${LVO}" = "fallback"]?elevenlabs)
+ same => n,GotoIf($["${LVO}" = "unknown"]?elevenlabs)
+ same => n,Hangup()
+
+ ; ── ElevenLabs (the original path, and the fallback) ─────────────────────
  ; If INTRO_SOUND is set (e.g. Governor Caleb Mutfwang's recorded welcome),
  ; answer and play it before handing the call to Nanpan on ElevenLabs.
- same => n,ExecIf($["${INTRO_SOUND}" != ""]?Answer())
- same => n,ExecIf($["${INTRO_SOUND}" != ""]?Playback(${INTRO_SOUND}))
- same => n,Dial(PJSIP/elevenlabs/sip:${TOLLFREE_E164}@${ELEVENLABS_SIP_HOST}:5060\;transport=tcp,60)
+ ; Who is calling, asked of the platform BEFORE the agent answers, so a
+ ; caller profiled on an earlier call is welcomed back by name in the first
+ ; message — not left to the model remembering to look them up. The answer
+ ; travels as X- headers, which ElevenLabs turns into {{sip_...}} variables.
+ ; At most a few seconds; no answer at all and the call goes on as before.
+ same => n(elevenlabs),Set(CI=)
+ same => n,GotoIf($["${SIP_BRIDGE_SECRET}" = ""]?dial)
+ same => n,Set(CURLOPT(conntimeout)=2)
+ same => n,Set(CURLOPT(httptimeout)=3)
+ same => n,Set(CI=${CURL(${BRIDGE_API_URL}/api/sip-bridge/caller,secret=${SIP_BRIDGE_SECRET}&from=${URIENCODE(${CALLERID(num)})}&to=${URIENCODE(${TOLLFREE_E164})})})
+ same => n,ExecIf($["${CI:0:3}" != "ok|"]?Set(CI=))
+ ; __ so the outgoing (ElevenLabs) channel inherits it for the headers below.
+ same => n,Set(__CALLERINFO=${CI})
+ same => n,NoOp(caller lookup: ${CUT(CI,|,2)})
+ same => n(dial),ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Answer())
+ same => n,ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Playback(${INTRO_SOUND}))
+ same => n,Dial(PJSIP/elevenlabs/sip:${TOLLFREE_E164}@${ELEVENLABS_SIP_HOST}:5060\;transport=tcp,60,b(caller-headers^s^1))
  same => n,NoOp(ElevenLabs leg ended: DIALSTATUS=${DIALSTATUS} HANGUPCAUSE=${HANGUPCAUSE})
  ; If the AI could not be reached, the caller is told rather than dropped.
  same => n,ExecIf($["${DIALSTATUS}" != "ANSWER"]?Playback(${FALLBACK_SOUND}))
  same => n,Hangup()
+
+; Runs on the OUTGOING leg to ElevenLabs just before the INVITE is sent: the
+; caller lookup as headers. X-Callerstatus becomes {{sip_callerstatus}}, etc.
+[caller-headers]
+exten => s,1,GotoIf($["${CALLERINFO}" = ""]?done)
+ same => n,Set(PJSIP_HEADER(add,X-Callerstatus)=${CUT(CALLERINFO,|,2)})
+ same => n,Set(PJSIP_HEADER(add,X-Callername)=${CUT(CALLERINFO,|,3)})
+ same => n,Set(PJSIP_HEADER(add,X-Callerprofile)=${CUT(CALLERINFO,|,4)})
+ same => n,Set(PJSIP_HEADER(add,X-Callermissing)=${CUT(CALLERINFO,|,5)})
+ same => n,Set(PJSIP_HEADER(add,X-Welcome)=${CUT(CALLERINFO,|,6)})
+ same => n(done),Return()
 
 ; Nothing is accepted FROM ElevenLabs on this bridge: officer callbacks go out
 ; through ElevenLabs' own outbound trunk straight to Alphatech.

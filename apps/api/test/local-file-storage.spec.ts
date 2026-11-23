@@ -19,6 +19,7 @@ import { prisma } from '@ace/database';
 import { createTestApp } from './support/create-test-app';
 import { createTenant, dropTenant, type TestTenant } from './support/tenant';
 import {
+  CALL_RECORDING_BUCKET,
   KNOWLEDGE_BUCKET,
   SELFIE_BUCKET,
   downloadObject,
@@ -220,6 +221,43 @@ describe('Files kept on this server', () => {
       );
       expect([400, 404]).toContain(res.status);
       expect(res.text).not.toContain('outside');
+    });
+  });
+
+  // Carried over from the single-VPS branch's own storage test when the two
+  // storage drivers became one.
+  describe('what the server keeps on its disk', () => {
+    it('is readable by the app’s own user and group only, whatever the umask', async () => {
+      const prior = process.umask(0);
+      try {
+        const stored = await uploadObject(KNOWLEDGE_BUCKET, owner.orgId, 'perm.pdf', Buffer.from('%PDF-1.4'), 'application/pdf');
+        const file = path.join(dir, KNOWLEDGE_BUCKET, stored);
+        expect(fs.statSync(file).mode & 0o777).toBe(0o640);
+        expect(fs.statSync(`${file}.meta.json`).mode & 0o777).toBe(0o640);
+        expect(fs.statSync(path.dirname(file)).mode & 0o777).toBe(0o750);
+      } finally {
+        process.umask(prior);
+      }
+    });
+
+    it('names a stored file safely, under its agency', async () => {
+      const stored = await uploadObject(KNOWLEDGE_BUCKET, 'org-abc', 'Minutes (final).pdf', Buffer.from('x'), 'application/pdf');
+      expect(stored).toMatch(/^org-abc\/\d+_Minutes__final_\.pdf$/);
+    });
+
+    it('keeps the voice line’s call recordings in their own bucket', async () => {
+      const audio = Buffer.from('RIFF....WAVEfmt ');
+      const stored = await uploadObject(CALL_RECORDING_BUCKET, owner.orgId, 'call-uuid.wav', audio, 'audio/wav');
+      expect(fs.existsSync(path.join(dir, CALL_RECORDING_BUCKET, stored))).toBe(true);
+      expect((await downloadObject(CALL_RECORDING_BUCKET, stored)).equals(audio)).toBe(true);
+    });
+
+    it('cannot be walked out of the storage directory, or into an unknown bucket', async () => {
+      for (const p of ['../etc/passwd', 'org/../../x', 'org/..', '/etc/passwd', 'org', 'org//x', 'org/x y']) {
+        await expect(downloadObject(KNOWLEDGE_BUCKET, p)).rejects.toThrow(/Invalid file path/);
+        await expect(signedUrl(KNOWLEDGE_BUCKET, p, 60)).rejects.toThrow(/Invalid file path/);
+      }
+      await expect(signedUrl('another-bucket', 'org/x.pdf', 60)).rejects.toThrow(/No such file/);
     });
   });
 

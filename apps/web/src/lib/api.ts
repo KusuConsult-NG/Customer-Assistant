@@ -2,7 +2,14 @@ export const getApiUrl = () => {
   if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
     return 'http://localhost:4000';
   }
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+  // The single-server deployment serves the dashboard and the API from ONE
+  // domain (Caddy sends /api, /socket.io and the voice stream to the API), so
+  // the API is wherever the page came from. "same-origin" says so explicitly;
+  // an unset value in a browser means the same, rather than localhost:4000 —
+  // which on any real domain is the officer's own computer.
+  if (configured && configured !== 'same-origin') return configured.replace(/\/+$/, '');
+  if (typeof window !== 'undefined') return window.location.origin;
   return 'http://localhost:4000';
 };
 

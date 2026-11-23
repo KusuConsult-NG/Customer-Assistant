@@ -1,0 +1,28 @@
+[Unit]
+Description=Citizen Contact Centre API
+After=network-online.target postgresql.service redis-server.service qdrant.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+User=ace
+Group=ace
+WorkingDirectory=${ACE_HOME}/app
+EnvironmentFile=/etc/ace/ace.env
+ExecStartPre=/usr/bin/node scripts/sync-enum-values.js --apply
+ExecStart=/usr/bin/node apps/api/dist/main.js
+Restart=always
+RestartSec=3
+# Live calls run in this process (AudioSocket), so it outranks the dashboard
+# — and Asterisk outranks both (see asterisk drop-in).
+CPUWeight=400
+Nice=-2
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=${ACE_HOME}/storage ${ACE_HOME}/tts-cache
+
+[Install]
+WantedBy=multi-user.target

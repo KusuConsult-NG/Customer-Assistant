@@ -619,9 +619,9 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.type).toBe('conversation_initiation_client_data');
         expect(res.body.dynamic_variables).toMatchObject({
           organization_name: 'Profiling Test Centre',
-          caller_status: 'new',
-          caller_name: 'not on file',
-          caller_missing_fields: 'full name, LGA, ward, community',
+          sip_callerstatus: 'new',
+          sip_callername: 'not on file',
+          sip_callermissing: 'full name, LGA, ward, community',
         });
         // This agency's greeting asks for no time of day, so there is nothing to override.
         expect(res.body.conversation_config_override).toBeUndefined();
@@ -638,12 +638,12 @@ describe('The Contact Centre script on the phone line', () => {
         const c = await known();
         const res = await callStarts(c.phoneNumber).expect(200);
         expect(res.body.dynamic_variables).toMatchObject({
-          caller_status: 'returning',
-          caller_name: 'Hauwa Musa',
-          caller_missing_fields: 'none',
+          sip_callerstatus: 'returning',
+          sip_callername: 'Hauwa Musa',
+          sip_callermissing: 'none',
         });
-        expect(res.body.dynamic_variables.caller_profile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
-        expect(res.body.dynamic_variables.caller_profile).not.toMatch(/occupation|language/);
+        expect(res.body.dynamic_variables.sip_callerprofile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
+        expect(res.body.dynamic_variables.sip_callerprofile).not.toMatch(/occupation|language/);
         const first = res.body.conversation_config_override.agent.first_message;
         expect(first).toMatch(/^Good (morning|afternoon|evening), Hauwa Musa, welcome back\. Are you still calling from/);
         expect(first).toMatch(/Are you still calling from Angwan Rogo, Ali Kazaure ward, Jos South\?$/);
@@ -661,7 +661,7 @@ describe('The Contact Centre script on the phone line', () => {
       it('a caller who never gave an occupation or language is still a returning caller', async () => {
         const c = await known({ preferredLanguage: null });
         const res = await callStarts(c.phoneNumber).expect(200);
-        expect(res.body.dynamic_variables).toMatchObject({ caller_status: 'returning', caller_missing_fields: 'none' });
+        expect(res.body.dynamic_variables).toMatchObject({ sip_callerstatus: 'returning', sip_callermissing: 'none' });
       });
 
       it('known by name and LGA only: asked for the ward and community, in words', async () => {
@@ -673,7 +673,7 @@ describe('The Contact Centre script on the phone line', () => {
       it('finds a returning caller whatever shape the carrier sends the number in', async () => {
         const c = await known({ fullName: 'Ladi Gyang' });
         const res = await callStarts(`0${c.phoneNumber.slice(4)}`).expect(200);
-        expect(res.body.dynamic_variables.caller_name).toBe('Ladi Gyang');
+        expect(res.body.dynamic_variables.sip_callername).toBe('Ladi Gyang');
       });
 
       it('a placeholder name is a new caller: never read out, never welcomed back', async () => {
@@ -682,7 +682,7 @@ describe('The Contact Centre script on the phone line', () => {
           data: { organizationId: orgId, phoneNumber: number, fullName: `Caller (···${number.slice(-4)})` },
         });
         const res = await callStarts(number).expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('new');
+        expect(res.body.dynamic_variables.sip_callerstatus).toBe('new');
         expect(JSON.stringify(res.body)).not.toContain('Caller (');
         expect(res.body.conversation_config_override).toBeUndefined();
       });
@@ -690,14 +690,14 @@ describe('The Contact Centre script on the phone line', () => {
       it('an outbound callback looks up the citizen it is calling, and keeps its own first message', async () => {
         const c = await known({ fullName: 'Kaneng Bot' });
         const res = await callStarts(TOLL_FREE, c.phoneNumber).expect(200);
-        expect(res.body.dynamic_variables.caller_name).toBe('Kaneng Bot');
+        expect(res.body.dynamic_variables.sip_callername).toBe('Kaneng Bot');
         expect(res.body.conversation_config_override).toBeUndefined();
       });
 
       it('a withheld number is a caller whose number does not show, not an error', async () => {
         const res = await callStarts('anonymous').expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('withheld');
-        expect(res.body.dynamic_variables.caller_profile).toMatch(/number not shown/);
+        expect(res.body.dynamic_variables.sip_callerstatus).toBe('withheld');
+        expect(res.body.dynamic_variables.sip_callerprofile).toMatch(/number not shown/);
       });
 
       it('a forwarded call arriving as our own number is never matched to whoever was saved against it', async () => {
@@ -707,7 +707,7 @@ describe('The Contact Centre script on the phone line', () => {
           update: { fullName: 'Someone Earlier' },
         });
         const res = await callStarts(TOLL_FREE, TOLL_FREE).expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('withheld');
+        expect(res.body.dynamic_variables.sip_callerstatus).toBe('withheld');
         expect(JSON.stringify(res.body)).not.toContain('Someone Earlier');
       });
 
@@ -719,7 +719,7 @@ describe('The Contact Centre script on the phone line', () => {
         try {
           await prisma.contact.create({ data: { organizationId: other.id, phoneNumber: number, fullName: 'Somebody Else' } });
           const res = await callStarts(number).expect(200);
-          expect(res.body.dynamic_variables.caller_status).toBe('new');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('new');
           expect(JSON.stringify(res.body)).not.toContain('Somebody Else');
         } finally {
           await prisma.organization.delete({ where: { id: other.id } }).catch(() => {});
@@ -756,7 +756,7 @@ describe('The Contact Centre script on the phone line', () => {
           await callStarts(phone()).expect(200); // the agency is now cached
           jest.spyOn(AgentToolsService.prototype as any, 'lookUpCaller').mockRejectedValue(new Error('pool exhausted'));
           const res = await callStarts(phone()).expect(200);
-          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('unknown');
           expect(res.body.conversation_config_override.agent.first_message).toMatch(/^Good (morning|afternoon|evening), and welcome/);
         });
       });
@@ -778,7 +778,7 @@ describe('The Contact Centre script on the phone line', () => {
           const started = Date.now();
           const res = await callStarts(phone()).expect(200);
           expect(Date.now() - started).toBeLessThan(2_000);
-          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('unknown');
           expect(res.body.dynamic_variables.organization_name).toBe('Profiling Test Centre');
           for (const name of await variablesTheAgentDefines()) {
             expect(typeof res.body.dynamic_variables[name]).toBe('string');
@@ -788,7 +788,7 @@ describe('The Contact Centre script on the phone line', () => {
         it('answers "unknown" when the lookup throws', async () => {
           jest.spyOn(AgentToolsService.prototype as any, 'lookUpCaller').mockRejectedValue(new Error('connection pool exhausted'));
           const res = await callStarts(phone()).expect(200);
-          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('unknown');
         });
       });
 
@@ -796,7 +796,7 @@ describe('The Contact Centre script on the phone line', () => {
         const number = phone();
 
         const first = await callStarts(number).expect(200);
-        expect(first.body.dynamic_variables.caller_status).toBe('new');
+        expect(first.body.dynamic_variables.sip_callerstatus).toBe('new');
 
         // Phases 1–2, saved as the agent is told to.
         await post('update-caller-profile', {
@@ -809,7 +809,7 @@ describe('The Contact Centre script on the phone line', () => {
         });
 
         const second = await callStarts(number).expect(200);
-        expect(second.body.dynamic_variables).toMatchObject({ caller_status: 'returning', caller_name: 'Nanret Davou' });
+        expect(second.body.dynamic_variables).toMatchObject({ sip_callerstatus: 'returning', sip_callername: 'Nanret Davou' });
         expect(second.body.conversation_config_override.agent.first_message).toMatch(
           /Nanret Davou, welcome back\. Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
         );
@@ -849,14 +849,16 @@ describe('The Contact Centre script on the phone line', () => {
     it('the stored opening does not ask for a name before the caller has been looked up', () => {
       const stored = firstMessageFor(plateau);
       expect(stored).not.toMatch(/your (full )?name/i);
-      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. How may I help you today\?$/);
+      // Ends with the bridge's welcome line: "How may I help you today?" unless the
+      // caller was recognised, then "Welcome back, <name>. …".
+      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. \{\{sip_welcome\}\}$/);
       // The agency's own variant of the closing question is caught too.
       expect(
         openingForUnknownCaller("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. May I have your full name?")
-      ).toBe("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. How may I help you today?");
+      ).toBe("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. {{sip_welcome}}");
       // The whole closing sentence goes, not just the question inside it.
       expect(openingForUnknownCaller('Hello, and welcome. My name is Nanpan. To get started, may I kindly know your full name?'))
-        .toBe('Hello, and welcome. My name is Nanpan. How may I help you today?');
+        .toBe('Hello, and welcome. My name is Nanpan. {{sip_welcome}}');
       // Any other ending is the agency's own wording and stays.
       expect(openingForUnknownCaller("I'm Gwaman, the virtual assistant.")).toBe("I'm Gwaman, the virtual assistant.");
       // The rule the agent works to says the same.

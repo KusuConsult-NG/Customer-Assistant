@@ -16,9 +16,5 @@ uploads
 apps/api/uploads
 apps/web/test-results
 apps/web/playwright-report
-deploy/single-server/server.env
-deploy/single-server/backups
 infra/sip-bridge/bridge.env
 *.log
-deploy/single-server/.extra-ca.pem
-deploy/single-server/migrate.env
