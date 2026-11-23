@@ -45,13 +45,38 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  ; ── ElevenLabs (the original path, and the fallback) ─────────────────────
  ; If INTRO_SOUND is set (e.g. Governor Caleb Mutfwang's recorded welcome),
  ; answer and play it before handing the call to Nanpan on ElevenLabs.
- same => n(elevenlabs),ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Answer())
+ ; Who is calling, asked of the platform BEFORE the agent answers, so a
+ ; caller profiled on an earlier call is welcomed back by name in the first
+ ; message — not left to the model remembering to look them up. The answer
+ ; travels as X- headers, which ElevenLabs turns into {{sip_...}} variables.
+ ; At most a few seconds; no answer at all and the call goes on as before.
+ same => n(elevenlabs),Set(CI=)
+ same => n,GotoIf($["${SIP_BRIDGE_SECRET}" = ""]?dial)
+ same => n,Set(CURLOPT(conntimeout)=2)
+ same => n,Set(CURLOPT(httptimeout)=3)
+ same => n,Set(CI=${CURL(${BRIDGE_API_URL}/api/sip-bridge/caller,secret=${SIP_BRIDGE_SECRET}&from=${URIENCODE(${CALLERID(num)})}&to=${URIENCODE(${TOLLFREE_E164})})})
+ same => n,ExecIf($["${CI:0:3}" != "ok|"]?Set(CI=))
+ ; __ so the outgoing (ElevenLabs) channel inherits it for the headers below.
+ same => n,Set(__CALLERINFO=${CI})
+ same => n,NoOp(caller lookup: ${CUT(CI,|,2)})
+ same => n(dial),ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Answer())
  same => n,ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Playback(${INTRO_SOUND}))
- same => n,Dial(PJSIP/elevenlabs/sip:${TOLLFREE_E164}@${ELEVENLABS_SIP_HOST}:5060\;transport=tcp,60)
+ same => n,Dial(PJSIP/elevenlabs/sip:${TOLLFREE_E164}@${ELEVENLABS_SIP_HOST}:5060\;transport=tcp,60,b(caller-headers^s^1))
  same => n,NoOp(ElevenLabs leg ended: DIALSTATUS=${DIALSTATUS} HANGUPCAUSE=${HANGUPCAUSE})
  ; If the AI could not be reached, the caller is told rather than dropped.
  same => n,ExecIf($["${DIALSTATUS}" != "ANSWER"]?Playback(${FALLBACK_SOUND}))
  same => n,Hangup()
+
+; Runs on the OUTGOING leg to ElevenLabs just before the INVITE is sent: the
+; caller lookup as headers. X-Callerstatus becomes {{sip_callerstatus}}, etc.
+[caller-headers]
+exten => s,1,GotoIf($["${CALLERINFO}" = ""]?done)
+ same => n,Set(PJSIP_HEADER(add,X-Callerstatus)=${CUT(CALLERINFO,|,2)})
+ same => n,Set(PJSIP_HEADER(add,X-Callername)=${CUT(CALLERINFO,|,3)})
+ same => n,Set(PJSIP_HEADER(add,X-Callerprofile)=${CUT(CALLERINFO,|,4)})
+ same => n,Set(PJSIP_HEADER(add,X-Callermissing)=${CUT(CALLERINFO,|,5)})
+ same => n,Set(PJSIP_HEADER(add,X-Welcome)=${CUT(CALLERINFO,|,6)})
+ same => n(done),Return()
 
 ; Nothing is accepted FROM ElevenLabs on this bridge: officer callbacks go out
 ; through ElevenLabs' own outbound trunk straight to Alphatech.

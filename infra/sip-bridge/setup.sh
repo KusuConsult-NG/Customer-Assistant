@@ -41,6 +41,17 @@ if [ "$LOCAL_VOICE" = "1" ]; then
   [[ "$LOCAL_VOICE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "LOCAL_VOICE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
 fi
 export LOCAL_VOICE LOCAL_VOICE_SECRET API_PORT AUDIOSOCKET_PORT
+# Recognising returning callers: the platform the bridge asks "who is calling?"
+# before the agent answers. Empty SIP_BRIDGE_SECRET = no lookup (as before).
+SIP_BRIDGE_SECRET="${SIP_BRIDGE_SECRET:-}"
+BRIDGE_API_URL="${BRIDGE_API_URL:-http://127.0.0.1:${API_PORT}}"
+BRIDGE_API_URL="${BRIDGE_API_URL%/}"
+if [ -n "$SIP_BRIDGE_SECRET" ]; then
+  [ ${#SIP_BRIDGE_SECRET} -ge 24 ] || { echo "SIP_BRIDGE_SECRET: 24+ characters, the same value as the API's"; exit 1; }
+  [[ "$SIP_BRIDGE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "SIP_BRIDGE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
+  [[ "$BRIDGE_API_URL" =~ ^https?://[^[:space:]]+$ ]] || { echo "BRIDGE_API_URL must be http(s)://host[:port]"; exit 1; }
+fi
+export SIP_BRIDGE_SECRET BRIDGE_API_URL
 if [ -z "${PUBLIC_IP:-}" ]; then
   PUBLIC_IP="$(curl -fsS -4 --max-time 10 https://api.ipify.org || true)"
   [ -n "$PUBLIC_IP" ] || { echo "Could not detect the public IP; set PUBLIC_IP in bridge.env"; exit 1; }
@@ -53,7 +64,7 @@ apt-get update -qq
 apt-get install -y -qq asterisk gettext-base ufw curl >/dev/null
 
 echo "==> Rendering configuration (public IP ${PUBLIC_IP})"
-VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND} ${LOCAL_VOICE} ${LOCAL_VOICE_SECRET} ${API_PORT} ${AUDIOSOCKET_PORT}'
+VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND} ${LOCAL_VOICE} ${LOCAL_VOICE_SECRET} ${API_PORT} ${AUDIOSOCKET_PORT} ${SIP_BRIDGE_SECRET} ${BRIDGE_API_URL}'
 for f in pjsip extensions rtp modules; do
   envsubst "$VARS" < "templates/${f}.conf.template" > "/etc/asterisk/${f}.conf"
 done

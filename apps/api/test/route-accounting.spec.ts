@@ -174,6 +174,12 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/telephony/status/twilio', calledBy: 'Twilio status callback' },
   { method: 'POST', path: '/api/telephony/status/telnyx', calledBy: 'Telnyx status callback' },
 
+  // ── The SIP bridge asking who is calling, before the agent answers ──────
+  //
+  // Asterisk's CURL() (shared SIP_BRIDGE_SECRET); the answer becomes X- SIP
+  // headers, i.e. the agent's {{sip_…}} variables.
+  { method: 'POST', path: '/api/sip-bridge/caller', calledBy: 'Asterisk dialplan CURL on the SIP bridge' },
+
   // ── The server's own voice line (voice-local) ──────────────────────────
   //
   // Asterisk's CURL() on the same server, with the shared LOCAL_VOICE_SECRET:

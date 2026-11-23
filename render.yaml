@@ -358,6 +358,11 @@ services:
       # transcripts against another workspace's secret.
       - key: ELEVENLABS_WEBHOOK_SECRET
         sync: false
+      # Shared with the SIP bridge (infra/sip-bridge bridge.env): it asks
+      # /api/sip-bridge/caller who is calling before the agent answers, so a
+      # profiled caller is welcomed back by name. Unset = everyone greeted as new.
+      - key: SIP_BRIDGE_SECRET
+        sync: false
       # Leave UNSET. When "1", ElevenLabs asks this API who is calling as each
       # call connects, so a returning caller is greeted by name. With it on,
       # the live line refused EVERY call with "all circuits are busy" (twice),

@@ -520,8 +520,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
    * can promise that a returning caller is recognised.
    *
    * So the answer is fetched before the agent says a word, and put where the
-   * model cannot miss it: the prompt's own variables (`{{caller_status}}`,
-   * `{{caller_name}}` …), and — for a caller we know by name — a first message
+   * model cannot miss it: the prompt's own variables (`{{sip_callerstatus}}`,
+   * `{{sip_callername}}` …), and — for a caller we know by name — a first message
    * that greets them by it.
    *
    * ── Why it never fails ───────────────────────────────────────────────────
@@ -669,8 +669,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     if (!callerNumberShown(citizen, outbound ? [] : agency)) {
       const variables = {
         ...callerVariablesFor(profileOf(null)),
-        caller_status: 'withheld',
-        caller_profile: 'number not shown — ask for a number to reach them on',
+        sip_callerstatus: 'withheld',
+        sip_callerprofile: 'number not shown — ask for a number to reach them on',
       };
       return {
         reply: this.conversationStartReply(

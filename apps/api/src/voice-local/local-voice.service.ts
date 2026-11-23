@@ -20,6 +20,7 @@ import {
   VOICE_SETTINGS,
 } from '../agent-tools/elevenlabs-contracts';
 import { localRecordingRef } from '../common/call-recording';
+import { organizationForDialledNumber } from '../common/dialled-number';
 import { CALL_RECORDING_BUCKET, storageDriver, uploadObject } from '../common/object-storage';
 import { FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
 import { streamChat } from './llm';
@@ -185,22 +186,9 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
    * every call to one extension whatever number was dialled.
    */
   async organizationFor(calledNumber: string): Promise<string | null> {
-    const variants = phoneNumberVariants(calledNumber);
-    if (variants.length) {
-      const lines = await prisma.telephonyConfig.findMany({
-        where: { phoneNumber: { in: variants } },
-        select: { organizationId: true },
-        take: 2,
-      });
-      const orgs = [...new Set(lines.map((l) => l.organizationId))];
-      if (orgs.length === 1) return orgs[0];
-      if (orgs.length > 1) return null; // two agencies claim one number: refuse to guess
-    }
-    const slug = process.env.LOCAL_VOICE_ORGANIZATION_SLUG?.trim();
-    if (!slug) return null;
-    const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true } });
-    return org?.id ?? null;
+    return organizationForDialledNumber(calledNumber, process.env.LOCAL_VOICE_ORGANIZATION_SLUG);
   }
+
 
   // ── Step 3: what happened ─────────────────────────────────────────────────
 
@@ -297,7 +285,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     const systemPrompt =
       fill(agentPromptFor(agentOrg, persona)) +
       `\n\n## This call\n\nIt is now ${now.toLocaleString('en-GB', { timeZone: org.timezone || 'Africa/Lagos', dateStyle: 'full', timeStyle: 'short' })} at the agency.` +
-      ` Caller status: ${vars.caller_status || 'unknown'}.` +
+      ` Caller status: ${vars.sip_callerstatus || 'unknown'}.` +
       `\nYou are speaking on a telephone line. Speak in short spoken sentences; never use lists, headings or symbols.`;
     const opening = fill(start.conversation_config_override?.agent.first_message ?? firstMessageFor(agentOrg, persona));
 
@@ -322,7 +310,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
         runTool: (name, args) => runLocalTool(this.tools, name, args, { organizationId: reg.organizationId, callerNumber, conversationId }),
         log: (event, detail) => this.log.log(`${event} uuid=${reg.uuid} ${detail ? JSON.stringify(detail) : ''}`),
       },
-      { systemPrompt, opening, personal: [vars.caller_name].filter(Boolean) as string[] },
+      { systemPrompt, opening, personal: [vars.sip_callername].filter(Boolean) as string[] },
     );
     this.live.add(session);
     void session.done.then(() => this.after(reg, session));

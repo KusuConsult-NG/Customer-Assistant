@@ -58,6 +58,7 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'ELEVENLABS_API_KEY', required: false, description: 'ElevenLabs API key — TTS, and the SHARED hosted-agent workspace, usable only when ELEVENLABS_ALLOW_SHARED_WORKSPACE is set' },
   { key: 'ELEVENLABS_ALLOW_SHARED_WORKSPACE', required: false, description: 'Set only on a single-tenant deployment: lets tenants without their own key run in the shared ELEVENLABS_API_KEY workspace, where one workspace holds every tenant’s numbers, WhatsApp lines and transcripts' },
   { key: 'ELEVENLABS_BASE_URL', required: false, description: 'ElevenLabs host; set to a residency endpoint (api.eu.residency.elevenlabs.io) to keep data in-jurisdiction' },
+  { key: 'SIP_BRIDGE_SECRET', required: false, description: 'Shared with the SIP bridge (infra/sip-bridge): lets it ask who is calling before the agent answers, so a profiled caller is welcomed back by name. Unset, every caller is greeted as new' },
   { key: 'STORAGE_DIR', required: false, description: 'Single-server deployment: a PERMANENT, backed-up directory for uploads and call recordings. Unset with no Supabase storage, production uploads are refused' },
   { key: 'LOCAL_VOICE_PIPELINE', required: false, description: 'Set to 1 to answer calls on this server (Asterisk AudioSocket → Deepgram → model → Azure). Off, every call goes to the ElevenLabs agent as before' },
   { key: 'AZURE_SPEECH_KEY', required: false, description: 'Azure Speech key for the local voice line (Nigerian English voice); without it the local line falls back to ElevenLabs' },

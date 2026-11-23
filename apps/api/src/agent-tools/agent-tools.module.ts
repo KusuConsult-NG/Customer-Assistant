@@ -46,13 +46,14 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
 // second one changed which copy of a provider two modules both declare
 // (ElevenLabsApi) other code was handed.
 import { LocalVoiceController } from '../voice-local/local-voice.controller';
+import { SipBridgeController } from './sip-bridge.controller';
 import { LocalVoiceService } from '../voice-local/local-voice.service';
 
 @Module({
   // TelephonyModule exports VoiceAiService, whose transferCallToHuman is what
   // actually moves a live call — the same one the orchestrator path uses.
   imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule, OnboardingModule],
-  controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController, CallRecordingController, LocalVoiceController],
+  controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController, CallRecordingController, LocalVoiceController, SipBridgeController],
   providers: [
     AgentKeyGuard,
     AgentToolsService,
