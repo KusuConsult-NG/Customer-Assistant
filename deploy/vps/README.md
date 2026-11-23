@@ -1,5 +1,13 @@
 # One server for everything (PICTDA VPS)
 
+> **Not the setup the MTN Cloud server runs.** That server (102.88.134.211)
+> runs the Docker setup in `deploy/single-server/` (its containers are managed
+> from `deploy/single-server/docker-compose.yml`). Never delete that folder
+> while the server uses it: its next `git pull` would remove its own compose
+> file and Caddyfile. This native kit is kept as the alternative for a server
+> without Docker.
+
+
 The whole platform on one Ubuntu server, in place of Render, Supabase and the
 DigitalOcean SIP bridge:
 
