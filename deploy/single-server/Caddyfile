@@ -20,6 +20,12 @@
 (app_routes) {
 	encode zstd gzip
 
+	# The voice line's registration is for the Asterisk bridge on this host
+	# only (it calls the API directly on 127.0.0.1). Never from outside.
+	handle /api/voice-local/* {
+		respond 404
+	}
+
 	# The API: REST, the dashboard's live sockets, and Twilio's media stream
 	# (/telephony/stream/… only — /telephony on its own is a dashboard page).
 	@api path /api/* /socket.io/* /telephony/stream/*
