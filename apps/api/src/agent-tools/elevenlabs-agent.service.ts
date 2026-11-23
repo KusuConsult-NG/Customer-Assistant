@@ -45,7 +45,16 @@ import { Prisma, encryptSecret, isEncrypted, prisma, secretFingerprint } from '@
 import { ElevenLabsApi } from './elevenlabs-client';
 import { AGENT_KEY_PREFIX } from './agent-key.guard';
 import { lastNameRotation, NameRotationRecord, recordNameRotation } from './plateau-name-rotation';
-import { CallHealth, ConversationEnding, describeSettingDrift, liveSettingsDrift, summariseCallHealth } from './agent-health';
+import {
+  CallHealth,
+  CallerRecognition,
+  ConversationEnding,
+  describeSettingDrift,
+  InboundCall,
+  liveSettingsDrift,
+  summariseCallHealth,
+  summariseRecognition,
+} from './agent-health';
 import {
   agentDefinitionFor,
   isPlateauStateOrg,
@@ -106,7 +115,7 @@ type ToolIdMap = Partial<Record<ToolName, string>>;
 export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('ElevenLabsAgent');
   /** Last call-health reading per organization, so a busy dashboard is not a busy provider. */
-  private readonly callHealthCache = new Map<string, { at: number; value: CallHealth & { checkedAt: string } }>();
+  private readonly callHealthCache = new Map<string, { at: number; value: CallHealthReport }>();
   private callHealthTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly api: ElevenLabsApi) {}
@@ -1124,18 +1133,19 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     organizationId: string,
     windowHours = 24,
     options: { fresh?: boolean } = {}
-  ): Promise<CallHealth & { checkedAt: string }> {
+  ): Promise<CallHealthReport> {
     const cached = this.callHealthCache.get(organizationId);
     if (!options.fresh && cached && Date.now() - cached.at < CALL_HEALTH_CACHE_MS && cached.value.windowHours === windowHours) {
       return cached.value;
     }
     const { config, apiKey } = await this.tenant(organizationId);
     if (!config?.agentId) {
-      return { ...summariseCallHealth([], windowHours), checkedAt: new Date().toISOString() };
+      return { ...summariseCallHealth([], windowHours), recognition: null, checkedAt: new Date().toISOString() };
     }
     const client = this.client(apiKey);
     const after = Math.floor(Date.now() / 1000) - windowHours * 3600;
     const seen: ConversationEnding[] = [];
+    const inbound: InboundCall[] = [];
     let cursor: string | undefined;
     try {
       for (let page = 0; page < CALL_HEALTH_MAX_PAGES; page++) {
@@ -1158,6 +1168,13 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
             direction: c?.direction ?? null,
             callDurationSecs: c?.callDurationSecs ?? null,
           });
+          inbound.push({
+            conversationId: c?.conversationId ?? null,
+            startTimeUnixSecs: c?.startTimeUnixSecs ?? null,
+            direction: c?.direction ?? null,
+            callDurationSecs: c?.callDurationSecs ?? null,
+            source: c?.conversationInitiationSource ?? null,
+          });
         }
         if (!res?.hasMore || !res?.nextCursor) break;
         cursor = res.nextCursor;
@@ -1165,6 +1182,7 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       this.fail('the recent calls', err);
     }
+    const recognition = await this.callerRecognition(organizationId, client, config.agentId, after, inbound);
     // What the LIVE agent hangs up after, so calls cut off by a setting that
     // has since been corrected stop being reported (endedUnderOldSetting).
     // Unreadable means nothing is left out.
@@ -1176,8 +1194,9 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
     } catch {
       liveSilenceSeconds = null;
     }
-    const value = {
+    const value: CallHealthReport = {
       ...summariseCallHealth(seen, windowHours, { liveSilenceSeconds }),
+      recognition,
       checkedAt: new Date().toISOString(),
     };
     this.callHealthCache.set(organizationId, { at: Date.now(), value });
@@ -1188,9 +1207,60 @@ export class ElevenLabsAgentService implements OnModuleInit, OnModuleDestroy {
           `window=${windowHours}h top=${JSON.stringify(value.reasons.filter((r) => r.kind === 'abnormal').slice(0, 3))}`
       );
     }
+    if (recognition?.alert) {
+      // The line a log alert can watch. Counts only.
+      this.log.error(
+        `caller_recognition_alert org=${organizationId} missed=${recognition.missed}/${recognition.inboundCalls} ` +
+          `window=${windowHours}h lastLookedUpAt=${recognition.lastLookedUpAt ?? 'none'}`
+      );
+    }
     return value;
   }
+
+  /**
+   * How many inbound calls arrived carrying the SIP bridge's caller lookup.
+   *
+   * ElevenLabs keeps the bridge's X- headers on each conversation as
+   * `sip_callerstatus` etc. and can filter on them server-side, so this is ONE
+   * more listing, not a fetch per call. The SDK does not model that filter, so
+   * it is sent as a query parameter. Null when it could not be read: unknown is
+   * not "fine", and it must not take the rest of the call-health report with it.
+   */
+  private async callerRecognition(
+    organizationId: string,
+    client: ElevenLabsClient,
+    agentId: string,
+    after: number,
+    calls: InboundCall[]
+  ): Promise<CallerRecognition | null> {
+    const expected =
+      !!process.env.SIP_BRIDGE_SECRET?.trim() &&
+      (await prisma.telephonyConfig
+        .count({ where: { organizationId, provider: 'SIP_TRUNK' } })
+        .then((n) => n > 0)
+        .catch(() => false));
+    const lookedUp = new Set<string>();
+    try {
+      let cursor: string | undefined;
+      for (let page = 0; page < CALL_HEALTH_MAX_PAGES; page++) {
+        const res: any = await client.conversationalAi.conversations.list(
+          { agentId, callStartAfterUnix: after, pageSize: 100, ...(cursor ? { cursor } : {}) },
+          // "Set" — an empty value with neq matches where the variable exists.
+          { queryParams: { dynamic_variable_params: 'sip_callerstatus:neq:' } }
+        );
+        for (const c of res?.conversations ?? []) if (c?.conversationId) lookedUp.add(c.conversationId);
+        if (!res?.hasMore || !res?.nextCursor) break;
+        cursor = res.nextCursor;
+      }
+    } catch (err: any) {
+      this.log.warn(`caller recognition could not be read org=${organizationId}: ${err?.message ?? err}`);
+      return null;
+    }
+    return summariseRecognition(calls, lookedUp, expected);
+  }
 }
+
+export type CallHealthReport = CallHealth & { recognition: CallerRecognition | null; checkedAt: string };
 
 /** How long a call-health reading is reused. */
 const CALL_HEALTH_CACHE_MS = 5 * 60 * 1000;

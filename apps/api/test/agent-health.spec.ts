@@ -20,6 +20,8 @@ import {
   describeSettingDrift,
   liveSettingsDrift,
   summariseCallHealth,
+  summariseRecognition,
+  RECOGNITION_MIN_CALLS,
   endedUnderOldSetting,
 } from '../src/agent-tools/agent-health';
 
@@ -255,7 +257,13 @@ describe('ElevenLabsAgentService.getCallHealth', () => {
       usedKey = key;
       return {
         conversationalAi: {
-          conversations: { list: async (req: any) => { requests.push(req); return pages[requests.length - 1]; } },
+          conversations: {
+            list: async (req: any, opts?: any) => {
+              if (opts?.queryParams) return { conversations: [], hasMore: false };
+              requests.push(req);
+              return pages[requests.length - 1];
+            },
+          },
         },
       };
     };
@@ -292,5 +300,130 @@ describe('ElevenLabsAgentService.getCallHealth', () => {
     // Sync refused: still 10 on the live agent, so it is still a problem.
     expect(await withLive(10).getCallHealth(orgId, 24, { fresh: true }))
       .toMatchObject({ superseded: 0, total: 2, abnormal: 1 });
+  });
+});
+
+describe('returning callers are recognised (the SIP bridge lookup reached the call)', () => {
+  const call = (id: string, at: number, extra: Record<string, unknown> = {}) => ({
+    conversationId: id,
+    startTimeUnixSecs: at,
+    direction: 'inbound',
+    source: 'sip_trunk',
+    callDurationSecs: 30,
+    ...extra,
+  });
+
+  it('raises the alarm when calls stop arriving with the lookup, and names them', () => {
+    const calls = [call('a', 100), call('b', 200), call('c', 300), call('d', 400)];
+    const r = summariseRecognition(calls, new Set(['a']), true);
+    expect(r).toMatchObject({ inboundCalls: 4, lookedUp: 1, missed: 3, alert: true });
+    expect(r.lastLookedUpAt).toBe(new Date(100 * 1000).toISOString());
+    expect(r.recentMisses.map((m) => m.conversationId)).toEqual(['d', 'c', 'b']);
+  });
+
+  it('every call missed with no lookup at all is the "stopped entirely" case', () => {
+    const calls = [call('a', 100), call('b', 200), call('c', 300)];
+    expect(summariseRecognition(calls, new Set(), true)).toMatchObject({ missed: 3, lookedUp: 0, alert: true, lastLookedUpAt: null });
+  });
+
+  it('does not count the calls before the lookup was switched on', () => {
+    const calls = [call('old1', 10), call('old2', 20), call('old3', 30), call('a', 100), call('b', 200), call('c', 300)];
+    expect(summariseRecognition(calls, new Set(['a', 'b', 'c']), true)).toMatchObject({ inboundCalls: 3, missed: 0, alert: false });
+  });
+
+  it('counts only inbound SIP calls: our callbacks and other channels are not looked up', () => {
+    const calls = [
+      call('a', 100),
+      call('out', 200, { direction: 'outbound' }),
+      call('wa', 300, { source: 'whatsapp' }),
+      call('b', 400),
+    ];
+    expect(summariseRecognition(calls, new Set(['a', 'b']), true)).toMatchObject({ inboundCalls: 2, missed: 0 });
+  });
+
+  it('stays quiet below the minimum, and for an agency the lookup is not switched on for', () => {
+    const few = Array.from({ length: RECOGNITION_MIN_CALLS - 1 }, (_, i) => call(`x${i}`, i + 1));
+    expect(summariseRecognition(few, new Set(), true).alert).toBe(false);
+    const many = Array.from({ length: 10 }, (_, i) => call(`y${i}`, i + 1));
+    expect(summariseRecognition(many, new Set(), false)).toMatchObject({ missed: 10, alert: false });
+  });
+});
+
+describe('ElevenLabsAgentService.getCallHealth — caller recognition', () => {
+  jest.setTimeout(60000);
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma, encryptSecret } = require('@ace/database');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { ElevenLabsAgentService } = require('../src/agent-tools/elevenlabs-agent.service');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { ElevenLabsApi } = require('../src/agent-tools/elevenlabs-client');
+  let orgId: string;
+  const saved = process.env.SIP_BRIDGE_SECRET;
+
+  beforeAll(async () => {
+    process.env.SIP_BRIDGE_SECRET = 'recognition-test-secret-0123456789';
+    const org = await prisma.organization.create({
+      data: { name: 'Recognition Agency', slug: `recognition-${Date.now()}`, industry: 'GOVERNMENT', timezone: 'Africa/Lagos' },
+    });
+    orgId = org.id;
+    await prisma.hostedAgentConfig.create({
+      data: { organizationId: orgId, agentId: 'agent_recognition_test', apiKey: encryptSecret('sk_tenant_recognition') },
+    });
+    await prisma.telephonyConfig.create({
+      data: { organizationId: orgId, provider: 'SIP_TRUNK', phoneNumber: `+23480${String(Date.now()).slice(-8)}` },
+    });
+  });
+
+  afterAll(async () => {
+    if (saved === undefined) delete process.env.SIP_BRIDGE_SECRET;
+    else process.env.SIP_BRIDGE_SECRET = saved;
+    await prisma.telephonyConfig.deleteMany({ where: { organizationId: orgId } });
+    await prisma.hostedAgentConfig.deleteMany({ where: { organizationId: orgId } });
+    await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
+  });
+
+  const service = (lookedUp: any) => {
+    const filters: any[] = [];
+    const now = Math.floor(Date.now() / 1000);
+    const day = ['c1', 'c2', 'c3', 'c4'].map((id, i) => ({
+      conversationId: id,
+      status: 'done',
+      terminationReason: 'end_call tool was called.',
+      direction: 'inbound',
+      conversationInitiationSource: 'sip_trunk',
+      startTimeUnixSecs: now - 3600 + i * 60,
+    }));
+    const api = new ElevenLabsApi();
+    (api as any).for = () => ({
+      conversationalAi: {
+        conversations: {
+          list: async (req: any, opts?: any) => {
+            if (opts?.queryParams) {
+              filters.push({ req, opts });
+              if (lookedUp instanceof Error) throw lookedUp;
+              return { conversations: lookedUp.map((id: string) => ({ conversationId: id })), hasMore: false };
+            }
+            return { conversations: day, hasMore: false };
+          },
+        },
+      },
+    });
+    return { svc: new ElevenLabsAgentService(api), filters };
+  };
+
+  it('asks ElevenLabs, for THIS agent only, which calls carried the lookup, and reports the misses', async () => {
+    const { svc, filters } = service(['c1']);
+    const health = await svc.getCallHealth(orgId, 24, { fresh: true });
+    expect(filters).toHaveLength(1);
+    expect(filters[0].req.agentId).toBe('agent_recognition_test');
+    expect(filters[0].opts.queryParams).toEqual({ dynamic_variable_params: 'sip_callerstatus:neq:' });
+    expect(health.recognition).toMatchObject({ expected: true, inboundCalls: 4, lookedUp: 1, missed: 3, alert: true });
+  });
+
+  it('a lookup that cannot be read is unknown, and the rest of the report still comes back', async () => {
+    const { svc } = service(new Error('ElevenLabs refused the filter'));
+    const health = await svc.getCallHealth(orgId, 24, { fresh: true });
+    expect(health.recognition).toBeNull();
+    expect(health).toMatchObject({ total: 4, normal: 4 });
   });
 });
