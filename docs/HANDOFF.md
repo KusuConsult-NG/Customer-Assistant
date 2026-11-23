@@ -55,6 +55,30 @@ https://github.com/KusuConsult-NG/Customer-Assistant/pull/127. Four commits on t
 
 Last full API suite: 1,419 passed, 0 failed; both apps typecheck.
 
+## FIRST TASK for whoever continues: PR #127 conflicts with `main`
+
+While this work was in progress, another session's PR #126 ("Run the whole
+platform on one server", merged 21 Nov, so DEPLOYED on Render) landed on
+`main` (now `7db82e6`). It covers the same ground as commits `a14be84` and
+`1116729` here, so PR #127 is `mergeable=false`. It conflicts in:
+
+- `.gitignore`
+- `apps/api/src/app.module.ts`
+- `apps/api/src/common/object-storage.ts`
+- `apps/api/src/knowledge/document.worker.ts`
+- `apps/api/test/deploy-env-accounting.spec.ts`
+- `apps/api/test/route-accounting.spec.ts`
+- `infra/sip-bridge/setup.sh`
+
+Main also gained `scripts/copy-supabase-storage.js`, which overlaps
+`deploy/vps/copy-supabase-storage.js` here.
+
+To resolve, on this branch only, never on `main`:
+1. `git fetch origin main && git merge origin/main`. Do not rebase or force-push: the branch is shared.
+2. Read what #126 actually does before choosing sides, and keep ONE storage driver design and ONE storage-copy script. `main`'s version is the one running in production, so prefer it unless this branch's version fixes a real fault. Two of this branch's fixes are worth keeping whatever is chosen: no silent fallback to the container disk, and files written mode 0640.
+3. Re-run the full API suite and both typechecks. Also the gated real-Asterisk suites, if an Asterisk is available (see the headers of `voice-local-asterisk.spec.ts` and `sip-bridge-asterisk.spec.ts`).
+4. Push to this branch and leave PR #127 as a DRAFT. Merging is the owner's call.
+
 ## Open questions for the owner
 
 - **"VoiceStudio"**: the owner asked whether it can replace ElevenLabs. It could not be identified. It plugs in either as the bridge's SIP target (if it is a complete phone agent) or as a voice in `voice-local/tts.ts` (`SpeechEngine`, if it is voices only). Ask for its docs or link before building anything.
