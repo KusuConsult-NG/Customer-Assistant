@@ -19,57 +19,16 @@ while IFS= read -r line || [ -n "$line" ]; do
   export "${BASH_REMATCH[1]}=$val"
 done < bridge.env
 
-if [ -z "${ALPHATECH_IP:-}" ]; then
-  ALPHATECH_IP="$(getent ahostsv4 "$ALPHATECH_HOST" | awk 'NR==1{print $1}')"
-  export ALPHATECH_IP
-fi
-for v in ALPHATECH_HOST ALPHATECH_IP ALPHATECH_EXTENSION ALPHATECH_PASSWORD ELEVENLABS_SIP_HOST \
-         ELEVENLABS_SIP_USERNAME ELEVENLABS_SIP_PASSWORD TOLLFREE_E164; do
-  [ -n "${!v:-}" ] || { echo "bridge.env: $v is empty"; exit 1; }
-done
-[[ "$TOLLFREE_E164" =~ ^\+[0-9]{8,15}$ ]] || { echo "TOLLFREE_E164 must be E.164, e.g. +2348000000456"; exit 1; }
-FALLBACK_SOUND="${FALLBACK_SOUND:-all-circuits-busy-now}"
-INTRO_SOUND="${INTRO_SOUND:-}"
-# The server's own voice line. Off unless LOCAL_VOICE=1, and then only when the
-# API answers "ok" for a call — see templates/extensions.conf.template.
-LOCAL_VOICE="${LOCAL_VOICE:-0}"
-LOCAL_VOICE_SECRET="${LOCAL_VOICE_SECRET:-}"
-API_PORT="${API_PORT:-4000}"
-AUDIOSOCKET_PORT="${AUDIOSOCKET_PORT:-9092}"
-if [ "$LOCAL_VOICE" = "1" ]; then
-  [ ${#LOCAL_VOICE_SECRET} -ge 24 ] || { echo "LOCAL_VOICE=1 needs LOCAL_VOICE_SECRET (24+ chars, the same value as the API's)"; exit 1; }
-  [[ "$LOCAL_VOICE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "LOCAL_VOICE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
-fi
-export LOCAL_VOICE LOCAL_VOICE_SECRET API_PORT AUDIOSOCKET_PORT
-# Recognising returning callers: the platform the bridge asks "who is calling?"
-# before the agent answers. Empty SIP_BRIDGE_SECRET = no lookup (as before).
-SIP_BRIDGE_SECRET="${SIP_BRIDGE_SECRET:-}"
-BRIDGE_API_URL="${BRIDGE_API_URL:-http://127.0.0.1:${API_PORT}}"
-BRIDGE_API_URL="${BRIDGE_API_URL%/}"
-if [ -n "$SIP_BRIDGE_SECRET" ]; then
-  [ ${#SIP_BRIDGE_SECRET} -ge 24 ] || { echo "SIP_BRIDGE_SECRET: 24+ characters, the same value as the API's"; exit 1; }
-  [[ "$SIP_BRIDGE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "SIP_BRIDGE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
-  [[ "$BRIDGE_API_URL" =~ ^https?://[^[:space:]]+$ ]] || { echo "BRIDGE_API_URL must be http(s)://host[:port]"; exit 1; }
-fi
-export SIP_BRIDGE_SECRET BRIDGE_API_URL
-if [ -z "${PUBLIC_IP:-}" ]; then
-  PUBLIC_IP="$(curl -fsS -4 --max-time 10 https://api.ipify.org || true)"
-  [ -n "$PUBLIC_IP" ] || { echo "Could not detect the public IP; set PUBLIC_IP in bridge.env"; exit 1; }
-fi
-export PUBLIC_IP FALLBACK_SOUND INTRO_SOUND
-
 echo "==> Installing Asterisk"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq asterisk gettext-base ufw curl >/dev/null
 
-echo "==> Rendering configuration (public IP ${PUBLIC_IP})"
-VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND} ${LOCAL_VOICE} ${LOCAL_VOICE_SECRET} ${API_PORT} ${AUDIOSOCKET_PORT} ${SIP_BRIDGE_SECRET} ${BRIDGE_API_URL}'
-for f in pjsip extensions rtp modules; do
-  envsubst "$VARS" < "templates/${f}.conf.template" > "/etc/asterisk/${f}.conf"
-done
+# Validated and rendered by render.sh, which the single-server container uses
+# too, so the native bridge and the container cannot drift apart.
+./render.sh /etc/asterisk
+PUBLIC_IP="$(grep -m1 '^external_media_address' /etc/asterisk/pjsip.conf | awk '{print $3}')"
 chown asterisk:asterisk /etc/asterisk/{pjsip,extensions,rtp,modules}.conf
-chmod 640 /etc/asterisk/pjsip.conf /etc/asterisk/extensions.conf
 
 echo "==> Firewall: SSH, SIP 5060 (UDP+TCP), RTP 10000-20000/UDP"
 ufw allow OpenSSH >/dev/null

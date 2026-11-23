@@ -40,6 +40,7 @@ const ENV_VALIDATION = join(__dirname, '..', 'src', 'config', 'env.validation.ts
  * whether it was a decision or an oversight.
  */
 const DELIBERATELY_OMITTED: Record<string, string> = {
+  AUDIOSOCKET_HOST: 'Single-server only: 0.0.0.0 inside the container (deploy/single-server/docker-compose.yml); the default 127.0.0.1 is right everywhere else.',
   // The single-server deployment (deploy/vps) sets these in its own generated
   // env file; on Render they must stay unset. A Render container's disk is
   // wiped by every deploy, so STORAGE_DIR there would lose every upload, and

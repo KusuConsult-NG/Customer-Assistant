@@ -135,7 +135,9 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     this.server = null;
   }
 
-  listen(port = Number(process.env.AUDIOSOCKET_PORT || 9092), host = '127.0.0.1'): Promise<number> {
+  // 127.0.0.1 on a plain server; 0.0.0.0 INSIDE a container, whose port is
+  // then published on the host's 127.0.0.1 only (deploy/single-server).
+  listen(port = Number(process.env.AUDIOSOCKET_PORT || 9092), host = process.env.AUDIOSOCKET_HOST?.trim() || '127.0.0.1'): Promise<number> {
     const maxMb = Number(process.env.VOICE_CACHE_MAX_MB || 2048);
     this.cache = new TtsCache(this.cacheDir(), maxMb * 1024 * 1024);
     this.server = net.createServer((socket) => this.accept(socket));

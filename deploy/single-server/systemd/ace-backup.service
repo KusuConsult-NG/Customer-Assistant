@@ -1,0 +1,11 @@
+[Unit]
+Description=Customer Care Platform nightly backup (database + uploaded files, copied off the server)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# install.sh replaces this path with where the repository actually is.
+ExecStart=/opt/customer-assistant/deploy/single-server/backup.sh
+Nice=10
+IOSchedulingClass=idle
