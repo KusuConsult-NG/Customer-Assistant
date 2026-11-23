@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { PLATEAU_LGAS } from '@ace/database';
-import { deepgramModel } from '../telephony/voice-ai.service';
+import { deepgramListenUrl, deepgramModel } from '../telephony/voice-ai.service';
 import { SAMPLE_RATE } from './audiosocket';
 
 export interface SttEvents {
@@ -45,7 +45,7 @@ export function deepgramUrl(): string {
   for (const lga of [...PLATEAU_LGAS, 'Plateau', 'Jos', 'PLASCHEMA', 'SUBEB', 'SEMA', 'Operation Rainbow']) {
     params.append(boostKey, boostKey === 'keywords' ? `${lga}:2` : lga);
   }
-  return `wss://api.deepgram.com/v1/listen?${params}`;
+  return deepgramListenUrl(params);
 }
 
 export const deepgramStt: SttFactory = async (events) => {

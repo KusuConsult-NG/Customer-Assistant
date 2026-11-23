@@ -1,0 +1,41 @@
+# One domain for everything. Rendered by install.sh.
+{
+	email ${ACME_EMAIL}
+}
+
+${DOMAIN} {
+	encode gzip
+
+	# The internal voice-line registration is for Asterisk on this machine
+	# only, which calls 127.0.0.1:4000 directly. From outside it does not
+	# exist. First, so the API block below cannot match it.
+	handle /api/voice-local/* {
+		respond 404
+	}
+
+	# The API: REST, Socket.IO (dashboard live updates), the carrier media
+	# stream, and signed file links. WebSocket upgrades are proxied as-is.
+	@api path /api/* /socket.io/* /telephony/stream/*
+	handle @api {
+		reverse_proxy 127.0.0.1:4000
+	}
+
+	# Everything else is the dashboard.
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 50MiB
+			roll_keep 10
+		}
+	}
+}

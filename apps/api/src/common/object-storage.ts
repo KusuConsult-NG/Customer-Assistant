@@ -102,9 +102,11 @@ export async function uploadObject(
   const full = safeObjectPath(bucket, storagePath);
   if (!full) throw new ServiceUnavailableException('That file name cannot be stored.');
   try {
-    fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, bytes);
-    fs.writeFileSync(`${full}.meta.json`, JSON.stringify({ mimeType, fileName }));
+    // Owner and group only, whatever the process umask: these are citizens'
+    // photographs, call recordings and agency documents.
+    fs.mkdirSync(path.dirname(full), { recursive: true, mode: 0o750 });
+    fs.writeFileSync(full, bytes, { mode: 0o640 });
+    fs.writeFileSync(`${full}.meta.json`, JSON.stringify({ mimeType, fileName }), { mode: 0o640 });
     return storagePath;
   } catch (e: any) {
     log.error('local_storage_failed', e instanceof Error ? e : new Error(String(e)), { bucket });

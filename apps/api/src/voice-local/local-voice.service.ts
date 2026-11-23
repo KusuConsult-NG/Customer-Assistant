@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { randomUUID, timingSafeEqual } from 'crypto';
 import * as net from 'net';
 import * as path from 'path';
-import { prisma, phoneNumberVariants } from '@ace/database';
+import { decryptSecret, prisma, phoneNumberVariants } from '@ace/database';
 import { chatCompletionsUrl, llmConfig } from '@ace/orchestrator';
 import {
   agentPromptFor,
@@ -13,7 +13,6 @@ import {
   type AgentOrganization,
 } from '../agent-tools/agent-tool-catalog';
 import { AgentToolsService } from '../agent-tools/agent-tools.service';
-import { ElevenLabsApi } from '../agent-tools/elevenlabs-client';
 import { ElevenLabsWebhookService, type PostCallPayload } from '../agent-tools/elevenlabs-webhook.service';
 import {
   GOVERNOR_VOICE_ID,
@@ -102,7 +101,6 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly tools: AgentToolsService,
     private readonly ingestion: ElevenLabsWebhookService,
-    private readonly elevenlabs: ElevenLabsApi,
   ) {}
 
   // ── Configuration ─────────────────────────────────────────────────────────
@@ -343,11 +341,14 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       .catch(() => null);
     // A clip already on disk needs no key at all; a missing key only means a
     // new wording falls back to the assistant's voice.
+    // The same rule as ElevenLabsApi.keyFor: the agency's own workspace key,
+    // else the shared key only where sharing is explicitly allowed.
     let key = '';
     try {
-      key = this.elevenlabs.keyFor(organizationId, config?.apiKey ?? null);
+      if (config?.apiKey) key = decryptSecret(config.apiKey, `HostedAgentConfig.apiKey org=${organizationId}`);
+      else if (process.env.ELEVENLABS_ALLOW_SHARED_WORKSPACE === '1') key = process.env.ELEVENLABS_API_KEY?.trim() || '';
     } catch {
-      /* no workspace: cached clips only */
+      /* unreadable: cached clips only */
     }
     return new CachedSpeech(this.governorEngine(key) as any, this.cache);
   }

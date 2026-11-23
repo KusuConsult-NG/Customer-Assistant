@@ -19,6 +19,7 @@ import { createTenant, dropTenant, type TestTenant } from './support/tenant';
 import { AgentToolsService } from '../src/agent-tools/agent-tools.service';
 import { ElevenLabsWebhookService } from '../src/agent-tools/elevenlabs-webhook.service';
 import { ElevenLabsApi } from '../src/agent-tools/elevenlabs-client';
+import { AgentToolsModule } from '../src/agent-tools/agent-tools.module';
 import { CasesService } from '../src/cases/cases.service';
 import { CALL_RECORDED_EVENT } from '../src/common/call-case-link';
 
@@ -118,7 +119,10 @@ describe('Call records: on the case, and played back', () => {
 
     await prisma.hostedAgentConfig.create({ data: { organizationId: owner.orgId, agentId } });
 
-    const api = app.get(ElevenLabsApi);
+    // ElevenLabsApi is provided by two modules (agent-tools and telephony);
+    // app.get() returns whichever it finds first, which changes as modules are
+    // added. The one to fake is the one the recording service was given.
+    const api = app.select(AgentToolsModule).get(ElevenLabsApi);
     jest.spyOn(api, 'for').mockReturnValue(fake as any);
     jest.spyOn(api, 'keyFor').mockReturnValue('test-workspace-key');
 
@@ -257,7 +261,7 @@ describe('Call records: on the case, and played back', () => {
 
     it('says where to connect the workspace when the agency has none', async () => {
       const { callLog } = await reportAndEndCall();
-      const api = app.get(ElevenLabsApi);
+      const api = app.select(AgentToolsModule).get(ElevenLabsApi);
       const keyFor = jest.spyOn(api, 'keyFor').mockImplementationOnce(() => {
         throw new (require('@nestjs/common').BadRequestException)('This agency has no ElevenLabs workspace yet. Add it on this page.');
       });

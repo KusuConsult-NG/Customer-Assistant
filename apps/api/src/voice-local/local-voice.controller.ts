@@ -1,6 +1,5 @@
-import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Module, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Header, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { LocalVoiceService } from './local-voice.service';
 
 /**
@@ -33,11 +32,3 @@ export class LocalVoiceController {
     return this.voice.outcomeOf(uuid);
   }
 }
-
-@Module({
-  imports: [AgentToolsModule],
-  controllers: [LocalVoiceController],
-  providers: [LocalVoiceService],
-  exports: [LocalVoiceService],
-})
-export class LocalVoiceModule {}

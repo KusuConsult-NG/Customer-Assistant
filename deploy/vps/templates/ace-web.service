@@ -1,0 +1,25 @@
+[Unit]
+Description=Citizen Contact Centre dashboard
+After=network-online.target ace-api.service
+
+[Service]
+User=ace
+Group=ace
+WorkingDirectory=${ACE_HOME}/app/apps/web
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node ${ACE_HOME}/app/node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3000
+Restart=always
+RestartSec=3
+# The dashboard is the least urgent thing on this server: a busy page must
+# never take CPU from a caller.
+CPUWeight=50
+Nice=5
+MemoryMax=1500M
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

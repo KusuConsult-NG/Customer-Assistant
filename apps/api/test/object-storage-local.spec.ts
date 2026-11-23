@@ -67,6 +67,15 @@ describe('local storage driver', () => {
     const stored = await uploadObject(KNOWLEDGE_BUCKET, 'org-abc', 'Minutes (final).pdf', bytes, 'application/pdf');
     expect(stored).toMatch(/^org-abc\/\d+_Minutes__final_\.pdf$/);
     expect(fs.existsSync(path.join(dir, KNOWLEDGE_BUCKET, stored))).toBe(true);
+    // Nobody but the app's own user and group can read it, whatever the umask.
+    const prior = process.umask(0);
+    try {
+      const again = await uploadObject(KNOWLEDGE_BUCKET, 'org-abc', 'perm.pdf', bytes, 'application/pdf');
+      expect(fs.statSync(path.join(dir, KNOWLEDGE_BUCKET, again)).mode & 0o777).toBe(0o640);
+      await deleteObject(KNOWLEDGE_BUCKET, again);
+    } finally {
+      process.umask(prior);
+    }
     expect((await downloadObject(KNOWLEDGE_BUCKET, stored)).equals(bytes)).toBe(true);
 
     const url = await signedUrl(KNOWLEDGE_BUCKET, stored, 60);

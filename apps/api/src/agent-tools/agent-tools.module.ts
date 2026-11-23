@@ -41,12 +41,18 @@ import { CallRecordingController } from './call-recording.controller';
  * conversation engines exist right now, and only one is live."
  */
 import { OnboardingModule } from '../onboarding/onboarding.module';
+// The server's own voice line. Registered here rather than as a module of its
+// own: it needs this module's services, and importing this module from a
+// second one changed which copy of a provider two modules both declare
+// (ElevenLabsApi) other code was handed.
+import { LocalVoiceController } from '../voice-local/local-voice.controller';
+import { LocalVoiceService } from '../voice-local/local-voice.service';
 
 @Module({
   // TelephonyModule exports VoiceAiService, whose transferCallToHuman is what
   // actually moves a live call — the same one the orchestrator path uses.
   imports: [SchedulingModule, CrmModule, KnowledgeModule, TelephonyModule, OnboardingModule],
-  controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController, CallRecordingController],
+  controllers: [AgentToolsController, AgentProvisioningController, ElevenLabsWebhookController, CallRecordingController, LocalVoiceController],
   providers: [
     AgentKeyGuard,
     AgentToolsService,
@@ -60,10 +66,10 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
     ElevenLabsCallSyncService,
     CallRecordingService,
     MissedCallFollowUpService,
+    LocalVoiceService,
   ],
   exports: [
     AgentToolsService,
-    ElevenLabsApi,
     ElevenLabsAgentService,
     ElevenLabsLiveService,
     ElevenLabsNumbersService,

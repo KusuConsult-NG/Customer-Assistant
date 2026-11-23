@@ -24,6 +24,8 @@ import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local
 import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
 import { openingSegments } from '../src/voice-local/voice-session';
+import { governorLines, prerender } from '../src/voice-local/prerender';
+import { PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
 
 const SECRET = 'local-voice-test-secret-0123456789';
@@ -395,5 +397,34 @@ describe('voice-local: parts', () => {
     expect(s.push('There are three events this month. The fir')).toEqual(['There are three events this month.']);
     expect(s.push('st is the carnival. Ok.')).toEqual(['The first is the carnival.']);
     expect(s.flush()).toBe('Ok.');
+  });
+
+  it('pre-renders every Governor line once, so none needs ElevenLabs on a call', async () => {
+    const org = {
+      name: 'Plateau State Government Citizen Contact Centre',
+      slug: 'plateau-contact',
+      timezone: 'Africa/Lagos',
+      welcomeMessage:
+        '<governor>{greeting}, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I\'m {name}, the virtual assistant. How may I help you today?',
+    };
+    const lines = governorLines(org);
+    // Every roster name, in all three times of day — and nothing else.
+    expect(lines.length).toBe(PLATEAU_MALE_NAMES.length * 3);
+    expect(lines.filter((l) => l.startsWith('Good morning')).length).toBe(PLATEAU_MALE_NAMES.length);
+    expect(lines.every((l) => !/[{}<>]/.test(l))).toBe(true);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-gov-'));
+    const cache = new TtsCache(dir);
+    const engine = new FakeEngine('elevenlabs');
+    const speech = new CachedSpeech(engine, cache);
+    const report = await prerender(lines.slice(0, 4), speech, cache, false, () => undefined);
+    expect(report).toEqual({ present: 0, rendered: 0, failed: [] });
+    expect(engine.said).toEqual([]); // the report renders nothing
+    expect((await prerender(lines.slice(0, 4), speech, cache, true)).rendered).toBe(4);
+    expect((await prerender(lines.slice(0, 4), speech, cache, true)).present).toBe(4);
+    // The call then finds it on disk: no provider is asked.
+    expect((await speech.speak(lines[0], { alwaysCache: true })).cached).toBe(true);
+    expect(engine.said.length).toBe(4);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
