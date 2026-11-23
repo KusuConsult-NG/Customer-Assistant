@@ -5,7 +5,7 @@
 	email {$ACME_EMAIL}
 }
 
-{$DOMAIN} {
+(app_routes) {
 	encode zstd gzip
 
 	# The API: REST, the dashboard's live sockets, and Twilio's media stream
@@ -33,4 +33,15 @@
 		output stdout
 		format console
 	}
+}
+
+{$DOMAIN} {
+	import app_routes
+}
+
+# Internal-only HTTP listener on the compose network (port 8080 is not
+# published to the host) for Cloudflare Tunnel / reverse tunnels when
+# inbound ports 80/443 are blocked upstream.
+:8080 {
+	import app_routes
 }
