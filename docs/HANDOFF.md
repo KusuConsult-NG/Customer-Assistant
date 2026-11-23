@@ -22,7 +22,7 @@ what the owner decided.
 |---|---|---|
 | Booking guard covers bookings with no staff name (`COALESCE("staffName", '')`) | Supabase `bookings_no_staff_overlap`, applied 23 Nov at the owner's request; 0 bookings existed, nothing cancelled | Definition read back from production; on an identical local copy, 8 simultaneous direct inserts gave 8 confirmed (old guard) vs 1 confirmed + 7 refused (new guard) |
 
-Production is otherwise as `main` (last merge: PR #125). It runs on:
+Production is otherwise as `main` (last merge: PR #126, 21 Nov). It runs on:
 - **Render:** `ace-api`, `ace-web`.
 - **Supabase:** project `xnicrtzlqgnnivdzmbvw`, PostgreSQL 17.6.
 - **ElevenLabs:** agent `agent_3901m78tm8rvests15zh9z4akzef`.
@@ -53,35 +53,51 @@ https://github.com/KusuConsult-NG/Customer-Assistant/pull/127. Four commits on t
    - Tested with providers faked and on a real Asterisk, but never on a real call. `deploy/vps/PHASE3.md` is the live-call checklist.
    - The same commit includes the storage drivers: Supabase on Render, server disk on the VPS, no silent fallback.
 
-Last full API suite: 1,419 passed, 0 failed; both apps typecheck.
+Last full API suite (after merging `main`, 23 Nov): 1,436 passed, 0 failed; both apps typecheck.
 
-## FIRST TASK for whoever continues: PR #127 conflicts with `main`
+## Resolved: PR #127 against `main` (merge of `main` into this branch, 23 Nov)
 
-While this work was in progress, another session's PR #126 ("Run the whole
-platform on one server", merged 21 Nov, so DEPLOYED on Render) landed on
-`main` (now `7db82e6`). It covers the same ground as commits `a14be84` and
-`1116729` here, so PR #127 is `mergeable=false`. It conflicts in:
+Another session's PR #126 ("Run the whole platform on one server", merged
+21 Nov, so on Render) overlapped commits `a14be84` and `1116729` here and
+made this PR unmergeable. `main` was merged into this branch (no rebase, no
+force-push). What was kept:
 
-- `.gitignore`
-- `apps/api/src/app.module.ts`
-- `apps/api/src/common/object-storage.ts`
-- `apps/api/src/knowledge/document.worker.ts`
-- `apps/api/test/deploy-env-accounting.spec.ts`
-- `apps/api/test/route-accounting.spec.ts`
-- `infra/sip-bridge/setup.sh`
+- **One storage driver: `main`'s** (`common/object-storage.ts`, live on
+  Render), with this branch's three real improvements added: the
+  `call-recordings` bucket for the voice line, files written 0640 (folders
+  0750) whatever the umask, and every path segment checked as a plain name.
+  Links are served by `main`'s `GET /api/files/:bucket/*`
+  (`files/files.controller.ts`); the secret is `STORAGE_LINK_SECRET` (the
+  installer generates it; unset, a key derived from `JWT_SECRET`).
+- **This branch did not build anywhere but the machine that wrote it.**
+  `app.module.ts` imported `./storage/storage.controller`, which was never
+  committed: `.gitignore` ignores every `storage/` folder. PR #126 hit the
+  same trap and moved its controller to `files/`, which this branch now uses.
+- **One storage-copy script: `scripts/copy-supabase-storage.js`.** It writes
+  through the API's own storage module. This branch's copy recorded each
+  file's type under a different key than the server reads, so copied images
+  would have downloaded as unknown files instead of displaying.
+  `migrate-from-supabase.sh` runs the shared script with the app's settings.
+- **One install kit: `deploy/vps`.** PR #126's Docker kit
+  (`deploy/single-server`) is removed: the PICTDA server installs natively,
+  and the voice line needs Asterisk and the API on the same host. Its bridge
+  renderer (`infra/sip-bridge/render.sh`) went with it; `setup.sh` is this
+  branch's, which knows the voice-line and caller-lookup settings.
+- Two duplicates the automatic merge had kept were removed: `STORAGE_DIR`
+  declared twice in `env.validation.ts`, and a second, unreachable copy of
+  the local-disk health check.
 
-Main also gained `scripts/copy-supabase-storage.js`, which overlaps
-`deploy/vps/copy-supabase-storage.js` here.
+Checked after the merge: API suite 1,436 passed, 0 failed (the 6 skipped are
+the two real-Asterisk suites, run separately below); package suites 561 of
+561; both apps typecheck; and on a real Asterisk 20.6 with the dialplan
+rendered from these templates, `voice-local-asterisk.spec.ts` 3/3 and
+`sip-bridge-asterisk.spec.ts` 3/3. Still never tested on a real call.
 
-To resolve, on this branch only, never on `main`:
-1. `git fetch origin main && git merge origin/main`. Do not rebase or force-push: the branch is shared.
-2. Read what #126 actually does before choosing sides, and keep ONE storage driver design and ONE storage-copy script. `main`'s version is the one running in production, so prefer it unless this branch's version fixes a real fault. Two of this branch's fixes are worth keeping whatever is chosen: no silent fallback to the container disk, and files written mode 0640.
-3. Re-run the full API suite and both typechecks. Also the gated real-Asterisk suites, if an Asterisk is available (see the headers of `voice-local-asterisk.spec.ts` and `sip-bridge-asterisk.spec.ts`).
-4. Push to this branch and leave PR #127 as a DRAFT. Merging is the owner's call.
+PR #127 stays a DRAFT. Merging is the owner's call.
 
 ## Open questions for the owner
 
-- **"VoiceStudio"**: the owner asked whether it can replace ElevenLabs. It could not be identified. It plugs in either as the bridge's SIP target (if it is a complete phone agent) or as a voice in `voice-local/tts.ts` (`SpeechEngine`, if it is voices only). Ask for its docs or link before building anything.
+- **"VoiceStudio"** (https://github.com/debpalash/VoiceStudio, identified 23 Nov): a local voice app (cloning, design, dubbing, transcription), AGPL-3.0. It is voices only, not a phone agent: its "Calls" feature dials out from the desktop app through the user's own Twilio number, has no SIP connection and none of our tools. So it could only be a `SpeechEngine` in `voice-local/tts.ts`, in place of Azure. Before that: its default model (OmniVoice) is NON-COMMERCIAL, in both forms (Apache-2.0/MIT engines exist in its catalogue); it publishes no CPU speed figures, and a phone call needs speech faster than real time; it would run on the PICTDA server. Not built; the Phase 2 plan uses Azure `en-NG`. Ask the owner whether it should replace Azure.
 - **PICTDA server** (`102.88.134.211`): not reachable from the cloud sandbox. Installing needs:
   - SSH access;
   - a DNS name pointing at the server;

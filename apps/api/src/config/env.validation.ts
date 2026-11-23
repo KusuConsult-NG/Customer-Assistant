@@ -60,6 +60,7 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'ELEVENLABS_BASE_URL', required: false, description: 'ElevenLabs host; set to a residency endpoint (api.eu.residency.elevenlabs.io) to keep data in-jurisdiction' },
   { key: 'SIP_BRIDGE_SECRET', required: false, description: 'Shared with the SIP bridge (infra/sip-bridge): lets it ask who is calling before the agent answers, so a profiled caller is welcomed back by name. Unset, every caller is greeted as new' },
   { key: 'STORAGE_DIR', required: false, description: 'Single-server deployment: a PERMANENT, backed-up directory for uploads and call recordings. Unset with no Supabase storage, production uploads are refused' },
+  { key: 'STORAGE_LINK_SECRET', required: false, description: 'Signs the expiring links to files kept on this server (STORAGE_DIR). The single-server installer generates one; unset, links are signed with a key derived from JWT_SECRET' },
   { key: 'LOCAL_VOICE_PIPELINE', required: false, description: 'Set to 1 to answer calls on this server (Asterisk AudioSocket → Deepgram → model → Azure). Off, every call goes to the ElevenLabs agent as before' },
   { key: 'AZURE_SPEECH_KEY', required: false, description: 'Azure Speech key for the local voice line (Nigerian English voice); without it the local line falls back to ElevenLabs' },
   { key: 'AZURE_SPEECH_REGION', required: false, description: 'Azure Speech region of that key, e.g. westeurope or southafricanorth' },
@@ -72,8 +73,8 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'TWILIO_ACCOUNT_SID', required: false, description: 'Twilio Account SID (required for Voice AI telephony)' },
   { key: 'TWILIO_AUTH_TOKEN', required: false, description: 'Twilio Auth Token (required for Voice AI telephony)' },
   { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
-  { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL (required for knowledge-base file uploads)' },
-  { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (required for knowledge-base file uploads)' },
+  { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL — with SUPABASE_SERVICE_ROLE_KEY, uploaded documents and selfies are stored in Supabase Storage' },
+  { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (see SUPABASE_URL)' },
   // ── Email, over HTTPS, from whichever provider is configured ──────────────
   //
   // SMTP is NOT an alternative on this host: Render blocks outbound traffic to

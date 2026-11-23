@@ -1,5 +1,5 @@
-import { ServiceUnavailableException } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AceLogger } from '../config/logger';
@@ -13,57 +13,91 @@ export const CALL_RECORDING_BUCKET = 'call-recordings';
 const BUCKETS = new Set([KNOWLEDGE_BUCKET, SELFIE_BUCKET, CALL_RECORDING_BUCKET]);
 
 /**
- * Where uploaded files live. ONE driver per deployment, chosen explicitly.
+ * Where uploaded files live — ONE decision, made from configuration.
  *
- *   supabase — SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (the Render deployment)
- *   local    — STORAGE_DIR, a PERMANENT directory on the server (the single
- *              VPS deployment: a mounted, backed-up volume)
- *   dev      — neither, outside production: ./uploads, for a developer's machine
- *   none     — neither, in production: uploads are REFUSED with the reason
+ * ── What was wrong ──────────────────────────────────────────────────────────
  *
- * This used to fall back silently: a Supabase upload that failed was written
- * to the container's own disk instead and reported as stored — on Render that
- * disk is wiped by every deploy, so the file was lost with nothing saying so.
- * Its signed-URL fallback returned every file as `data:image/jpeg`, PDFs
- * included, and its last resort was `/api/public/selfie-asset/…`, a route that
- * never existed. Now a configured driver either works or says it did not.
+ * A failed Supabase upload fell back, with a warning, to a folder inside the
+ * container. Every upload then LOOKED stored: the row was written, the
+ * officer saw it in the list. But a container's disk is wiped on every
+ * redeploy, so the file was gone at the next release, and nothing anywhere
+ * said that the upload had never reached real storage. Reading it back had
+ * the same habit: a local copy came back as a `data:image/jpeg` link
+ * whatever the file was (a PDF, a Word document), and a missing one as a link
+ * to `/api/public/selfie-asset/…`, a route that does not exist.
+ *
+ * ── What it is now ──────────────────────────────────────────────────────────
+ *
+ *  - `supabase` when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set. A
+ *    refused upload is an error the caller sees, never a quiet local copy.
+ *  - `local` when STORAGE_DIR is set: files on a disk that persists (on the
+ *    single server, a Docker volume that is backed up nightly). They are read
+ *    through `GET /api/files/…` with a link that expires and is signed, so a
+ *    link cannot be guessed, reused later or altered to reach another file.
+ *  - Outside production with neither, `local` in ./uploads, for development.
+ *  - In PRODUCTION with neither, uploads are REFUSED with the reason. Writing
+ *    to a disk that does not survive a redeploy is how files were being lost.
  */
-export type StorageDriver = 'supabase' | 'local' | 'dev' | 'none';
+export type StorageDriver = 'supabase' | 'local' | 'none';
 
 export function storageDriver(): StorageDriver {
   if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return 'supabase';
   if (process.env.STORAGE_DIR?.trim()) return 'local';
-  return process.env.NODE_ENV === 'production' ? 'none' : 'dev';
+  return process.env.NODE_ENV === 'production' ? 'none' : 'local';
 }
 
-function localRoot(): string {
+/** The directory the local driver writes to. */
+export function storageRoot(): string {
   return path.resolve(process.env.STORAGE_DIR?.trim() || path.join(process.cwd(), 'uploads'));
 }
+
+const NOT_CONFIGURED =
+  'File storage is not configured on this server, so the file was not saved. ' +
+  'Set STORAGE_DIR (a persistent directory) or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.';
 
 function supabase(): { url: string; key: string } {
   return { url: process.env.SUPABASE_URL!.replace(/\/+$/, ''), key: process.env.SUPABASE_SERVICE_ROLE_KEY! };
 }
 
-function authHeaders(key: string): Record<string, string> {
-  // Supabase Storage needs BOTH headers — with only the bearer token every
-  // request fails with a misleading 400/403.
+/** Supabase Storage needs BOTH headers; with only the bearer every request fails 400/403. */
+function supabaseHeaders(key: string): Record<string, string> {
   return { Authorization: `Bearer ${key}`, apikey: key };
 }
 
-const NOT_CONFIGURED =
-  'File storage is not set up on this deployment, so the file was not saved. Contact the State platform team.';
-
-/** A bucket and path that cannot climb out of the storage root. */
-export function safeObjectPath(bucket: string, storagePath: string): string | null {
-  if (!BUCKETS.has(bucket)) return null;
+/**
+ * The file a bucket path names, refusing anything that would leave the bucket
+ * (`..`, an absolute path, a NUL). Paths are written by this module
+ * (`<organizationId>/<time>_<safe name>`), but a read takes one from a URL.
+ */
+function localFile(bucket: string, storagePath: string): string {
+  if (!BUCKETS.has(bucket)) throw new NotFoundException('No such file.');
+  // Every segment a plain name: what this module writes is
+  // `<organizationId>/<time>_<safe name>`, so anything else (`..`, an empty
+  // segment, a NUL, a character outside the safe set) is refused before the
+  // resolved-path check below, not only by it.
   const parts = String(storagePath ?? '').split('/');
-  if (parts.length < 2 || parts.some((p) => !p || p === '.' || p === '..' || !/^[A-Za-z0-9._-]+$/.test(p))) return null;
-  const root = localRoot();
-  const full = path.resolve(root, bucket, ...parts);
-  return full.startsWith(path.join(root, bucket) + path.sep) ? full : null;
+  if (
+    !storagePath ||
+    path.isAbsolute(storagePath) ||
+    parts.length < 2 ||
+    parts.some((p) => !p || p === '.' || p === '..' || !/^[A-Za-z0-9._-]+$/.test(p))
+  ) {
+    throw new BadRequestException('Invalid file path.');
+  }
+  const root = path.join(storageRoot(), bucket);
+  const file = path.resolve(root, storagePath);
+  if (!file.startsWith(root + path.sep)) throw new BadRequestException('Invalid file path.');
+  return file;
 }
 
-/** Uploads bytes and returns the storage path (never a URL). Throws if it was not stored. */
+interface LocalMeta {
+  contentType: string;
+  fileName: string;
+}
+
+const metaPath = (file: string) => `${file}.meta.json`;
+
+/** Uploads bytes and returns the storage path (never a URL). */
 export async function uploadObject(
   bucket: string,
   organizationId: string,
@@ -75,53 +109,77 @@ export async function uploadObject(
   const storagePath = `${organizationId}/${Date.now()}_${safeName}`;
   const driver = storageDriver();
 
-  if (driver === 'none') {
-    log.error('storage_not_configured', new Error('Neither SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY nor STORAGE_DIR is set'));
-    throw new ServiceUnavailableException(NOT_CONFIGURED);
-  }
+  if (driver === 'none') throw new ServiceUnavailableException(NOT_CONFIGURED);
 
   if (driver === 'supabase') {
     const { url, key } = supabase();
-    let detail = '';
+    let response: Response;
     try {
-      const response = await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, {
+      response = await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, {
         method: 'POST',
-        headers: { ...authHeaders(key), 'Content-Type': mimeType, 'x-upsert': 'false' },
+        headers: { ...supabaseHeaders(key), 'Content-Type': mimeType, 'x-upsert': 'false' },
         body: new Uint8Array(bytes),
       });
-      if (response.ok) return storagePath;
-      detail = `HTTP ${response.status} ${await response.text().catch(() => '')}`.trim();
     } catch (e: any) {
-      detail = e?.message ?? String(e);
+      log.error('supabase_upload_unreachable', e instanceof Error ? e : new Error(String(e)));
+      throw new ServiceUnavailableException('The file could not be stored: file storage could not be reached.');
     }
-    log.error('supabase_upload_failed', new Error(detail), { bucket });
-    throw new ServiceUnavailableException('The file could not be saved to storage just now, so it was not uploaded. Please try again.');
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      log.warn('supabase_upload_refused', { status: response.status, error: detail.slice(0, 300) });
+      throw new ServiceUnavailableException(`The file could not be stored: file storage refused it (HTTP ${response.status}).`);
+    }
+    return storagePath;
   }
 
-  // local / dev: a real directory. In `local` it is the server's permanent volume.
-  const full = safeObjectPath(bucket, storagePath);
-  if (!full) throw new ServiceUnavailableException('That file name cannot be stored.');
   try {
-    // Owner and group only, whatever the process umask: these are citizens'
-    // photographs, call recordings and agency documents.
-    fs.mkdirSync(path.dirname(full), { recursive: true, mode: 0o750 });
-    fs.writeFileSync(full, bytes, { mode: 0o640 });
-    fs.writeFileSync(`${full}.meta.json`, JSON.stringify({ mimeType, fileName }), { mode: 0o640 });
-    return storagePath;
+    writeLocalObject(bucket, storagePath, bytes, mimeType, safeName);
   } catch (e: any) {
-    log.error('local_storage_failed', e instanceof Error ? e : new Error(String(e)), { bucket });
-    throw new ServiceUnavailableException('The file could not be saved to storage just now, so it was not uploaded. Please try again.');
+    if (e instanceof BadRequestException || e instanceof NotFoundException) throw e;
+    log.error('local_storage_write_failed', e instanceof Error ? e : new Error(String(e)));
+    throw new ServiceUnavailableException('The file could not be stored: the server could not write it to disk.');
   }
+  return storagePath;
 }
 
-/** The stored bytes, for the ingestion worker. Throws with the reason. */
+/**
+ * Writes one object in the local layout: `<STORAGE_DIR>/<bucket>/<path>` plus
+ * a `.meta.json` beside it with its type and name. Exported for the migration
+ * script (scripts/copy-supabase-storage.js), so files copied from Supabase are
+ * laid out exactly as the API lays out its own — one definition, not two.
+ */
+export function writeLocalObject(
+  bucket: string,
+  storagePath: string,
+  bytes: Buffer,
+  mimeType: string,
+  fileName = path.basename(storagePath).replace(/^\d+_/, '')
+): string {
+  const file = localFile(bucket, storagePath);
+  // Owner and group only, whatever the process umask: these are citizens'
+  // photographs, call recordings and agency documents.
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o750 });
+  fs.writeFileSync(file, bytes, { mode: 0o640 });
+  const meta: LocalMeta = { contentType: mimeType || 'application/octet-stream', fileName };
+  fs.writeFileSync(metaPath(file), JSON.stringify(meta), { mode: 0o640 });
+  return file;
+}
+
+/** Whether a local object exists, and its size — for idempotent copies. */
+export function localObjectSize(bucket: string, storagePath: string): number | null {
+  const file = localFile(bucket, storagePath);
+  return fs.existsSync(file) ? fs.statSync(file).size : null;
+}
+
+/** The stored bytes, wherever they are. Used by the document worker. */
 export async function downloadObject(bucket: string, storagePath: string): Promise<Buffer> {
   const driver = storageDriver();
   if (driver === 'none') throw new Error(NOT_CONFIGURED);
+
   if (driver === 'supabase') {
     const { url, key } = supabase();
     const res = await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, {
-      headers: authHeaders(key),
+      headers: supabaseHeaders(key),
       signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) {
@@ -132,104 +190,126 @@ export async function downloadObject(bucket: string, storagePath: string): Promi
     }
     return Buffer.from(await res.arrayBuffer());
   }
-  const full = safeObjectPath(bucket, storagePath);
-  if (!full || !fs.existsSync(full)) throw new Error(`Stored file "${storagePath}" was not found in ${bucket}.`);
-  return fs.readFileSync(full);
+
+  const file = localFile(bucket, storagePath);
+  if (!fs.existsSync(file)) throw new Error(`Stored file "${storagePath}" is missing from ${bucket} on this server.`);
+  return fs.readFileSync(file);
 }
 
-// ── Signed links for the local driver ─────────────────────────────────────
-//
-// A browser cannot read the server's disk, and the dashboard opens a file by
-// URL (a download link, an <img>). So the API serves it at
-// /api/storage/:bucket/:org/:file, and the link carries an expiry and an HMAC
-// over bucket, path and expiry — exactly what Supabase's signed URLs give:
-// short-lived, unguessable, no session needed to follow it.
+// ── Signed links for the local driver ─────────────────────────────────────────
 
-function signingKey(): string {
-  const key = process.env.STORAGE_SIGNING_KEY || process.env.JWT_SECRET;
-  if (!key) throw new Error('STORAGE_SIGNING_KEY (or JWT_SECRET) is required to sign file links.');
-  return key;
+/** Longest a link may live, whatever a caller asks for. */
+const MAX_LINK_SECONDS = 24 * 60 * 60;
+
+/**
+ * The key links are signed with. Derived from JWT_SECRET (which every
+ * deployment already has, and has to keep secret) rather than used as is, so
+ * a link signature can never be confused with a token signature.
+ */
+function linkKey(): Buffer {
+  const secret = process.env.STORAGE_LINK_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET is required to sign file links.');
+  return createHash('sha256').update(`file-links:${secret}`).digest();
 }
 
-function signature(bucket: string, storagePath: string, expires: number): string {
-  return createHmac('sha256', signingKey()).update(`${bucket}\n${storagePath}\n${expires}`).digest('base64url');
+function linkSignature(bucket: string, storagePath: string, expires: number): string {
+  return createHmac('sha256', linkKey()).update(`${bucket}\n${storagePath}\n${expires}`).digest('base64url');
 }
 
-/** True only for an unexpired link signed by this deployment. */
-export function verifyObjectLink(bucket: string, storagePath: string, expires: number, sig: string, now = Date.now()): boolean {
-  if (!Number.isFinite(expires) || expires * 1000 < now || !sig) return false;
-  const want = Buffer.from(signature(bucket, storagePath, expires));
-  const got = Buffer.from(String(sig));
-  return want.length === got.length && timingSafeEqual(want, got);
+/**
+ * The public address of the API, so a link works whether or not the dashboard
+ * shares its host. Unset in production the link is relative, which is right on
+ * the single server: the dashboard and the API share one origin there.
+ */
+function publicBase(): string {
+  const configured = process.env.API_BASE_URL || process.env.API_URL;
+  if (configured) return configured.replace(/\/+$/, '');
+  return process.env.NODE_ENV === 'production' ? '' : `http://localhost:${process.env.PORT || 4000}`;
 }
 
-/** The stored file and its type, for the serving route. Null when absent. */
-export function readLocalObject(bucket: string, storagePath: string): { bytes: Buffer; mimeType: string } | null {
-  const full = safeObjectPath(bucket, storagePath);
-  if (!full || !fs.existsSync(full)) return null;
-  let mimeType = 'application/octet-stream';
-  try {
-    mimeType = JSON.parse(fs.readFileSync(`${full}.meta.json`, 'utf8')).mimeType || mimeType;
-  } catch {
-    /* an object without its sidecar is still served, as a download */
-  }
-  return { bytes: fs.readFileSync(full), mimeType };
-}
-
-function apiBase(): string {
-  // The same fallback the telephony paths keep (invariant 4).
-  return (process.env.API_BASE_URL || process.env.API_URL || '').replace(/\/+$/, '');
-}
-
-/** Short-lived signed URL. Do not cache or persist the result. Throws if none can be made. */
+/** Short-lived signed URL. Do not cache or persist the result. */
 export async function signedUrl(bucket: string, storagePath: string, expiresInSeconds = 300): Promise<string> {
   const driver = storageDriver();
   if (driver === 'none') throw new ServiceUnavailableException(NOT_CONFIGURED);
 
   if (driver === 'supabase') {
     const { url, key } = supabase();
-    try {
-      const response = await fetch(`${url}/storage/v1/object/sign/${bucket}/${storagePath}`, {
-        method: 'POST',
-        headers: { ...authHeaders(key), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiresIn: expiresInSeconds }),
-      });
-      if (response.ok) {
-        const data: any = await response.json();
-        return `${url}/storage/v1${data.signedURL}`;
-      }
-      log.warn('supabase_signed_url_refused', { status: response.status, bucket });
-    } catch (e: any) {
-      log.warn('supabase_signed_url_exception', { error: e?.message, bucket });
+    const response = await fetch(`${url}/storage/v1/object/sign/${bucket}/${storagePath}`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders(key), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: expiresInSeconds }),
+    }).catch((e: any) => {
+      log.warn('supabase_signed_url_unreachable', { error: e?.message });
+      return null;
+    });
+    if (!response?.ok) {
+      throw new ServiceUnavailableException(
+        response ? `File storage refused the download link (HTTP ${response.status}).` : 'File storage could not be reached.'
+      );
     }
-    throw new ServiceUnavailableException('The file link could not be created just now. Please try again.');
+    const data: any = await response.json();
+    return `${url}/storage/v1${data.signedURL}`;
   }
 
-  if (!safeObjectPath(bucket, storagePath)) throw new ServiceUnavailableException('That file is not available.');
-  const expires = Math.floor(Date.now() / 1000) + expiresInSeconds;
-  const sig = signature(bucket, storagePath, expires);
-  return `${apiBase()}/api/storage/${bucket}/${storagePath}?expires=${expires}&sig=${sig}`;
+  const file = localFile(bucket, storagePath);
+  if (!fs.existsSync(file)) throw new NotFoundException('That file is no longer stored on this server.');
+  const seconds = Math.min(Math.max(1, Math.floor(expiresInSeconds)), MAX_LINK_SECONDS);
+  const expires = Math.floor(Date.now() / 1000) + seconds;
+  const encodedPath = storagePath.split('/').map(encodeURIComponent).join('/');
+  return `${publicBase()}/api/files/${bucket}/${encodedPath}?expires=${expires}&sig=${linkSignature(bucket, storagePath, expires)}`;
 }
 
-/** Deletes an object. A missing one is success — the goal state is "gone". */
+/**
+ * Checks a link and returns the file it names, or throws. The link is the
+ * only credential: a wrong signature, a path changed after signing and an
+ * expired link are all refused the same way, saying nothing about which.
+ */
+export function openSignedFile(
+  bucket: string,
+  storagePath: string,
+  expires: string | undefined,
+  sig: string | undefined
+): { file: string; contentType: string; fileName: string } {
+  const refused = new NotFoundException('This link has expired or is not valid. Open the file again from the dashboard.');
+  const exp = Number(expires);
+  if (!sig || !Number.isInteger(exp) || exp < Math.floor(Date.now() / 1000)) throw refused;
+  if (!BUCKETS.has(bucket)) throw refused;
+  const expected = Buffer.from(linkSignature(bucket, storagePath, exp));
+  const given = Buffer.from(sig);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) throw refused;
+
+  const file = localFile(bucket, storagePath);
+  if (!fs.existsSync(file)) throw new NotFoundException('That file is no longer stored on this server.');
+  let meta: LocalMeta = { contentType: 'application/octet-stream', fileName: path.basename(file) };
+  try {
+    meta = { ...meta, ...JSON.parse(fs.readFileSync(metaPath(file), 'utf8')) };
+  } catch {
+    // A file without its sidecar is still served, as a download.
+  }
+  return { file, contentType: meta.contentType, fileName: meta.fileName };
+}
+
+/** Deletes an object. A missing object is success — the goal state is "gone". */
 export async function deleteObject(bucket: string, storagePath: string): Promise<void> {
   const driver = storageDriver();
+  if (driver === 'none') return;
+
   if (driver === 'supabase') {
     const { url, key } = supabase();
     try {
-      await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, { method: 'DELETE', headers: authHeaders(key) });
+      await fetch(`${url}/storage/v1/object/${bucket}/${storagePath}`, { method: 'DELETE', headers: supabaseHeaders(key) });
     } catch (err: any) {
       log.warn('storage_delete_failed', { bucket, storagePath, error: err?.message });
     }
     return;
   }
-  const full = safeObjectPath(bucket, storagePath);
-  if (!full) return;
-  for (const f of [full, `${full}.meta.json`]) {
+
+  const file = localFile(bucket, storagePath);
+  for (const f of [file, metaPath(file)]) {
     try {
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    } catch {
-      /* best effort, as before */
+      fs.unlinkSync(f);
+    } catch (e: any) {
+      if (e?.code !== 'ENOENT') log.warn('storage_delete_failed', { bucket, storagePath, error: e?.message });
     }
   }
 }

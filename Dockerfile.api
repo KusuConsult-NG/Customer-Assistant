@@ -1,35 +1,44 @@
-# Multi-stage Dockerfile for NestJS API Server (@ace/api)
-FROM node:20-alpine AS base
+# The API (@ace/api) and the workspace packages it is built from.
+#
+# The previous version ran `npm run build --workspace=apps/api`, which builds
+# the API alone: @ace/database, @ace/orchestrator and the SDK packages were
+# never compiled, so the image started and failed on the first `require` of a
+# package with no dist/. It is built the way Render builds it now — turbo,
+# filtered to the API and everything it depends on.
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
-# --no-cache: don't keep the apk index (smaller layer). The previous flag
-# (--no-libc-compat) is not a valid apk option and failed the build outright.
-RUN apk add --no-cache python3 make g++
-
-FROM base AS dependencies
-COPY package.json package-lock.json ./
-COPY packages/database/package.json ./packages/database/
-COPY packages/orchestrator/package.json ./packages/orchestrator/
-COPY packages/pdf-generator/package.json ./packages/pdf-generator/
-COPY packages/shared-types/package.json ./packages/shared-types/
-COPY packages/telephony-sdk/package.json ./packages/telephony-sdk/
-COPY packages/whatsapp-sdk/package.json ./packages/whatsapp-sdk/
-COPY apps/api/package.json ./apps/api/
-RUN npm ci
-
-FROM dependencies AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 COPY . .
-RUN npx prisma generate --schema=packages/database/prisma/schema.prisma
-RUN npm run build --workspace=apps/api
+# A network that inspects TLS (common on government networks) re-signs the
+# package registry's certificate with its own CA, and npm refuses it. Such a
+# CA can be given as the optional build secret `extra_ca`
+# (docker build --secret id=extra_ca,src=network-ca.pem …); without it nothing changes. Never by turning verification off.
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
+    npm ci --no-audit --no-fund
+# prisma generate reads the schema, not the database; any well-formed URL will do.
+RUN DATABASE_URL=postgresql://build:build@localhost:5432/build DIRECT_URL=postgresql://build:build@localhost:5432/build \
+    npx prisma generate --schema=packages/database/prisma/schema.prisma \
+ && npx turbo run build --filter=@ace/api...
 
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
+# openssl for Prisma's engine; curl for the health check.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV PORT=4000
-
+# node_modules is kept whole: the Prisma CLI (db push at deploy) and the
+# scripts/ operators run (npm run user:password, platform:grant, …) need it.
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/packages ./packages
-COPY --from=build /app/package.json ./package.json
-
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/data ./data
 EXPOSE 4000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=4 \
+  CMD curl -fsS http://127.0.0.1:4000/api/health || exit 1
 CMD ["node", "apps/api/dist/main.js"]

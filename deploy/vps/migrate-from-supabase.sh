@@ -21,6 +21,17 @@ PG_VERSION="${PG_VERSION:-17}"
 PGBIN="/usr/lib/postgresql/${PG_VERSION}/bin"
 [[ "$SOURCE_DATABASE_URL" == *":6543"* ]] && die "SOURCE_DATABASE_URL is the pooler (6543). pg_dump needs the DIRECT connection (5432)."
 
+# The files are copied by the repository's own scripts/copy-supabase-storage.js,
+# which writes through the API's storage module, so copied files are laid out
+# (and typed, for serving) exactly as the API lays out its own uploads. It
+# runs with the app's settings (/etc/ace/ace.env: STORAGE_DIR, DATABASE_URL)
+# and reads only the two SOURCE_SUPABASE_* values from deploy.env.
+copy_files() {
+  ( read_env_file "$ACE_ENV"
+    export SOURCE_SUPABASE_URL SOURCE_SUPABASE_SERVICE_ROLE_KEY
+    cd ../.. && node scripts/copy-supabase-storage.js "$@" )
+}
+
 counts_sql="SELECT string_agg(format('%s=%s', relname, n_live_tup), ' ' ORDER BY relname) FROM pg_stat_user_tables WHERE schemaname='public'"
 exact_sql="SELECT string_agg(t || '=' || (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM public.%I', t), false, true, '')))[1]::text, ' ' ORDER BY t) FROM (SELECT tablename AS t FROM pg_tables WHERE schemaname='public') s"
 
@@ -32,8 +43,7 @@ say "This server"
 dst_counts="$(runuser -u postgres -- psql -d ace -tAc "$exact_sql" || true)"
 echo "  rows: ${dst_counts:-(empty database)}" | fold -w 160
 say "Files"
-STORAGE_DIR="$ACE_HOME/storage" SOURCE_SUPABASE_URL="$SOURCE_SUPABASE_URL" SOURCE_SUPABASE_SERVICE_ROLE_KEY="$SOURCE_SUPABASE_SERVICE_ROLE_KEY" \
-  node copy-supabase-storage.js || true
+copy_files || true
 
 if [ "$APPLY" = 0 ]; then
   echo; echo "Nothing was changed. Re-run with --apply to copy."
@@ -74,8 +84,7 @@ else
 fi
 
 say "Copying the files"
-STORAGE_DIR="$ACE_HOME/storage" SOURCE_SUPABASE_URL="$SOURCE_SUPABASE_URL" SOURCE_SUPABASE_SERVICE_ROLE_KEY="$SOURCE_SUPABASE_SERVICE_ROLE_KEY" \
-  node copy-supabase-storage.js --apply
+copy_files --apply
 chown -R ace:ace "$ACE_HOME/storage"
 chmod -R u=rwX,g=rX,o= "$ACE_HOME/storage"
 

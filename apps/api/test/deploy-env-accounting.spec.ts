@@ -45,6 +45,7 @@ const DELIBERATELY_OMITTED: Record<string, string> = {
   // wiped by every deploy, so STORAGE_DIR there would lose every upload, and
   // the local voice line needs Asterisk on the same machine.
   STORAGE_DIR: 'Single-server only (deploy/vps/install.sh). On Render the disk is wiped by every deploy; files go to Supabase.',
+  STORAGE_LINK_SECRET: 'Single-server only (deploy/vps/install.sh generates it). Render keeps files in Supabase, which signs its own links.',
   LOCAL_VOICE_PIPELINE: 'Single-server only: needs Asterisk on the same machine (deploy/vps).',
   AZURE_SPEECH_KEY: 'Single-server voice line only (deploy/vps/deploy.env).',
   AZURE_SPEECH_REGION: 'Single-server voice line only (deploy/vps/deploy.env).',

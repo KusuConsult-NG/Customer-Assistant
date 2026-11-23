@@ -93,7 +93,7 @@ keep_secret POSTGRES_PASSWORD 24
 keep_secret REDIS_PASSWORD 24
 keep_secret QDRANT_API_KEY 24
 keep_secret LOCAL_VOICE_SECRET 24
-keep_secret STORAGE_SIGNING_KEY 32
+keep_secret STORAGE_LINK_SECRET 32
 
 export QDRANT_API_KEY REDIS_PASSWORD
 envsubst '${QDRANT_API_KEY}' < templates/qdrant.yaml > /etc/qdrant/config.yaml
@@ -145,14 +145,14 @@ DB_URL="postgresql://ace:${POSTGRES_PASSWORD}@127.0.0.1:5432/ace?connection_limi
   echo "WEB_INTERNAL_URL=http://127.0.0.1:3000"
   echo "TRUST_PROXY=1"
   echo "STORAGE_DIR=${ACE_HOME}/storage"
-  echo "STORAGE_SIGNING_KEY=${STORAGE_SIGNING_KEY}"
+  echo "STORAGE_LINK_SECRET=${STORAGE_LINK_SECRET}"
   echo "VOICE_CACHE_DIR=${ACE_HOME}/tts-cache"
   echo "LOCAL_VOICE_SECRET=${LOCAL_VOICE_SECRET}"
   echo "AUDIOSOCKET_PORT=9092"
   # Everything else from deploy.env, as given (empty values dropped, so an
   # unset optional stays unset rather than becoming "").
   env_pairs deploy.env | grep -vE '^[A-Z_0-9]+=$' \
-    | grep -vE '^(NODE_ENV|PORT|DATABASE_URL|DIRECT_URL|REDIS_URL|QDRANT_URL|QDRANT_API_KEY|API_BASE_URL|WEB_BASE_URL|CORS_ORIGIN|STORAGE_DIR|STORAGE_SIGNING_KEY|VOICE_CACHE_DIR|LOCAL_VOICE_SECRET)='
+    | grep -vE '^(NODE_ENV|PORT|DATABASE_URL|DIRECT_URL|REDIS_URL|QDRANT_URL|QDRANT_API_KEY|API_BASE_URL|WEB_BASE_URL|CORS_ORIGIN|STORAGE_DIR|STORAGE_LINK_SECRET|VOICE_CACHE_DIR|LOCAL_VOICE_SECRET)='
 } > "$ACE_ENV.new"
 chown root:ace "$ACE_ENV.new" && chmod 640 "$ACE_ENV.new" && mv "$ACE_ENV.new" "$ACE_ENV"
 grep -q '^SUPABASE_URL=' "$ACE_ENV" && die "deploy.env sets SUPABASE_URL: files would go to Supabase, not this server. Remove it (the migration script reads SOURCE_SUPABASE_URL)."

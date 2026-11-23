@@ -187,11 +187,12 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   { method: 'POST', path: '/api/voice-local/register', calledBy: 'Asterisk dialplan CURL (same server)' },
   { method: 'GET', path: '/api/voice-local/outcome/:uuid', calledBy: 'Asterisk dialplan CURL (same server)' },
 
-  // ── Signed file links (single-server storage) ────────────────────────
+  // ── Signed file links ──────────────────────────────────────────────────
   //
-  // Opened by an <img> or a download link the dashboard was handed by
-  // signedUrl(); the HMAC and expiry in the query are the credential.
-  { method: 'GET', path: '/api/storage/:bucket/:folder/:file', calledBy: 'Browser following a signed file link' },
+  // Nothing in the dashboard builds this path: an authenticated endpoint
+  // MINTS the link (knowledge download, selfie image) and the browser opens
+  // what it was handed. Only used when files are kept on the server's disk.
+  { method: 'GET', path: '/api/files/:bucket/*', calledBy: 'Browser opening a signed link minted by an authenticated endpoint' },
 
   // ── Probes ─────────────────────────────────────────────────────────────
   //

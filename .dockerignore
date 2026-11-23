@@ -1,0 +1,20 @@
+# Keeps the build context small and, more importantly, keeps secrets and local
+# state out of every image: without this file `COPY . .` sent the whole
+# working tree — .env included — into the build.
+.git
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/tsconfig.tsbuildinfo
+.env
+.env.*
+!.env.example
+**/*.env
+!**/*.env.example
+uploads
+apps/api/uploads
+apps/web/test-results
+apps/web/playwright-report
+infra/sip-bridge/bridge.env
+*.log

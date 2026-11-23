@@ -41,8 +41,8 @@
 
 import { Worker, Job } from 'bullmq';
 import { reportRedisQuotaOnce } from '../common/redis-quota';
+import { KNOWLEDGE_BUCKET, downloadObject } from '../common/object-storage';
 import { embeddingsUrl, llmConfig } from '@ace/orchestrator';
-import { downloadObject } from '../common/object-storage';
 
 const DOCUMENT_CONCURRENCY = parseInt(process.env.DOCUMENT_WORKER_CONCURRENCY || '2', 10);
 const CHUNK_SIZE_CHARS = 1800; // ~450 tokens at ~4 chars/token
@@ -174,14 +174,14 @@ async function getPrisma() {
   return prisma;
 }
 
-const SUPABASE_BUCKET = 'knowledge-documents';
-
 /**
  * Downloads a queued document.
  *
- * `storageUrl` is a Supabase Storage object path unless it is an absolute http(s)
- * URL (crawled pages). Supabase objects are in a PRIVATE bucket, so they are fetched
- * with the service-role key rather than anonymously.
+ * `storageUrl` is a storage path unless it is an absolute http(s) URL (crawled
+ * pages). Stored files are read through the same module that wrote them, so
+ * the worker reads from wherever uploads go — Supabase or this server's disk —
+ * rather than assuming Supabase and failing every document on a server
+ * without it.
  */
 async function downloadDocument(storageUrl: string): Promise<Buffer> {
   if (/^https?:\/\//i.test(storageUrl)) {
@@ -189,9 +189,7 @@ async function downloadDocument(storageUrl: string): Promise<Buffer> {
     if (!res.ok) throw new Error(`Failed to download document: HTTP ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
   }
-  // Supabase on Render, the server's own disk on the single-VPS deployment:
-  // the same driver the upload used, so the worker cannot look somewhere else.
-  return downloadObject(SUPABASE_BUCKET, storageUrl);
+  return downloadObject(KNOWLEDGE_BUCKET, storageUrl);
 }
 
 /**
