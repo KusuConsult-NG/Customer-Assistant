@@ -142,6 +142,11 @@ describe('what the agent is configured with', () => {
     expect(missing).toEqual([]);
     for (const k of Object.keys(CALLER_VARIABLE_DEFAULTS)) expect(used.has(k)).toBe(true);
     expect(defaults.sip_welcome).toBe(WELCOME_DEFAULT);
+    // Until Sync configuration replaces a live agent's old prompt, the name
+    // rotation's placeholder list must still cover the old variable names.
+    for (const legacy of ['caller_status', 'caller_name', 'caller_profile', 'caller_missing_fields']) {
+      expect(defaults[legacy]).toBeTruthy();
+    }
   });
 
   it('header values cannot break the dialplan’s split or the SIP header', () => {

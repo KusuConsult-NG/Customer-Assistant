@@ -1117,6 +1117,17 @@ export function dynamicVariablesFor(org: AgentOrganization, persona?: TeamPerson
     // call that sends its own data): "unknown", which sends the agent to its
     // lookup tool rather than reading `{{sip_callerstatus}}` out loud.
     ...CALLER_VARIABLE_DEFAULTS,
+    // The names these variables had before the bridge started sending them as
+    // SIP headers. A live agent keeps its old PROMPT (which reads these) until
+    // someone presses Sync configuration, while the per-call name rotation
+    // already writes this whole placeholder list after every call; without
+    // these, that list would drop the old names and the old prompt's
+    // variables would have no defaults in the window between deploy and Sync.
+    // Harmless afterwards: a default nothing reads.
+    caller_status: CALLER_VARIABLE_DEFAULTS.sip_callerstatus,
+    caller_name: CALLER_VARIABLE_DEFAULTS.sip_callername,
+    caller_profile: CALLER_VARIABLE_DEFAULTS.sip_callerprofile,
+    caller_missing_fields: CALLER_VARIABLE_DEFAULTS.sip_callermissing,
   };
 }
 
