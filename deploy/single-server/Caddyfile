@@ -57,13 +57,15 @@
 	}
 }
 
-{$DOMAIN} {
+# The public listener: the domain, with a certificate Caddy fetches itself.
+# Behind a named Cloudflare Tunnel, CADDY_PUBLIC_SITE is http://:8081 instead
+# (see docker-compose.yml): nothing reaches it, and no certificate is asked for.
+{$CADDY_PUBLIC_SITE} {
 	import app_routes
 }
 
 # Internal-only HTTP listener on the compose network (port 8080 is not
-# published to the host) for Cloudflare Tunnel / reverse tunnels when
-# inbound ports 80/443 are blocked upstream.
+# published to the host): where the Cloudflare Tunnel delivers everything.
 :8080 {
 	import app_routes
 }
