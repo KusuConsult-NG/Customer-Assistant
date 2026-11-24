@@ -140,6 +140,11 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN}
+      # The address Caddy serves publicly. Normally the domain itself (Caddy
+      # then fetches its certificate). Behind a named Cloudflare Tunnel, set to
+      # http://:8081 in server.env: no public port is open, Cloudflare holds
+      # the certificate, and asking Let's Encrypt for one could only fail.
+      CADDY_PUBLIC_SITE: ${CADDY_PUBLIC_SITE:-${DOMAIN}}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in server.env (certificate expiry notices)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -164,6 +169,23 @@ services:
     volumes:
       - ./bridge/sounds:/opt/bridge/sounds:ro
     profiles: ["bridge"]
+    logging: *logging
+
+  # A NAMED Cloudflare Tunnel: the way in when no inbound port is open. It
+  # connects OUT to Cloudflare and carries the dashboard, the API, WhatsApp
+  # and ElevenLabs' webhooks to Caddy's internal :8080 listener. Runs only
+  # when CLOUDFLARE_TUNNEL_TOKEN is set (lib.sh turns the profile on). The
+  # route (public hostname -> http://caddy:8080) is set in Cloudflare's
+  # dashboard, not here. Pinned: a tunnel daemon that updates itself is a
+  # change nobody deployed.
+  tunnel:
+    image: cloudflare/cloudflared:2025.10.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [caddy]
+    profiles: ["tunnel"]
     logging: *logging
 
 secrets:

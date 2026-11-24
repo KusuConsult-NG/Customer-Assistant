@@ -10,6 +10,16 @@ for v in POSTGRES_PASSWORD QDRANT_API_KEY JWT_SECRET JWT_REFRESH_SECRET ENCRYPTI
   [ -n "$(env_get "$v")" ] || die "$v is empty in server.env."
 done
 
+# Behind a named Cloudflare Tunnel no inbound port is open, so Caddy must not
+# try to fetch a certificate for the domain: it would fail, retry for hours,
+# and this script's last check would fail with it.
+TUNNEL="$(env_get CLOUDFLARE_TUNNEL_TOKEN)"
+if [ -n "$TUNNEL" ]; then
+  [[ "$(env_get CADDY_PUBLIC_SITE)" == http://* ]] \
+    || die "CLOUDFLARE_TUNNEL_TOKEN is set, so set CADDY_PUBLIC_SITE=http://:8081 in server.env as well."
+  case "$DOMAIN" in *.trycloudflare.com) die "DOMAIN is still the temporary tunnel address. Set it to the hostname you gave the named tunnel in Cloudflare." ;; esac
+fi
+
 say "Building images (the dashboard is built for https://$DOMAIN)"
 dc build
 
@@ -42,8 +52,32 @@ say "Starting everything"
 dc up -d --remove-orphans
 wait_healthy api 80
 
-say "Checking https://$DOMAIN through Caddy"
 ok=""
+if [ -n "$TUNNEL" ]; then
+  # The real path, end to end: out to Cloudflare, back down the tunnel.
+  say "Checking https://$DOMAIN through Cloudflare and the tunnel"
+  for _ in $(seq 40); do
+    if curl -fsS --max-time 10 "https://$DOMAIN/api/health" >/dev/null 2>&1; then ok=1; break; fi
+    sleep 3
+  done
+  if [ -z "$ok" ]; then
+    echo "The API is up but https://$DOMAIN does not answer through the tunnel. Check:"
+    echo "  - the tunnel is connected:  docker compose --env-file server.env logs --tail 30 tunnel"
+    echo "  - in Cloudflare, the tunnel's public hostname is $DOMAIN, with service http://caddy:8080"
+    echo "The temporary tunnel (ace-tunnel), if it was running, has been left as it was."
+    exit 1
+  fi
+  # Only now that the named tunnel is proven: the temporary one it replaces.
+  if docker ps -a --format '{{.Names}}' | grep -qx ace-tunnel; then
+    say "Removing the temporary tunnel (ace-tunnel): the named tunnel replaces it"
+    docker rm -f ace-tunnel >/dev/null
+  fi
+  dc ps
+  say "Deployed: https://$DOMAIN (through the Cloudflare Tunnel)"
+  exit 0
+fi
+
+say "Checking https://$DOMAIN through Caddy"
 # Only a trial run on "localhost" or "NAME.localhost" gets Caddy's own
 # certificate; anything else must present a real one, which is the point.
 insecure=""; case "$DOMAIN" in localhost|*.localhost) insecure="-k" ;; esac
