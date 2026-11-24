@@ -102,6 +102,8 @@ The git marketplace layer is a separate mechanism and still works, so `.claude/s
 |---|---|---|---|
 | `superpowers` | `obra/superpowers` | 14 skills — `systematic-debugging`, `test-driven-development`, `verification-before-completion` | ~688 tok |
 
+**Fifteen third-party skills are vendored as PROJECT skills in `.claude/skills/`** (impeccable, the claudex-loop four, the nine HyperFrames skills, last30days — sources, commits, licences and run-time needs in `.claude/skills/SOURCES.md`). Not declared as plugins, because in the cloud container on 24 Nov the declared marketplaces were never cloned (`~/.claude/plugins/marketplaces` absent, `superpowers` included) while project skills load from the checkout. Their plugin hooks do not run that way: impeccable's engine after every edit, and last30days' brief archiving. Together they add about 1.1k tokens to every session, most of it HyperFrames.
+
 **`twilio-developer-kit` (`twilio/ai`) was tried and deliberately dropped.** Its 57 skills cover SMS, Voice, WhatsApp, webhooks and TwiML — exactly the providers this platform is built on — but they cost **~8.8k tokens on every session, whatever that session is doing**, and the point of this setup was to make sessions cheaper. Twilio specifics are better fetched when a task actually needs them than carried by every session that does not. To put it back:
 
 ```bash
