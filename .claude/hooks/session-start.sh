@@ -256,7 +256,7 @@ fi
 # Reported, not installed. This container sets SKIP_PLUGIN_MARKETPLACE=true,
 # which is why the plugins enabled on claude.ai never appear here; the git
 # marketplace layer is separate and still works, so .claude/settings.json
-# declares the two we use (extraKnownMarketplaces + enabledPlugins) and the
+# declares the ones we use (extraKnownMarketplaces + enabledPlugins) and the
 # harness clones them at startup.
 #
 # Installing them from here would not help: plugin skills are loaded when the
@@ -266,11 +266,15 @@ fi
 # the first ten lines of a session rather than inferred later from a skill that
 # would not trigger.
 PLUGIN_ROOT="${HOME}/.claude/plugins/marketplaces"
-for mk in superpowers-dev; do
-  if [ -d "$PLUGIN_ROOT/$mk/skills" ]; then
+# marketplace:skills-folder. Not every marketplace keeps its skills at the
+# top: impeccable's plugin lives in plugin/, so checking <marketplace>/skills
+# would report it missing while it loaded fine.
+for entry in superpowers-dev:skills impeccable:plugin/skills claudex-loop:skills hyperframes:skills last30days-skill:skills; do
+  mk="${entry%%:*}"; dir="$PLUGIN_ROOT/$mk/${entry#*:}"
+  if [ -d "$dir" ]; then
     # Counted by SKILL.md, not by directory: twilio groups its 57 skills into
     # category folders, so counting top-level directories reported 2.
-    ok "plugin marketplace '$mk' present ($(find "$PLUGIN_ROOT/$mk/skills" -name SKILL.md 2>/dev/null | wc -l) skills)"
+    ok "plugin marketplace '$mk' present ($(find "$dir" -name SKILL.md 2>/dev/null | wc -l) skills)"
   else
     miss "plugin marketplace '$mk' not cloned — its skills will not be available this session"
   fi
