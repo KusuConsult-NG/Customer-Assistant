@@ -205,6 +205,10 @@ in `infra/sip-bridge/bridge.env`, and run `./deploy.sh`.
 network's CA certificate. It is used for the build and by the running API, and
 certificate checking stays on.
 
+**The server's own voice line** (answering calls here instead of ElevenLabs)
+is off until it has passed the live-call checks. How to switch it on and test
+it on this setup: `PHASE3.md` in this folder.
+
 ## What has and has not been proven
 
 Tested on a trial run of this exact setup (Docker, `trial.localhost`):
