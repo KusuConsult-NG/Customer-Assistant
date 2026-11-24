@@ -293,3 +293,84 @@ export function summariseCallHealth(
       .sort((a, b) => b.count - a.count),
   };
 }
+
+// ── Whether returning callers are recognised ─────────────────────────────────
+
+/**
+ * The SIP bridge asks /api/sip-bridge/caller who is calling and sends the
+ * answer as X- headers, which ElevenLabs keeps on the conversation as
+ * `sip_callerstatus` etc. A call that arrived WITHOUT them was greeted as a
+ * stranger whoever it was: the bridge gave up (the API asleep or slow), the two
+ * copies of SIP_BRIDGE_SECRET no longer match, or the bridge was rebuilt
+ * without them. Nothing fails when that happens — the caller just hears "How
+ * may I help you today?" — so it is counted here rather than heard about.
+ */
+export interface CallerRecognition {
+  /** The lookup is switched on for this agency (bridge secret set, SIP line held). */
+  expected: boolean;
+  /** Inbound SIP calls counted: those since the first one the lookup answered, when there is one. */
+  inboundCalls: number;
+  /** Of those, how many arrived with the lookup's answer. */
+  lookedUp: number;
+  missed: number;
+  /** missed / inboundCalls, or null with no calls. */
+  missedRate: number | null;
+  /** The most recent call that arrived with the answer (ISO), so "since when" can be read. */
+  lastLookedUpAt: string | null;
+  /** The most recent calls that arrived without it. Identity only, never content. */
+  recentMisses: EndedCall[];
+  alert: boolean;
+}
+
+/** Fewer calls than this and one slow wake-up is noise, not a pattern. */
+export const RECOGNITION_MIN_CALLS = 3;
+/** Share of calls arriving without the lookup at which the dashboard says so. */
+export const RECOGNITION_ALERT_RATE = 0.2;
+
+export interface InboundCall {
+  conversationId?: string | null;
+  startTimeUnixSecs?: number | null;
+  direction?: string | null;
+  callDurationSecs?: number | null;
+  source?: string | null;
+}
+
+/**
+ * `calls` is every ended call in the window; `lookedUpIds` the ones ElevenLabs
+ * holds a `sip_callerstatus` for. Only INBOUND SIP-trunk calls are counted:
+ * the bridge looks up callers, not the callbacks we place.
+ *
+ * Calls before the first answered lookup in the window are left out, so the
+ * day the lookup was switched on does not read as a day of misses. With NO
+ * answered lookup at all, every inbound call counts: that is the case where
+ * it has stopped entirely.
+ */
+export function summariseRecognition(calls: InboundCall[], lookedUpIds: Set<string>, expected: boolean): CallerRecognition {
+  const inbound = calls.filter((c) => c.direction === 'inbound' && c.source === 'sip_trunk' && c.conversationId);
+  const at = (c: InboundCall) => (Number(c.startTimeUnixSecs) > 0 ? Number(c.startTimeUnixSecs) : 0);
+  const answered = inbound.filter((c) => lookedUpIds.has(c.conversationId as string));
+  const first = answered.length ? Math.min(...answered.map(at)) : null;
+  const considered = first === null ? inbound : inbound.filter((c) => at(c) >= first);
+  const misses = considered.filter((c) => !lookedUpIds.has(c.conversationId as string));
+  const last = answered.length ? Math.max(...answered.map(at)) : 0;
+  const total = considered.length;
+  const missedRate = total ? misses.length / total : null;
+  return {
+    expected,
+    inboundCalls: total,
+    lookedUp: total - misses.length,
+    missed: misses.length,
+    missedRate,
+    lastLookedUpAt: last ? new Date(last * 1000).toISOString() : null,
+    recentMisses: misses
+      .sort((a, b) => at(b) - at(a))
+      .slice(0, CALLS_LISTED_PER_REASON)
+      .map((c) => ({
+        conversationId: c.conversationId as string,
+        at: at(c) ? new Date(at(c) * 1000).toISOString() : null,
+        direction: 'inbound' as const,
+        durationSecs: Number.isFinite(Number(c.callDurationSecs)) && c.callDurationSecs !== null ? Number(c.callDurationSecs) : null,
+      })),
+    alert: expected && total >= RECOGNITION_MIN_CALLS && missedRate !== null && missedRate >= RECOGNITION_ALERT_RATE,
+  };
+}

@@ -345,6 +345,21 @@ export default function DashboardPage() {
           </div>
         </Link>
       )}
+      {callHealth?.recognition?.alert && (
+        <Link
+          href="/settings"
+          role="alert"
+          className="flex items-start gap-3 p-4 rounded-2xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+        >
+          <AlertTriangle className="w-5 h-5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Returning callers are not being recognised</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300/90 mt-0.5">
+              {callHealth.recognition.missed} of {callHealth.recognition.inboundCalls} calls in the last {callHealth.windowHours} hours reached the agent without the caller lookup, so those callers were greeted as strangers. Open Settings → Hosted Agent for what to check.
+            </p>
+          </div>
+        </Link>
+      )}
       {agentDrift.length > 0 && (
         <Link
           href="/settings"
