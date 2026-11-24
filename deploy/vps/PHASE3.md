@@ -1,5 +1,9 @@
 # Phase 3: proving the server's own voice line on real calls
 
+> **On the Docker setup** (`deploy/single-server`, what the MTN Cloud server
+> runs), switching on, logs and the commands in section 3 differ: see
+> `deploy/single-server/PHASE3.md`. The calls to make are the same.
+
 Phase 2 is tested against a real Asterisk with the paid providers faked
 (`apps/api/test/voice-local*.spec.ts`). What only real calls can show is
 listed here. **ElevenLabs stays the automatic fallback throughout**: a failure
