@@ -101,6 +101,15 @@ The git marketplace layer is a separate mechanism and still works, so `.claude/s
 | Plugin | Source | Why | Always-on cost |
 |---|---|---|---|
 | `superpowers` | `obra/superpowers` | 14 skills — `systematic-debugging`, `test-driven-development`, `verification-before-completion` | ~688 tok |
+| `impeccable` | `pbakaus/impeccable` (plugin in `plugin/`) | 1 skill, 24 `/impeccable` commands — UI design audit, critique, polish | ~50 tok |
+| `claudex-loop` | `chaseai-yt/claudex-loop` | 4 skills — plan/build/review with a second model (Codex) | ~240 tok |
+| `hyperframes` | `heygen-com/hyperframes` (the `hyperframes` bundle, not legacy `core-skills`) | 9 skills — HTML-to-video compositions, captions, the HyperFrames CLI | ~660 tok |
+| `last30days` | `mvanhorn/last30days-skill` | 1 skill — research a topic across Reddit, X, YouTube, HN and more | ~65 tok |
+
+Added at the owner's request (24 Nov 2026), each read before it was declared. **Two of them run hooks in every session**, which is the cost the token column does not show:
+- **`impeccable` runs its engine at SessionStart, after EVERY `Edit`/`Write`, and at `Stop`** (5 s / 5 s / 30 s timeouts). The launcher downloads a platform binary from the project's GitHub releases on first use and checks it against `engine-checksums.txt` shipped in the plugin — never against anything published beside the binary. If an edit-heavy session slows down, this is the first suspect.
+- **`last30days` runs a Python `Stop` hook** that archives completed research briefs from the transcript; it is a no-op on other turns. `LAST30DAYS_AUTO_CAPTURE=0` turns it off.
+- **`claudex-loop` needs the OpenAI Codex CLI**, which this container does not have; without it the skills can only explain what they would do. **`last30days`** works best with source API keys (see its CONFIGURATION.md) and falls back to web search without them. **`hyperframes`** renders through its own `npx` CLI; 86 Git LFS files in that marketplace arrive as pointers, all in its test fixtures and internal skills, none in the published `skills/`.
 
 **`twilio-developer-kit` (`twilio/ai`) was tried and deliberately dropped.** Its 57 skills cover SMS, Voice, WhatsApp, webhooks and TwiML — exactly the providers this platform is built on — but they cost **~8.8k tokens on every session, whatever that session is doing**, and the point of this setup was to make sessions cheaper. Twilio specifics are better fetched when a task actually needs them than carried by every session that does not. To put it back:
 
