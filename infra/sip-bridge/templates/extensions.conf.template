@@ -61,6 +61,9 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  same => n,NoOp(caller lookup: ${CUT(CI,|,2)})
  same => n(dial),ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Answer())
  same => n,ExecIf($["${INTRO_SOUND}" != "" & "${LV:0:3}" != "ok "]?Playback(${INTRO_SOUND}))
+ ; Smooth out intercontinental UDP jitter (Lagos <-> ElevenLabs) so late RTP
+ ; packets are played smoothly instead of dropped/skipped.
+ same => n,Set(JITTERBUFFER(adaptive)=200,40,40)
  same => n,Dial(PJSIP/elevenlabs/sip:${TOLLFREE_E164}@${ELEVENLABS_SIP_HOST}:5060\;transport=tcp,60,b(caller-headers^s^1))
  same => n,NoOp(ElevenLabs leg ended: DIALSTATUS=${DIALSTATUS} HANGUPCAUSE=${HANGUPCAUSE})
  ; If the AI could not be reached, the caller is told rather than dropped.
@@ -70,7 +73,8 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
 ; Runs on the OUTGOING leg to ElevenLabs just before the INVITE is sent: the
 ; caller lookup as headers. X-Callerstatus becomes {{sip_callerstatus}}, etc.
 [caller-headers]
-exten => s,1,GotoIf($["${CALLERINFO}" = ""]?done)
+exten => s,1,Set(JITTERBUFFER(adaptive)=200,40,40)
+ same => n,GotoIf($["${CALLERINFO}" = ""]?done)
  same => n,Set(PJSIP_HEADER(add,X-Callerstatus)=${CUT(CALLERINFO,|,2)})
  same => n,Set(PJSIP_HEADER(add,X-Callername)=${CUT(CALLERINFO,|,3)})
  same => n,Set(PJSIP_HEADER(add,X-Callerprofile)=${CUT(CALLERINFO,|,4)})
