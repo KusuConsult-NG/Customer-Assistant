@@ -1,4 +1,4 @@
-import { mulawBufferToSlin } from './pcm';
+import { downsample24kTo8k, mulawBufferToSlin } from './pcm';
 import { TtsCache } from './tts-cache';
 
 /**
@@ -76,6 +76,107 @@ export class AzureTts implements SpeechEngine {
     if (!audio.length) throw new Error('Azure TTS returned no audio');
     return audio;
   }
+}
+
+export class OpenAiTts implements SpeechEngine {
+  readonly name = 'openai';
+  readonly voice: string;
+  readonly model: string;
+  readonly rate: string;
+  readonly instructions: string;
+  constructor(private readonly opts: { key: string; voice?: string; model?: string; speed?: number; instructions?: string }) {
+    this.voice = opts.voice || 'ash';
+    this.model = opts.model || 'gpt-4o-mini-tts';
+    this.rate = String(opts.speed ?? 0.96);
+    this.instructions =
+      opts.instructions ||
+      'Speak warmly, calmly, and clearly in a natural Nigerian English accent at a steady, easy-to-follow telephone pace.';
+  }
+
+  static fromEnv(): OpenAiTts | null {
+    const key = process.env.OPENAI_API_KEY?.trim();
+    if (!key) return null;
+    const speedRaw = Number(process.env.OPENAI_TTS_SPEED);
+    return new OpenAiTts({
+      key,
+      voice: process.env.OPENAI_TTS_VOICE?.trim() || undefined,
+      model: process.env.OPENAI_TTS_MODEL?.trim() || undefined,
+      speed: Number.isFinite(speedRaw) && speedRaw >= 0.5 && speedRaw <= 2 ? speedRaw : undefined,
+      instructions: process.env.OPENAI_TTS_INSTRUCTIONS?.trim() || undefined,
+    });
+  }
+
+  async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
+    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.opts.key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        voice: this.voice,
+        input: clean,
+        response_format: 'pcm',
+        speed: Number(this.rate),
+        ...(this.model.includes('gpt-4o-mini-tts') ? { instructions: this.instructions } : {}),
+      }),
+      signal: signal ?? AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`OpenAI TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    const pcm24k = Buffer.from(await res.arrayBuffer());
+    if (!pcm24k.length) throw new Error('OpenAI TTS returned no audio');
+    return downsample24kTo8k(pcm24k);
+  }
+}
+
+export class DeepgramTts implements SpeechEngine {
+  readonly name = 'deepgram';
+  readonly voice: string;
+  readonly rate = '1.0';
+  constructor(private readonly opts: { key: string; model?: string }) {
+    this.voice = opts.model || 'aura-2-orion-en';
+  }
+
+  static fromEnv(): DeepgramTts | null {
+    const key = process.env.DEEPGRAM_API_KEY?.trim();
+    if (!key) return null;
+    return new DeepgramTts({ key, model: process.env.DEEPGRAM_TTS_MODEL?.trim() || undefined });
+  }
+
+  async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
+    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    const url =
+      `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(this.voice)}` +
+      '&encoding=linear16&sample_rate=8000&container=none';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${this.opts.key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: clean }),
+      signal: signal ?? AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Deepgram TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    const audio = Buffer.from(await res.arrayBuffer());
+    if (!audio.length) throw new Error('Deepgram TTS returned no audio');
+    return audio;
+  }
+}
+
+/**
+ * Resolve the assistant's TTS engine from environment variables.
+ * Honours `LOCAL_VOICE_TTS_PROVIDER` (`azure` | `openai` | `deepgram`) when set;
+ * otherwise prefers Azure (`en-NG`), then OpenAI (`gpt-4o-mini-tts`), then Deepgram Aura.
+ */
+export function assistantTtsFromEnv(): SpeechEngine | null {
+  const preferred = process.env.LOCAL_VOICE_TTS_PROVIDER?.trim().toLowerCase();
+  if (preferred === 'azure') return AzureTts.fromEnv();
+  if (preferred === 'openai') return OpenAiTts.fromEnv();
+  if (preferred === 'deepgram') return DeepgramTts.fromEnv();
+  return AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
 }
 
 export class ElevenLabsTts implements SpeechEngine {

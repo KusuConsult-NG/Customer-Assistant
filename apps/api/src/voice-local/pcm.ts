@@ -19,6 +19,24 @@ export function mulawBufferToSlin(ulaw: Buffer): Buffer {
   return out;
 }
 
+/**
+ * Downsample 24 kHz 16-bit mono PCM (OpenAI TTS `response_format: 'pcm'`) to
+ * 8 kHz 16-bit mono PCM (AudioSocket) with a 3-sample boxcar average.
+ */
+export function downsample24kTo8k(pcm24k: Buffer): Buffer {
+  const inSamples = Math.floor(pcm24k.length / 2);
+  const outSamples = Math.floor(inSamples / 3);
+  const out = Buffer.alloc(outSamples * 2);
+  for (let i = 0; i < outSamples; i++) {
+    const base = i * 6;
+    const avg = Math.round(
+      (pcm24k.readInt16LE(base) + pcm24k.readInt16LE(base + 2) + pcm24k.readInt16LE(base + 4)) / 3
+    );
+    out.writeInt16LE(Math.max(-32768, Math.min(32767, avg)), i * 2);
+  }
+  return out;
+}
+
 /** Split audio into 20 ms frames; the last is padded with silence. */
 export function toFrames(slin: Buffer): Buffer[] {
   const frames: Buffer[] = [];

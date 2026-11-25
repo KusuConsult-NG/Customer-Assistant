@@ -25,7 +25,7 @@ import { CALL_RECORDING_BUCKET, storageDriver, uploadObject } from '../common/ob
 import { FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
 import { streamChat } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
-import { AzureTts, CachedSpeech, ElevenLabsTts, type SpeechEngine } from './tts';
+import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { localToolDefinitions, runLocalTool } from './voice-tools';
 import { VoiceSession, type Outcome } from './voice-session';
@@ -96,7 +96,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   /** Replaceable in tests: the provider each part talks to. */
   stt: SttFactory = deepgramStt;
   llm = streamChat;
-  assistantEngine: () => SpeechEngine | null = () => AzureTts.fromEnv();
+  assistantEngine: () => SpeechEngine | null = () => assistantTtsFromEnv();
   governorEngine = (key: string): SpeechEngine => new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
 
   constructor(
@@ -114,7 +114,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     const missing: string[] = [];
     if (!process.env.LOCAL_VOICE_SECRET?.trim()) missing.push('LOCAL_VOICE_SECRET');
     if (!process.env.DEEPGRAM_API_KEY?.trim()) missing.push('DEEPGRAM_API_KEY');
-    if (!this.assistantEngine()) missing.push('AZURE_SPEECH_KEY / AZURE_SPEECH_REGION');
+    if (!this.assistantEngine()) missing.push('AZURE_SPEECH_KEY / OPENAI_API_KEY / DEEPGRAM_API_KEY');
     if (!llmConfig().apiKey) missing.push('OPENAI_API_KEY');
     const enabled = LocalVoiceService.enabled();
     return { enabled, ready: enabled && missing.length === 0 && !!this.server, missing };
