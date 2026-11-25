@@ -339,25 +339,48 @@ export class VoiceSession {
   }
 
   private async speakOpening(opening: string): Promise<void> {
+    // Split long assistant opening text into individual sentences so static
+    // lines (like the NDPA disclosure) cache independently on disk and short
+    // chunks synthesise fast in parallel while the Governor's intro is playing.
+    const expanded: OpeningSegment[] = [];
     for (const seg of openingSegments(opening)) {
+      if (seg.kind === 'assistant') {
+        const parts = seg.text
+          .split(/(?<=[.!?])\s+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        for (const p of parts) expanded.push({ kind: 'assistant', text: p });
+      } else {
+        expanded.push(seg);
+      }
+    }
+
+    // Kick off synthesis for all spoken segments in parallel, then enqueue in order.
+    const tasks = expanded.map((seg) => {
+      if (seg.kind === 'break') return { seg, promise: null as Promise<Buffer> | null };
+      const voice = seg.kind === 'governor' && this.deps.governorVoice ? this.deps.governorVoice : this.deps.assistantVoice;
+      const promise = (async () => {
+        try {
+          return (await voice.speak(seg.text, { personal: this.setup.personal, alwaysCache: seg.kind === 'governor' })).audio;
+        } catch (err) {
+          if (voice === this.deps.governorVoice) {
+            this.deps.log('voice_local_governor_unavailable', { error: (err as Error).message });
+            return (await this.deps.assistantVoice.speak(seg.text, { personal: this.setup.personal })).audio;
+          }
+          throw err;
+        }
+      })();
+      // Attach a no-op catch so an earlier segment throwing doesn't cause an unhandled rejection.
+      promise.catch(() => undefined);
+      return { seg, promise };
+    });
+
+    for (const { seg, promise } of tasks) {
       if (seg.kind === 'break') {
         this.enqueue(silence(seg.ms));
         continue;
       }
-      const voice = seg.kind === 'governor' && this.deps.governorVoice ? this.deps.governorVoice : this.deps.assistantVoice;
-      let audio: Buffer;
-      try {
-        // The Governor's words are the same for every caller: kept for good.
-        audio = (await voice.speak(seg.text, { personal: this.setup.personal, alwaysCache: seg.kind === 'governor' })).audio;
-      } catch (err) {
-        if (voice === this.deps.governorVoice) {
-          // His recording could not be made: the assistant says it rather than nobody.
-          this.deps.log('voice_local_governor_unavailable', { error: (err as Error).message });
-          audio = (await this.deps.assistantVoice.speak(seg.text, { personal: this.setup.personal })).audio;
-        } else {
-          throw err;
-        }
-      }
+      const audio = await promise!;
       this.enqueue(audio);
     }
   }

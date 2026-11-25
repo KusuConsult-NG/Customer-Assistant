@@ -188,7 +188,7 @@ export class YarnGptTts implements SpeechEngine {
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
     const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
-    const timeout = signal ?? AbortSignal.timeout(20_000);
+    const timeout = signal ?? AbortSignal.timeout(30_000);
     const prep = await fetch(`${this.baseUrl}/api/v1/tts/prepare`, {
       method: 'POST',
       headers: {
