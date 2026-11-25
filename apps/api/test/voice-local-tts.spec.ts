@@ -1,5 +1,5 @@
-import { downsample24kTo8k } from '../src/voice-local/pcm';
-import { assistantTtsFromEnv, AzureTts, DeepgramTts, OpenAiTts } from '../src/voice-local/tts';
+import { downsample24kTo8k, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
+import { assistantTtsFromEnv, AzureTts, DeepgramTts, OpenAiTts, YarnGptTts } from '../src/voice-local/tts';
 
 describe('voice-local TTS providers & PCM downsampling', () => {
   const saved = { ...process.env };
@@ -24,8 +24,19 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     expect(pcm8k.readInt16LE(2)).toBe(-600);
   });
 
-  it('selects TTS provider by LOCAL_VOICE_TTS_PROVIDER or falls back Azure -> OpenAI -> Deepgram', () => {
+  it('decodes and resamples 24 kHz WAV (YarnGPT output) to 8 kHz slin16', () => {
+    const pcm24k = Buffer.alloc(12);
+    for (let i = 0; i < 6; i++) pcm24k.writeInt16LE(1000, i * 2);
+    const wav = wavFile(pcm24k, 1, 24000);
+    const slin = wavToSlin8k(wav);
+    expect(slin.length).toBe(4);
+    expect(slin.readInt16LE(0)).toBe(1000);
+    expect(slin.readInt16LE(2)).toBe(1000);
+  });
+
+  it('selects TTS provider by LOCAL_VOICE_TTS_PROVIDER or falls back YarnGPT -> Azure -> OpenAI -> Deepgram', () => {
     delete process.env.LOCAL_VOICE_TTS_PROVIDER;
+    delete process.env.YARNGPT_API_KEY;
     delete process.env.AZURE_SPEECH_KEY;
     delete process.env.AZURE_SPEECH_REGION;
     process.env.OPENAI_API_KEY = 'sk-test';
@@ -43,5 +54,8 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     process.env.AZURE_SPEECH_KEY = 'az-key';
     process.env.AZURE_SPEECH_REGION = 'westeurope';
     expect(assistantTtsFromEnv()).toBeInstanceOf(AzureTts);
+
+    process.env.YARNGPT_API_KEY = 'yg-test';
+    expect(assistantTtsFromEnv()).toBeInstanceOf(YarnGptTts);
   });
 });

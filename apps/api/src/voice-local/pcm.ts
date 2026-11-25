@@ -37,6 +37,71 @@ export function downsample24kTo8k(pcm24k: Buffer): Buffer {
   return out;
 }
 
+/**
+ * Decode a 16-bit PCM WAV buffer of any sample rate / channel count (such as
+ * YarnGPT's `output_format: "wav"`) to 8 kHz 16-bit mono PCM (`slin16/8000`).
+ */
+export function wavToSlin8k(wav: Buffer): Buffer {
+  if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF' || wav.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new Error('Invalid WAV buffer');
+  }
+  let channels = 1;
+  let sampleRate = SAMPLE_RATE;
+  let bitsPerSample = 16;
+  let dataOffset = -1;
+  let dataLength = 0;
+
+  let offset = 12;
+  while (offset + 8 <= wav.length) {
+    const chunkId = wav.toString('ascii', offset, offset + 4);
+    const chunkSize = wav.readUInt32LE(offset + 4);
+    const bodyStart = offset + 8;
+    if (chunkId === 'fmt ' && bodyStart + 16 <= wav.length) {
+      channels = wav.readUInt16LE(bodyStart + 2);
+      sampleRate = wav.readUInt32LE(bodyStart + 4);
+      bitsPerSample = wav.readUInt16LE(bodyStart + 14);
+    } else if (chunkId === 'data') {
+      dataOffset = bodyStart;
+      dataLength = Math.min(chunkSize, wav.length - bodyStart);
+      break;
+    }
+    offset = bodyStart + chunkSize + (chunkSize & 1);
+  }
+
+  if (dataOffset < 0 || dataLength <= 0) throw new Error('WAV missing data chunk');
+  if (bitsPerSample !== 16) throw new Error(`Unsupported WAV bit depth: ${bitsPerSample}`);
+
+  const frameSize = channels * 2;
+  const inFrames = Math.floor(dataLength / frameSize);
+  const mono = new Int16Array(inFrames);
+  for (let i = 0; i < inFrames; i++) {
+    let sum = 0;
+    const base = dataOffset + i * frameSize;
+    for (let c = 0; c < channels; c++) sum += wav.readInt16LE(base + c * 2);
+    mono[i] = Math.round(sum / channels);
+  }
+
+  if (sampleRate === SAMPLE_RATE) {
+    const out = Buffer.alloc(inFrames * 2);
+    for (let i = 0; i < inFrames; i++) out.writeInt16LE(mono[i], i * 2);
+    return out;
+  }
+
+  const ratio = sampleRate / SAMPLE_RATE;
+  const outFrames = Math.max(1, Math.floor(inFrames / ratio));
+  const out = Buffer.alloc(outFrames * 2);
+  for (let i = 0; i < outFrames; i++) {
+    const pos = i * ratio;
+    const idx = Math.floor(pos);
+    const frac = pos - idx;
+    const s0 = mono[idx] ?? 0;
+    const s1 = mono[Math.min(idx + 1, inFrames - 1)] ?? s0;
+    const sample = Math.round(s0 + (s1 - s0) * frac);
+    out.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), i * 2);
+  }
+  return out;
+}
+
 /** Split audio into 20 ms frames; the last is padded with silence. */
 export function toFrames(slin: Buffer): Buffer[] {
   const frames: Buffer[] = [];
@@ -112,8 +177,9 @@ export class CallRecorder {
       const r = this.agent.get(f);
       for (let i = 0; i < samples; i++) {
         const o = (f * samples + i) * 4;
-        out.writeInt16LE(l ? l.readInt16LE(i * 2) : 0, o);
-        out.writeInt16LE(r ? r.readInt16LE(i * 2) : 0, o + 2);
+        const pos = i * 2;
+        out.writeInt16LE(l && pos + 2 <= l.length ? l.readInt16LE(pos) : 0, o);
+        out.writeInt16LE(r && pos + 2 <= r.length ? r.readInt16LE(pos) : 0, o + 2);
       }
     }
     return wavFile(out, 2);

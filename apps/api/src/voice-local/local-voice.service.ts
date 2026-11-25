@@ -289,7 +289,15 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       `\n\n## This call\n\nIt is now ${now.toLocaleString('en-GB', { timeZone: org.timezone || 'Africa/Lagos', dateStyle: 'full', timeStyle: 'short' })} at the agency.` +
       ` Caller status: ${vars.sip_callerstatus || 'unknown'}.` +
       `\nYou are speaking on a telephone line. Speak in short spoken sentences; never use lists, headings or symbols.`;
-    const opening = fill(start.conversation_config_override?.agent.first_message ?? firstMessageFor(agentOrg, persona));
+    // Keep the agency's stored opening (which includes the `<governor>` intro
+    // and `{{sip_welcome}}` for returning callers) whenever it has a Governor
+    // segment, so returning callers still hear the Governor's welcome too.
+    const hasGovernorIntro = /<governor>/i.test(org.welcomeMessage ?? '');
+    const opening = fill(
+      hasGovernorIntro
+        ? firstMessageFor(agentOrg, persona)
+        : (start.conversation_config_override?.agent.first_message ?? firstMessageFor(agentOrg, persona))
+    );
 
     const azure = this.assistantEngine();
     if (!azure) throw new Error('speech is not configured');

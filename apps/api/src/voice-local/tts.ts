@@ -1,4 +1,4 @@
-import { downsample24kTo8k, mulawBufferToSlin } from './pcm';
+import { downsample24kTo8k, mulawBufferToSlin, wavToSlin8k } from './pcm';
 import { TtsCache } from './tts-cache';
 
 /**
@@ -166,17 +166,70 @@ export class DeepgramTts implements SpeechEngine {
   }
 }
 
+export class YarnGptTts implements SpeechEngine {
+  readonly name = 'yarngpt';
+  readonly voice: string;
+  readonly rate = '1.0';
+  private readonly baseUrl: string;
+  constructor(private readonly opts: { key: string; voice?: string; url?: string }) {
+    this.voice = opts.voice || 'umar';
+    this.baseUrl = (opts.url || 'https://api.yarngpt.ai').replace(/\/+$/, '');
+  }
+
+  static fromEnv(): YarnGptTts | null {
+    const key = process.env.YARNGPT_API_KEY?.trim();
+    if (!key) return null;
+    return new YarnGptTts({
+      key,
+      voice: process.env.YARNGPT_VOICE?.trim() || undefined,
+      url: process.env.YARNGPT_API_URL?.trim() || undefined,
+    });
+  }
+
+  async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
+    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    const timeout = signal ?? AbortSignal.timeout(20_000);
+    const prep = await fetch(`${this.baseUrl}/api/v1/tts/prepare`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.opts.key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: clean,
+        voice: this.voice,
+        output_format: 'wav',
+      }),
+      signal: timeout,
+    });
+    if (!prep.ok) {
+      throw new Error(`YarnGPT prepare refused (HTTP ${prep.status}) ${(await prep.text().catch(() => '')).slice(0, 200)}`);
+    }
+    const meta = (await prep.json()) as { stream_url?: string };
+    if (!meta?.stream_url) throw new Error('YarnGPT prepare returned no stream_url');
+    const streamUrl = meta.stream_url.startsWith('http') ? meta.stream_url : `${this.baseUrl}${meta.stream_url}`;
+    const res = await fetch(streamUrl, { signal: timeout });
+    if (!res.ok) {
+      throw new Error(`YarnGPT stream refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    }
+    const wav = Buffer.from(await res.arrayBuffer());
+    if (!wav.length) throw new Error('YarnGPT stream returned no audio');
+    return wavToSlin8k(wav);
+  }
+}
+
 /**
  * Resolve the assistant's TTS engine from environment variables.
- * Honours `LOCAL_VOICE_TTS_PROVIDER` (`azure` | `openai` | `deepgram`) when set;
- * otherwise prefers Azure (`en-NG`), then OpenAI (`gpt-4o-mini-tts`), then Deepgram Aura.
+ * Honours `LOCAL_VOICE_TTS_PROVIDER` (`yarngpt` | `azure` | `openai` | `deepgram`) when set;
+ * otherwise prefers YarnGPT (Nigerian English), then Azure (`en-NG`), then OpenAI, then Deepgram.
  */
 export function assistantTtsFromEnv(): SpeechEngine | null {
   const preferred = process.env.LOCAL_VOICE_TTS_PROVIDER?.trim().toLowerCase();
+  if (preferred === 'yarngpt') return YarnGptTts.fromEnv();
   if (preferred === 'azure') return AzureTts.fromEnv();
   if (preferred === 'openai') return OpenAiTts.fromEnv();
   if (preferred === 'deepgram') return DeepgramTts.fromEnv();
-  return AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
+  return YarnGptTts.fromEnv() ?? AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
 }
 
 export class ElevenLabsTts implements SpeechEngine {
