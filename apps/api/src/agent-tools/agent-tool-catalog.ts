@@ -190,6 +190,13 @@ function enrollmentPromptSection(): string {
  * appended after the persona, and is repeated in search-knowledge's own
  * instruction, which is where the lists came from. See spoken-text.ts.
  */
+/**
+ * Mandatory NDPA (Nigeria Data Protection Act) notice spoken at the start of
+ * every call before any personal details are collected.
+ */
+export const NDPA_CALL_DISCLOSURE =
+  'To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system.';
+
 export const SPOKEN_FORM_INSTRUCTION =
   'Everything you write is spoken aloud on a phone line, so write only plain spoken sentences: ' +
   'no asterisks, no # headings, no dashes or bullets, no "1." or "2)" list numbering, no emojis, tables or links. ' +
@@ -213,7 +220,7 @@ How the records change Phases 1 and 2:
 - **unknown** — the records could not be read in time; your customer lookup tool decides.
 
 ### PHASE 1 — Greeting and Caller Name
-- The call opens with a short greeting (about five seconds, by the agency's choice) that ends by asking the caller's full name. Do not add a longer introduction after it — go straight on with the caller's answer.
+- The call opens with a short greeting that includes the mandatory NDPA disclosure ("To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system."). Do not repeat the greeting or disclosure unless the caller asks about recording or data privacy — go straight on with the caller's answer.
 - **MANDATORY FIRST-TURN LOOKUP (NO EXCEPTIONS)**: On your VERY FIRST turn of every call (whether the caller answers with their name, says "Hello", "Hello, can you hear me?", "Good morning", "Ina wuni", or states why they are calling), you **MUST** invoke your customer lookup tool FIRST before doing anything else! (If they asked "Can you hear me?", call the tool first, then say "Yes, I can hear you clearly.")
 - **Returning caller**: If the caller status above or the customer lookup tool shows a fully profiled returning caller, your first message has greeted them by name; continue in English, confirm their location, and go to PHASE 3. Never re-ask their profile details.
 - **New or unprofiled caller (or if the lookup tool times out or errors)**:
@@ -1025,7 +1032,7 @@ export function openingForUnknownCaller(text: string): string {
 export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
   if (org.welcomeMessage) return openingForUnknownCaller(renderWelcome(org, undefined, persona));
-  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. {{sip_welcome}}`;
+  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. ${NDPA_CALL_DISCLOSURE} {{sip_welcome}}`;
 }
 
 /**
@@ -1149,9 +1156,8 @@ export function welcomeBackMessageFor(
   persona?: TeamPersona
 ): string {
   void persona;
-  // Short on purpose, like the new-caller greeting (about five seconds before
-  // the question): they rang before and know who answers.
-  const opening = `${timeOfDayGreeting(org.timezone, now)}, ${profile.name}, welcome back.`;
+  // Short on purpose, followed by the mandatory NDPA recording & data-logging disclosure.
+  const opening = `${timeOfDayGreeting(org.timezone, now)}, ${profile.name}, welcome back. ${NDPA_CALL_DISCLOSURE}`;
   // The location comes first, as in Phase 2. Once it is all on file the
   // caller only confirms it; anything else missing is asked after that.
   if (!profile.values.lga) return `${opening} Please, which Local Government Area of Plateau State are you calling from?`;

@@ -832,10 +832,13 @@ describe('The Contact Centre script on the phone line', () => {
     };
     const shared = (o = plateau) => agentPromptFor({ ...o, aiPersonaPrompt: null });
 
-    it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
+    const NDPA_NOTICE =
+      'To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system.';
+
+    it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, includes the NDPA notice, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
       expect(morning).toBe(
-        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> <break time="1.0s" /> I'm Nanpan, the virtual assistant. May I have your full name?`
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> <break time="1.0s" /> I'm Nanpan, the virtual assistant. ${NDPA_NOTICE} May I have your full name?`
       );
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
@@ -849,9 +852,9 @@ describe('The Contact Centre script on the phone line', () => {
     it('the stored opening does not ask for a name before the caller has been looked up', () => {
       const stored = firstMessageFor(plateau);
       expect(stored).not.toMatch(/your (full )?name/i);
-      // Ends with the bridge's welcome line: "How may I help you today?" unless the
+      // Ends with the NDPA notice and the bridge's welcome line: "How may I help you today?" unless the
       // caller was recognised, then "Welcome back, <name>. …".
-      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. \{\{sip_welcome\}\}$/);
+      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system\. \{\{sip_welcome\}\}$/);
       // The agency's own variant of the closing question is caught too.
       expect(
         openingForUnknownCaller("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. May I have your full name?")
@@ -899,25 +902,26 @@ describe('The Contact Centre script on the phone line', () => {
 
       const dynamicMorning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'), firstPersona);
       expect(dynamicMorning).toBe(
-        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> <break time="1.0s" /> I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> <break time="1.0s" /> I'm ${firstPersona.name}, the virtual assistant. ${NDPA_NOTICE} May I have your full name?`
       );
     });
 
-    // Nanpan's own spoken handoff after `</governor>` is cut to about five
-    // seconds (<= 14 words) before its question.
+    // Nanpan's own spoken handoff after `</governor>` stays concise even with the
+    // mandatory NDPA disclosure (<= 45 words) before its question.
     const words = (s: string) => s.trim().split(/\s+/).length;
-    it('every opening is about five seconds before its question', () => {
+    it('every opening stays concise and includes the NDPA disclosure before its question', () => {
       const nanpanPart = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).replace(/^<governor>[\s\S]*?<\/governor>\s*/, '').replace(/^<break[^>]*\/>\s*/, '');
-      expect(words(nanpanPart)).toBeLessThanOrEqual(14);
+      expect(nanpanPart).toContain(NDPA_NOTICE);
+      expect(words(nanpanPart)).toBeLessThanOrEqual(45);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
       // English only: no Hausa preset, so no second opening.
       expect(def.conversationConfig.languagePresets).toEqual({});
-      // A returning caller: the greeting before the location question.
+      // A returning caller: the greeting + NDPA disclosure before the location question.
       const back = welcomeBackMessageFor(plateau as any, {
         status: 'returning', name: 'Hauwa Musa', missing: [], followUp: null,
         values: { fullName: 'Hauwa Musa', lga: 'Jos South', ward: 'Vom', community: 'Vom Junction' },
       } as any, new Date('2026-11-13T07:00:00Z'));
-      expect(back).toBe('Good morning, Hauwa Musa, welcome back. Are you still calling from Vom Junction, Vom ward, Jos South?');
+      expect(back).toBe(`Good morning, Hauwa Musa, welcome back. ${NDPA_NOTICE} Are you still calling from Vom Junction, Vom ward, Jos South?`);
       expect(words(back.split('.')[0])).toBeLessThanOrEqual(6);
     });
 
