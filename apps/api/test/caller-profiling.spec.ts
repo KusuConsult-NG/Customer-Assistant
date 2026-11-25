@@ -645,7 +645,9 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.dynamic_variables.sip_callerprofile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
         expect(res.body.dynamic_variables.sip_callerprofile).not.toMatch(/occupation|language/);
         const first = res.body.conversation_config_override.agent.first_message;
-        expect(first).toMatch(/^Good (morning|afternoon|evening), Hauwa Musa, welcome back\. Are you still calling from/);
+        expect(first).toMatch(
+          /^Good (morning|afternoon|evening), Hauwa Musa, welcome back\. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system\. Are you still calling from/
+        );
         expect(first).toMatch(/Are you still calling from Angwan Rogo, Ali Kazaure ward, Jos South\?$/);
         expect(first).not.toMatch(/how (can|may) I (help|assist)/i);
       });
@@ -811,7 +813,7 @@ describe('The Contact Centre script on the phone line', () => {
         const second = await callStarts(number).expect(200);
         expect(second.body.dynamic_variables).toMatchObject({ sip_callerstatus: 'returning', sip_callername: 'Nanret Davou' });
         expect(second.body.conversation_config_override.agent.first_message).toMatch(
-          /Nanret Davou, welcome back\. Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
+          /Nanret Davou, welcome back\. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system\. Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
         );
 
         const tool = await lookup(number);
