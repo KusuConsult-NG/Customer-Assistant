@@ -1,6 +1,6 @@
 # Plateau State Accountability Hub — Projects Overview, Statistics & Administrations
 
-For the most up-to-date official Plateau State Government information, news, and MDA contacts, visit **https://plateaustate.gov.ng** or explore live project tracking on the Plateau State Accountability Hub at **https://tinyurl.com/accountabilityhub**.
+For the most up-to-date official Plateau State Government information, news, and MDA contacts, visit **https://plateaustate.gov.ng**.
 
 ## Statewide Project Summary (Plateau State Accountability Hub)
 - **Total tracked projects:** 545 across all 17 Local Government Areas (LGAs)
@@ -58,4 +58,3 @@ For the most up-to-date official Plateau State Government information, news, and
 
 ## Official State Portal & Contact for Further Information
 - **Official Plateau State Government Website:** https://plateaustate.gov.ng (always refer citizens here for the latest official updates and announcements).
-- **Plateau State Accountability Hub (Live Project Tracker):** https://tinyurl.com/accountabilityhub

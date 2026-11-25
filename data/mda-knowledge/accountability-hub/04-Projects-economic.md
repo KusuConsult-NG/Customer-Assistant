@@ -1,6 +1,6 @@
 # Plateau State Government Projects — Economic (Accountability Hub)
 
-For the most up-to-date official Plateau State Government information, news, and MDA contacts, visit **https://plateaustate.gov.ng** or explore live project tracking on the Plateau State Accountability Hub at **https://tinyurl.com/accountabilityhub**.
+For the most up-to-date official Plateau State Government information, news, and MDA contacts, visit **https://plateaustate.gov.ng**.
 
 This document lists all **61 Economic projects** tracked on the Plateau State Accountability Hub.
 
