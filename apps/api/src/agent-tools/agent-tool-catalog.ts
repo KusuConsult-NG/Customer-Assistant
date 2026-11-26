@@ -846,12 +846,12 @@ export function pickPlateauMaleName(): string {
 }
 
 /**
- * Authentic Plateau State female names across the indigenous ethnic groups
- * of the 17 Local Government Areas of Plateau State. Used alongside
+ * 100 authentic Plateau State female names across the indigenous ethnic groups
+ * of the 17 Local Government Areas of Plateau State. Used alongside the 100
  * PLATEAU_MALE_NAMES when both male and female Nigerian voices are available.
  */
 export const PLATEAU_FEMALE_NAMES: readonly string[] = [
-  // Berom (Jos North, Jos South, Barkin Ladi, Riyom)
+  // 1–16: Berom (Jos North, Jos South, Barkin Ladi, Riyom)
   'Chundung',
   'Kangyang',
   'Lyop',
@@ -859,8 +859,16 @@ export const PLATEAU_FEMALE_NAMES: readonly string[] = [
   'Yop',
   'Dusu',
   'Simi',
-  'Tabitha',
-  // Ngas / Angas & Mupun (Pankshin, Kanke)
+  'Kaneng',
+  'Kanchung',
+  'Kande',
+  'Ladi',
+  'Chom',
+  'Retyit',
+  'Fwang',
+  'Mwantep',
+  'Zitta',
+  // 17–32: Ngas / Angas (Pankshin, Kanke)
   'Plangnan',
   'Nanret',
   'Nankling',
@@ -869,37 +877,87 @@ export const PLATEAU_FEMALE_NAMES: readonly string[] = [
   'Retnan',
   'Kyesmen',
   'Nantok',
-  // Mwaghavul (Mangu)
+  'Nanjul',
+  'Nanpon',
+  'Nansat',
+  'Nankap',
+  'Nanbyen',
+  'Nanman',
+  'Nanbal',
+  'Nanshin',
+  // 33–46: Mwaghavul (Mangu)
   'Nanchin',
   'Nankat',
   'Lohya',
   'Nanle',
   'Satnim',
   'Dinan',
-  // Afizere / Izere (Jos East, Jos North)
+  'Nandok',
+  'Nankum',
+  'Nanji',
+  'Nanyil',
+  'Nanmwal',
+  'Nansak',
+  'Nankin',
+  'Nangap',
+  // 47–60: Afizere / Izere (Jos East, Jos North)
   'Akan',
   'Asabe',
   'Azumi',
   'Rifkatu',
   'Lami',
   'Talatu',
-  // Tarok / iTarok (Langtang North, Langtang South)
+  'Ati',
+  'Aya',
+  'Amarya',
+  'Asibi',
+  'Aishatu',
+  'Hauwa',
+  'Kaltume',
+  'Mairo',
+  // 61–74: Tarok / iTarok (Langtang North, Langtang South)
   'Nandang',
   'Nanfe',
   'Nanmwa',
   'Vongkat',
   'Seljul',
-  // Goemai, Pan/Kofyar & Lowland (Shendam, Qua'an Pan, Mikang)
+  'Nancir',
+  'Nanloh',
+  'Nandir',
+  'Nantim',
+  'Nandam',
+  'Nanbwak',
+  'Nankur',
+  'Nanpak',
+  'Nanvup',
+  // 75–86: Goemai, Pan/Kofyar & Lowland (Shendam, Qua'an Pan, Mikang)
   'Naanret',
   'Naankang',
   'Naanman',
   'Kankani',
   'Longkat',
-  // Ron/Kulere, Irigwe, Bache, Pyem, Bogghom & Wase (Bokkos, Bassa, Kanam, Wase)
+  'Naanpoe',
+  'Naanvul',
+  'Naanlep',
+  'Naanfwang',
+  'Naankup',
+  'Naandip',
+  'Naanshak',
+  // 87–100: Mupun, Ron/Kulere, Irigwe, Bache, Pyem, Bogghom & Wase (Bokkos, Bassa, Kanam, Wase)
   'Laraba',
   'Hannatu',
   'Jummai',
   'Amina',
+  'Tabitha',
+  'Binta',
+  'Zainab',
+  'Rahila',
+  'Saratu',
+  'Maimuna',
+  'Halima',
+  'Asmau',
+  'Khadija',
+  'Zulaiha',
 ] as const;
 
 let plateauFemaleNameDeck: string[] = [];

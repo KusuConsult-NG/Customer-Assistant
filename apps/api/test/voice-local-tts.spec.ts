@@ -71,6 +71,8 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     delete process.env.LOCAL_VOICE_TTS_PROVIDER;
 
     const femalePersona = pickPlateauPersona('female');
+    expect(PLATEAU_FEMALE_NAMES).toHaveLength(100);
+    expect(new Set(PLATEAU_FEMALE_NAMES).size).toBe(100);
     expect(femalePersona.gender).toBe('female');
     expect(PLATEAU_FEMALE_NAMES).toContain(femalePersona.name);
     const femaleEngine = assistantTtsFromEnv(femalePersona.gender) as SpitchTts;
