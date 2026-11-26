@@ -25,7 +25,8 @@ import {
 import { localRecordingRef } from '../common/call-recording';
 import { organizationForDialledNumber } from '../common/dialled-number';
 import { CALL_RECORDING_BUCKET, storageDriver, uploadObject } from '../common/object-storage';
-import { FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
+import { FRAME_BYTES, FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
+import { mulawBufferToSlin } from './pcm';
 import { streamChat } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
 import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, type SpeechEngine } from './tts';
@@ -220,6 +221,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     let session: VoiceSession | null = null;
     let uuid = '';
     let opening = false;
+    let ulawLogged = false;
     const early: Buffer[] = [];
 
     const end = () => {
@@ -256,8 +258,21 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
               hangUp(socket);
             });
         } else if (frame.kind === KIND.AUDIO) {
-          if (session) session.onCallerAudio(frame.payload);
-          else if (opening && early.length < 50) early.push(frame.payload);
+          // 160 bytes per 20 ms is G.711 µ-law, not the 16-bit linear the
+          // voice line reads (320 bytes). It is what Asterisk sends when the
+          // AudioSocket leg is dialled without c(slin): it takes the caller's
+          // codec. Read as 16-bit it is noise, and recognition hears no words
+          // at all, so it is converted rather than passed on.
+          let audio = frame.payload;
+          if (audio.length === FRAME_BYTES / 2) {
+            if (!ulawLogged) {
+              ulawLogged = true;
+              this.log.warn(`voice_local_caller_ulaw uuid=${uuid} — the bridge sends µ-law; its dialplan should dial AudioSocket with c(slin)`);
+            }
+            audio = mulawBufferToSlin(audio);
+          }
+          if (session) session.onCallerAudio(audio);
+          else if (opening && early.length < 50) early.push(audio);
         } else if (frame.kind === KIND.HANGUP) {
           end();
         } else if (frame.kind === KIND.ERROR) {

@@ -36,7 +36,11 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  ; 20.6, the application HANGS UP the caller when the server closes, so the
  ; fallback below could never run. A dialled AudioSocket leg ending returns
  ; here (option g), whatever the reason.
- same => n,Dial(AudioSocket/127.0.0.1:${AUDIOSOCKET_PORT}/${LV:3},,g)
+ ; c(slin): 16-bit linear at 8 kHz, which is what the voice line reads and
+ ; writes. Without it the leg takes the CALLER's codec, so the caller's audio
+ ; arrived as 8-bit µ-law, was read as 16-bit, and speech recognition heard
+ ; only noise: the assistant spoke and never heard a word.
+ same => n,Dial(AudioSocket/127.0.0.1:${AUDIOSOCKET_PORT}/${LV:3}/c(slin),,g)
  ; The local leg ended. "fallback" means it failed (the caller is still on
  ; the line): hand them to the ElevenLabs agent. Anything else: hang up.
  same => n,Set(LVO=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/outcome/${LV:3}?secret=${LOCAL_VOICE_SECRET})})
