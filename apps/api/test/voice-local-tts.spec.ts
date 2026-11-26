@@ -1,5 +1,5 @@
 import { downsample24kTo8k, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
-import { assistantTtsFromEnv, AzureTts, DeepgramTts, OpenAiTts, YarnGptTts } from '../src/voice-local/tts';
+import { assistantTtsFromEnv, AzureTts, DeepgramTts, OpenAiTts, SpitchTts, YarnGptTts } from '../src/voice-local/tts';
 
 describe('voice-local TTS providers & PCM downsampling', () => {
   const saved = { ...process.env };
@@ -34,8 +34,9 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     expect(slin.readInt16LE(2)).toBe(1000);
   });
 
-  it('selects TTS provider by LOCAL_VOICE_TTS_PROVIDER or falls back YarnGPT -> Azure -> OpenAI -> Deepgram', () => {
+  it('selects TTS provider by LOCAL_VOICE_TTS_PROVIDER or falls back Spitch -> YarnGPT -> Azure -> OpenAI -> Deepgram', () => {
     delete process.env.LOCAL_VOICE_TTS_PROVIDER;
+    delete process.env.SPITCH_API_KEY;
     delete process.env.YARNGPT_API_KEY;
     delete process.env.AZURE_SPEECH_KEY;
     delete process.env.AZURE_SPEECH_REGION;
@@ -57,5 +58,8 @@ describe('voice-local TTS providers & PCM downsampling', () => {
 
     process.env.YARNGPT_API_KEY = 'yg-test';
     expect(assistantTtsFromEnv()).toBeInstanceOf(YarnGptTts);
+
+    process.env.SPITCH_API_KEY = 'sp-test';
+    expect(assistantTtsFromEnv()).toBeInstanceOf(SpitchTts);
   });
 });

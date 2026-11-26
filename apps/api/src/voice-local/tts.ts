@@ -218,18 +218,67 @@ export class YarnGptTts implements SpeechEngine {
   }
 }
 
+export class SpitchTts implements SpeechEngine {
+  readonly name = 'spitch';
+  readonly voice: string;
+  readonly language: string;
+  readonly rate = '1.0';
+  private readonly baseUrl: string;
+  constructor(private readonly opts: { key: string; voice?: string; language?: string; url?: string }) {
+    this.voice = opts.voice || 'jude';
+    this.language = opts.language || 'en';
+    this.baseUrl = (opts.url || 'https://api.spitch.app').replace(/\/+$/, '');
+  }
+
+  static fromEnv(): SpitchTts | null {
+    const key = process.env.SPITCH_API_KEY?.trim();
+    if (!key) return null;
+    return new SpitchTts({
+      key,
+      voice: process.env.SPITCH_VOICE?.trim() || undefined,
+      language: process.env.SPITCH_LANGUAGE?.trim() || undefined,
+      url: process.env.SPITCH_API_URL?.trim() || undefined,
+    });
+  }
+
+  async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
+    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    const res = await fetch(`${this.baseUrl}/v1/speech`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.opts.key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: clean,
+        language: this.language,
+        voice: this.voice,
+        format: 'wav',
+      }),
+      signal: signal ?? AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Spitch TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    }
+    const wav = Buffer.from(await res.arrayBuffer());
+    if (!wav.length) throw new Error('Spitch TTS returned no audio');
+    return wavToSlin8k(wav);
+  }
+}
+
 /**
  * Resolve the assistant's TTS engine from environment variables.
- * Honours `LOCAL_VOICE_TTS_PROVIDER` (`yarngpt` | `azure` | `openai` | `deepgram`) when set;
- * otherwise prefers YarnGPT (Nigerian English), then Azure (`en-NG`), then OpenAI, then Deepgram.
+ * Honours `LOCAL_VOICE_TTS_PROVIDER` (`spitch` | `yarngpt` | `azure` | `openai` | `deepgram`) when set;
+ * otherwise prefers Spitch (Nigerian English/languages), then YarnGPT, then Azure, then OpenAI, then Deepgram.
  */
 export function assistantTtsFromEnv(): SpeechEngine | null {
   const preferred = process.env.LOCAL_VOICE_TTS_PROVIDER?.trim().toLowerCase();
+  if (preferred === 'spitch') return SpitchTts.fromEnv();
   if (preferred === 'yarngpt') return YarnGptTts.fromEnv();
   if (preferred === 'azure') return AzureTts.fromEnv();
   if (preferred === 'openai') return OpenAiTts.fromEnv();
   if (preferred === 'deepgram') return DeepgramTts.fromEnv();
-  return YarnGptTts.fromEnv() ?? AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
+  return SpitchTts.fromEnv() ?? YarnGptTts.fromEnv() ?? AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
 }
 
 export class ElevenLabsTts implements SpeechEngine {
