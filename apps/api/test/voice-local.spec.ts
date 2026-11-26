@@ -158,6 +158,9 @@ beforeAll(async () => {
   process.env.LOCAL_VOICE_ORGANIZATION_SLUG = (await prisma.organization.findUnique({ where: { id: tenant.orgId } }))!.slug;
 
   voice = app.get(LocalVoiceService);
+  // Every clip is HEARD before it is kept (speech-check.ts). The Deepgram key above is a dummy,
+  // so stand in for the listener: these fake clips say exactly their text.
+  (voice as any).clipCheck = async (text: string) => ({ ok: true, heard: text, extras: [] });
   voice.stt = async (events) => {
     if (stt.fail) throw new Error('Speech recognition did not connect within 5 s');
     stt.events = events;
@@ -325,6 +328,26 @@ describe('voice-local: a whole call over AudioSocket', () => {
       pbx.stop();
     }
   }, 15_000);
+
+  it('never keeps a clip the listener hears reading punctuation aloud, and says so in the log', async () => {
+    const warned: string[] = [];
+    const spy = jest.spyOn((voice as any).log, 'warn').mockImplementation((m: any) => void warned.push(String(m)));
+    const keep = (voice as any).clipCheck;
+    (voice as any).clipCheck = async (text: string) => ({ ok: false, heard: `${text} full stop`, extras: ['full stop'] });
+    try {
+      const text = 'Thank you for your patience while I look into that.';
+      const speech: CachedSpeech = (voice as any).spoken(assistant);
+      await speech.speak(text);
+      await speech.settle();
+      const cache = (voice as any).cache as TtsCache;
+      await cache.flush();
+      expect(speech.peek(text)).toBeNull();
+      expect(warned.some((l) => l.startsWith('voice_local_clip_not_kept said=["full stop"]') && l.includes(text))).toBe(true);
+    } finally {
+      (voice as any).clipCheck = keep;
+      spy.mockRestore();
+    }
+  });
 
   it('says a short acknowledgement from disk when the reply is slow to synthesise, and logs where the wait went', async () => {
     const logged: string[] = [];
@@ -719,7 +742,7 @@ describe('voice-local: parts', () => {
     const engine = new FakeEngine('elevenlabs');
     const speech = new CachedSpeech(engine, cache);
     const report = await prerender(lines.slice(0, 4), speech, cache, false, () => undefined);
-    expect(report).toEqual({ present: 0, rendered: 0, failed: [] });
+    expect(report).toEqual({ present: 0, rendered: 0, replaced: 0, failed: [] });
     expect(engine.said).toEqual([]); // the report renders nothing
     expect((await prerender(lines.slice(0, 4), speech, cache, true)).rendered).toBe(4);
     expect((await prerender(lines.slice(0, 4), speech, cache, true)).present).toBe(4);

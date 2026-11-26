@@ -13,6 +13,10 @@
  *
  *   node apps/api/dist/voice-local/prerender.js <agency-slug>           report
  *   node apps/api/dist/voice-local/prerender.js <agency-slug> --apply   render what is missing
+ *   ... --recheck   also HEAR every clip already on disk, and (with --apply) replace one that reads punctuation aloud
+ *
+ * Every clip rendered is heard by Deepgram before it is kept (speech-check.ts),
+ * so DEEPGRAM_API_KEY is required.
  *
  * Needs DATABASE_URL, VOICE_CACHE_DIR (or STORAGE_DIR) and an ElevenLabs key
  * (the agency's own, else ELEVENLABS_API_KEY) — the same settings the API has.
@@ -32,6 +36,7 @@ import {
 } from '../agent-tools/agent-tool-catalog';
 import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
+import { clipCheckFromEnv } from './speech-check';
 import { WELCOME_DEFAULT } from '../agent-tools/caller-profile';
 import { ACKS, HOLDING_LINE, openingSegments, openingSentences } from './voice-session';
 
@@ -101,35 +106,60 @@ export async function prerender(
   cache: TtsCache,
   apply: boolean,
   log: (m: string) => void = console.log,
-): Promise<{ present: number; rendered: number; failed: string[] }> {
+  opts: { recheck?: boolean } = {},
+): Promise<{ present: number; rendered: number; replaced: number; failed: string[] }> {
   let present = 0;
   let rendered = 0;
+  let replaced = 0;
   const failed: string[] = [];
   for (const line of lines) {
+    let bad = false;
     if (cache.get(speech.key(line))) {
-      present++;
-      continue;
+      if (!opts.recheck) {
+        present++;
+        continue;
+      }
+      // A clip saved before clips were heard may read punctuation aloud, and
+      // is played on every call: hear it again.
+      try {
+        const verdict = await speech.recheck(line);
+        if (!verdict || verdict.ok) {
+          present++;
+          continue;
+        }
+        bad = true;
+        log(`  on disk, says "${verdict.extras.join('", "')}": ${line}`);
+      } catch (err: any) {
+        failed.push(`${line} — could not be heard: ${err?.message ?? err}`);
+        continue;
+      }
     }
     if (!apply) {
-      log(`  missing: ${line}`);
+      if (!bad) log(`  missing: ${line}`);
       continue;
     }
     try {
-      await speech.speak(line, { alwaysCache: true });
-      rendered++;
+      const r = await speech.renderChecked(line);
+      if (r.ok) {
+        if (bad) replaced++;
+        else rendered++;
+      } else {
+        failed.push(`${line} — said "${r.last?.extras.join('", "')}" in all ${r.attempts} renders (heard: "${r.last?.heard}")`);
+      }
     } catch (err: any) {
       failed.push(`${line} — ${err?.message ?? err}`);
     }
   }
   await cache.flush();
-  return { present, rendered, failed };
+  return { present, rendered, replaced, failed };
 }
 
 async function main() {
   const slug = process.argv[2];
   const apply = process.argv.includes('--apply');
+  const recheck = process.argv.includes('--recheck');
   if (!slug || slug.startsWith('--')) {
-    console.error('Usage: node apps/api/dist/voice-local/prerender.js <agency-slug> [--apply]');
+    console.error('Usage: node apps/api/dist/voice-local/prerender.js <agency-slug> [--apply] [--recheck]');
     process.exit(2);
   }
   const { prisma, decryptSecret } = await import('@ace/database');
@@ -144,6 +174,13 @@ async function main() {
 
   // 1. The assistant's fixed sentences, in every assistant voice the line uses.
   const assistantLines = assistantStaticLines(org);
+  // Every clip is HEARD before it is kept: Spitch sometimes reads punctuation
+  // aloud, and a clip on disk is played on every call (speech-check.ts).
+  const check = clipCheckFromEnv();
+  if (!check) {
+    console.error('DEEPGRAM_API_KEY is not set: clips cannot be heard before they are kept, so nothing is rendered.');
+    process.exit(1);
+  }
   let failedCount = 0;
   const genders: Array<'male' | 'female' | undefined> = assistantTtsFromEnv()?.name === 'spitch' ? ['male', 'female'] : [undefined];
   for (const gender of genders) {
@@ -153,11 +190,13 @@ async function main() {
       break;
     }
     const label = `${engine.name}${(engine as any).voice ? ` (voice ${(engine as any).voice}${(engine as any).speed ? `, speed ${(engine as any).speed}` : ''})` : ''}`;
-    const r = await prerender(assistantLines, new CachedSpeech(engine as any, cache), cache, apply);
+    const r = await prerender(assistantLines, new CachedSpeech(engine as any, cache, check), cache, apply, console.log, { recheck });
     failedCount += r.failed.length;
     console.log(
       `Assistant ${label}: ${assistantLines.length} fixed lines, ${r.present} already on disk` +
-        (apply ? `, ${r.rendered} rendered now, ${r.failed.length} failed.` : `, ${assistantLines.length - r.present} missing.`),
+        (apply
+          ? `, ${r.rendered} rendered now${recheck ? `, ${r.replaced} replaced (read punctuation aloud)` : ''}, ${r.failed.length} failed.`
+          : `, ${assistantLines.length - r.present} missing or bad.`),
     );
     for (const f of r.failed) console.log(`  FAILED ${f}`);
   }
@@ -184,12 +223,14 @@ async function main() {
         })
       : new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
   console.log(`Governor engine: ${engine.name}${spitchGovVoice && spitchKey ? ` (voice ${spitchGovVoice}, speed ${(engine as SpitchTts).speed})` : ''}`);
-  const speech = new CachedSpeech(engine as any, cache);
-  const r = await prerender(lines, speech, cache, apply);
+  const speech = new CachedSpeech(engine as any, cache, check);
+  const r = await prerender(lines, speech, cache, apply, console.log, { recheck });
   await cache.flush(); // the clips are written in the background; the process exits below
   console.log(
     `\n${lines.length} Governor lines for ${org.name}: ${r.present} already on disk` +
-      (apply ? `, ${r.rendered} rendered now, ${r.failed.length} failed.` : `, ${lines.length - r.present} missing. Nothing was rendered; add --apply.`),
+      (apply
+        ? `, ${r.rendered} rendered now${recheck ? `, ${r.replaced} replaced (read punctuation aloud)` : ''}, ${r.failed.length} failed.`
+        : `, ${lines.length - r.present} missing or bad. Nothing was rendered; add --apply.`),
   );
   for (const f of r.failed) console.log(`  FAILED ${f}`);
   await prisma.$disconnect();
