@@ -1,5 +1,5 @@
 import { FRAME_MS } from './audiosocket';
-import { CallRecorder, rms, silence, toFrames } from './pcm';
+import { CallRecorder, forPlayback, rms, silence, toFrames } from './pcm';
 import { SentenceSplitter, type ChatMessage, type LlmEvent, type ToolCall } from './llm';
 import type { CachedSpeech } from './tts';
 import type { SttFactory, SttStream } from './stt';
@@ -334,7 +334,7 @@ export class VoiceSession {
       const r = await synth;
       if (!r || signal.aborted || this.outcome) return;
       this.spokenThisTurn += (this.spokenThisTurn ? ' ' : '') + text;
-      this.enqueue(r.audio);
+      this.enqueue(forPlayback(r.audio));
     });
   }
 
@@ -381,7 +381,7 @@ export class VoiceSession {
         continue;
       }
       const audio = await promise!;
-      this.enqueue(audio);
+      this.enqueue(forPlayback(audio));
     }
   }
 

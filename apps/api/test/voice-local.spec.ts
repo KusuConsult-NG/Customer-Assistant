@@ -25,7 +25,7 @@ import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
 import { openingSegments } from '../src/voice-local/voice-session';
 import { governorLines, prerender } from '../src/voice-local/prerender';
-import { PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
+import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
 
 const SECRET = 'local-voice-test-secret-0123456789';
@@ -186,7 +186,9 @@ describe('voice-local: a whole call over AudioSocket', () => {
       await until(() => assistant.said.length > 0 && stt.events !== null);
       expect(governor.said[0]).toMatch(/^Good (morning|afternoon|evening), and welcome to the Test Citizen Contact Centre/);
       expect(governor.said[0]).not.toContain('{name}');
-      expect(assistant.said[0]).toMatch(/^I'm \w+, the virtual assistant\. How may I help you today\?$/);
+      // Split per sentence so each caches and synthesises on its own.
+      await until(() => assistant.said.length >= 2);
+      expect(assistant.said.slice(0, 2)).toEqual([expect.stringMatching(/^I'm \w+, the virtual assistant\.$/), 'How may I help you today?']);
       await until(() => pbx.played.length > 20);
       expect(stt.received).toBeGreaterThan(0); // caller audio is reaching recognition
 
@@ -273,8 +275,10 @@ describe('voice-local: a whole call over AudioSocket', () => {
     const reg = await register('+2348031110004');
     const pbx = asterisk(reg.text.split(' ')[1]);
     try {
+      // The opening's sentences are synthesised in parallel (and PLAYED in
+      // order), so the fallback Governor line is not necessarily said first.
       await until(() => assistant.said.length >= 2);
-      expect(assistant.said[0]).toMatch(/welcome to the Test Citizen Contact Centre/);
+      expect(assistant.said.some((t) => /^Good (morning|afternoon|evening), and welcome to the Test Citizen Contact Centre/.test(t))).toBe(true);
     } finally {
       pbx.hangUp();
       pbx.stop();
@@ -412,6 +416,11 @@ describe('voice-local: parts', () => {
     expect(lines.length).toBe(PLATEAU_MALE_NAMES.length * 3);
     expect(lines.filter((l) => l.startsWith('Good morning')).length).toBe(PLATEAU_MALE_NAMES.length);
     expect(lines.every((l) => !/[{}<>]/.test(l))).toBe(true);
+    // With Spitch the line also picks female names, and the Governor names them too.
+    const both = governorLines(org, true);
+    // "Naankang" is on both rosters (Ngas "Naan-" names are unisex): same line, counted once.
+    expect(both.length).toBe(new Set([...PLATEAU_MALE_NAMES, ...PLATEAU_FEMALE_NAMES]).size * 3);
+    expect(both.some((l) => l.includes(PLATEAU_FEMALE_NAMES[0]))).toBe(true);
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-gov-'));
     const cache = new TtsCache(dir);
