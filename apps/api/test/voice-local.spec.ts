@@ -39,8 +39,9 @@ let storage: string;
 /** A tone whose length says how many words were spoken: 40 ms each, so tests stay fast. */
 class FakeEngine implements SpeechEngine {
   said: string[] = [];
-  constructor(readonly name: string, readonly fail = false) {}
+  constructor(readonly name: string, readonly fail = false, readonly delayMs = 0) {}
   async synthesize(text: string): Promise<Buffer> {
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.fail) throw new Error(`${this.name} down`);
     this.said.push(text);
     const words = text.split(/\s+/).length;
@@ -289,6 +290,25 @@ describe('voice-local: a whole call over AudioSocket', () => {
       // order), so the fallback Governor line is not necessarily said first.
       await until(() => assistant.said.length >= 2);
       expect(assistant.said.some((t) => /^Good (morning|afternoon|evening), and welcome to the Test Citizen Contact Centre/.test(t))).toBe(true);
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 15_000);
+
+  it('passes the caller\'s audio to recognition while a slow opening is still being synthesised', async () => {
+    // Before: audio was held back until the whole opening was ready, one
+    // second kept and the rest dropped, so Deepgram heard nothing, closed
+    // (1011) after ~10 s and the call failed over. A cold speech cache after a
+    // voice change made exactly that happen on a real call.
+    assistant = new FakeEngine('azure', false, 2_500);
+    governor = new FakeEngine('elevenlabs', false, 2_500);
+    const reg = await register('+2348031110006');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await new Promise((r) => setTimeout(r, 2_000)); // the opening is not ready yet
+      expect(assistant.said).toEqual([]);
+      expect(stt.received).toBeGreaterThan(70); // ~2 s at 50 frames/s, not the 50 a buffer kept
     } finally {
       pbx.hangUp();
       pbx.stop();
