@@ -15,7 +15,11 @@ const org: any = {
   welcomeMessage: '<governor>{greeting}, and welcome. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I\'m {name}, the virtual assistant. How may I help you today?',
 };
 const persona = { ...TEAM_PERSONAS.nanpan, id: 'gwaman', name: 'Gwaman', greetingPhrase: 'my name is Gwaman' };
-const [correction, complete, newCaller] = scenarios(org);
+const byName = (re: RegExp) => scenarios(org).find((s) => re.test(s.name))!;
+const correction = byName(/corrects their location/);
+const misheard = byName(/part of a new place, misheard/);
+const complete = byName(/complete profile/);
+const newCaller = byName(/new caller/);
 
 /** A scripted model: given the history, what it says and which tools it calls. */
 const model = (decide: (last: string, msgs: ChatMessage[]) => LlmEvent[]) =>
@@ -34,11 +38,43 @@ describe('conversation check: the checker itself', () => {
       /^No\./.test(said)
         ? [{ type: 'text', delta: 'Just to confirm, Rantya in Rantya ward, Jos North?' }]
         : /correct/.test(said)
-          ? [call('update-caller-profile', { community: 'Rantya', ward: 'Rantya', lga: 'Jos North' })]
+          ? [call('update-caller-profile', { community: 'Rantya', ward: 'Rantya', lga: 'Jos North', locationConfirmed: true })]
           : [{ type: 'text', delta: 'How may the Plateau State Government assist you today?' }],
     );
     const turns = await runScenario(org, persona, correction, good as any, { settleMs: 300 });
     expect(correction.check(turns)).toEqual([]);
+  });
+
+  it('fails a model that saves a changed location before reading it back (what the live line did on 26 Nov)', async () => {
+    // Call 1: "I am in Galby" saved at once as the community, the old ward kept, then thanked.
+    const hasty = model((said) =>
+      /Galby/.test(said)
+        ? [call('update-caller-profile', { community: 'Galby', ward: 'Kabong', lga: 'Jos South', locationConfirmed: true })]
+        : [{ type: 'text', delta: 'How may the Plateau State Government assist you today?' }],
+    );
+    const problems = misheard.check(await runScenario(org, persona, misheard, hasty as any, { settleMs: 300 })).join('\n');
+    expect(problems).toMatch(/saved a changed location before the caller confirmed a read-back/);
+    // And the correction scenario catches a save marked confirmed in the same reply as the new place.
+    const sameReply = model((said) =>
+      /^No\./.test(said)
+        ? [call('update-caller-profile', { community: 'Rantya', ward: 'Rantya', lga: 'Jos North', locationConfirmed: true })]
+        : [{ type: 'text', delta: 'How may the Plateau State Government assist you today?' }],
+    );
+    expect(correction.check(await runScenario(org, persona, correction, sameReply as any, { settleMs: 300 })).join('\n')).toMatch(/before the caller had heard it read back/);
+  });
+
+  it('passes a model that reads a misheard place back, or asks, before saving anything', async () => {
+    const careful = model(() => [{ type: 'text', delta: 'Sorry, could you repeat your ward and community? Is that Gyel B ward, Jos South?' }]);
+    expect(misheard.check(await runScenario(org, persona, misheard, careful as any, { settleMs: 300 }))).toEqual([]);
+  });
+
+  it('the stand-in save tool refuses an unconfirmed change, as the real one does', async () => {
+    // A model that ignores the refusal and thanks the caller anyway is caught as an unbacked claim.
+    const ignores = model((said) =>
+      /Galby/.test(said) ? [call('update-caller-profile', { community: 'Galby' })] : [{ type: 'text', delta: 'Okay.' }],
+    );
+    const turns = await runScenario(org, persona, misheard, ignores as any, { settleMs: 300 });
+    expect(misheard.check(turns).join('\n')).toMatch(/saved a changed location before/);
   });
 
   it('fails a model that says it will update but saves nothing (what the live line did)', async () => {
@@ -73,12 +109,13 @@ describe('conversation check: the checker itself', () => {
     // Exactly what the real model did in the first server run.
     const seen: string[] = [];
     let saveOnRetry = false;
+    let confirmOnRetry = true;
     const claims = async function* (messages: ChatMessage[]): AsyncGenerator<LlmEvent> {
       const last = messages[messages.length - 1];
       seen.push(String(last.content));
       if (last.role === 'tool') return void (yield { type: 'text', delta: "Thank you, Steven. I've updated your location to Rantya." });
       if (/^\[Note from the system/.test(String(last.content)) && saveOnRetry) {
-        return void (yield call('update-caller-profile', { community: 'Rantya', ward: 'Rantya' }));
+        return void (yield call('update-caller-profile', { community: 'Rantya', ward: 'Rantya', ...(confirmOnRetry ? { locationConfirmed: true } : {}) }));
       }
       yield { type: 'text', delta: 'Thank you for that correction, Steven. Let me update that information for you. ' };
       yield { type: 'text', delta: "Hold on a moment while I save that. I've updated your location. Are you comfortable with us using this number?" };
@@ -96,6 +133,11 @@ describe('conversation check: the checker itself', () => {
     expect(turns[0].calls.map((c) => c.name)).toEqual(['update-caller-profile']);
     expect(turns[0].replies.join(' ')).toMatch(/I've updated your location to Rantya/);
     expect(correction.check(turns).filter((p) => /hears that something was saved/.test(p))).toEqual([]);
+    // 3. A save the tool REFUSES (an unconfirmed location change) is not a save: the claim stays unheard.
+    confirmOnRetry = false;
+    turns = await runScenario(org, persona, { ...correction, lines: [correction.lines[0]] }, claims as any, { settleMs: 300 });
+    expect(turns[0].calls.map((c) => c.name)).toEqual(['update-caller-profile']);
+    expect(turns[0].replies.join(' ')).not.toMatch(/updated|save/i);
   }, 30_000);
 
   it('sends the model the same prompt a live call sends, with this call\'s values after it', async () => {

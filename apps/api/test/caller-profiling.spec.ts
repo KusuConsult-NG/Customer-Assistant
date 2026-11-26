@@ -229,6 +229,58 @@ describe('The Contact Centre script on the phone line', () => {
       });
     });
 
+    describe('update-caller-profile: changing a location already on file', () => {
+      // 26 Nov 2026: a returning caller in Rantya, Kabong ward, Jos South said
+      // "I am in Gyel B" (heard as "Galby"). The agent saved "Galby, Kabong
+      // ward" — a ward the caller never said — without reading it back; on the
+      // next call it saved the caller's garbled correction the same way. A
+      // location on file is what the next call greets them with, so changing it
+      // takes a read-back of the WHOLE location and a yes.
+      const onFile = { city: 'Jos South', metadata: { ward: 'Kabong', community: 'Rantya', phoneConfirmedForFollowUp: true } };
+
+      it('saves nothing, and hands back the whole location to read, when a saved place would change unconfirmed', async () => {
+        const c = await known(onFile);
+        const res = await post('update-caller-profile', { phoneNumber: c.phoneNumber, community: 'Galby' });
+        expect(res.body.ok).toBe(false);
+        expect(res.body.speak).toBe('');
+        expect(res.body.data.saved).toBe(false);
+        // The ward the caller did not restate is in the read-back, so they can correct it.
+        expect(res.body.data.locationToConfirm).toBe('Galby, Kabong ward, Jos South');
+        expect(res.body.data.instruction).toMatch(/Read this whole location back/);
+        expect(res.body.data.instruction).toMatch(/locationConfirmed=true/);
+        const row = await prisma.contact.findUnique({ where: { id: c.id } });
+        expect(row?.metadata).toMatchObject({ community: 'Rantya', ward: 'Kabong' });
+      });
+
+      it('saves the change once the caller has confirmed the read-back', async () => {
+        const c = await known(onFile);
+        const res = await post('update-caller-profile', { phoneNumber: c.phoneNumber, community: 'Rantya', ward: 'Gyel B', lga: 'Jos South', locationConfirmed: true });
+        expect(res.body.ok).toBe(true);
+        const row = await prisma.contact.findUnique({ where: { id: c.id } });
+        expect(row?.metadata).toMatchObject({ community: 'Rantya', ward: 'Gyel B' });
+        expect(row?.city).toBe('Jos South');
+      });
+
+      it('an LGA change counts too, compared in the State\'s spelling', async () => {
+        const c = await known(onFile);
+        // "jos south" is the same LGA: nothing to confirm.
+        expect((await post('update-caller-profile', { phoneNumber: c.phoneNumber, lga: 'jos south' })).body.ok).toBe(true);
+        const moved = await post('update-caller-profile', { phoneNumber: c.phoneNumber, lga: 'Bokkos' });
+        expect(moved.body.ok).toBe(false);
+        expect(moved.body.data.locationToConfirm).toBe('Rantya, Kabong ward, Bokkos');
+        expect((await prisma.contact.findUnique({ where: { id: c.id } }))?.city).toBe('Jos South');
+      });
+
+      it('restating the place on file, or filling a part that was empty, needs no read-back', async () => {
+        const c = await known(onFile);
+        expect((await post('update-caller-profile', { phoneNumber: c.phoneNumber, community: 'rantya', ward: 'Kabong' })).body.ok).toBe(true);
+        const partial = await known({ city: 'Jos South', metadata: {} });
+        const res = await post('update-caller-profile', { phoneNumber: partial.phoneNumber, ward: 'Gyel B', community: 'Rantya' });
+        expect(res.body.ok).toBe(true);
+        expect((await prisma.contact.findUnique({ where: { id: partial.id } }))?.metadata).toMatchObject({ ward: 'Gyel B', community: 'Rantya' });
+      });
+    });
+
     describe('update-caller-profile', () => {
       it('saves the LGA in the State\'s spelling, the ward and community, and hands over to Phase 3', async () => {
         const number = phone();

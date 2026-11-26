@@ -72,6 +72,8 @@ export class AgentToolsController {
       community?: string;
       /** true ONLY after alternativePhone was read back and the caller said yes. */
       alternativePhoneConfirmed?: boolean | string;
+      /** true ONLY after a CHANGED location was read back in full and the caller said yes. */
+      locationConfirmed?: boolean | string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
