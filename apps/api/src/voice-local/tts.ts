@@ -441,6 +441,11 @@ export class CachedSpeech {
     );
   }
 
+  /** The clip if it is already on disk, without synthesising: for words that are only worth saying at once. */
+  peek(text: string): Buffer | null {
+    return this.cache ? this.cache.get(this.key(text)) : null;
+  }
+
   async speak(text: string, opts: { personal?: string[]; signal?: AbortSignal; alwaysCache?: boolean } = {}): Promise<{ audio: Buffer; cached: boolean }> {
     const cacheable = !!this.cache && (opts.alwaysCache || isCacheable(text, opts.personal));
     const key = cacheable ? this.key(text) : '';

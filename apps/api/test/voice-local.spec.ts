@@ -39,7 +39,7 @@ let storage: string;
 /** A tone whose length says how many words were spoken: 40 ms each, so tests stay fast. */
 class FakeEngine implements SpeechEngine {
   said: string[] = [];
-  constructor(readonly name: string, readonly fail = false, readonly delayMs = 0) {}
+  constructor(readonly name: string, readonly fail = false, public delayMs = 0) {}
   async synthesize(text: string): Promise<Buffer> {
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.fail) throw new Error(`${this.name} down`);
@@ -315,6 +315,35 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
   }, 15_000);
 
+  it('says a short acknowledgement from disk when the reply is slow to synthesise, and logs where the wait went', async () => {
+    const logged: string[] = [];
+    const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
+    const reg = await register('+2348031110007');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => stt.events !== null);
+      // The acknowledgements are put on disk after the opening.
+      const cache = (voice as any).cache as TtsCache;
+      const onDisk = (t: string) => !!cache.get(new CachedSpeech(assistant, cache).key(t));
+      await until(() => ['Alright.', 'Okay.', 'One moment, please.'].every(onDisk));
+      // The opening has finished playing: silence for longer than its own 1 s pause.
+      await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
+      assistant.delayMs = 2_000; // a slow provider for the reply
+      const asked = Date.now();
+      stt.events!.onFinal('Hello there.', true);
+      await until(() => logged.some((l) => l.startsWith('voice_local_ack')), 3_000);
+      expect(Date.now() - asked).toBeLessThan(1_800); // well before the 2 s reply
+      await until(() => logged.some((l) => l.startsWith('voice_local_turn')), 6_000);
+      const turn = JSON.parse(logged.find((l) => l.startsWith('voice_local_turn'))!.replace(/^[^{]*/, ''));
+      expect(turn.first_audio_ms).toBeGreaterThanOrEqual(2_000);
+      expect(turn.model_ms).toBeLessThan(1_000);
+    } finally {
+      spy.mockRestore();
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 20_000);
+
   it('a caller who hangs up is not handed to the backup agent', async () => {
     const reg = await register('+2348031110005');
     const uuid = reg.text.split(' ')[1];
@@ -409,10 +438,11 @@ describe('voice-local: parts', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('evicts the least recently used clips past the size limit', () => {
+  it('evicts the least recently used clips past the size limit', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-tts-'));
     const cache = new TtsCache(dir, 2_500);
     for (let i = 0; i < 5; i++) cache.put(TtsCache.keyOf({ i }, 'x'), Buffer.alloc(1000));
+    await cache.flush(); // written in the background
     expect(cache.sweep()).toBeGreaterThanOrEqual(2000);
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -424,6 +454,14 @@ describe('voice-local: parts', () => {
       { kind: 'assistant', text: "I'm Dalyop. How may I help you today?" },
     ]);
     expect(openingSegments('Hello! How can I help?')).toEqual([{ kind: 'assistant', text: 'Hello! How can I help?' }]);
+  });
+
+  it('lets the first piece of a reply end at a comma, so the caller hears it sooner', () => {
+    const sp = new SentenceSplitter({ firstAtComma: true });
+    expect(sp.push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual(['Yes, the Jos Carnival opens on the twentieth,']);
+    expect(sp.push('with a parade, then music. ')).toEqual(['with a parade, then music.']); // later pieces: sentences only
+    expect(new SentenceSplitter({ firstAtComma: true }).push('Yes, sure. ')).toEqual([]); // too short to split early
+    expect(new SentenceSplitter().push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual([]);
   });
 
   it('speaks streamed text a sentence at a time', () => {
