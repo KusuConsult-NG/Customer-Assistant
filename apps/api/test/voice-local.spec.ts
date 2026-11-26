@@ -98,11 +98,16 @@ function asterisk(uuid: string) {
   });
   sock.on('error', () => undefined);
   sock.on('connect', () => sock.write(encodeFrame(KIND.UUID, uuidToPayload(uuid))));
+  let loud = false;
+  const loudFrame = Buffer.alloc(FRAME_BYTES);
+  for (let i = 0; i < FRAME_BYTES / 2; i++) loudFrame.writeInt16LE(Math.round(6000 * Math.sin(i / 2)), i * 2);
   const ticker = setInterval(() => {
-    if (!closed && sock.writable) sock.write(encodeFrame(KIND.AUDIO, Buffer.alloc(FRAME_BYTES)));
+    if (!closed && sock.writable) sock.write(encodeFrame(KIND.AUDIO, loud ? loudFrame : Buffer.alloc(FRAME_BYTES)));
   }, 20);
   return {
     played,
+    /** The caller is talking (loud frames), as Asterisk would send while they speak. */
+    talking: (on: boolean) => void (loud = on),
     closed: closedP,
     isClosed: () => closed,
     hangUp: () => sock.end(encodeFrame(KIND.HANGUP)),
@@ -412,6 +417,74 @@ describe('voice-local: a whole call over AudioSocket', () => {
       await new Promise((r) => setTimeout(r, 300));
       // Only the sentence carrying this call's assistant name was made live.
       expect(assistant.said.filter((t) => lines.includes(t))).toEqual([]);
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 20_000);
+
+  it('takes an answer given in two halves as ONE turn, and never answers the first half', async () => {
+    // Production: "I'm calling you from" was committed after a short pause,
+    // the assistant asked its question again, and "Okay. Go ahead." was then
+    // taken as a yes to the old location.
+    const seen: ChatMessage[][] = [];
+    voice.llm = (messages) => {
+      seen.push(messages.map((m) => ({ ...m })) as ChatMessage[]);
+      return (async function* () {
+        await new Promise((r) => setTimeout(r, 600)); // the model takes a moment
+        yield { type: 'text', delta: 'Thank you. I have noted that.' } as LlmEvent;
+      })();
+    };
+    try {
+      const reg = await register('+2348031110012');
+      const pbx = asterisk(reg.text.split(' ')[1]);
+      try {
+        await until(() => stt.events !== null);
+        // The opening has finished playing (silence for longer than its own 1 s pause).
+        await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
+        const before = assistant.said.length;
+        stt.events!.onFinal("I'm calling you from", true);
+        await new Promise((r) => setTimeout(r, 150)); // they carry on before any reply is heard
+        stt.events!.onInterim('Rantya');
+        stt.events!.onFinal('Rantya, Kabong ward.', true);
+        await until(() => assistant.said.length > before, 5_000);
+        await new Promise((r) => setTimeout(r, 900));
+        const last = seen[seen.length - 1];
+        const users = last.filter((m) => m.role === 'user').map((m) => m.content);
+        expect(users).toEqual(["I'm calling you from Rantya, Kabong ward."]);
+        // Exactly one reply was spoken, for the whole answer (the acknowledgements put on disk are not replies).
+        const replies = assistant.said.slice(before).filter((t) => ![...ACKS, HOLDING_LINE].includes(t));
+        expect(replies).toEqual(['Thank you. I have noted that.']);
+        // And the model was asked once for the first half (dropped) and once for the whole: never answered twice.
+        expect(seen.length).toBeLessThanOrEqual(2);
+      } finally {
+        pbx.hangUp();
+        pbx.stop();
+      }
+    } finally {
+      voice.llm = (messages) => asStream(scriptedModel(messages));
+    }
+  }, 20_000);
+
+  it('talking over the opening stops it, and the history shows what the caller actually heard', async () => {
+    assistant = new FakeEngine('azure', false, 1_200); // the assistant's sentences are slow to come
+    const reg = await register('+2348031110013');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => stt.events !== null);
+      await new Promise((r) => setTimeout(r, 400)); // the Governor's part is playing
+      pbx.talking(true);
+      await new Promise((r) => setTimeout(r, 200));
+      stt.events!.onInterim('hello hello');
+      stt.events!.onFinal('Hello, can you hear me?', true);
+      pbx.talking(false);
+      await until(() => modelCalls.length > 0, 6_000);
+      const history = modelCalls[modelCalls.length - 1];
+      // In order: system, what was heard of the opening (cut short), then the caller.
+      expect(history.map((m) => m.role).slice(0, 3)).toEqual(['system', 'assistant', 'user']);
+      expect(String(history[1].content)).toMatch(/…$|before the opening/);
+      expect(String(history[1].content)).not.toContain('How may I help you today?');
+      expect(history[2].content).toBe('Hello, can you hear me?');
     } finally {
       pbx.hangUp();
       pbx.stop();

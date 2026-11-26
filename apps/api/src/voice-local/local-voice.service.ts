@@ -5,13 +5,9 @@ import * as path from 'path';
 import { decryptSecret, prisma, phoneNumberVariants } from '@ace/database';
 import { chatCompletionsUrl, llmConfig } from '@ace/orchestrator';
 import {
-  agentPromptFor,
-  firstMessageFor,
   isPlateauStateOrg,
-  openingForUnknownCaller,
   pickPlateauMalePersona,
   pickPlateauPersona,
-  renderWelcome,
   resolvePersona,
   type AgentOrganization,
 } from '../agent-tools/agent-tool-catalog';
@@ -27,6 +23,7 @@ import { organizationForDialledNumber } from '../common/dialled-number';
 import { CALL_RECORDING_BUCKET, storageDriver, uploadObject } from '../common/object-storage';
 import { FRAME_BYTES, FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
 import { mulawBufferToSlin, warmResampler } from './pcm';
+import { callOpening, callSystemPrompt } from './call-setup';
 import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
 import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
@@ -315,39 +312,9 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       vars.representative_name ||= persona.name;
     }
     vars.organization_name ||= org.name;
-    const fill = (t: string) => t.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_m, k) => vars[k] ?? '');
-
     const now = new Date();
-    // The script is sent UNFILLED — identical for every call of the agency —
-    // and this call's values follow it. Filled in place, it differed from the
-    // 9th character on, so the model re-read all ~12,000 tokens (script and
-    // tools) from scratch on every call's first reply: 3.2 s before its first
-    // word. With a shared beginning, the provider's prompt cache serves it.
-    const template = agentPromptFor(agentOrg, persona);
-    const used = [...new Set([...template.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]))];
-    const systemPrompt =
-      template +
-      `\n\n## This call\n\nThe {{placeholders}} above stand for these values on this call. Always say the value; never say a placeholder or its braces aloud.\n` +
-      used.map((k) => `- {{${k}}} = ${vars[k] ? JSON.stringify(vars[k]) : '(none)'}`).join('\n') +
-      `\n\nIt is now ${now.toLocaleString('en-GB', { timeZone: org.timezone || 'Africa/Lagos', dateStyle: 'full', timeStyle: 'short' })} at the agency.` +
-      ` Caller status: ${vars.sip_callerstatus || 'unknown'}.` +
-      `\nYou are speaking on a telephone line. Speak in short spoken sentences; never use lists, headings or symbols.` +
-      `\nEvery character you write is read aloud. Never write stage directions or notes such as "[Ending the call now.]"; to end the call, say goodbye and call end_call.` +
-      `\nNever say you have updated, saved, registered or noted something in the records unless you call the tool that does it in that same reply. When the script says to save everything once at the end, acknowledge the detail ("Thank you, Rantya.") and ask the next question; do not say you are updating anything.`;
-    // Keep the agency's stored opening (which includes the `<governor>` intro
-    // and `{{sip_welcome}}` for returning callers) whenever it has a Governor
-    // segment, so returning callers still hear the Governor's welcome too.
-    const hasGovernorIntro = /<governor>/i.test(org.welcomeMessage ?? '');
-    // Rendered at THIS moment's clock: firstMessageFor has no clock and says
-    // "Hello" for {greeting}, so every caller heard "Hello, and welcome…" — and
-    // since `voice:prerender` renders the Governor's "Good morning/afternoon/
-    // evening" lines, no pre-rendered clip ever matched: each call fetched his
-    // line live from ElevenLabs, or spoke it in the assistant's voice.
-    const opening = fill(
-      hasGovernorIntro
-        ? openingForUnknownCaller(renderWelcome(agentOrg, now, persona))
-        : (start.conversation_config_override?.agent.first_message ?? firstMessageFor(agentOrg, persona))
-    );
+    const systemPrompt = callSystemPrompt(agentOrg, persona, vars, now);
+    const opening = callOpening(agentOrg, persona, vars, now, start.conversation_config_override?.agent.first_message);
 
     const speechEngine = this.assistantEngine(persona.gender);
     if (!speechEngine) throw new Error('speech is not configured');

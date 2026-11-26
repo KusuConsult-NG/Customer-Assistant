@@ -75,6 +75,8 @@ export const ACK_AFTER_MS = 900;
 // 0.43 s (the Governor's voice) of audio in which Deepgram heard nothing.
 export const ACKS = ['Alright, one moment.', 'Okay, let me check.'];
 export const HOLDING_LINE = 'One moment, please.';
+/** After the caller carries on speaking: how long to wait for the rest of their words before answering what was said. */
+export const CONTINUATION_WAIT_MS = 2_500;
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
@@ -111,6 +113,16 @@ export class VoiceSession {
   private turnFirstAudio = 0;
   private ackTimer: NodeJS.Timeout | null = null;
   private ackIndex = 0;
+  /** Where the caller's words for the turn being answered sit (message and transcript), or -1 for a silence check. */
+  private turnUserMessage = -1;
+  private turnUserTranscript = -1;
+  /** The caller carried on speaking before the reply was heard: the next words join the same turn. */
+  private continuing = false;
+  private continuationTimer: NodeJS.Timeout | null = null;
+  /** The opening is still being queued, and whether the caller has cut it short. */
+  private openingActive = false;
+  private openingCut = false;
+  private openingSpoken: string[] = [];
   private finishing: Promise<void> | null = null;
   private resolveDone!: () => void;
   readonly done = new Promise<void>((r) => (this.resolveDone = r));
@@ -151,14 +163,19 @@ export class VoiceSession {
     this.watchdog = setInterval(() => this.checkSilence(), 1_000);
     this.watchdog.unref?.();
 
+    // The opening goes into the history BEFORE it is spoken. A caller who
+    // answers while it plays has their words placed after it; recorded after
+    // the opening finished, it sat after their question and the reply to it,
+    // and the model read the conversation out of order.
+    this.messages.push({ role: 'assistant', content: plain(this.setup.opening) });
+    this.transcript.push({ role: 'agent', message: plain(this.setup.opening), atSecs: 0 });
+    let spoken: string;
     try {
-      await this.speakOpening(this.setup.opening);
+      spoken = await this.speakOpening(this.setup.opening);
     } catch (err: any) {
       return this.fail(`opening: ${err?.message ?? err}`);
     }
-    const said = plain(this.setup.opening);
-    this.messages.push({ role: 'assistant', content: said });
-    this.transcript.push({ role: 'agent', message: said, atSecs: 0 });
+    void spoken;
     // The acknowledgements and holding line are only useful if they are
     // instant, so they are put on disk now (once per voice, ever) and only
     // ever PLAYED from disk.
@@ -186,9 +203,33 @@ export class VoiceSession {
   private onInterim(text: string): void {
     this.lastCallerSpeech = this.now();
     this.lastActivity = this.now();
+    // The caller carries on after a pause, before any of the reply has been
+    // heard: they had not finished ("I'm calling you from … Rantya"). The
+    // reply to the first half is dropped and the whole answer is taken as one
+    // turn. Answered in halves, the first half got the question asked again,
+    // and the second ("Okay, go ahead") was taken as a yes to it.
+    if (this.responding && !this.turnFirstAudio && this.turnUserMessage >= 0 && !this.hangupRequested && !this.continuing) {
+      this.continuing = true;
+      this.abortReplyQuietly();
+      this.deps.log('voice_local_continuation');
+      // Recognition may yet finalise nothing (a cough heard as a word): the
+      // turn is then answered as it stood, rather than left in silence.
+      if (this.continuationTimer) clearTimeout(this.continuationTimer);
+      this.continuationTimer = setTimeout(() => {
+        this.continuationTimer = null;
+        if (!this.continuing || this.outcome) return;
+        this.continuing = false;
+        if (!this.responding) {
+          this.beginTurnClock();
+          void this.respond();
+        }
+      }, CONTINUATION_WAIT_MS);
+      this.continuationTimer.unref?.();
+      return;
+    }
     // Barge-in: the caller is talking over us. Words recognised AND real
     // level, so a cough or a generator does not cut the assistant off.
-    if ((this.playQueue.length > 0 || this.responding) && text.split(/\s+/).length >= 2 && this.recentLevel > BARGE_IN_RMS) {
+    if ((this.playQueue.length > 0 || this.responding || this.openingActive) && text.split(/\s+/).length >= 2 && this.recentLevel > BARGE_IN_RMS) {
       this.interrupt();
     }
   }
@@ -207,6 +248,23 @@ export class VoiceSession {
     if (!said || this.outcome) return;
     this.heard = [];
     this.nudges = 0;
+    if (this.continuing && this.turnUserMessage >= 0) {
+      // The rest of the answer whose first half was already committed.
+      this.continuing = false;
+      if (this.continuationTimer) clearTimeout(this.continuationTimer);
+      const m = this.messages[this.turnUserMessage] as { role: 'user'; content: string };
+      m.content = `${m.content} ${said}`;
+      if (this.turnUserTranscript >= 0) this.transcript[this.turnUserTranscript].message += ` ${said}`;
+      if (this.responding) {
+        // The dropped reply is still unwinding; it answers the whole turn when it has.
+        this.pendingTurn = true;
+        this.abortReplyQuietly();
+        return;
+      }
+      this.beginTurnClock();
+      void this.respond();
+      return;
+    }
     this.transcript.push({ role: 'user', message: said, atSecs: this.secs() });
     if (this.responding) {
       // They spoke while we were still answering. Their words go into the
@@ -219,8 +277,24 @@ export class VoiceSession {
       return;
     }
     this.messages.push({ role: 'user', content: said });
+    this.turnUserMessage = this.messages.length - 1;
+    this.turnUserTranscript = this.transcript.length - 1;
     this.beginTurnClock();
     void this.respond();
+  }
+
+  /** The opening was cut short: the history and the record say what was actually played, and that it stopped. */
+  private recordOpeningCut(): void {
+    const spoken = this.openingSpoken.join(' ');
+    this.messages[1] = { role: 'assistant', content: spoken ? `${spoken} …` : '(The caller spoke before the opening could be played.)' };
+    if (this.transcript[0]) this.transcript[0].message = spoken ? `${spoken} …` : '';
+  }
+
+  /** Drop the reply being prepared, without treating it as the caller talking over it. */
+  private abortReplyQuietly(): void {
+    this.playQueue = [];
+    this.turnAbort?.abort();
+    this.speechChain = Promise.resolve();
   }
 
   /** The caller has finished: time the reply, and acknowledge if it is slow. */
@@ -245,6 +319,14 @@ export class VoiceSession {
     this.playQueue = [];
     this.turnAbort?.abort();
     this.speechChain = Promise.resolve();
+    // Talking over the opening stops it: clearing what was queued is not
+    // enough, because the rest of it was still being queued behind.
+    if (this.openingActive && !this.openingCut) {
+      this.openingCut = true;
+      // Corrected NOW, not when the opening's queueing unwinds: the reply to
+      // the caller is requested at once and must see what they actually heard.
+      this.recordOpeningCut();
+    }
     this.deps.log('voice_local_barge_in');
   }
 
@@ -266,6 +348,8 @@ export class VoiceSession {
         role: 'user',
         content: `[No reply from the caller for ${Math.round(SILENCE_NUDGE_MS / 1000)} seconds (check ${this.nudges}). They have not spoken.]`,
       });
+      this.turnUserMessage = -1; // a note, not the caller's words: nothing to join a continuation to
+      this.turnUserTranscript = -1;
       void this.respond();
     }
   }
@@ -297,8 +381,12 @@ export class VoiceSession {
         if (rest && !abort.signal.aborted) this.say(rest, abort.signal);
 
         if (abort.signal.aborted) {
-          // Keep what was actually said, so the model knows where it was cut off.
-          if (this.spokenThisTurn) this.messages.push({ role: 'assistant', content: `${this.spokenThisTurn} …` });
+          // Keep what was actually said — for the model, so it knows where it
+          // was cut off, and for the call record, which otherwise lost it.
+          if (this.spokenThisTurn) {
+            this.messages.push({ role: 'assistant', content: `${this.spokenThisTurn} …` });
+            this.transcript.push({ role: 'agent', message: `${this.spokenThisTurn} …`, atSecs: this.secs() });
+          }
           return;
         }
         this.messages.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
@@ -395,7 +483,8 @@ export class VoiceSession {
     });
   }
 
-  private async speakOpening(opening: string): Promise<void> {
+  /** Speak the opening; returns what was actually queued to be heard (all of it, unless the caller cut in). */
+  private async speakOpening(opening: string): Promise<string> {
     // Split long assistant opening text into individual sentences so static
     // lines (like the NDPA disclosure) cache independently on disk and short
     // chunks synthesise fast in parallel while the Governor's intro is playing.
@@ -429,14 +518,24 @@ export class VoiceSession {
       return { seg, promise };
     });
 
-    for (const { seg, promise } of tasks) {
-      if (seg.kind === 'break') {
-        this.enqueue(silence(seg.ms));
-        continue;
+    const spoken = this.openingSpoken;
+    this.openingActive = true;
+    try {
+      for (const { seg, promise } of tasks) {
+        if (this.openingCut || this.outcome) break;
+        if (seg.kind === 'break') {
+          this.enqueue(silence(seg.ms));
+          continue;
+        }
+        const audio = await promise!;
+        if (this.openingCut || this.outcome) break;
+        this.enqueue(forPlayback(audio));
+        spoken.push(seg.text);
       }
-      const audio = await promise!;
-      this.enqueue(forPlayback(audio));
+    } finally {
+      this.openingActive = false;
     }
+    return spoken.join(' ');
   }
 
   // ── Playback: one frame every 20 ms, on a drift-corrected clock ──────────
@@ -516,6 +615,7 @@ export class VoiceSession {
     this.finishing = (async () => {
       this.turnAbort?.abort();
       if (this.ackTimer) clearTimeout(this.ackTimer);
+      if (this.continuationTimer) clearTimeout(this.continuationTimer);
       if (this.pump) clearTimeout(this.pump);
       if (this.watchdog) clearInterval(this.watchdog);
       this.playQueue = [];
