@@ -14,6 +14,8 @@
  * stored, and one that says a punctuation mark its text does not contain is not.
  */
 import { wavFile } from './pcm';
+// The one pre-recorded Deepgram address (deepgram-wiring.spec holds it to one place).
+import { DEEPGRAM_PRERECORDED_URL } from '../whatsapp/media-understanding';
 
 /** Longest first, so "full stop" is counted once and not also as "full". */
 const MARKS = [
@@ -75,7 +77,7 @@ export type ClipCheck = (text: string, audio: Buffer) => Promise<ClipVerdict>;
 /** The check, done by Deepgram's pre-recorded API: the same key the line already transcribes callers with. */
 export function deepgramClipCheck(key: string, fetchImpl: typeof fetch = fetch): ClipCheck {
   return async (text, audio) => {
-    const res = await fetchImpl('https://api.deepgram.com/v1/listen?model=nova-2&punctuate=false&smart_format=false', {
+    const res = await fetchImpl(`${DEEPGRAM_PRERECORDED_URL}?model=nova-2&punctuate=false&smart_format=false`, {
       method: 'POST',
       headers: { Authorization: `Token ${key}`, 'Content-Type': 'audio/wav' },
       body: wavFile(audio, 1, 8000),
