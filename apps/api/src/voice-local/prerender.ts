@@ -1,6 +1,8 @@
 /**
- * Render every version of the Governor's opening in his cloned voice ahead of
- * time, onto the server's disk, where the voice line plays it from.
+ * Render every version of the Governor's opening in his cloned voice, and the
+ * assistant's fixed sentences in each assistant voice, ahead of time onto the
+ * server's disk, where the voice line plays them from. Run it again after any
+ * change of voice or SPEED: both change every clip's key.
  *
  * The opening's Governor part varies by time of day (3) and by the assistant's
  * name (the Plateau roster), and his voice exists only at ElevenLabs. Without
@@ -22,6 +24,7 @@ import {
   PLATEAU_MALE_NAMES,
   TEAM_PERSONAS,
   isPlateauStateOrg,
+  openingForUnknownCaller,
   renderWelcome,
   resolvePersona,
   type AgentOrganization,
@@ -29,7 +32,8 @@ import {
 } from '../agent-tools/agent-tool-catalog';
 import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
-import { openingSegments } from './voice-session';
+import { WELCOME_DEFAULT } from '../agent-tools/caller-profile';
+import { ACKS, HOLDING_LINE, openingSegments, openingSentences } from './voice-session';
 
 /** A moment in each greeting period at the agency's clock (Lagos is UTC+1 with no DST). */
 const SAMPLE_TIMES = ['2026-01-05T07:00:00Z', '2026-01-05T12:30:00Z', '2026-01-05T18:00:00Z'].map((t) => new Date(t));
@@ -61,6 +65,34 @@ export function governorLines(org: AgentOrganization, includeFemale = assistantT
     }
   }
   return [...lines];
+}
+
+/**
+ * The assistant's sentences that are the SAME on every call: the parts of the
+ * opening that name nobody (the recording notice, "How may I help you
+ * today?"), the acknowledgements and the holding line. Changing the speed
+ * changes every clip's key, so each must be made again, and the 155-character
+ * notice made live overran Spitch's time limit and failed every call over
+ * until one happened to succeed. Rendered here, a call finds them on disk.
+ *
+ * A sentence carrying the assistant's name differs per call and is left out:
+ * two sample personas with different names are rendered and only sentences
+ * both share are kept.
+ */
+export function assistantStaticLines(org: AgentOrganization): string[] {
+  const sample = (name: string): TeamPersona => ({ ...TEAM_PERSONAS.nanpan, id: name.toLowerCase(), name, greetingPhrase: `my name is ${name}` });
+  const sentences = (persona: TeamPersona) => {
+    const out = new Set<string>();
+    for (const at of SAMPLE_TIMES) {
+      const opening = openingForUnknownCaller(renderWelcome(org, at, persona)).replace(/\{\{\s*sip_welcome\s*\}\}/g, WELCOME_DEFAULT);
+      for (const seg of openingSentences(opening)) if (seg.kind === 'assistant') out.add(seg.text);
+    }
+    return out;
+  };
+  const a = sentences(sample('Gwaman'));
+  const b = sentences(sample('Chundung'));
+  const shared = [...a].filter((t) => b.has(t) && !/\{\{|\{[a-z]+\}/.test(t));
+  return [...new Set([...shared, WELCOME_DEFAULT, ...ACKS, HOLDING_LINE])];
 }
 
 export async function prerender(
@@ -107,15 +139,38 @@ async function main() {
   });
   if (!org) throw new Error(`No agency with slug "${slug}".`);
   const lines = governorLines(org);
+  const dir = process.env.VOICE_CACHE_DIR?.trim() || path.join(process.env.STORAGE_DIR?.trim() || process.cwd(), 'tts-cache');
+  const cache = new TtsCache(dir, Number(process.env.VOICE_CACHE_MAX_MB || 2048) * 1024 * 1024);
+
+  // 1. The assistant's fixed sentences, in every assistant voice the line uses.
+  const assistantLines = assistantStaticLines(org);
+  let failedCount = 0;
+  const genders: Array<'male' | 'female' | undefined> = assistantTtsFromEnv()?.name === 'spitch' ? ['male', 'female'] : [undefined];
+  for (const gender of genders) {
+    const engine = assistantTtsFromEnv(gender);
+    if (!engine) {
+      console.log('No assistant speech engine is configured: assistant lines skipped.');
+      break;
+    }
+    const label = `${engine.name}${(engine as any).voice ? ` (voice ${(engine as any).voice}${(engine as any).speed ? `, speed ${(engine as any).speed}` : ''})` : ''}`;
+    const r = await prerender(assistantLines, new CachedSpeech(engine as any, cache), cache, apply);
+    failedCount += r.failed.length;
+    console.log(
+      `Assistant ${label}: ${assistantLines.length} fixed lines, ${r.present} already on disk` +
+        (apply ? `, ${r.rendered} rendered now, ${r.failed.length} failed.` : `, ${assistantLines.length - r.present} missing.`),
+    );
+    for (const f of r.failed) console.log(`  FAILED ${f}`);
+  }
+
   if (!lines.length) {
-    console.log('This agency’s welcome message has no <governor> part: nothing to render.');
-    return;
+    console.log('This agency’s welcome message has no <governor> part: no Governor lines to render.');
+    await cache.flush();
+    await prisma.$disconnect();
+    process.exit(failedCount ? 1 : 0);
   }
   const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId: org.id }, select: { apiKey: true } });
   const key = config?.apiKey ? decryptSecret(config.apiKey, `HostedAgentConfig.apiKey org=${org.id}`) : process.env.ELEVENLABS_API_KEY ?? '';
-  const dir = process.env.VOICE_CACHE_DIR?.trim() || path.join(process.env.STORAGE_DIR?.trim() || process.cwd(), 'tts-cache');
-  const cache = new TtsCache(dir, Number(process.env.VOICE_CACHE_MAX_MB || 2048) * 1024 * 1024);
-  // The SAME engine the voice line uses for the Governor (LocalVoiceService.governorVoice),
+  // 2. The Governor's lines. The SAME engine the voice line uses for the Governor (LocalVoiceService.governorVoice),
   // or the clips land under a key the call never looks up.
   const spitchKey = process.env.SPITCH_API_KEY?.trim();
   const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
@@ -138,7 +193,7 @@ async function main() {
   );
   for (const f of r.failed) console.log(`  FAILED ${f}`);
   await prisma.$disconnect();
-  process.exit(r.failed.length ? 1 : 0);
+  process.exit(r.failed.length + failedCount ? 1 : 0);
 }
 
 if (require.main === module) {

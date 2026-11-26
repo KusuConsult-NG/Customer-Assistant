@@ -23,8 +23,8 @@ import { SentenceSplitter, type ChatMessage, type LlmEvent } from '../src/voice-
 import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local/tts';
 import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
-import { ACKS, HOLDING_LINE, openingSegments, speakable } from '../src/voice-local/voice-session';
-import { governorLines, prerender } from '../src/voice-local/prerender';
+import { ACKS, HOLDING_LINE, isGreetingReply, openingSegments, speakable } from '../src/voice-local/voice-session';
+import { assistantStaticLines, governorLines, prerender } from '../src/voice-local/prerender';
 import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
 
@@ -39,10 +39,13 @@ let storage: string;
 /** A tone whose length says how many words were spoken: 40 ms each, so tests stay fast. */
 class FakeEngine implements SpeechEngine {
   said: string[] = [];
+  /** Texts that fail the FIRST time they are asked for, like a slow first render that times out. */
+  failOnce = new Set<string>();
   constructor(readonly name: string, readonly fail = false, public delayMs = 0) {}
   async synthesize(text: string): Promise<Buffer> {
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.fail) throw new Error(`${this.name} down`);
+    if (this.failOnce.delete(text)) throw new Error('The operation was aborted due to timeout');
     this.said.push(text);
     const words = text.split(/\s+/).length;
     const out = Buffer.alloc(words * 40 * 16);
@@ -95,11 +98,16 @@ function asterisk(uuid: string) {
   });
   sock.on('error', () => undefined);
   sock.on('connect', () => sock.write(encodeFrame(KIND.UUID, uuidToPayload(uuid))));
+  let loud = false;
+  const loudFrame = Buffer.alloc(FRAME_BYTES);
+  for (let i = 0; i < FRAME_BYTES / 2; i++) loudFrame.writeInt16LE(Math.round(6000 * Math.sin(i / 2)), i * 2);
   const ticker = setInterval(() => {
-    if (!closed && sock.writable) sock.write(encodeFrame(KIND.AUDIO, Buffer.alloc(FRAME_BYTES)));
+    if (!closed && sock.writable) sock.write(encodeFrame(KIND.AUDIO, loud ? loudFrame : Buffer.alloc(FRAME_BYTES)));
   }, 20);
   return {
     played,
+    /** The caller is talking (loud frames), as Asterisk would send while they speak. */
+    talking: (on: boolean) => void (loud = on),
     closed: closedP,
     isClosed: () => closed,
     hangUp: () => sock.end(encodeFrame(KIND.HANGUP)),
@@ -368,6 +376,158 @@ describe('voice-local: a whole call over AudioSocket', () => {
     expect(a).toMatch(/Never say you have updated, saved/);
   }, 30_000);
 
+  it('a slow first render of an opening sentence is retried, not handed to the backup agent', async () => {
+    // Production, after a speed change: every opening clip had to be made
+    // again, the recording notice overran the time limit, and EVERY call
+    // failed over to ElevenLabs ("opening: The operation was aborted due to timeout").
+    const logged: string[] = [];
+    const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
+    (voice as any).cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-cold-'))); // cold, as after a speed change
+    assistant.failOnce.add('How may I help you today?');
+    const reg = await register('+2348031110010');
+    const uuid = reg.text.split(' ')[1];
+    const pbx = asterisk(uuid);
+    try {
+      await until(() => logged.some((l) => l.startsWith('voice_local_opening_retry')), 8_000);
+      await until(() => assistant.said.includes('How may I help you today?'));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(logged.some((l) => l.startsWith('voice_local_failed_over'))).toBe(false);
+    } finally {
+      spy.mockRestore();
+      pbx.hangUp();
+      pbx.stop();
+    }
+    await until(() => pbx.isClosed() || true);
+    const out = await request(app.getHttpServer()).get(`/api/voice-local/outcome/${uuid}`).query({ secret: SECRET });
+    expect(out.text).not.toBe('fallback');
+  }, 20_000);
+
+  it('after the prerender, a call synthesises none of the fixed opening sentences', async () => {
+    const org = (await prisma.organization.findUnique({ where: { id: tenant.orgId } }))!;
+    const cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-pre-')));
+    (voice as any).cache = cache;
+    const lines = assistantStaticLines(org as any);
+    const r = await prerender(lines, new CachedSpeech(assistant, cache), cache, true, () => undefined);
+    expect(r.failed).toEqual([]);
+    assistant.said = [];
+    const reg = await register('+2348031110011');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => assistant.said.some((t) => /^I'm \w+, the virtual assistant\.$/.test(t)));
+      await new Promise((r) => setTimeout(r, 300));
+      // Only the sentence carrying this call's assistant name was made live.
+      expect(assistant.said.filter((t) => lines.includes(t))).toEqual([]);
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 20_000);
+
+  it('takes an answer given in two halves as ONE turn, and never answers the first half', async () => {
+    // Production: "I'm calling you from" was committed after a short pause,
+    // the assistant asked its question again, and "Okay. Go ahead." was then
+    // taken as a yes to the old location.
+    const seen: ChatMessage[][] = [];
+    voice.llm = (messages) => {
+      seen.push(messages.map((m) => ({ ...m })) as ChatMessage[]);
+      return (async function* () {
+        await new Promise((r) => setTimeout(r, 600)); // the model takes a moment
+        yield { type: 'text', delta: 'Thank you. Which ward is that in?' } as LlmEvent;
+      })();
+    };
+    try {
+      const reg = await register('+2348031110012');
+      const pbx = asterisk(reg.text.split(' ')[1]);
+      try {
+        await until(() => stt.events !== null);
+        // The opening has finished playing (silence for longer than its own 1 s pause).
+        await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
+        const before = assistant.said.length;
+        stt.events!.onFinal("I'm calling you from", true);
+        await new Promise((r) => setTimeout(r, 150)); // they carry on before any reply is heard
+        stt.events!.onInterim('Rantya');
+        stt.events!.onFinal('Rantya, Kabong ward.', true);
+        await until(() => assistant.said.length > before, 5_000);
+        await new Promise((r) => setTimeout(r, 900));
+        const last = seen[seen.length - 1];
+        const users = last.filter((m) => m.role === 'user').map((m) => m.content);
+        expect(users).toEqual(["I'm calling you from Rantya, Kabong ward."]);
+        // Exactly one reply was spoken, for the whole answer (the acknowledgements put on disk are not replies).
+        const replies = assistant.said.slice(before).filter((t) => ![...ACKS, HOLDING_LINE].includes(t));
+        expect(replies).toEqual(['Thank you. Which ward is that in?']);
+        // And the model was asked once for the first half (dropped) and once for the whole: never answered twice.
+        expect(seen.length).toBeLessThanOrEqual(2);
+      } finally {
+        pbx.hangUp();
+        pbx.stop();
+      }
+    } finally {
+      voice.llm = (messages) => asStream(scriptedModel(messages));
+    }
+  }, 20_000);
+
+  it('"Good evening" said during the greeting is never taken as the answer to its question', async () => {
+    // Production (call 55c886e5): the caller said "good evening" to the
+    // Governor, recognition heard "Good.", and the reply "Thank you for
+    // confirming that" played the moment "Are you still calling from
+    // Rockhaven?" ended. The caller's real answer, "No", came after.
+    assistant = new FakeEngine('azure', false, 400); // a greeting that takes a while
+    (voice as any).cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-greet-'))); // every sentence synthesised here
+    const reg = await register('+2348031110013');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => stt.events !== null);
+      await new Promise((r) => setTimeout(r, 150)); // the Governor's part is playing
+      pbx.talking(true);
+      stt.events!.onInterim('good evening');
+      stt.events!.onFinal('Good.', true);
+      pbx.talking(false);
+      // The greeting plays to the end, untouched.
+      await until(() => assistant.said.includes('How may I help you today?'), 8_000);
+      await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
+      expect(modelCalls).toEqual([]); // nothing was answered
+      // The caller's actual answer is answered, and "Good." is not in what the model sees.
+      stt.events!.onFinal('No, I have moved.', true);
+      await until(() => modelCalls.length > 0, 5_000);
+      const users = modelCalls[0].filter((m) => m.role === 'user').map((m) => m.content);
+      expect(users).toEqual(['No, I have moved.']);
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 30_000);
+
+  it('a real statement made during the greeting is answered once the question has begun, marked as said before it', async () => {
+    assistant = new FakeEngine('azure', false, 400);
+    (voice as any).cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-greet-'))); // every sentence synthesised here
+    const reg = await register('+2348031110014');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => stt.events !== null);
+      await new Promise((r) => setTimeout(r, 150));
+      pbx.talking(true);
+      stt.events!.onInterim('there is a fire');
+      stt.events!.onFinal('There is a fire in my street.', true);
+      pbx.talking(false);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(modelCalls).toEqual([]); // held: the question has not been asked yet
+      await until(() => modelCalls.length > 0, 10_000);
+      // By then the question has been queued and the greeting was never cut.
+      expect(assistant.said).toContain('How may I help you today?');
+      const history = modelCalls[0];
+      expect(history.map((m) => m.role)).toEqual(['system', 'assistant', 'user']);
+      expect(history[2].content).toBe('(Said while the greeting was still playing, before you asked your question:) There is a fire in my street.');
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 30_000);
+
+  it('tells a reply to the greeting from a caller saying what they want', () => {
+    for (const t of ['Good.', 'Good evening.', 'Hello?', 'Okay.', 'Thank you.', 'Yes.', 'Good afternoon, sir.']) expect(isGreetingReply(t)).toBe(true);
+    for (const t of ['No.', 'There is a fire.', 'I want to report a broken borehole.', 'Rantya.', 'Good morning, I want to complain about the road.']) expect(isGreetingReply(t)).toBe(false);
+  });
+
   it('a caller who hangs up is not handed to the backup agent', async () => {
     const reg = await register('+2348031110005');
     const uuid = reg.text.split(' ')[1];
@@ -491,10 +651,26 @@ describe('voice-local: parts', () => {
 
   it('lets the first piece of a reply end at a comma, so the caller hears it sooner', () => {
     const sp = new SentenceSplitter({ firstAtComma: true });
-    expect(sp.push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual(['Yes, the Jos Carnival opens on the twentieth,']);
-    expect(sp.push('with a parade, then music. ')).toEqual(['with a parade, then music.']); // later pieces: sentences only
+    // Held until a clause follows the comma (three words, no sentence end), then cut there.
+    expect(sp.push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual([]);
+    expect(sp.push('with a parade, then music. ')).toEqual(['Yes, the Jos Carnival opens on the twentieth,', 'with a parade, then music.']); // later pieces: sentences only
     expect(new SentenceSplitter({ firstAtComma: true }).push('Yes, sure. ')).toEqual([]); // too short to split early
     expect(new SentenceSplitter().push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual([]);
+  });
+
+  it('never cuts the first piece just before the caller\'s name (sentences from the server run)', () => {
+    const run = (text: string) => {
+      const sp = new SentenceSplitter({ firstAtComma: true });
+      const out: string[] = [];
+      // Streamed a few characters at a time, as the model sends it.
+      for (let i = 0; i < text.length; i += 4) out.push(...sp.push(text.slice(i, i + 4)));
+      const rest = sp.flush();
+      return rest ? [...out, rest] : out;
+    };
+    expect(run('Thank you for confirming that, Steven. Now, how may the Plateau State Government assist you today?')[0]).toBe('Thank you for confirming that, Steven.');
+    expect(run("Thank you for that update, Steven. I've noted that you're now calling from Rantya.")[0]).toBe('Thank you for that update, Steven.');
+    // A real clause after the comma still starts early.
+    expect(run('Thank you for calling the centre, and I will help you with that today.')[0]).toBe('Thank you for calling the centre,');
   });
 
   it('speaks streamed text a sentence at a time', () => {
@@ -502,6 +678,21 @@ describe('voice-local: parts', () => {
     expect(s.push('There are three events this month. The fir')).toEqual(['There are three events this month.']);
     expect(s.push('st is the carnival. Ok.')).toEqual(['The first is the carnival.']);
     expect(s.flush()).toBe('Ok.');
+  });
+
+  it('pre-renders the assistant\'s fixed opening sentences, never one carrying a name', () => {
+    const org: any = {
+      name: 'Plateau State Government Citizen Contact Centre',
+      slug: 'plateau-contact',
+      timezone: 'Africa/Lagos',
+      welcomeMessage:
+        '<governor>{greeting}, and welcome. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I\'m {name}, the virtual assistant. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system. How may I help you today?',
+    };
+    const lines = assistantStaticLines(org);
+    expect(lines).toContain('To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system.');
+    expect(lines).toContain('How may I help you today?');
+    for (const t of [...ACKS, HOLDING_LINE]) expect(lines).toContain(t);
+    expect(lines.some((t) => /virtual assistant|Gwaman|Chundung|\{/.test(t))).toBe(false);
   });
 
   it('pre-renders every Governor line once, so none needs ElevenLabs on a call', async () => {

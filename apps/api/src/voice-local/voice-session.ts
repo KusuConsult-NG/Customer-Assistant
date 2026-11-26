@@ -75,6 +75,8 @@ export const ACK_AFTER_MS = 900;
 // 0.43 s (the Governor's voice) of audio in which Deepgram heard nothing.
 export const ACKS = ['Alright, one moment.', 'Okay, let me check.'];
 export const HOLDING_LINE = 'One moment, please.';
+/** After the caller carries on speaking: how long to wait for the rest of their words before answering what was said. */
+export const CONTINUATION_WAIT_MS = 2_500;
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
@@ -111,6 +113,21 @@ export class VoiceSession {
   private turnFirstAudio = 0;
   private ackTimer: NodeJS.Timeout | null = null;
   private ackIndex = 0;
+  /** Where the caller's words for the turn being answered sit (message and transcript), or -1 for a silence check. */
+  private turnUserMessage = -1;
+  private turnUserTranscript = -1;
+  /** The caller carried on speaking before the reply was heard: the next words join the same turn. */
+  private continuing = false;
+  private continuationTimer: NodeJS.Timeout | null = null;
+  /**
+   * The opening's QUESTION (its last sentence) starts playing at this frame.
+   * Until then the caller has not been asked anything: what they say is a
+   * reply to the greeting ("good evening"), not an answer. Infinity until the
+   * opening has been queued.
+   */
+  private openingQuestionFrame = Number.POSITIVE_INFINITY;
+  /** What the caller said before the opening's question began, held until it does. */
+  private saidDuringGreeting: string[] = [];
   private finishing: Promise<void> | null = null;
   private resolveDone!: () => void;
   readonly done = new Promise<void>((r) => (this.resolveDone = r));
@@ -151,20 +168,28 @@ export class VoiceSession {
     this.watchdog = setInterval(() => this.checkSilence(), 1_000);
     this.watchdog.unref?.();
 
+    // The opening goes into the history BEFORE it is spoken. A caller who
+    // answers while it plays has their words placed after it; recorded after
+    // the opening finished, it sat after their question and the reply to it,
+    // and the model read the conversation out of order.
+    this.messages.push({ role: 'assistant', content: plain(this.setup.opening) });
+    this.transcript.push({ role: 'agent', message: plain(this.setup.opening), atSecs: 0 });
     try {
       await this.speakOpening(this.setup.opening);
     } catch (err: any) {
       return this.fail(`opening: ${err?.message ?? err}`);
     }
-    const said = plain(this.setup.opening);
-    this.messages.push({ role: 'assistant', content: said });
-    this.transcript.push({ role: 'agent', message: said, atSecs: 0 });
     // The acknowledgements and holding line are only useful if they are
     // instant, so they are put on disk now (once per voice, ever) and only
     // ever PLAYED from disk.
     for (const t of [...ACKS, HOLDING_LINE]) {
       if (!this.deps.assistantVoice.peek(t)) void this.deps.assistantVoice.speak(t, { alwaysCache: true }).catch(() => undefined);
     }
+  }
+
+  /** Still answering, or still playing: the conversation check waits for this before the next caller line. */
+  get busy(): boolean {
+    return this.responding || this.pendingTurn || this.continuing || this.playQueue.length > 0;
   }
 
   /** One AudioSocket audio frame from the caller. */
@@ -186,8 +211,36 @@ export class VoiceSession {
   private onInterim(text: string): void {
     this.lastCallerSpeech = this.now();
     this.lastActivity = this.now();
+    // The caller carries on after a pause, before any of the reply has been
+    // heard: they had not finished ("I'm calling you from … Rantya"). The
+    // reply to the first half is dropped and the whole answer is taken as one
+    // turn. Answered in halves, the first half got the question asked again,
+    // and the second ("Okay, go ahead") was taken as a yes to it.
+    if (this.responding && !this.turnFirstAudio && this.turnUserMessage >= 0 && !this.hangupRequested && !this.continuing) {
+      this.continuing = true;
+      this.abortReplyQuietly();
+      this.deps.log('voice_local_continuation');
+      // Recognition may yet finalise nothing (a cough heard as a word): the
+      // turn is then answered as it stood, rather than left in silence.
+      if (this.continuationTimer) clearTimeout(this.continuationTimer);
+      this.continuationTimer = setTimeout(() => {
+        this.continuationTimer = null;
+        if (!this.continuing || this.outcome) return;
+        this.continuing = false;
+        if (!this.responding) {
+          this.beginTurnClock();
+          void this.respond();
+        }
+      }, CONTINUATION_WAIT_MS);
+      this.continuationTimer.unref?.();
+      return;
+    }
     // Barge-in: the caller is talking over us. Words recognised AND real
     // level, so a cough or a generator does not cut the assistant off.
+    // Never while the opening is still before its question: the greeting and
+    // the recording notice are played whole, and a caller saying "good evening"
+    // back to the Governor is not talking over anyone.
+    if (this.inGreeting()) return;
     if ((this.playQueue.length > 0 || this.responding) && text.split(/\s+/).length >= 2 && this.recentLevel > BARGE_IN_RMS) {
       this.interrupt();
     }
@@ -207,6 +260,32 @@ export class VoiceSession {
     if (!said || this.outcome) return;
     this.heard = [];
     this.nudges = 0;
+    if (this.inGreeting()) {
+      // Before the opening has asked its question. Answered now, "Good." (from
+      // "good evening" to the Governor) was taken as the answer to "Are you
+      // still calling from Rockhaven?", and the reply "Thank you for
+      // confirming" played the moment that question ended.
+      this.saidDuringGreeting.push(said);
+      this.transcript.push({ role: 'user', message: said, atSecs: this.secs() });
+      return;
+    }
+    if (this.continuing && this.turnUserMessage >= 0) {
+      // The rest of the answer whose first half was already committed.
+      this.continuing = false;
+      if (this.continuationTimer) clearTimeout(this.continuationTimer);
+      const m = this.messages[this.turnUserMessage] as { role: 'user'; content: string };
+      m.content = `${m.content} ${said}`;
+      if (this.turnUserTranscript >= 0) this.transcript[this.turnUserTranscript].message += ` ${said}`;
+      if (this.responding) {
+        // The dropped reply is still unwinding; it answers the whole turn when it has.
+        this.pendingTurn = true;
+        this.abortReplyQuietly();
+        return;
+      }
+      this.beginTurnClock();
+      void this.respond();
+      return;
+    }
     this.transcript.push({ role: 'user', message: said, atSecs: this.secs() });
     if (this.responding) {
       // They spoke while we were still answering. Their words go into the
@@ -219,8 +298,45 @@ export class VoiceSession {
       return;
     }
     this.messages.push({ role: 'user', content: said });
+    this.turnUserMessage = this.messages.length - 1;
+    this.turnUserTranscript = this.transcript.length - 1;
     this.beginTurnClock();
     void this.respond();
+  }
+
+  /** The opening is still playing and has not yet reached its question. */
+  private inGreeting(): boolean {
+    return this.playedFrames < this.openingQuestionFrame && this.openingQuestionFrame !== -1;
+  }
+
+  /**
+   * The opening's question has started: deal with what was said before it.
+   * Only short greetings and acknowledgements ("good evening", "hello",
+   * "okay"): dropped, and the caller's answer to the question is awaited. Anything
+   * more ("I want to report a fire"): answered, the model told it came
+   * before the question, so it is never read as the answer to it.
+   */
+  private releaseGreetingSpeech(): void {
+    this.openingQuestionFrame = -1; // the opening is over for this purpose
+    const held = this.saidDuringGreeting.splice(0);
+    if (!held.length || this.outcome) return;
+    const text = held.join(' ').trim();
+    if (isGreetingReply(text)) {
+      this.deps.log('voice_local_greeting_reply_ignored', { text: text.slice(0, 80) });
+      return;
+    }
+    this.messages.push({ role: 'user', content: `(Said while the greeting was still playing, before you asked your question:) ${text}` });
+    this.turnUserMessage = this.messages.length - 1;
+    this.turnUserTranscript = -1;
+    this.beginTurnClock();
+    void this.respond();
+  }
+
+  /** Drop the reply being prepared, without treating it as the caller talking over it. */
+  private abortReplyQuietly(): void {
+    this.playQueue = [];
+    this.turnAbort?.abort();
+    this.speechChain = Promise.resolve();
   }
 
   /** The caller has finished: time the reply, and acknowledge if it is slow. */
@@ -266,6 +382,8 @@ export class VoiceSession {
         role: 'user',
         content: `[No reply from the caller for ${Math.round(SILENCE_NUDGE_MS / 1000)} seconds (check ${this.nudges}). They have not spoken.]`,
       });
+      this.turnUserMessage = -1; // a note, not the caller's words: nothing to join a continuation to
+      this.turnUserTranscript = -1;
       void this.respond();
     }
   }
@@ -277,42 +395,85 @@ export class VoiceSession {
     this.responding = true;
     const abort = new AbortController();
     this.turnAbort = abort;
+    // Whether a write tool has succeeded in this reply: the only thing that
+    // makes "I've updated your details" true. Claims made before it are held.
+    let wrote = false;
+    let corrected = false;
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS && !abort.signal.aborted; round++) {
         const splitter = new SentenceSplitter({ firstAtComma: !this.turnFirstAudio });
         let text = '';
         let calls: ToolCall[] = [];
+        const held: string[] = [];
+        const spokenParts: string[] = [];
+        const emit = (sentence: string) => {
+          if (!wrote && isSaveClaim(sentence)) held.push(sentence);
+          else {
+            spokenParts.push(sentence);
+            this.say(sentence, abort.signal);
+          }
+        };
         this.spokenThisTurn = '';
         for await (const ev of this.deps.llm(this.messages, this.deps.tools, abort.signal)) {
           if (abort.signal.aborted) break;
           if (ev.type === 'text') {
             if (!this.turnFirstText && this.turnStartedAt) this.turnFirstText = this.now();
             text += ev.delta;
-            for (const s of splitter.push(ev.delta)) this.say(s, abort.signal);
+            for (const s of splitter.push(ev.delta)) emit(s);
           } else {
             calls = ev.calls;
           }
         }
         const rest = splitter.flush();
-        if (rest && !abort.signal.aborted) this.say(rest, abort.signal);
+        if (rest && !abort.signal.aborted) emit(rest);
 
         if (abort.signal.aborted) {
-          // Keep what was actually said, so the model knows where it was cut off.
-          if (this.spokenThisTurn) this.messages.push({ role: 'assistant', content: `${this.spokenThisTurn} …` });
+          // Keep what was actually said — for the model, so it knows where it
+          // was cut off, and for the call record, which otherwise lost it.
+          if (this.spokenThisTurn) {
+            this.messages.push({ role: 'assistant', content: `${this.spokenThisTurn} …` });
+            this.transcript.push({ role: 'agent', message: `${this.spokenThisTurn} …`, atSecs: this.secs() });
+          }
           return;
         }
-        this.messages.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
-        if (text.trim() || calls.length) {
+        // The history and the record hold what the caller was actually told:
+        // a held claim is not in either unless it is spoken below.
+        const told = () => [...spokenParts].join(' ').trim();
+        this.messages.push({ role: 'assistant', content: told() || null, ...(calls.length ? { tool_calls: calls } : {}) });
+        const record = this.transcript.length;
+        if (told() || calls.length) {
           this.transcript.push({
             role: 'agent',
-            message: text.trim(),
+            message: told(),
             atSecs: this.secs(),
             ...(calls.length ? { toolCalls: calls.map((c) => ({ name: c.function.name, arguments: c.function.arguments })) } : {}),
           });
         }
-        if (!calls.length) break;
 
-        await this.runTools(calls, abort.signal);
+        if (calls.length) {
+          if (await this.runTools(calls, abort.signal)) wrote = true;
+        }
+        if (held.length) {
+          if (wrote && !abort.signal.aborted) {
+            // Now true: say it, after the write that makes it so.
+            for (const h of held) {
+              spokenParts.push(h);
+              this.say(h, abort.signal);
+            }
+            const lastAssistant = [...this.messages].reverse().find((m) => m.role === 'assistant') as { content: string | null } | undefined;
+            if (lastAssistant) lastAssistant.content = told();
+            if (this.transcript[record]) this.transcript[record].message = told();
+          } else {
+            this.deps.log('voice_local_unbacked_claim', { held: held.join(' ').slice(0, 300) });
+            if (!corrected && !calls.length && !abort.signal.aborted) {
+              // Once per reply: tell the model, and let it do what it claimed or ask.
+              corrected = true;
+              this.messages.push({ role: 'user', content: UNBACKED_CLAIM_NOTE });
+              continue;
+            }
+          }
+        }
+        if (!calls.length) break;
         if (this.hangupRequested) break;
       }
       await this.speechChain;
@@ -334,7 +495,9 @@ export class VoiceSession {
     }
   }
 
-  private async runTools(calls: ToolCall[], signal: AbortSignal): Promise<void> {
+  /** Run the model's tool calls. Returns true when a WRITE tool succeeded. */
+  private async runTools(calls: ToolCall[], signal: AbortSignal): Promise<boolean> {
+    let wrote = false;
     // Every call the model made gets an answer, even after a barge-in: a
     // history with an unanswered tool call is refused by the model API, and a
     // write it already decided on (a confirmed report) should still happen.
@@ -364,9 +527,12 @@ export class VoiceSession {
       } finally {
         clearTimeout(filler);
       }
-      this.deps.log('voice_local_tool', { tool: call.function.name, ms: this.now() - started, ok: (result as any)?.ok !== false });
+      const ok = (result as any)?.ok !== false;
+      if (ok && WRITE_TOOLS.has(call.function.name)) wrote = true;
+      this.deps.log('voice_local_tool', { tool: call.function.name, ms: this.now() - started, ok });
       this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result ?? {}).slice(0, 12_000) });
     }
+    return wrote;
   }
 
   /** Queue a sentence: synthesised in order, played as soon as it is ready. */
@@ -395,22 +561,12 @@ export class VoiceSession {
     });
   }
 
-  private async speakOpening(opening: string): Promise<void> {
+  /** Speak the opening, whole: it is never cut short. Returns what was queued. */
+  private async speakOpening(opening: string): Promise<string> {
     // Split long assistant opening text into individual sentences so static
     // lines (like the NDPA disclosure) cache independently on disk and short
     // chunks synthesise fast in parallel while the Governor's intro is playing.
-    const expanded: OpeningSegment[] = [];
-    for (const seg of openingSegments(opening)) {
-      if (seg.kind === 'assistant') {
-        const parts = seg.text
-          .split(/(?<=[.!?])\s+/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        for (const p of parts) expanded.push({ kind: 'assistant', text: p });
-      } else {
-        expanded.push(seg);
-      }
-    }
+    const expanded = openingSentences(opening);
 
     // Kick off synthesis for all spoken segments in parallel, then enqueue in order.
     const openingStarted = this.now();
@@ -429,7 +585,10 @@ export class VoiceSession {
             this.deps.log('voice_local_governor_unavailable', { error: (err as Error).message });
             return (await this.deps.assistantVoice.speak(seg.text, { personal: this.setup.personal })).audio;
           }
-          throw err;
+          // Once more before handing the caller to the backup agent: a slow
+          // first render (a new speed, a cold cache) is not a dead provider.
+          this.deps.log('voice_local_opening_retry', { error: (err as Error).message, chars: seg.text.length });
+          return (await voice.speak(seg.text, { personal: this.setup.personal })).audio;
         }
       })();
       // Attach a no-op catch so an earlier segment throwing doesn't cause an unhandled rejection.
@@ -437,14 +596,24 @@ export class VoiceSession {
       return { seg, promise };
     });
 
-    for (const { seg, promise } of tasks) {
+    const spoken: string[] = [];
+    const lastIndex = tasks.length - 1;
+    for (const [i, { seg, promise }] of tasks.entries()) {
+      if (this.outcome) break;
       if (seg.kind === 'break') {
         this.enqueue(silence(seg.ms));
         continue;
       }
       const audio = await promise!;
+      if (this.outcome) break;
+      // The last sentence is the question: it starts once everything queued
+      // ahead of it has been played.
+      if (i === lastIndex) this.openingQuestionFrame = this.playedFrames + this.playQueue.length;
       this.enqueue(forPlayback(audio));
+      spoken.push(seg.text);
     }
+    if (this.openingQuestionFrame === Number.POSITIVE_INFINITY) this.openingQuestionFrame = this.playedFrames + this.playQueue.length;
+    return spoken.join(' ');
   }
 
   // ── Playback: one frame every 20 ms, on a drift-corrected clock ──────────
@@ -493,6 +662,9 @@ export class VoiceSession {
         next += FRAME_MS;
         sent++;
       }
+      if (this.openingQuestionFrame >= 0 && this.openingQuestionFrame !== Number.POSITIVE_INFINITY && this.playedFrames >= this.openingQuestionFrame) {
+        this.releaseGreetingSpeech();
+      }
       this.pump = setTimeout(tick, Math.max(1, next - this.now()));
       this.pump.unref?.();
     };
@@ -524,6 +696,7 @@ export class VoiceSession {
     this.finishing = (async () => {
       this.turnAbort?.abort();
       if (this.ackTimer) clearTimeout(this.ackTimer);
+      if (this.continuationTimer) clearTimeout(this.continuationTimer);
       if (this.pump) clearTimeout(this.pump);
       if (this.watchdog) clearInterval(this.watchdog);
       this.playQueue = [];
@@ -542,6 +715,50 @@ export class VoiceSession {
     return this.finishing;
   }
 }
+
+/**
+ * A reply to a greeting or a bare acknowledgement — "good evening", "hello",
+ * "okay", "thank you" — as opposed to the caller saying what they want.
+ * Recognition often keeps only part ("Good.").
+ */
+export function isGreetingReply(text: string): boolean {
+  const words = text.toLowerCase().replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 4) return false;
+  const ok = new Set(['good', 'morning', 'afternoon', 'evening', 'day', 'hello', 'hi', 'hey', 'yes', 'yeah', 'okay', 'ok', 'alright', 'thank', 'thanks', 'you', 'sir', 'madam', 'ma', 'please', 'go', 'ahead', 'hmm', 'mm', 'uh', 'um', 'ah', 'oh', 'and', 'to', 'too', 'same', 'welcome', 'nanpan', 'excellency']);
+  return words.every((w) => ok.has(w));
+}
+
+/** Tools that change a record. A claim that something was saved is true only after one of these succeeded. */
+export const WRITE_TOOLS = new Set([
+  'update-caller-profile',
+  'book-appointment',
+  'reschedule-booking',
+  'cancel-booking',
+  'create-ticket',
+  'request-callback',
+  'register-enrollee',
+]);
+
+/**
+ * A sentence telling the caller something has been (or is being) saved,
+ * updated or registered. The real model was caught saying "Let me update that
+ * information for you. Hold on a moment while I save that. I've updated your
+ * location." with no tool called at all — on the live line and in the
+ * conversation check. Such a sentence is spoken only after a write tool
+ * succeeded in the same reply.
+ */
+const SAVE_CLAIM =
+  /\b(?:i(?:'ve| have)?\s+(?:now\s+|just\s+|also\s+)?(?:updated|saved|noted|recorded|registered|logged|changed)|let me (?:update|save|note|record|register|log|change)|i(?:'ll| will) (?:update|save|record|register|log)|(?:updating|saving|recording|registering) (?:that|this|it|your|the)|while i (?:update|save|record|register)|(?:has|have) been (?:successfully )?(?:updated|saved|recorded|registered|logged|changed))\b/i;
+
+export function isSaveClaim(sentence: string): boolean {
+  return SAVE_CLAIM.test(sentence);
+}
+
+/** Told to the model when it claimed a save it did not make (never heard by the caller). */
+export const UNBACKED_CLAIM_NOTE =
+  '[Note from the system, not the caller: your last reply said something was saved or updated, but no tool saved it. ' +
+  'Nothing was saved, and the caller did not hear that sentence. If the caller has confirmed the details, call the tool ' +
+  'that saves them now (update-caller-profile for their profile) and then tell them; if they have not confirmed, ask them to.]';
 
 /**
  * What may be SPOKEN of a model's sentence. The model sometimes writes stage
@@ -570,6 +787,24 @@ export function plain(text: string): string {
 }
 
 export type OpeningSegment = { kind: 'governor' | 'assistant'; text: string } | { kind: 'break'; ms: number };
+
+/**
+ * The opening as the call speaks it: the Governor's part, pauses, and the
+ * assistant's part one SENTENCE at a time (each cached and synthesised on its
+ * own). The prerender script uses this same function, so what it puts on disk
+ * is exactly what a call asks for.
+ */
+export function openingSentences(opening: string): OpeningSegment[] {
+  const out: OpeningSegment[] = [];
+  for (const seg of openingSegments(opening)) {
+    if (seg.kind !== 'assistant') {
+      out.push(seg);
+      continue;
+    }
+    for (const p of seg.text.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean)) out.push({ kind: 'assistant', text: p });
+  }
+  return out;
+}
 
 /** "<governor>…</governor> <break time="1.0s" /> I'm …" → governor, pause, assistant. */
 export function openingSegments(opening: string): OpeningSegment[] {
