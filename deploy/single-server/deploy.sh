@@ -48,6 +48,31 @@ if [[ "$def" != *'COALESCE("staffName"'* ]]; then
   done
 fi
 
+# Replacing the api or bridge container ends every call in progress: the
+# caller is cut off mid-sentence (26 Nov 2026, a test call dropped the moment
+# the new api started). Wait for the line to be quiet first. DEPLOY_NOW=1
+# skips the wait; DEPLOY_CALL_WAIT sets how long to wait (seconds, default 600).
+active_calls() {
+  dc exec -T bridge asterisk -rx "core show channels count" 2>/dev/null \
+    | sed -n 's/^\([0-9][0-9]*\) active calls\{0,1\}$/\1/p'
+}
+if [ "${DEPLOY_NOW:-}" != "1" ] && [ -n "$(dc ps -q bridge 2>/dev/null)" ]; then
+  limit="${DEPLOY_CALL_WAIT:-600}"; waited=0
+  while :; do
+    n="$(active_calls)"
+    if [ -z "$n" ]; then
+      echo "Could not read the call count from the bridge, so cannot tell whether a call is in progress."
+      die "Re-run with DEPLOY_NOW=1 to restart anyway (any call in progress will be cut off)."
+    fi
+    [ "$n" = "0" ] && break
+    if [ "$waited" -ge "$limit" ]; then
+      die "$n call(s) still in progress after ${limit}s. Re-run when the line is quiet, or with DEPLOY_NOW=1 to cut them off."
+    fi
+    [ $((waited % 30)) -eq 0 ] && say "Waiting for $n call(s) in progress to finish before restarting"
+    sleep 5; waited=$((waited + 5))
+  done
+fi
+
 say "Starting everything"
 dc up -d --remove-orphans
 wait_healthy api 80
