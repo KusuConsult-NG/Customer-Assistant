@@ -1,4 +1,4 @@
-import { downsample24kTo8k, mulawBufferToSlin, wavToSlin8k } from './pcm';
+import { changeTempo, downsample24kTo8k, mulawBufferToSlin, wavToSlin8k } from './pcm';
 import { TtsCache } from './tts-cache';
 
 /**
@@ -287,17 +287,27 @@ export function spitchSlotsInUse(): number {
   return spitchInFlight;
 }
 
+/** A speaking-rate multiplier from the environment, 0.5–2; anything else is 1 (unchanged). */
+export function speedFromEnv(name: string, fallback = 1): number {
+  const v = Number(process.env[name]?.trim());
+  return Number.isFinite(v) && v >= 0.5 && v <= 2 ? v : fallback;
+}
+
 export class SpitchTts implements SpeechEngine {
   readonly name = 'spitch';
   readonly dsp = RESAMPLER_VERSION;
   readonly voice: string;
   readonly language: string;
-  readonly rate = '1.0';
+  /** Part of the cache key: a clip made at another speed is never replayed. '1.0' is the speed every existing clip was made at. */
+  readonly rate: string;
+  readonly speed: number;
   private readonly baseUrl: string;
-  constructor(private readonly opts: { key: string; voice?: string; language?: string; url?: string }) {
+  constructor(private readonly opts: { key: string; voice?: string; language?: string; url?: string; speed?: number }) {
     this.voice = opts.voice || 'jude';
     this.language = opts.language || 'en';
     this.baseUrl = (opts.url || 'https://api.spitch.app').replace(/\/+$/, '');
+    this.speed = opts.speed && Number.isFinite(opts.speed) && opts.speed >= 0.5 && opts.speed <= 2 ? opts.speed : 1;
+    this.rate = Math.abs(this.speed - 1) < 0.005 ? '1.0' : this.speed.toFixed(2);
   }
 
   static fromEnv(gender?: 'male' | 'female'): SpitchTts | null {
@@ -312,6 +322,7 @@ export class SpitchTts implements SpeechEngine {
       voice: defaultVoice,
       language: process.env.SPITCH_LANGUAGE?.trim() || undefined,
       url: process.env.SPITCH_API_URL?.trim() || undefined,
+      speed: speedFromEnv('SPITCH_SPEED'),
     });
   }
 
@@ -346,7 +357,7 @@ export class SpitchTts implements SpeechEngine {
         }
         const wav = Buffer.from(await res.arrayBuffer());
         if (!wav.length) throw new Error('Spitch TTS returned no audio');
-        return wavToSlin8k(wav);
+        return changeTempo(wavToSlin8k(wav), this.speed);
       }
       throw new Error(`Spitch TTS refused (HTTP 429) ${lastErr}`);
     };

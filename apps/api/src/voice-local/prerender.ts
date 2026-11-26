@@ -27,7 +27,7 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from '../agent-tools/agent-tool-catalog';
-import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, type SpeechEngine } from './tts';
+import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { openingSegments } from './voice-session';
 
@@ -121,9 +121,14 @@ async function main() {
   const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
   const engine: SpeechEngine =
     spitchKey && spitchGovVoice
-      ? new SpitchTts({ key: spitchKey, voice: spitchGovVoice, language: process.env.SPITCH_LANGUAGE?.trim() || 'en' })
+      ? new SpitchTts({
+          key: spitchKey,
+          voice: spitchGovVoice,
+          language: process.env.SPITCH_LANGUAGE?.trim() || 'en',
+          speed: speedFromEnv('SPITCH_GOVERNOR_SPEED', speedFromEnv('SPITCH_SPEED')),
+        })
       : new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
-  console.log(`Governor engine: ${engine.name}${spitchGovVoice && spitchKey ? ` (voice ${spitchGovVoice})` : ''}`);
+  console.log(`Governor engine: ${engine.name}${spitchGovVoice && spitchKey ? ` (voice ${spitchGovVoice}, speed ${(engine as SpitchTts).speed})` : ''}`);
   const speech = new CachedSpeech(engine as any, cache);
   const r = await prerender(lines, speech, cache, apply);
   await cache.flush(); // the clips are written in the background; the process exits below

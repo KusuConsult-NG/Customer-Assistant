@@ -1,4 +1,4 @@
-import { downsample24kTo8k, forPlayback, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
+import { changeTempo, downsample24kTo8k, forPlayback, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
 import {
   assistantTtsFromEnv,
   AzureTts,
@@ -172,6 +172,64 @@ describe('voice-local TTS providers & PCM downsampling', () => {
       (global as any).fetch = realFetch;
       (AbortSignal as any).timeout = realTimeout;
     }
+  });
+
+  describe('speaking faster without changing the voice (changeTempo)', () => {
+    /** A voice-like test signal: 140 Hz fundamental with harmonics, a slow vibrato and syllable-rate loudness. */
+    const voiceLike = (secs: number) => {
+      const n = Math.round(8000 * secs);
+      const b = Buffer.alloc(n * 2);
+      let phase = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / 8000;
+        phase += (2 * Math.PI * (140 + 6 * Math.sin(2 * Math.PI * 5 * t))) / 8000;
+        const syllable = 0.55 + 0.45 * Math.sin(2 * Math.PI * 4 * t);
+        const v = Math.sin(phase) + 0.5 * Math.sin(2 * phase) + 0.25 * Math.sin(3 * phase);
+        b.writeInt16LE(Math.round(6000 * syllable * v), i * 2);
+      }
+      return b;
+    };
+    /** Fundamental by autocorrelation over 60-400 Hz. */
+    const pitchHz = (b: Buffer) => {
+      const n = Math.min(4000, b.length / 2);
+      const x = Array.from({ length: n }, (_, i) => b.readInt16LE(i * 2));
+      let bestLag = 0;
+      let best = -Infinity;
+      for (let lag = 20; lag <= 133; lag++) {
+        let s = 0;
+        for (let i = 0; i + lag < n; i++) s += x[i] * x[i + lag];
+        if (s > best) ((best = s), (bestLag = lag));
+      }
+      return 8000 / bestLag;
+    };
+    const maxJump = (b: Buffer) => {
+      let m = 0;
+      for (let i = 2; i < b.length; i += 2) m = Math.max(m, Math.abs(b.readInt16LE(i) - b.readInt16LE(i - 2)));
+      return m;
+    };
+
+    it.each([1.1, 1.15, 1.25])('at %s x: shorter by exactly that factor, same pitch, no clicks', (speed) => {
+      const input = voiceLike(4);
+      const out = changeTempo(input, speed);
+      const ratio = input.length / out.length;
+      expect(Math.abs(ratio - speed) / speed).toBeLessThan(0.01);
+      expect(Math.abs(pitchHz(out.subarray(4000, 12000)) - pitchHz(input.subarray(4000, 12000)))).toBeLessThan(6); // Hz
+      // A splice that misaligned would show as a jump far larger than the signal's own steepest slope.
+      expect(maxJump(out)).toBeLessThan(maxJump(input) * 1.6);
+    });
+
+    it('speed 1 is the input untouched, and the speed is part of the cache key only when it changes the sound', () => {
+      const input = voiceLike(1);
+      expect(changeTempo(input, 1)).toBe(input);
+      expect(new SpitchTts({ key: 'k' }).rate).toBe('1.0'); // every clip already on disk keeps its key
+      expect(new SpitchTts({ key: 'k', speed: 1.15 }).rate).toBe('1.15');
+      expect(new CachedSpeech(new SpitchTts({ key: 'k', speed: 1.15 }), null).key('Hi.')).not.toBe(new CachedSpeech(new SpitchTts({ key: 'k' }), null).key('Hi.'));
+      process.env.SPITCH_API_KEY = 'k';
+      process.env.SPITCH_SPEED = '1.15';
+      expect((SpitchTts.fromEnv() as SpitchTts).speed).toBe(1.15);
+      process.env.SPITCH_SPEED = '7';
+      expect((SpitchTts.fromEnv() as SpitchTts).speed).toBe(1); // out of range is ignored, not obeyed
+    });
   });
 
   it('selects TTS provider by LOCAL_VOICE_TTS_PROVIDER or falls back Spitch -> YarnGPT -> Azure -> OpenAI -> Deepgram', () => {
