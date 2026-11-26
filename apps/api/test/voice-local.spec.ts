@@ -23,7 +23,7 @@ import { SentenceSplitter, type ChatMessage, type LlmEvent } from '../src/voice-
 import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local/tts';
 import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
-import { ACKS, HOLDING_LINE, openingSegments, speakable } from '../src/voice-local/voice-session';
+import { ACKS, HOLDING_LINE, isGreetingReply, openingSegments, speakable } from '../src/voice-local/voice-session';
 import { assistantStaticLines, governorLines, prerender } from '../src/voice-local/prerender';
 import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
@@ -466,30 +466,67 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
   }, 20_000);
 
-  it('talking over the opening stops it, and the history shows what the caller actually heard', async () => {
-    assistant = new FakeEngine('azure', false, 1_200); // the assistant's sentences are slow to come
+  it('"Good evening" said during the greeting is never taken as the answer to its question', async () => {
+    // Production (call 55c886e5): the caller said "good evening" to the
+    // Governor, recognition heard "Good.", and the reply "Thank you for
+    // confirming that" played the moment "Are you still calling from
+    // Rockhaven?" ended. The caller's real answer, "No", came after.
+    assistant = new FakeEngine('azure', false, 400); // a greeting that takes a while
+    (voice as any).cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-greet-'))); // every sentence synthesised here
     const reg = await register('+2348031110013');
     const pbx = asterisk(reg.text.split(' ')[1]);
     try {
       await until(() => stt.events !== null);
-      await new Promise((r) => setTimeout(r, 400)); // the Governor's part is playing
+      await new Promise((r) => setTimeout(r, 150)); // the Governor's part is playing
       pbx.talking(true);
-      await new Promise((r) => setTimeout(r, 200));
-      stt.events!.onInterim('hello hello');
-      stt.events!.onFinal('Hello, can you hear me?', true);
+      stt.events!.onInterim('good evening');
+      stt.events!.onFinal('Good.', true);
       pbx.talking(false);
-      await until(() => modelCalls.length > 0, 6_000);
-      const history = modelCalls[modelCalls.length - 1];
-      // In order: system, what was heard of the opening (cut short), then the caller.
-      expect(history.map((m) => m.role).slice(0, 3)).toEqual(['system', 'assistant', 'user']);
-      expect(String(history[1].content)).toMatch(/…$|before the opening/);
-      expect(String(history[1].content)).not.toContain('How may I help you today?');
-      expect(history[2].content).toBe('Hello, can you hear me?');
+      // The greeting plays to the end, untouched.
+      await until(() => assistant.said.includes('How may I help you today?'), 8_000);
+      await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
+      expect(modelCalls).toEqual([]); // nothing was answered
+      // The caller's actual answer is answered, and "Good." is not in what the model sees.
+      stt.events!.onFinal('No, I have moved.', true);
+      await until(() => modelCalls.length > 0, 5_000);
+      const users = modelCalls[0].filter((m) => m.role === 'user').map((m) => m.content);
+      expect(users).toEqual(['No, I have moved.']);
     } finally {
       pbx.hangUp();
       pbx.stop();
     }
-  }, 20_000);
+  }, 30_000);
+
+  it('a real statement made during the greeting is answered once the question has begun, marked as said before it', async () => {
+    assistant = new FakeEngine('azure', false, 400);
+    (voice as any).cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-greet-'))); // every sentence synthesised here
+    const reg = await register('+2348031110014');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => stt.events !== null);
+      await new Promise((r) => setTimeout(r, 150));
+      pbx.talking(true);
+      stt.events!.onInterim('there is a fire');
+      stt.events!.onFinal('There is a fire in my street.', true);
+      pbx.talking(false);
+      await new Promise((r) => setTimeout(r, 300));
+      expect(modelCalls).toEqual([]); // held: the question has not been asked yet
+      await until(() => modelCalls.length > 0, 10_000);
+      // By then the question has been queued and the greeting was never cut.
+      expect(assistant.said).toContain('How may I help you today?');
+      const history = modelCalls[0];
+      expect(history.map((m) => m.role)).toEqual(['system', 'assistant', 'user']);
+      expect(history[2].content).toBe('(Said while the greeting was still playing, before you asked your question:) There is a fire in my street.');
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 30_000);
+
+  it('tells a reply to the greeting from a caller saying what they want', () => {
+    for (const t of ['Good.', 'Good evening.', 'Hello?', 'Okay.', 'Thank you.', 'Yes.', 'Good afternoon, sir.']) expect(isGreetingReply(t)).toBe(true);
+    for (const t of ['No.', 'There is a fire.', 'I want to report a broken borehole.', 'Rantya.', 'Good morning, I want to complain about the road.']) expect(isGreetingReply(t)).toBe(false);
+  });
 
   it('a caller who hangs up is not handed to the backup agent', async () => {
     const reg = await register('+2348031110005');

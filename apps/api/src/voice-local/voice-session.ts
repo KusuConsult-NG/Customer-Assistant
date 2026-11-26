@@ -119,10 +119,15 @@ export class VoiceSession {
   /** The caller carried on speaking before the reply was heard: the next words join the same turn. */
   private continuing = false;
   private continuationTimer: NodeJS.Timeout | null = null;
-  /** The opening is still being queued, and whether the caller has cut it short. */
-  private openingActive = false;
-  private openingCut = false;
-  private openingSpoken: string[] = [];
+  /**
+   * The opening's QUESTION (its last sentence) starts playing at this frame.
+   * Until then the caller has not been asked anything: what they say is a
+   * reply to the greeting ("good evening"), not an answer. Infinity until the
+   * opening has been queued.
+   */
+  private openingQuestionFrame = Number.POSITIVE_INFINITY;
+  /** What the caller said before the opening's question began, held until it does. */
+  private saidDuringGreeting: string[] = [];
   private finishing: Promise<void> | null = null;
   private resolveDone!: () => void;
   readonly done = new Promise<void>((r) => (this.resolveDone = r));
@@ -169,13 +174,11 @@ export class VoiceSession {
     // and the model read the conversation out of order.
     this.messages.push({ role: 'assistant', content: plain(this.setup.opening) });
     this.transcript.push({ role: 'agent', message: plain(this.setup.opening), atSecs: 0 });
-    let spoken: string;
     try {
-      spoken = await this.speakOpening(this.setup.opening);
+      await this.speakOpening(this.setup.opening);
     } catch (err: any) {
       return this.fail(`opening: ${err?.message ?? err}`);
     }
-    void spoken;
     // The acknowledgements and holding line are only useful if they are
     // instant, so they are put on disk now (once per voice, ever) and only
     // ever PLAYED from disk.
@@ -234,7 +237,11 @@ export class VoiceSession {
     }
     // Barge-in: the caller is talking over us. Words recognised AND real
     // level, so a cough or a generator does not cut the assistant off.
-    if ((this.playQueue.length > 0 || this.responding || this.openingActive) && text.split(/\s+/).length >= 2 && this.recentLevel > BARGE_IN_RMS) {
+    // Never while the opening is still before its question: the greeting and
+    // the recording notice are played whole, and a caller saying "good evening"
+    // back to the Governor is not talking over anyone.
+    if (this.inGreeting()) return;
+    if ((this.playQueue.length > 0 || this.responding) && text.split(/\s+/).length >= 2 && this.recentLevel > BARGE_IN_RMS) {
       this.interrupt();
     }
   }
@@ -253,6 +260,15 @@ export class VoiceSession {
     if (!said || this.outcome) return;
     this.heard = [];
     this.nudges = 0;
+    if (this.inGreeting()) {
+      // Before the opening has asked its question. Answered now, "Good." (from
+      // "good evening" to the Governor) was taken as the answer to "Are you
+      // still calling from Rockhaven?", and the reply "Thank you for
+      // confirming" played the moment that question ended.
+      this.saidDuringGreeting.push(said);
+      this.transcript.push({ role: 'user', message: said, atSecs: this.secs() });
+      return;
+    }
     if (this.continuing && this.turnUserMessage >= 0) {
       // The rest of the answer whose first half was already committed.
       this.continuing = false;
@@ -288,11 +304,32 @@ export class VoiceSession {
     void this.respond();
   }
 
-  /** The opening was cut short: the history and the record say what was actually played, and that it stopped. */
-  private recordOpeningCut(): void {
-    const spoken = this.openingSpoken.join(' ');
-    this.messages[1] = { role: 'assistant', content: spoken ? `${spoken} …` : '(The caller spoke before the opening could be played.)' };
-    if (this.transcript[0]) this.transcript[0].message = spoken ? `${spoken} …` : '';
+  /** The opening is still playing and has not yet reached its question. */
+  private inGreeting(): boolean {
+    return this.playedFrames < this.openingQuestionFrame && this.openingQuestionFrame !== -1;
+  }
+
+  /**
+   * The opening's question has started: deal with what was said before it.
+   * Only short greetings and acknowledgements ("good evening", "hello",
+   * "okay"): dropped, and the caller's answer to the question is awaited. Anything
+   * more ("I want to report a fire"): answered, the model told it came
+   * before the question, so it is never read as the answer to it.
+   */
+  private releaseGreetingSpeech(): void {
+    this.openingQuestionFrame = -1; // the opening is over for this purpose
+    const held = this.saidDuringGreeting.splice(0);
+    if (!held.length || this.outcome) return;
+    const text = held.join(' ').trim();
+    if (isGreetingReply(text)) {
+      this.deps.log('voice_local_greeting_reply_ignored', { text: text.slice(0, 80) });
+      return;
+    }
+    this.messages.push({ role: 'user', content: `(Said while the greeting was still playing, before you asked your question:) ${text}` });
+    this.turnUserMessage = this.messages.length - 1;
+    this.turnUserTranscript = -1;
+    this.beginTurnClock();
+    void this.respond();
   }
 
   /** Drop the reply being prepared, without treating it as the caller talking over it. */
@@ -324,14 +361,6 @@ export class VoiceSession {
     this.playQueue = [];
     this.turnAbort?.abort();
     this.speechChain = Promise.resolve();
-    // Talking over the opening stops it: clearing what was queued is not
-    // enough, because the rest of it was still being queued behind.
-    if (this.openingActive && !this.openingCut) {
-      this.openingCut = true;
-      // Corrected NOW, not when the opening's queueing unwinds: the reply to
-      // the caller is requested at once and must see what they actually heard.
-      this.recordOpeningCut();
-    }
     this.deps.log('voice_local_barge_in');
   }
 
@@ -532,7 +561,7 @@ export class VoiceSession {
     });
   }
 
-  /** Speak the opening; returns what was actually queued to be heard (all of it, unless the caller cut in). */
+  /** Speak the opening, whole: it is never cut short. Returns what was queued. */
   private async speakOpening(opening: string): Promise<string> {
     // Split long assistant opening text into individual sentences so static
     // lines (like the NDPA disclosure) cache independently on disk and short
@@ -567,23 +596,23 @@ export class VoiceSession {
       return { seg, promise };
     });
 
-    const spoken = this.openingSpoken;
-    this.openingActive = true;
-    try {
-      for (const { seg, promise } of tasks) {
-        if (this.openingCut || this.outcome) break;
-        if (seg.kind === 'break') {
-          this.enqueue(silence(seg.ms));
-          continue;
-        }
-        const audio = await promise!;
-        if (this.openingCut || this.outcome) break;
-        this.enqueue(forPlayback(audio));
-        spoken.push(seg.text);
+    const spoken: string[] = [];
+    const lastIndex = tasks.length - 1;
+    for (const [i, { seg, promise }] of tasks.entries()) {
+      if (this.outcome) break;
+      if (seg.kind === 'break') {
+        this.enqueue(silence(seg.ms));
+        continue;
       }
-    } finally {
-      this.openingActive = false;
+      const audio = await promise!;
+      if (this.outcome) break;
+      // The last sentence is the question: it starts once everything queued
+      // ahead of it has been played.
+      if (i === lastIndex) this.openingQuestionFrame = this.playedFrames + this.playQueue.length;
+      this.enqueue(forPlayback(audio));
+      spoken.push(seg.text);
     }
+    if (this.openingQuestionFrame === Number.POSITIVE_INFINITY) this.openingQuestionFrame = this.playedFrames + this.playQueue.length;
     return spoken.join(' ');
   }
 
@@ -632,6 +661,9 @@ export class VoiceSession {
         this.deps.sendAudio(frame ?? silenceFrame);
         next += FRAME_MS;
         sent++;
+      }
+      if (this.openingQuestionFrame >= 0 && this.openingQuestionFrame !== Number.POSITIVE_INFINITY && this.playedFrames >= this.openingQuestionFrame) {
+        this.releaseGreetingSpeech();
       }
       this.pump = setTimeout(tick, Math.max(1, next - this.now()));
       this.pump.unref?.();
@@ -682,6 +714,18 @@ export class VoiceSession {
     })();
     return this.finishing;
   }
+}
+
+/**
+ * A reply to a greeting or a bare acknowledgement — "good evening", "hello",
+ * "okay", "thank you" — as opposed to the caller saying what they want.
+ * Recognition often keeps only part ("Good.").
+ */
+export function isGreetingReply(text: string): boolean {
+  const words = text.toLowerCase().replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 4) return false;
+  const ok = new Set(['good', 'morning', 'afternoon', 'evening', 'day', 'hello', 'hi', 'hey', 'yes', 'yeah', 'okay', 'ok', 'alright', 'thank', 'thanks', 'you', 'sir', 'madam', 'ma', 'please', 'go', 'ahead', 'hmm', 'mm', 'uh', 'um', 'ah', 'oh', 'and', 'to', 'too', 'same', 'welcome', 'nanpan', 'excellency']);
+  return words.every((w) => ok.has(w));
 }
 
 /** Tools that change a record. A claim that something was saved is true only after one of these succeeded. */
