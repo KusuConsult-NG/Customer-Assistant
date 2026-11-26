@@ -28,6 +28,7 @@ import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
 import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
+import { clipCheckFromEnv, type ClipCheck } from './speech-check';
 import { localToolDefinitions, runLocalTool } from './voice-tools';
 import { VoiceSession, type Outcome } from './voice-session';
 
@@ -318,7 +319,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
 
     const speechEngine = this.assistantEngine(persona.gender);
     if (!speechEngine) throw new Error('speech is not configured');
-    const assistantVoice = new CachedSpeech(speechEngine, this.cache);
+    const assistantVoice = this.spoken(speechEngine);
     const governorVoice = await this.governorVoice(reg.organizationId);
 
     const callerNumber = reg.callerNumber;
@@ -356,7 +357,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     const spitchKey = process.env.SPITCH_API_KEY?.trim();
     const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
     if (spitchKey && spitchGovVoice) {
-      return new CachedSpeech(
+      return this.spoken(
         new SpitchTts({
           key: spitchKey,
           voice: spitchGovVoice,
@@ -364,7 +365,6 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
           // His own pace setting; unset, he speaks at the assistant's.
           speed: speedFromEnv('SPITCH_GOVERNOR_SPEED', speedFromEnv('SPITCH_SPEED')),
         }),
-        this.cache,
       );
     }
 
@@ -382,7 +382,22 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     } catch {
       /* unreadable: cached clips only */
     }
-    return new CachedSpeech(this.governorEngine(key) as any, this.cache);
+    return this.spoken(this.governorEngine(key) as any);
+  }
+
+  private clipCheck: ClipCheck | null | undefined;
+  /**
+   * An engine in front of the cache, with every new clip HEARD before it is
+   * kept (speech-check.ts): Spitch sometimes reads punctuation aloud, and a
+   * clip on disk is replayed on every call after.
+   */
+  private spoken(engine: SpeechEngine & { voice?: string; voiceId?: string; rate?: string }): CachedSpeech {
+    if (this.clipCheck === undefined) this.clipCheck = clipCheckFromEnv();
+    return new CachedSpeech(engine, this.cache, this.clipCheck, (text, verdict) =>
+      this.log.warn(
+        `voice_local_clip_not_kept ${'extras' in verdict ? `said=${JSON.stringify(verdict.extras)}` : `unchecked=${JSON.stringify(verdict.error)}`} text=${JSON.stringify(text)}`,
+      ),
+    );
   }
 
   // ── After the call: the record, through the one ingestion path ───────────

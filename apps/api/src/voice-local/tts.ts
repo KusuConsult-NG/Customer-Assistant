@@ -1,5 +1,6 @@
 import { changeTempo, downsample24kTo8k, mulawBufferToSlin, wavToSlin8k } from './pcm';
 import { TtsCache } from './tts-cache';
+import type { ClipCheck, ClipVerdict } from './speech-check';
 
 /**
  * Text → slin16/8000, the format AudioSocket plays. Two engines:
@@ -435,10 +436,59 @@ export function isCacheable(text: string, personal: string[] = []): boolean {
 
 /** An engine in front of the SSD cache. */
 export class CachedSpeech {
+  /** Checks still running, so a short-lived process (the prerender, a test) can wait for them. */
+  private readonly checking = new Set<Promise<void>>();
+
+  /**
+   * `check` HEARS a clip before it is stored (speech-check.ts): one that reads
+   * punctuation aloud, or that could not be heard, is played to whoever asked
+   * for it but never kept, so one bad render cannot be replayed on every call.
+   */
   constructor(
     private readonly engine: SpeechEngine & { voice?: string; voiceId?: string; rate?: string },
     private readonly cache: TtsCache | null,
+    private readonly check: ClipCheck | null = null,
+    private readonly onRejected: (text: string, verdict: ClipVerdict | { error: string }) => void = () => undefined,
   ) {}
+
+  /** Resolves when every check started so far has finished (and its clip, if clean, been handed to the cache). */
+  async settle(): Promise<void> {
+    while (this.checking.size) await Promise.all([...this.checking]);
+  }
+
+  /** Store a clip, once it is heard to be clean. Returns the verdict (null when there is no check). */
+  private async keep(key: string, text: string, audio: Buffer): Promise<ClipVerdict | null> {
+    if (!this.check) {
+      this.cache!.put(key, audio);
+      return null;
+    }
+    const verdict = await this.check(text, audio);
+    if (verdict.ok) this.cache!.put(key, audio);
+    else this.onRejected(text, verdict);
+    return verdict;
+  }
+
+  /**
+   * Synthesise `text` and store it only once it is heard clean, trying up to
+   * `tries` times (the prerender: nobody is waiting, so a bad render is simply
+   * made again). Throws when it cannot be heard at all.
+   */
+  async renderChecked(text: string, tries = 3): Promise<{ ok: boolean; attempts: number; last: ClipVerdict | null }> {
+    const key = this.key(text);
+    let last: ClipVerdict | null = null;
+    for (let attempt = 1; attempt <= tries; attempt++) {
+      const audio = await this.engine.synthesize(text);
+      last = await this.keep(key, text, audio);
+      if (!last || last.ok) return { ok: true, attempts: attempt, last };
+    }
+    return { ok: false, attempts: tries, last };
+  }
+
+  /** Hear the clip already on disk for `text`. Null when there is none, or no check. */
+  async recheck(text: string): Promise<ClipVerdict | null> {
+    const clip = this.peek(text);
+    return clip && this.check ? this.check(text, clip) : null;
+  }
 
   get engineName(): string {
     return this.engine.name;
@@ -472,7 +522,14 @@ export class CachedSpeech {
       if (hit) return { audio: hit, cached: true };
     }
     const audio = await this.engine.synthesize(text, opts.signal);
-    if (cacheable) this.cache!.put(key, audio);
+    if (cacheable) {
+      // Heard in the background: the caller is not kept waiting for the check.
+      const job: Promise<void> = this.keep(key, text, audio)
+        .then(() => undefined)
+        .catch((err: any) => this.onRejected(text, { error: String(err?.message ?? err) }))
+        .finally(() => this.checking.delete(job));
+      this.checking.add(job);
+    }
     return { audio, cached: false };
   }
 }
