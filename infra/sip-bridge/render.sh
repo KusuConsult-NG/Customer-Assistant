@@ -32,6 +32,7 @@ LOCAL_VOICE="${LOCAL_VOICE:-0}"
 LOCAL_VOICE_SECRET="${LOCAL_VOICE_SECRET:-}"
 API_PORT="${API_PORT:-4000}"
 AUDIOSOCKET_PORT="${AUDIOSOCKET_PORT:-9092}"
+MAX_CONCURRENT_CALLS="${MAX_CONCURRENT_CALLS:-30}"
 if [ "$LOCAL_VOICE" = "1" ]; then
   [ ${#LOCAL_VOICE_SECRET} -ge 24 ] || { echo "LOCAL_VOICE=1 needs LOCAL_VOICE_SECRET (24+ chars, the same value as the API's)"; exit 1; }
   [[ "$LOCAL_VOICE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "LOCAL_VOICE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
@@ -46,12 +47,12 @@ if [ -n "$SIP_BRIDGE_SECRET" ]; then
   [[ "$SIP_BRIDGE_SECRET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "SIP_BRIDGE_SECRET: letters, digits, - and _ only (it is sent in a dialplan URL)"; exit 1; }
   [[ "$BRIDGE_API_URL" =~ ^https?://[^[:space:]]+$ ]] || { echo "BRIDGE_API_URL must be http(s)://host[:port]"; exit 1; }
 fi
-export LOCAL_VOICE LOCAL_VOICE_SECRET API_PORT AUDIOSOCKET_PORT SIP_BRIDGE_SECRET BRIDGE_API_URL
+export LOCAL_VOICE LOCAL_VOICE_SECRET API_PORT AUDIOSOCKET_PORT MAX_CONCURRENT_CALLS SIP_BRIDGE_SECRET BRIDGE_API_URL
 
 echo "==> Rendering configuration (public IP ${PUBLIC_IP})"
 # EVERY ${...} a template uses must be listed: one left out is not filled in,
 # and Asterisk reads the literal text (an empty secret check, an unknown URL).
-VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND} ${LOCAL_VOICE} ${LOCAL_VOICE_SECRET} ${API_PORT} ${AUDIOSOCKET_PORT} ${SIP_BRIDGE_SECRET} ${BRIDGE_API_URL}'
+VARS='${PUBLIC_IP} ${ALPHATECH_HOST} ${ALPHATECH_IP} ${ALPHATECH_EXTENSION} ${ALPHATECH_PASSWORD} ${ELEVENLABS_SIP_HOST} ${ELEVENLABS_SIP_USERNAME} ${ELEVENLABS_SIP_PASSWORD} ${TOLLFREE_E164} ${FALLBACK_SOUND} ${INTRO_SOUND} ${LOCAL_VOICE} ${LOCAL_VOICE_SECRET} ${API_PORT} ${AUDIOSOCKET_PORT} ${MAX_CONCURRENT_CALLS} ${SIP_BRIDGE_SECRET} ${BRIDGE_API_URL}'
 mkdir -p "$out"
 for f in pjsip extensions rtp modules; do
   envsubst "$VARS" < "templates/${f}.conf.template" > "${out}/${f}.conf"

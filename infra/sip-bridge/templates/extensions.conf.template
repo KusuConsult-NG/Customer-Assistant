@@ -12,6 +12,9 @@ exten => s,1,Goto(bridge,s,1)
 
 [bridge]
 exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTEN})
+ ; Hard ceiling on total simultaneous calls (default 30) across all voice paths
+ same => n,Set(GROUP()=inbound)
+ same => n,GotoIf($[${GROUP_COUNT(inbound)} > ${MAX_CONCURRENT_CALLS}]?ceiling)
  ; Callers' numbers to E.164, so officers can ring them back:
  ;   08031234567 → +2348031234567 ; 2348031234567 → +2348031234567
  same => n,Set(CN=${CALLERID(num)})
@@ -69,6 +72,11 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  ; If the AI could not be reached, the caller is told rather than dropped.
  same => n,ExecIf($["${DIALSTATUS}" != "ANSWER"]?Playback(${FALLBACK_SOUND}))
  same => n,Hangup()
+
+ ; Hard ceiling reached (default 30 simultaneous calls): return SIP 486 Busy Here
+ same => n(ceiling),NoOp(Concurrent call ceiling reached: ${GROUP_COUNT(inbound)} > ${MAX_CONCURRENT_CALLS})
+ same => n,Busy(5)
+ same => n,Hangup(17)
 
 ; Runs on the OUTGOING leg to ElevenLabs just before the INVITE is sent: the
 ; caller lookup as headers. X-Callerstatus becomes {{sip_callerstatus}}, etc.
