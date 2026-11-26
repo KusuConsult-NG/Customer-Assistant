@@ -79,8 +79,16 @@ export const deepgramStt: SttFactory = async (events) => {
       events.onInterim(text.trim());
     }
   });
+  // Deepgram closes a stream that gets no audio for ~10 s (code 1011). A
+  // carrier with silence suppression sends nothing while the caller is quiet,
+  // so a KeepAlive every few seconds holds the stream open regardless.
+  const keepAlive = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'KeepAlive' }));
+  }, 4_000);
+  keepAlive.unref?.();
   ws.on('error', (e) => events.onError(e as Error));
   ws.on('close', (code) => {
+    clearInterval(keepAlive);
     if (code !== 1000) events.onError(new Error(`Speech recognition closed (${code})`));
   });
   return {
@@ -88,6 +96,7 @@ export const deepgramStt: SttFactory = async (events) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(slin);
     },
     close: () => {
+      clearInterval(keepAlive);
       try {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'CloseStream' }));
         ws.close(1000);

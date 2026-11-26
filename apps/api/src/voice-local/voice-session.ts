@@ -356,12 +356,17 @@ export class VoiceSession {
     }
 
     // Kick off synthesis for all spoken segments in parallel, then enqueue in order.
+    const openingStarted = this.now();
     const tasks = expanded.map((seg) => {
       if (seg.kind === 'break') return { seg, promise: null as Promise<Buffer> | null };
       const voice = seg.kind === 'governor' && this.deps.governorVoice ? this.deps.governorVoice : this.deps.assistantVoice;
       const promise = (async () => {
         try {
-          return (await voice.speak(seg.text, { personal: this.setup.personal, alwaysCache: seg.kind === 'governor' })).audio;
+          const r = await voice.speak(seg.text, { personal: this.setup.personal, alwaysCache: seg.kind === 'governor' });
+          // How long each part of the opening took, and whether it came from
+          // disk: the first thing to read when a caller reports silence.
+          this.deps.log('voice_local_opening_part', { part: seg.kind, cached: r.cached, ms: this.now() - openingStarted, chars: seg.text.length });
+          return r.audio;
         } catch (err) {
           if (voice === this.deps.governorVoice) {
             this.deps.log('voice_local_governor_unavailable', { error: (err as Error).message });

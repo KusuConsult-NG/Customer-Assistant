@@ -241,11 +241,15 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
             return;
           }
           opening = true;
-          void this.begin(reg, socket)
-            .then((s) => {
-              session = s;
-              for (const f of early.splice(0)) s.onCallerAudio(f);
-            })
+          // The session is handed over as soon as it EXISTS, not when the
+          // opening has been synthesised: until then the caller's audio was
+          // kept for one second and the rest dropped, so a slow opening (a
+          // cold speech cache, a slow provider) starved Deepgram, which closes
+          // after ~10 s without audio (1011) — and the call failed over.
+          void this.begin(reg, socket, (s) => {
+            session = s;
+            for (const f of early.splice(0)) s.onCallerAudio(f);
+          })
             .catch((err) => {
               this.log.warn(`voice_local_setup_failed uuid=${uuid} error=${err?.message}`);
               this.outcomes.set(uuid, { outcome: 'fallback', at: Date.now() });
@@ -263,7 +267,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async begin(reg: Registration, socket: net.Socket): Promise<VoiceSession> {
+  async begin(reg: Registration, socket: net.Socket, onSession?: (s: VoiceSession) => void): Promise<VoiceSession> {
     const org = await prisma.organization.findUnique({
       where: { id: reg.organizationId },
       select: { name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
@@ -342,6 +346,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     );
     this.live.add(session);
     void session.done.then(() => this.after(reg, session));
+    onSession?.(session);
     await session.start();
     return session;
   }
