@@ -399,18 +399,7 @@ export class VoiceSession {
     // Split long assistant opening text into individual sentences so static
     // lines (like the NDPA disclosure) cache independently on disk and short
     // chunks synthesise fast in parallel while the Governor's intro is playing.
-    const expanded: OpeningSegment[] = [];
-    for (const seg of openingSegments(opening)) {
-      if (seg.kind === 'assistant') {
-        const parts = seg.text
-          .split(/(?<=[.!?])\s+/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        for (const p of parts) expanded.push({ kind: 'assistant', text: p });
-      } else {
-        expanded.push(seg);
-      }
-    }
+    const expanded = openingSentences(opening);
 
     // Kick off synthesis for all spoken segments in parallel, then enqueue in order.
     const openingStarted = this.now();
@@ -429,7 +418,10 @@ export class VoiceSession {
             this.deps.log('voice_local_governor_unavailable', { error: (err as Error).message });
             return (await this.deps.assistantVoice.speak(seg.text, { personal: this.setup.personal })).audio;
           }
-          throw err;
+          // Once more before handing the caller to the backup agent: a slow
+          // first render (a new speed, a cold cache) is not a dead provider.
+          this.deps.log('voice_local_opening_retry', { error: (err as Error).message, chars: seg.text.length });
+          return (await voice.speak(seg.text, { personal: this.setup.personal })).audio;
         }
       })();
       // Attach a no-op catch so an earlier segment throwing doesn't cause an unhandled rejection.
@@ -570,6 +562,24 @@ export function plain(text: string): string {
 }
 
 export type OpeningSegment = { kind: 'governor' | 'assistant'; text: string } | { kind: 'break'; ms: number };
+
+/**
+ * The opening as the call speaks it: the Governor's part, pauses, and the
+ * assistant's part one SENTENCE at a time (each cached and synthesised on its
+ * own). The prerender script uses this same function, so what it puts on disk
+ * is exactly what a call asks for.
+ */
+export function openingSentences(opening: string): OpeningSegment[] {
+  const out: OpeningSegment[] = [];
+  for (const seg of openingSegments(opening)) {
+    if (seg.kind !== 'assistant') {
+      out.push(seg);
+      continue;
+    }
+    for (const p of seg.text.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean)) out.push({ kind: 'assistant', text: p });
+  }
+  return out;
+}
 
 /** "<governor>…</governor> <break time="1.0s" /> I'm …" → governor, pause, assistant. */
 export function openingSegments(opening: string): OpeningSegment[] {

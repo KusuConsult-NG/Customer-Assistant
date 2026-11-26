@@ -293,6 +293,11 @@ export function speedFromEnv(name: string, fallback = 1): number {
   return Number.isFinite(v) && v >= 0.5 && v <= 2 ? v : fallback;
 }
 
+/** How long one Spitch request may take: 15 s plus 100 ms a character, at most 45 s. */
+export function spitchDeadlineMs(text: string): number {
+  return Math.min(45_000, 15_000 + 100 * text.length);
+}
+
 export class SpitchTts implements SpeechEngine {
   readonly name = 'spitch';
   readonly dsp = RESAMPLER_VERSION;
@@ -343,7 +348,9 @@ export class SpitchTts implements SpeechEngine {
             voice: this.voice,
             format: 'wav',
           }),
-          signal: deadline(signal, 15_000),
+          // Longer text takes Spitch longer: the 155-character recording notice
+          // overran a flat 15 s on a real call, and the call failed over.
+          signal: deadline(signal, spitchDeadlineMs(clean)),
         });
         if (res.status === 429 && tries < 2) {
           lastErr = (await res.text().catch(() => '')).slice(0, 200);

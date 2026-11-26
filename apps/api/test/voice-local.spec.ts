@@ -24,7 +24,7 @@ import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local
 import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
 import { ACKS, HOLDING_LINE, openingSegments, speakable } from '../src/voice-local/voice-session';
-import { governorLines, prerender } from '../src/voice-local/prerender';
+import { assistantStaticLines, governorLines, prerender } from '../src/voice-local/prerender';
 import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
 
@@ -39,10 +39,13 @@ let storage: string;
 /** A tone whose length says how many words were spoken: 40 ms each, so tests stay fast. */
 class FakeEngine implements SpeechEngine {
   said: string[] = [];
+  /** Texts that fail the FIRST time they are asked for, like a slow first render that times out. */
+  failOnce = new Set<string>();
   constructor(readonly name: string, readonly fail = false, public delayMs = 0) {}
   async synthesize(text: string): Promise<Buffer> {
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.fail) throw new Error(`${this.name} down`);
+    if (this.failOnce.delete(text)) throw new Error('The operation was aborted due to timeout');
     this.said.push(text);
     const words = text.split(/\s+/).length;
     const out = Buffer.alloc(words * 40 * 16);
@@ -368,6 +371,53 @@ describe('voice-local: a whole call over AudioSocket', () => {
     expect(a).toMatch(/Never say you have updated, saved/);
   }, 30_000);
 
+  it('a slow first render of an opening sentence is retried, not handed to the backup agent', async () => {
+    // Production, after a speed change: every opening clip had to be made
+    // again, the recording notice overran the time limit, and EVERY call
+    // failed over to ElevenLabs ("opening: The operation was aborted due to timeout").
+    const logged: string[] = [];
+    const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
+    (voice as any).cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-cold-'))); // cold, as after a speed change
+    assistant.failOnce.add('How may I help you today?');
+    const reg = await register('+2348031110010');
+    const uuid = reg.text.split(' ')[1];
+    const pbx = asterisk(uuid);
+    try {
+      await until(() => logged.some((l) => l.startsWith('voice_local_opening_retry')), 8_000);
+      await until(() => assistant.said.includes('How may I help you today?'));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(logged.some((l) => l.startsWith('voice_local_failed_over'))).toBe(false);
+    } finally {
+      spy.mockRestore();
+      pbx.hangUp();
+      pbx.stop();
+    }
+    await until(() => pbx.isClosed() || true);
+    const out = await request(app.getHttpServer()).get(`/api/voice-local/outcome/${uuid}`).query({ secret: SECRET });
+    expect(out.text).not.toBe('fallback');
+  }, 20_000);
+
+  it('after the prerender, a call synthesises none of the fixed opening sentences', async () => {
+    const org = (await prisma.organization.findUnique({ where: { id: tenant.orgId } }))!;
+    const cache = new TtsCache(fs.mkdtempSync(path.join(os.tmpdir(), 'ace-pre-')));
+    (voice as any).cache = cache;
+    const lines = assistantStaticLines(org as any);
+    const r = await prerender(lines, new CachedSpeech(assistant, cache), cache, true, () => undefined);
+    expect(r.failed).toEqual([]);
+    assistant.said = [];
+    const reg = await register('+2348031110011');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => assistant.said.some((t) => /^I'm \w+, the virtual assistant\.$/.test(t)));
+      await new Promise((r) => setTimeout(r, 300));
+      // Only the sentence carrying this call's assistant name was made live.
+      expect(assistant.said.filter((t) => lines.includes(t))).toEqual([]);
+    } finally {
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 20_000);
+
   it('a caller who hangs up is not handed to the backup agent', async () => {
     const reg = await register('+2348031110005');
     const uuid = reg.text.split(' ')[1];
@@ -502,6 +552,21 @@ describe('voice-local: parts', () => {
     expect(s.push('There are three events this month. The fir')).toEqual(['There are three events this month.']);
     expect(s.push('st is the carnival. Ok.')).toEqual(['The first is the carnival.']);
     expect(s.flush()).toBe('Ok.');
+  });
+
+  it('pre-renders the assistant\'s fixed opening sentences, never one carrying a name', () => {
+    const org: any = {
+      name: 'Plateau State Government Citizen Contact Centre',
+      slug: 'plateau-contact',
+      timezone: 'Africa/Lagos',
+      welcomeMessage:
+        '<governor>{greeting}, and welcome. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I\'m {name}, the virtual assistant. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system. How may I help you today?',
+    };
+    const lines = assistantStaticLines(org);
+    expect(lines).toContain('To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system.');
+    expect(lines).toContain('How may I help you today?');
+    for (const t of [...ACKS, HOLDING_LINE]) expect(lines).toContain(t);
+    expect(lines.some((t) => /virtual assistant|Gwaman|Chundung|\{/.test(t))).toBe(false);
   });
 
   it('pre-renders every Governor line once, so none needs ElevenLabs on a call', async () => {

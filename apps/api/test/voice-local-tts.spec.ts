@@ -8,6 +8,7 @@ import {
   OpenAiTts,
   SpitchTts,
   YarnGptTts,
+  spitchDeadlineMs,
   spitchSlotsInUse,
 } from '../src/voice-local/tts';
 import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES, pickPlateauPersona } from '../src/agent-tools/agent-tool-catalog';
@@ -230,6 +231,13 @@ describe('voice-local TTS providers & PCM downsampling', () => {
       process.env.SPITCH_SPEED = '7';
       expect((SpitchTts.fromEnv() as SpitchTts).speed).toBe(1); // out of range is ignored, not obeyed
     });
+  });
+
+  it('gives Spitch longer for longer text, within a ceiling', () => {
+    expect(spitchDeadlineMs('Okay, let me check.')).toBe(15_000 + 100 * 19);
+    // The 155-character recording notice that overran a flat 15 s on a real call.
+    expect(spitchDeadlineMs('x'.repeat(155))).toBe(30_500);
+    expect(spitchDeadlineMs('x'.repeat(1000))).toBe(45_000);
   });
 
   it('selects TTS provider by LOCAL_VOICE_TTS_PROVIDER or falls back Spitch -> YarnGPT -> Azure -> OpenAI -> Deepgram', () => {
