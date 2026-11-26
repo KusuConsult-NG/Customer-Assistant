@@ -154,6 +154,28 @@ export async function prerender(
   return { present, rendered, replaced, failed };
 }
 
+/**
+ * The Governor's engine exactly as the voice line builds it
+ * (LocalVoiceService.governorVoice): the clips land under the key a call looks up.
+ */
+export async function governorEngineFor(organizationId: string): Promise<{ engine: SpeechEngine; label: string }> {
+  const spitchKey = process.env.SPITCH_API_KEY?.trim();
+  const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
+  if (spitchKey && spitchGovVoice) {
+    const engine = new SpitchTts({
+      key: spitchKey,
+      voice: spitchGovVoice,
+      language: process.env.SPITCH_LANGUAGE?.trim() || 'en',
+      speed: speedFromEnv('SPITCH_GOVERNOR_SPEED', speedFromEnv('SPITCH_SPEED')),
+    });
+    return { engine, label: `spitch (voice ${spitchGovVoice}, speed ${engine.speed})` };
+  }
+  const { prisma, decryptSecret } = await import('@ace/database');
+  const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId }, select: { apiKey: true } });
+  const key = config?.apiKey ? decryptSecret(config.apiKey, `HostedAgentConfig.apiKey org=${organizationId}`) : process.env.ELEVENLABS_API_KEY ?? '';
+  return { engine: new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS), label: 'elevenlabs' };
+}
+
 async function main() {
   const slug = process.argv[2];
   const apply = process.argv.includes('--apply');
@@ -162,7 +184,7 @@ async function main() {
     console.error('Usage: node apps/api/dist/voice-local/prerender.js <agency-slug> [--apply] [--recheck]');
     process.exit(2);
   }
-  const { prisma, decryptSecret } = await import('@ace/database');
+  const { prisma } = await import('@ace/database');
   const org = await prisma.organization.findUnique({
     where: { slug },
     select: { id: true, name: true, slug: true, timezone: true, welcomeMessage: true, aiPersonaPrompt: true },
@@ -207,22 +229,8 @@ async function main() {
     await prisma.$disconnect();
     process.exit(failedCount ? 1 : 0);
   }
-  const config = await prisma.hostedAgentConfig.findUnique({ where: { organizationId: org.id }, select: { apiKey: true } });
-  const key = config?.apiKey ? decryptSecret(config.apiKey, `HostedAgentConfig.apiKey org=${org.id}`) : process.env.ELEVENLABS_API_KEY ?? '';
-  // 2. The Governor's lines. The SAME engine the voice line uses for the Governor (LocalVoiceService.governorVoice),
-  // or the clips land under a key the call never looks up.
-  const spitchKey = process.env.SPITCH_API_KEY?.trim();
-  const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
-  const engine: SpeechEngine =
-    spitchKey && spitchGovVoice
-      ? new SpitchTts({
-          key: spitchKey,
-          voice: spitchGovVoice,
-          language: process.env.SPITCH_LANGUAGE?.trim() || 'en',
-          speed: speedFromEnv('SPITCH_GOVERNOR_SPEED', speedFromEnv('SPITCH_SPEED')),
-        })
-      : new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
-  console.log(`Governor engine: ${engine.name}${spitchGovVoice && spitchKey ? ` (voice ${spitchGovVoice}, speed ${(engine as SpitchTts).speed})` : ''}`);
+  const { engine, label: govLabel } = await governorEngineFor(org.id);
+  console.log(`Governor engine: ${govLabel}`);
   const speech = new CachedSpeech(engine as any, cache, check);
   const r = await prerender(lines, speech, cache, apply, console.log, { recheck });
   await cache.flush(); // the clips are written in the background; the process exits below
