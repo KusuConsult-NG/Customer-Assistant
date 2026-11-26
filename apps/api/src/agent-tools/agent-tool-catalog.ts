@@ -846,6 +846,105 @@ export function pickPlateauMaleName(): string {
 }
 
 /**
+ * Authentic Plateau State female names across the indigenous ethnic groups
+ * of the 17 Local Government Areas of Plateau State. Used alongside
+ * PLATEAU_MALE_NAMES when both male and female Nigerian voices are available.
+ */
+export const PLATEAU_FEMALE_NAMES: readonly string[] = [
+  // Berom (Jos North, Jos South, Barkin Ladi, Riyom)
+  'Chundung',
+  'Kangyang',
+  'Lyop',
+  'Vo',
+  'Yop',
+  'Dusu',
+  'Simi',
+  'Tabitha',
+  // Ngas / Angas & Mupun (Pankshin, Kanke)
+  'Plangnan',
+  'Nanret',
+  'Nankling',
+  'Nenrot',
+  'Nankyer',
+  'Retnan',
+  'Kyesmen',
+  'Nantok',
+  // Mwaghavul (Mangu)
+  'Nanchin',
+  'Nankat',
+  'Lohya',
+  'Nanle',
+  'Satnim',
+  'Dinan',
+  // Afizere / Izere (Jos East, Jos North)
+  'Akan',
+  'Asabe',
+  'Azumi',
+  'Rifkatu',
+  'Lami',
+  'Talatu',
+  // Tarok / iTarok (Langtang North, Langtang South)
+  'Nandang',
+  'Nanfe',
+  'Nanmwa',
+  'Vongkat',
+  'Seljul',
+  // Goemai, Pan/Kofyar & Lowland (Shendam, Qua'an Pan, Mikang)
+  'Naanret',
+  'Naankang',
+  'Naanman',
+  'Kankani',
+  'Longkat',
+  // Ron/Kulere, Irigwe, Bache, Pyem, Bogghom & Wase (Bokkos, Bassa, Kanam, Wase)
+  'Laraba',
+  'Hannatu',
+  'Jummai',
+  'Amina',
+] as const;
+
+let plateauFemaleNameDeck: string[] = [];
+
+/**
+ * Draw the next dynamic Plateau State female name without back-to-back repeats
+ * (Fisher–Yates shuffled deck).
+ */
+export function pickPlateauFemaleName(): string {
+  if (plateauFemaleNameDeck.length === 0) {
+    const deck = [...PLATEAU_FEMALE_NAMES];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    plateauFemaleNameDeck = deck;
+  }
+  return plateauFemaleNameDeck.pop() || 'Chundung';
+}
+
+/**
+ * Build a dynamic per-call female TeamPersona with a freshly assigned
+ * Plateau State female name.
+ */
+export function pickPlateauFemalePersona(basePersona: TeamPersona = TEAM_PERSONAS.sarah): TeamPersona {
+  const name = pickPlateauFemaleName();
+  return {
+    ...basePersona,
+    id: name.toLowerCase(),
+    name,
+    gender: 'female',
+    greetingPhrase: `my name is ${name}`,
+  };
+}
+
+/**
+ * Pick either a Plateau male or female persona (50/50) for voice engines that
+ * support both authentic Nigerian male and female voices (e.g. Spitch).
+ */
+export function pickPlateauPersona(gender?: 'male' | 'female'): TeamPersona {
+  const chosen = gender ?? (Math.random() < 0.5 ? 'female' : 'male');
+  return chosen === 'female' ? pickPlateauFemalePersona() : pickPlateauMalePersona();
+}
+
+/**
  * Build a dynamic per-call TeamPersona using the Plateau male voice (`KpLREcAbIIKFKpEkPEIR`)
  * and a freshly assigned Plateau State male name from the 100-name roster.
  */

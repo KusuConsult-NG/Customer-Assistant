@@ -1,5 +1,6 @@
 import { downsample24kTo8k, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
 import { assistantTtsFromEnv, AzureTts, DeepgramTts, OpenAiTts, SpitchTts, YarnGptTts } from '../src/voice-local/tts';
+import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES, pickPlateauPersona } from '../src/agent-tools/agent-tool-catalog';
 
 describe('voice-local TTS providers & PCM downsampling', () => {
   const saved = { ...process.env };
@@ -61,5 +62,26 @@ describe('voice-local TTS providers & PCM downsampling', () => {
 
     process.env.SPITCH_API_KEY = 'sp-test';
     expect(assistantTtsFromEnv()).toBeInstanceOf(SpitchTts);
+  });
+
+  it('matches Plateau male and female personas to Nigerian male (jude) and female (lucy) Spitch voices', () => {
+    process.env.SPITCH_API_KEY = 'sp-test';
+    delete process.env.SPITCH_VOICE;
+    delete process.env.SPITCH_FEMALE_VOICE;
+    delete process.env.LOCAL_VOICE_TTS_PROVIDER;
+
+    const femalePersona = pickPlateauPersona('female');
+    expect(femalePersona.gender).toBe('female');
+    expect(PLATEAU_FEMALE_NAMES).toContain(femalePersona.name);
+    const femaleEngine = assistantTtsFromEnv(femalePersona.gender) as SpitchTts;
+    expect(femaleEngine).toBeInstanceOf(SpitchTts);
+    expect(femaleEngine.voice).toBe('lucy');
+
+    const malePersona = pickPlateauPersona('male');
+    expect(malePersona.gender).toBe('male');
+    expect(PLATEAU_MALE_NAMES).toContain(malePersona.name);
+    const maleEngine = assistantTtsFromEnv(malePersona.gender) as SpitchTts;
+    expect(maleEngine).toBeInstanceOf(SpitchTts);
+    expect(maleEngine.voice).toBe('jude');
   });
 });

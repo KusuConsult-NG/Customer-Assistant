@@ -9,6 +9,7 @@ import {
   firstMessageFor,
   isPlateauStateOrg,
   pickPlateauMalePersona,
+  pickPlateauPersona,
   resolvePersona,
   type AgentOrganization,
 } from '../agent-tools/agent-tool-catalog';
@@ -96,7 +97,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   /** Replaceable in tests: the provider each part talks to. */
   stt: SttFactory = deepgramStt;
   llm = streamChat;
-  assistantEngine: () => SpeechEngine | null = () => assistantTtsFromEnv();
+  assistantEngine: (gender?: 'male' | 'female') => SpeechEngine | null = (gender) => assistantTtsFromEnv(gender);
   governorEngine = (key: string): SpeechEngine => new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
 
   constructor(
@@ -276,10 +277,20 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       conversation_id: `local-${reg.uuid}`,
     });
     const vars = start.dynamic_variables;
+    const probeEngine = this.assistantEngine();
+    const supportsDualGender = probeEngine?.name === 'spitch';
     const persona = isPlateauStateOrg(agentOrg)
-      ? { ...pickPlateauMalePersona(), ...(vars.representative_name ? { name: vars.representative_name } : {}) }
+      ? supportsDualGender
+        ? pickPlateauPersona()
+        : { ...pickPlateauMalePersona(), ...(vars.representative_name ? { name: vars.representative_name } : {}) }
       : resolvePersona(null);
-    vars.representative_name ||= persona.name;
+    // Keep representative_name in sync with the chosen male/female persona so
+    // the Governor's intro, the agent's self-intro, and the voice gender match.
+    if (supportsDualGender && isPlateauStateOrg(agentOrg)) {
+      vars.representative_name = persona.name;
+    } else {
+      vars.representative_name ||= persona.name;
+    }
     vars.organization_name ||= org.name;
     const fill = (t: string) => t.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_m, k) => vars[k] ?? '');
 
@@ -299,9 +310,9 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
         : (start.conversation_config_override?.agent.first_message ?? firstMessageFor(agentOrg, persona))
     );
 
-    const azure = this.assistantEngine();
-    if (!azure) throw new Error('speech is not configured');
-    const assistantVoice = new CachedSpeech(azure, this.cache);
+    const speechEngine = this.assistantEngine(persona.gender);
+    if (!speechEngine) throw new Error('speech is not configured');
+    const assistantVoice = new CachedSpeech(speechEngine, this.cache);
     const governorVoice = await this.governorVoice(reg.organizationId);
 
     const callerNumber = reg.callerNumber;

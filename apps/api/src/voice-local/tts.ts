@@ -230,12 +230,16 @@ export class SpitchTts implements SpeechEngine {
     this.baseUrl = (opts.url || 'https://api.spitch.app').replace(/\/+$/, '');
   }
 
-  static fromEnv(): SpitchTts | null {
+  static fromEnv(gender?: 'male' | 'female'): SpitchTts | null {
     const key = process.env.SPITCH_API_KEY?.trim();
     if (!key) return null;
+    const defaultVoice =
+      gender === 'female'
+        ? process.env.SPITCH_FEMALE_VOICE?.trim() || 'lucy'
+        : process.env.SPITCH_VOICE?.trim() || 'jude';
     return new SpitchTts({
       key,
-      voice: process.env.SPITCH_VOICE?.trim() || undefined,
+      voice: defaultVoice,
       language: process.env.SPITCH_LANGUAGE?.trim() || undefined,
       url: process.env.SPITCH_API_URL?.trim() || undefined,
     });
@@ -271,14 +275,14 @@ export class SpitchTts implements SpeechEngine {
  * Honours `LOCAL_VOICE_TTS_PROVIDER` (`spitch` | `yarngpt` | `azure` | `openai` | `deepgram`) when set;
  * otherwise prefers Spitch (Nigerian English/languages), then YarnGPT, then Azure, then OpenAI, then Deepgram.
  */
-export function assistantTtsFromEnv(): SpeechEngine | null {
+export function assistantTtsFromEnv(gender?: 'male' | 'female'): SpeechEngine | null {
   const preferred = process.env.LOCAL_VOICE_TTS_PROVIDER?.trim().toLowerCase();
-  if (preferred === 'spitch') return SpitchTts.fromEnv();
+  if (preferred === 'spitch') return SpitchTts.fromEnv(gender);
   if (preferred === 'yarngpt') return YarnGptTts.fromEnv();
   if (preferred === 'azure') return AzureTts.fromEnv();
   if (preferred === 'openai') return OpenAiTts.fromEnv();
   if (preferred === 'deepgram') return DeepgramTts.fromEnv();
-  return SpitchTts.fromEnv() ?? YarnGptTts.fromEnv() ?? AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
+  return SpitchTts.fromEnv(gender) ?? YarnGptTts.fromEnv() ?? AzureTts.fromEnv() ?? OpenAiTts.fromEnv() ?? DeepgramTts.fromEnv();
 }
 
 export class ElevenLabsTts implements SpeechEngine {
