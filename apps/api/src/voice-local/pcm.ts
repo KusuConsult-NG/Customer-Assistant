@@ -90,13 +90,24 @@ export function wavToSlin8k(wav: Buffer): Buffer {
   const ratio = sampleRate / SAMPLE_RATE;
   const outFrames = Math.max(1, Math.floor(inFrames / ratio));
   const out = Buffer.alloc(outFrames * 2);
+  // Anti-aliasing low-pass filter before decimation: average all input samples
+  // across a symmetric window of width `ratio` centered on `i * ratio` (e.g.
+  // 3-tap boxcar + triangular weights for 24 kHz -> 8 kHz) so high frequencies
+  // above 4 kHz do not fold back into harsh metallic aliasing noise.
+  const halfWin = Math.max(1, Math.ceil(ratio));
   for (let i = 0; i < outFrames; i++) {
-    const pos = i * ratio;
-    const idx = Math.floor(pos);
-    const frac = pos - idx;
-    const s0 = mono[idx] ?? 0;
-    const s1 = mono[Math.min(idx + 1, inFrames - 1)] ?? s0;
-    const sample = Math.round(s0 + (s1 - s0) * frac);
+    const center = (i + 0.5) * ratio;
+    const start = Math.max(0, Math.floor(center - halfWin));
+    const end = Math.min(inFrames - 1, Math.ceil(center + halfWin));
+    let wSum = 0;
+    let vSum = 0;
+    for (let k = start; k <= end; k++) {
+      const dist = Math.abs(k - center);
+      const w = Math.max(0, 1 - dist / (halfWin + 0.5));
+      wSum += w;
+      vSum += mono[k] * w;
+    }
+    const sample = wSum > 0 ? Math.round(vSum / wSum) : 0;
     out.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), i * 2);
   }
   return out;
