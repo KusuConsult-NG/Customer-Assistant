@@ -55,6 +55,8 @@ class FakeEngine implements SpeechEngine {
 let stt: { events: SttEvents | null; received: number; fail: boolean };
 /** The model's turns, answered from what the conversation holds so far. */
 let modelCalls: ChatMessage[][];
+/** What the session asked the provider to cache, per call. */
+let warmed: ChatMessage[][] = [];
 
 function scriptedModel(messages: ChatMessage[]): LlmEvent[] {
   modelCalls.push(messages.map((m) => ({ ...m })) as ChatMessage[]);
@@ -154,6 +156,7 @@ beforeAll(async () => {
     return { send: () => void stt.received++, close: () => undefined };
   };
   voice.llm = (messages) => asStream(scriptedModel(messages));
+  voice.warmLlm = async (messages) => void warmed.push(messages.map((m) => ({ ...m })) as ChatMessage[]);
   voice.assistantEngine = () => assistant;
   voice.governorEngine = () => governor;
   port = await voice.listen(0);
@@ -343,6 +346,27 @@ describe('voice-local: a whole call over AudioSocket', () => {
       pbx.stop();
     }
   }, 20_000);
+
+  it('sends every call the SAME script up front, with this call\'s values after it, and warms the cache with it', async () => {
+    warmed = [];
+    for (const from of ['+2348031110008', '+2348031110009']) {
+      const reg = await register(from);
+      const pbx = asterisk(reg.text.split(' ')[1]);
+      try {
+        await until(() => warmed.length >= (from.endsWith('8') ? 1 : 2));
+      } finally {
+        pbx.hangUp();
+        pbx.stop();
+      }
+    }
+    const [a, b] = warmed.map((m) => String(m[0].content));
+    const head = (p: string) => p.slice(0, p.indexOf('## This call'));
+    expect(head(a).length).toBeGreaterThan(10_000);
+    expect(head(a)).toBe(head(b)); // byte-identical across calls: cacheable
+    expect(head(a)).toContain('{{representative_name}}'); // unfilled
+    expect(a).toMatch(/- \{\{representative_name\}\} = "\w+"/); // the value, after it
+    expect(a).toMatch(/Never say you have updated, saved/);
+  }, 30_000);
 
   it('a caller who hangs up is not handed to the backup agent', async () => {
     const reg = await register('+2348031110005');

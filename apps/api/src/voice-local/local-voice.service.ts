@@ -27,7 +27,7 @@ import { organizationForDialledNumber } from '../common/dialled-number';
 import { CALL_RECORDING_BUCKET, storageDriver, uploadObject } from '../common/object-storage';
 import { FRAME_BYTES, FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
 import { mulawBufferToSlin, warmResampler } from './pcm';
-import { streamChat } from './llm';
+import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
 import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
@@ -100,6 +100,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   /** Replaceable in tests: the provider each part talks to. */
   stt: SttFactory = deepgramStt;
   llm = streamChat;
+  warmLlm: ((m: any[], t: any[]) => Promise<void>) | undefined = (m, t) => warmPromptCache(m, t);
   assistantEngine: (gender?: 'male' | 'female') => SpeechEngine | null = (gender) => assistantTtsFromEnv(gender);
   governorEngine = (key: string): SpeechEngine => new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
 
@@ -317,11 +318,21 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     const fill = (t: string) => t.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_m, k) => vars[k] ?? '');
 
     const now = new Date();
+    // The script is sent UNFILLED — identical for every call of the agency —
+    // and this call's values follow it. Filled in place, it differed from the
+    // 9th character on, so the model re-read all ~12,000 tokens (script and
+    // tools) from scratch on every call's first reply: 3.2 s before its first
+    // word. With a shared beginning, the provider's prompt cache serves it.
+    const template = agentPromptFor(agentOrg, persona);
+    const used = [...new Set([...template.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]))];
     const systemPrompt =
-      fill(agentPromptFor(agentOrg, persona)) +
-      `\n\n## This call\n\nIt is now ${now.toLocaleString('en-GB', { timeZone: org.timezone || 'Africa/Lagos', dateStyle: 'full', timeStyle: 'short' })} at the agency.` +
+      template +
+      `\n\n## This call\n\nThe {{placeholders}} above stand for these values on this call. Always say the value; never say a placeholder or its braces aloud.\n` +
+      used.map((k) => `- {{${k}}} = ${vars[k] ? JSON.stringify(vars[k]) : '(none)'}`).join('\n') +
+      `\n\nIt is now ${now.toLocaleString('en-GB', { timeZone: org.timezone || 'Africa/Lagos', dateStyle: 'full', timeStyle: 'short' })} at the agency.` +
       ` Caller status: ${vars.sip_callerstatus || 'unknown'}.` +
-      `\nYou are speaking on a telephone line. Speak in short spoken sentences; never use lists, headings or symbols.`;
+      `\nYou are speaking on a telephone line. Speak in short spoken sentences; never use lists, headings or symbols.` +
+      `\nNever say you have updated, saved, registered or noted something in the records unless you call the tool that does it in that same reply. When the script says to save everything once at the end, acknowledge the detail ("Thank you, Rantya.") and ask the next question; do not say you are updating anything.`;
     // Keep the agency's stored opening (which includes the `<governor>` intro
     // and `{{sip_welcome}}` for returning callers) whenever it has a Governor
     // segment, so returning callers still hear the Governor's welcome too.
@@ -354,6 +365,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
         assistantVoice,
         governorVoice,
         llm: (m, t, s) => this.llm(m, t, s),
+        warm: this.warmLlm,
         tools: localToolDefinitions(),
         runTool: (name, args) => runLocalTool(this.tools, name, args, { organizationId: reg.organizationId, callerNumber, conversationId }),
         log: (event, detail) => this.log.log(`${event} uuid=${reg.uuid} ${detail ? JSON.stringify(detail) : ''}`),
