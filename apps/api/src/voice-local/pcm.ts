@@ -93,6 +93,11 @@ function kernelFor(rate: number): Kernel {
   return k;
 }
 
+/** Build the filters for the rates the engines use, at start-up rather than inside a live call. */
+export function warmResampler(rates: number[] = [16000, 22050, 24000, 44100, 48000]): void {
+  for (const r of rates) kernelFor(r);
+}
+
 function tap(k: Kernel, d: number): number {
   const pos = Math.abs(d) * TABLE_STEPS;
   const j = Math.floor(pos);

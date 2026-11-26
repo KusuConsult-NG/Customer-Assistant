@@ -63,6 +63,14 @@ export const SILENCE_NUDGE_MS = 12_000;
 export const SILENCE_HANGUP_MS = 180_000;
 /** A tool slower than this gets a spoken "one moment" so the line is not dead. */
 const TOOL_FILLER_MS = 1_200;
+/**
+ * No reply audio this long after the caller finished: say a short
+ * acknowledgement that is already on disk. Spitch takes 2-6 s per new
+ * sentence on the live line, and silence that long reads as a dropped call.
+ */
+export const ACK_AFTER_MS = 900;
+export const ACKS = ['Alright.', 'Okay.'];
+export const HOLDING_LINE = 'One moment, please.';
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
@@ -94,6 +102,11 @@ export class VoiceSession {
   private callerIndex = -1;
   private speechChain: Promise<void> = Promise.resolve();
   private spokenThisTurn = '';
+  private turnStartedAt = 0;
+  private turnFirstText = 0;
+  private turnFirstAudio = 0;
+  private ackTimer: NodeJS.Timeout | null = null;
+  private ackIndex = 0;
   private finishing: Promise<void> | null = null;
   private resolveDone!: () => void;
   readonly done = new Promise<void>((r) => (this.resolveDone = r));
@@ -141,6 +154,12 @@ export class VoiceSession {
     const said = plain(this.setup.opening);
     this.messages.push({ role: 'assistant', content: said });
     this.transcript.push({ role: 'agent', message: said, atSecs: 0 });
+    // The acknowledgements and holding line are only useful if they are
+    // instant, so they are put on disk now (once per voice, ever) and only
+    // ever PLAYED from disk.
+    for (const t of [...ACKS, HOLDING_LINE]) {
+      if (!this.deps.assistantVoice.peek(t)) void this.deps.assistantVoice.speak(t, { alwaysCache: true }).catch(() => undefined);
+    }
   }
 
   /** One AudioSocket audio frame from the caller. */
@@ -195,7 +214,26 @@ export class VoiceSession {
       return;
     }
     this.messages.push({ role: 'user', content: said });
+    this.beginTurnClock();
     void this.respond();
+  }
+
+  /** The caller has finished: time the reply, and acknowledge if it is slow. */
+  private beginTurnClock(): void {
+    this.turnStartedAt = this.now();
+    this.turnFirstText = 0;
+    this.turnFirstAudio = 0;
+    if (this.ackTimer) clearTimeout(this.ackTimer);
+    this.ackTimer = setTimeout(() => {
+      this.ackTimer = null;
+      if (this.turnFirstAudio || this.outcome || this.playQueue.length) return;
+      const text = ACKS[this.ackIndex++ % ACKS.length];
+      const clip = this.deps.assistantVoice.peek(text);
+      if (!clip) return;
+      this.enqueue(forPlayback(clip));
+      this.deps.log('voice_local_ack', { text, ms: this.now() - this.turnStartedAt });
+    }, ACK_AFTER_MS);
+    this.ackTimer.unref?.();
   }
 
   private interrupt(): void {
@@ -236,13 +274,14 @@ export class VoiceSession {
     this.turnAbort = abort;
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS && !abort.signal.aborted; round++) {
-        const splitter = new SentenceSplitter();
+        const splitter = new SentenceSplitter({ firstAtComma: !this.turnFirstAudio });
         let text = '';
         let calls: ToolCall[] = [];
         this.spokenThisTurn = '';
         for await (const ev of this.deps.llm(this.messages, this.deps.tools, abort.signal)) {
           if (abort.signal.aborted) break;
           if (ev.type === 'text') {
+            if (!this.turnFirstText && this.turnStartedAt) this.turnFirstText = this.now();
             text += ev.delta;
             for (const s of splitter.push(ev.delta)) this.say(s, abort.signal);
           } else {
@@ -284,6 +323,7 @@ export class VoiceSession {
       } else if (this.pendingTurn && !this.outcome) {
         this.pendingTurn = false;
         for (const said of this.queuedUser.splice(0)) this.messages.push({ role: 'user', content: said });
+        this.beginTurnClock();
         void this.respond();
       }
     }
@@ -308,7 +348,9 @@ export class VoiceSession {
       }
       // A slow lookup gets a short spoken holding line, once per tool call.
       const filler = setTimeout(() => {
-        if (!signal.aborted && this.playQueue.length === 0) this.say('One moment, please.', signal);
+        // From disk only: synthesised live it arrived after the lookup.
+        const clip = this.deps.assistantVoice.peek(HOLDING_LINE);
+        if (!signal.aborted && this.playQueue.length === 0 && clip) this.enqueue(forPlayback(clip));
       }, TOOL_FILLER_MS);
       const started = this.now();
       let result: unknown;
@@ -334,6 +376,16 @@ export class VoiceSession {
       const r = await synth;
       if (!r || signal.aborted || this.outcome) return;
       this.spokenThisTurn += (this.spokenThisTurn ? ' ' : '') + text;
+      if (this.turnStartedAt && !this.turnFirstAudio) {
+        this.turnFirstAudio = this.now();
+        // Where the wait went: model to first words, then speech synthesis.
+        this.deps.log('voice_local_turn', {
+          model_ms: this.turnFirstText ? this.turnFirstText - this.turnStartedAt : null,
+          first_audio_ms: this.turnFirstAudio - this.turnStartedAt,
+          chars: text.length,
+          cached: r.cached,
+        });
+      }
       this.enqueue(forPlayback(r.audio));
     });
   }
@@ -466,6 +518,7 @@ export class VoiceSession {
     this.outcome = outcome;
     this.finishing = (async () => {
       this.turnAbort?.abort();
+      if (this.ackTimer) clearTimeout(this.ackTimer);
       if (this.pump) clearTimeout(this.pump);
       if (this.watchdog) clearInterval(this.watchdog);
       this.playQueue = [];

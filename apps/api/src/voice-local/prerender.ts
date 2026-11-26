@@ -89,6 +89,7 @@ export async function prerender(
       failed.push(`${line} — ${err?.message ?? err}`);
     }
   }
+  await cache.flush();
   return { present, rendered, failed };
 }
 
@@ -125,6 +126,7 @@ async function main() {
   console.log(`Governor engine: ${engine.name}${spitchGovVoice && spitchKey ? ` (voice ${spitchGovVoice})` : ''}`);
   const speech = new CachedSpeech(engine as any, cache);
   const r = await prerender(lines, speech, cache, apply);
+  await cache.flush(); // the clips are written in the background; the process exits below
   console.log(
     `\n${lines.length} Governor lines for ${org.name}: ${r.present} already on disk` +
       (apply ? `, ${r.rendered} rendered now, ${r.failed.length} failed.` : `, ${lines.length - r.present} missing. Nothing was rendered; add --apply.`),

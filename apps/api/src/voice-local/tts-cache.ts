@@ -19,6 +19,9 @@ import * as path from 'path';
  */
 export class TtsCache {
   private writesSinceSweep = 0;
+  private readonly pending = new Set<Promise<void>>();
+  /** Clips whose background write has not landed yet: readable at once all the same. */
+  private readonly landing = new Map<string, Buffer>();
 
   constructor(
     private readonly dir: string,
@@ -34,6 +37,8 @@ export class TtsCache {
   }
 
   get(key: string): Buffer | null {
+    const inFlight = this.landing.get(key);
+    if (inFlight) return inFlight;
     const file = this.fileFor(key);
     try {
       const bytes = fs.readFileSync(file);
@@ -46,21 +51,36 @@ export class TtsCache {
     }
   }
 
+  /**
+   * Written in the background: a clip is put on disk while the call that
+   * synthesised it is playing it, and a synchronous write blocked the same
+   * event loop that keeps the 20 ms playback clock. `get` finds nothing until
+   * the rename lands, which costs at most one more synthesis.
+   */
   put(key: string, audio: Buffer): void {
     if (!audio.length) return;
     const file = this.fileFor(key);
-    try {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-      fs.writeFileSync(tmp, audio);
-      fs.renameSync(tmp, file);
-    } catch {
-      return; // a full or read-only disk costs speed, never the call
-    }
+    const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+    this.landing.set(key, audio);
+    const write: Promise<void> = fs.promises
+      .mkdir(path.dirname(file), { recursive: true })
+      .then(() => fs.promises.writeFile(tmp, audio))
+      .then(() => fs.promises.rename(tmp, file))
+      .catch(() => fs.promises.unlink(tmp).catch(() => undefined)) // a full or read-only disk costs speed, never the call
+      .finally(() => {
+        this.pending.delete(write);
+        if (this.landing.get(key) === audio) this.landing.delete(key);
+      });
+    this.pending.add(write);
     if (++this.writesSinceSweep >= 200) {
       this.writesSinceSweep = 0;
-      this.sweep();
+      setImmediate(() => this.sweep());
     }
+  }
+
+  /** Resolves when every write started so far has landed (the prerender script, before it exits; tests). */
+  async flush(): Promise<void> {
+    while (this.pending.size) await Promise.all([...this.pending]);
   }
 
   /** Evict least-recently-used clips until under the limit. Returns bytes freed. */

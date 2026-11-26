@@ -101,9 +101,25 @@ export async function* streamChat(
  */
 export class SentenceSplitter {
   private buf = '';
+  /**
+   * With `firstAtComma`, the FIRST piece may end at a comma once it holds a
+   * few words ("Yes, the Jos Carnival opens on…" → "Yes, the Jos Carnival
+   * opens on the twentieth," then the rest). Speech synthesis takes longer
+   * the longer the text, and the first piece is what the caller waits for.
+   */
+  constructor(private readonly opts: { firstAtComma?: boolean } = {}) {}
+  private emitted = 0;
   push(delta: string): string[] {
     this.buf += delta;
     const out: string[] = [];
+    if (this.opts.firstAtComma && this.emitted === 0) {
+      const c = this.buf.match(/^([^.!?]{24,}?,)(\s+)([\s\S]*)$/);
+      if (c && c[1].trim().split(/\s+/).length >= 4) {
+        out.push(c[1].trim());
+        this.buf = c[3];
+        this.emitted++;
+      }
+    }
     for (;;) {
       const m = this.buf.match(/^([\s\S]*?[.!?])(\s+)([\s\S]*)$/);
       if (!m || m[1].trim().length < 12) {
@@ -117,6 +133,7 @@ export class SentenceSplitter {
       out.push(m[1].trim());
       this.buf = m[3];
     }
+    this.emitted += out.length;
     return out;
   }
   flush(): string | null {
