@@ -184,6 +184,11 @@ export class VoiceSession {
     }
   }
 
+  /** Still answering, or still playing: the conversation check waits for this before the next caller line. */
+  get busy(): boolean {
+    return this.responding || this.pendingTurn || this.continuing || this.playQueue.length > 0;
+  }
+
   /** One AudioSocket audio frame from the caller. */
   onCallerAudio(frame: Buffer): void {
     if (this.outcome) return;
@@ -361,24 +366,37 @@ export class VoiceSession {
     this.responding = true;
     const abort = new AbortController();
     this.turnAbort = abort;
+    // Whether a write tool has succeeded in this reply: the only thing that
+    // makes "I've updated your details" true. Claims made before it are held.
+    let wrote = false;
+    let corrected = false;
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS && !abort.signal.aborted; round++) {
         const splitter = new SentenceSplitter({ firstAtComma: !this.turnFirstAudio });
         let text = '';
         let calls: ToolCall[] = [];
+        const held: string[] = [];
+        const spokenParts: string[] = [];
+        const emit = (sentence: string) => {
+          if (!wrote && isSaveClaim(sentence)) held.push(sentence);
+          else {
+            spokenParts.push(sentence);
+            this.say(sentence, abort.signal);
+          }
+        };
         this.spokenThisTurn = '';
         for await (const ev of this.deps.llm(this.messages, this.deps.tools, abort.signal)) {
           if (abort.signal.aborted) break;
           if (ev.type === 'text') {
             if (!this.turnFirstText && this.turnStartedAt) this.turnFirstText = this.now();
             text += ev.delta;
-            for (const s of splitter.push(ev.delta)) this.say(s, abort.signal);
+            for (const s of splitter.push(ev.delta)) emit(s);
           } else {
             calls = ev.calls;
           }
         }
         const rest = splitter.flush();
-        if (rest && !abort.signal.aborted) this.say(rest, abort.signal);
+        if (rest && !abort.signal.aborted) emit(rest);
 
         if (abort.signal.aborted) {
           // Keep what was actually said — for the model, so it knows where it
@@ -389,18 +407,44 @@ export class VoiceSession {
           }
           return;
         }
-        this.messages.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
-        if (text.trim() || calls.length) {
+        // The history and the record hold what the caller was actually told:
+        // a held claim is not in either unless it is spoken below.
+        const told = () => [...spokenParts].join(' ').trim();
+        this.messages.push({ role: 'assistant', content: told() || null, ...(calls.length ? { tool_calls: calls } : {}) });
+        const record = this.transcript.length;
+        if (told() || calls.length) {
           this.transcript.push({
             role: 'agent',
-            message: text.trim(),
+            message: told(),
             atSecs: this.secs(),
             ...(calls.length ? { toolCalls: calls.map((c) => ({ name: c.function.name, arguments: c.function.arguments })) } : {}),
           });
         }
-        if (!calls.length) break;
 
-        await this.runTools(calls, abort.signal);
+        if (calls.length) {
+          if (await this.runTools(calls, abort.signal)) wrote = true;
+        }
+        if (held.length) {
+          if (wrote && !abort.signal.aborted) {
+            // Now true: say it, after the write that makes it so.
+            for (const h of held) {
+              spokenParts.push(h);
+              this.say(h, abort.signal);
+            }
+            const lastAssistant = [...this.messages].reverse().find((m) => m.role === 'assistant') as { content: string | null } | undefined;
+            if (lastAssistant) lastAssistant.content = told();
+            if (this.transcript[record]) this.transcript[record].message = told();
+          } else {
+            this.deps.log('voice_local_unbacked_claim', { held: held.join(' ').slice(0, 300) });
+            if (!corrected && !calls.length && !abort.signal.aborted) {
+              // Once per reply: tell the model, and let it do what it claimed or ask.
+              corrected = true;
+              this.messages.push({ role: 'user', content: UNBACKED_CLAIM_NOTE });
+              continue;
+            }
+          }
+        }
+        if (!calls.length) break;
         if (this.hangupRequested) break;
       }
       await this.speechChain;
@@ -422,7 +466,9 @@ export class VoiceSession {
     }
   }
 
-  private async runTools(calls: ToolCall[], signal: AbortSignal): Promise<void> {
+  /** Run the model's tool calls. Returns true when a WRITE tool succeeded. */
+  private async runTools(calls: ToolCall[], signal: AbortSignal): Promise<boolean> {
+    let wrote = false;
     // Every call the model made gets an answer, even after a barge-in: a
     // history with an unanswered tool call is refused by the model API, and a
     // write it already decided on (a confirmed report) should still happen.
@@ -452,9 +498,12 @@ export class VoiceSession {
       } finally {
         clearTimeout(filler);
       }
-      this.deps.log('voice_local_tool', { tool: call.function.name, ms: this.now() - started, ok: (result as any)?.ok !== false });
+      const ok = (result as any)?.ok !== false;
+      if (ok && WRITE_TOOLS.has(call.function.name)) wrote = true;
+      this.deps.log('voice_local_tool', { tool: call.function.name, ms: this.now() - started, ok });
       this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result ?? {}).slice(0, 12_000) });
     }
+    return wrote;
   }
 
   /** Queue a sentence: synthesised in order, played as soon as it is ready. */
@@ -634,6 +683,38 @@ export class VoiceSession {
     return this.finishing;
   }
 }
+
+/** Tools that change a record. A claim that something was saved is true only after one of these succeeded. */
+export const WRITE_TOOLS = new Set([
+  'update-caller-profile',
+  'book-appointment',
+  'reschedule-booking',
+  'cancel-booking',
+  'create-ticket',
+  'request-callback',
+  'register-enrollee',
+]);
+
+/**
+ * A sentence telling the caller something has been (or is being) saved,
+ * updated or registered. The real model was caught saying "Let me update that
+ * information for you. Hold on a moment while I save that. I've updated your
+ * location." with no tool called at all — on the live line and in the
+ * conversation check. Such a sentence is spoken only after a write tool
+ * succeeded in the same reply.
+ */
+const SAVE_CLAIM =
+  /\b(?:i(?:'ve| have)?\s+(?:now\s+|just\s+|also\s+)?(?:updated|saved|noted|recorded|registered|logged|changed)|let me (?:update|save|note|record|register|log|change)|i(?:'ll| will) (?:update|save|record|register|log)|(?:updating|saving|recording|registering) (?:that|this|it|your|the)|while i (?:update|save|record|register)|(?:has|have) been (?:successfully )?(?:updated|saved|recorded|registered|logged|changed))\b/i;
+
+export function isSaveClaim(sentence: string): boolean {
+  return SAVE_CLAIM.test(sentence);
+}
+
+/** Told to the model when it claimed a save it did not make (never heard by the caller). */
+export const UNBACKED_CLAIM_NOTE =
+  '[Note from the system, not the caller: your last reply said something was saved or updated, but no tool saved it. ' +
+  'Nothing was saved, and the caller did not hear that sentence. If the caller has confirmed the details, call the tool ' +
+  'that saves them now (update-caller-profile for their profile) and then tell them; if they have not confirmed, ask them to.]';
 
 /**
  * What may be SPOKEN of a model's sentence. The model sometimes writes stage

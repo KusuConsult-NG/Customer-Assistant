@@ -6,8 +6,10 @@
  *
  * Read-only: tools are stand-ins that record what the model asked for and
  * answer like the real ones; nothing is written to the database and no call
- * is placed. The prompt and opening come from call-setup.ts, the same module a
- * live call uses, so what passes here is what a caller gets.
+ * is placed. Each scenario is driven through the REAL VoiceSession — the same
+ * turn-taking, the same hold on unbacked "I've saved it" claims, the same
+ * speech filter — with the prompt and opening from call-setup.ts, the module a
+ * live call uses. What is checked is what a caller would HEAR.
  *
  * Each scenario is a call reported from the live line:
  *   - a returning caller corrects their location: it must be SAVED as soon as
@@ -18,12 +20,15 @@
  */
 import { TEAM_PERSONAS, type AgentOrganization, type TeamPersona } from '../agent-tools/agent-tool-catalog';
 import { callOpening, callSystemPrompt, type CallVariables } from './call-setup';
-import { streamChat, type ChatMessage, type ToolCall } from './llm';
+import { streamChat } from './llm';
+import type { SttEvents } from './stt';
+import { CachedSpeech, type SpeechEngine } from './tts';
 import { localToolDefinitions } from './voice-tools';
-import { plain } from './voice-session';
+import { ACKS, HOLDING_LINE, VoiceSession, WRITE_TOOLS } from './voice-session';
 
 export interface Turn {
   caller: string;
+  /** What the caller would hear, sentence by sentence. */
   replies: string[];
   calls: Array<{ name: string; args: Record<string, any> }>;
 }
@@ -42,13 +47,13 @@ const saved = (turns: Turn[], upTo: number, field: string, re: RegExp) =>
 const asks = (text: string, re: RegExp) => /\?/.test(text) && re.test(text);
 const claimsSave = /\b(updated|saved|noted (it|that|your)|registered your|recorded your)\b/i;
 
-/** Problems common to every scenario. */
+/** Problems common to every scenario, in what the caller would hear. */
 function commonProblems(turns: Turn[]): string[] {
   const out: string[] = [];
   turns.forEach((t, i) => {
     const text = t.replies.join(' ');
-    const savedNow = t.calls.some((c) => c.name === 'update-caller-profile');
-    if (claimsSave.test(text) && !savedNow && !t.calls.length) out.push(`turn ${i + 1}: says it saved/updated something but called no tool: "${text}"`);
+    const wrote = t.calls.some((c) => WRITE_TOOLS.has(c.name));
+    if (claimsSave.test(text) && !wrote) out.push(`turn ${i + 1}: the caller hears that something was saved, but nothing was: "${text}"`);
     if (/\[[^\]]+\]|\{\{/.test(text)) out.push(`turn ${i + 1}: stage direction or placeholder in speech: "${text}"`);
   });
   return out;
@@ -120,55 +125,81 @@ export function scenarios(org: { name: string }): Scenario[] {
   ];
 }
 
-/** One scripted call against the real model. */
+/** What the stand-in tools answer: shaped like the real ones, writing nothing. */
+function standIn(sc: Scenario, name: string, args: Record<string, any>): unknown {
+  if (name === 'lookup-customer') return sc.lookup;
+  if (name === 'update-caller-profile') return { ok: true, data: { saved: true, fields: Object.keys(args) } };
+  return { ok: true, data: {} };
+}
+
+/** Until the session has been quiet (not answering, nothing queued) for `settleMs`. */
+async function settle(session: VoiceSession, settleMs: number, maxMs = 90_000): Promise<void> {
+  const end = Date.now() + maxMs;
+  let quietSince = 0;
+  while (Date.now() < end) {
+    if (session.busy || session.outcome) quietSince = 0;
+    else if (!quietSince) quietSince = Date.now();
+    else if (Date.now() - quietSince >= settleMs) return;
+    if (session.outcome) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
+/** One scripted call, through the real VoiceSession, against `llm` (the real model by default). */
 export async function runScenario(
   org: AgentOrganization & { timezone?: string | null },
   persona: TeamPersona,
   sc: Scenario,
   llm: typeof streamChat = streamChat,
+  opts: { settleMs?: number } = {},
 ): Promise<Turn[]> {
   const now = new Date();
-  const tools = localToolDefinitions();
-  const messages: ChatMessage[] = [
-    { role: 'system', content: callSystemPrompt(org, persona, sc.vars, now) },
-    { role: 'assistant', content: plain(callOpening(org, persona, sc.vars, now)) },
-  ];
+  const heard: string[] = [];
+  const calls: Turn['calls'] = [];
+  // Speech is "synthesised" as a 20 ms frame, and recorded as heard.
+  const engine: SpeechEngine = {
+    name: 'conversation-check',
+    synthesize: async (text: string) => {
+      heard.push(text);
+      return Buffer.alloc(320);
+    },
+  };
+  let events: SttEvents | null = null;
+  const session = new VoiceSession(
+    {
+      sendAudio: () => undefined,
+      close: () => undefined,
+      stt: async (ev) => {
+        events = ev;
+        return { send: () => undefined, close: () => undefined };
+      },
+      assistantVoice: new CachedSpeech(engine as any, null),
+      governorVoice: null,
+      llm: (m, t, s) => llm(m, t, s),
+      tools: localToolDefinitions(),
+      runTool: async (name, args) => {
+        calls.push({ name, args });
+        return standIn(sc, name, args);
+      },
+      log: () => undefined,
+    },
+    { systemPrompt: callSystemPrompt(org, persona, sc.vars, now), opening: callOpening(org, persona, sc.vars, now), personal: [] },
+  );
+  const settleMs = opts.settleMs ?? 600;
+  await session.start();
+  await settle(session, settleMs);
+  const notReplies = new Set([...ACKS, HOLDING_LINE]);
   const turns: Turn[] = [];
   for (const line of sc.lines) {
-    const turn: Turn = { caller: line, replies: [], calls: [] };
-    messages.push({ role: 'user', content: line });
-    for (let round = 0; round < 6; round++) {
-      let text = '';
-      let calls: ToolCall[] = [];
-      for await (const ev of llm(messages, tools, AbortSignal.timeout(30_000))) {
-        if (ev.type === 'text') text += ev.delta;
-        else calls = ev.calls;
-      }
-      if (text.trim()) turn.replies.push(text.trim());
-      messages.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
-      if (!calls.length) break;
-      for (const c of calls) {
-        let args: Record<string, any> = {};
-        try {
-          args = JSON.parse(c.function.arguments || '{}');
-        } catch {
-          /* recorded as empty */
-        }
-        turn.calls.push({ name: c.function.name, args });
-        const result =
-          c.function.name === 'lookup-customer'
-            ? sc.lookup
-            : c.function.name === 'update-caller-profile'
-              ? { ok: true, data: { saved: true, fields: Object.keys(args) } }
-              : c.function.name === 'end_call'
-                ? { ok: true, message: 'The call will end now.' }
-                : { ok: true, data: {} };
-        messages.push({ role: 'tool', tool_call_id: c.id, content: JSON.stringify(result) });
-      }
-      if (calls.some((c) => c.function.name === 'end_call')) break;
-    }
-    turns.push(turn);
+    if (session.outcome) break;
+    const h0 = heard.length;
+    const c0 = calls.length;
+    events!.onFinal(line, true);
+    await new Promise((r) => setTimeout(r, 50));
+    await settle(session, settleMs);
+    turns.push({ caller: line, replies: heard.slice(h0).filter((t) => !notReplies.has(t)), calls: calls.slice(c0) });
   }
+  await session.finish('completed');
   return turns;
 }
 

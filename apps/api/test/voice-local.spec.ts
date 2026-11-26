@@ -432,7 +432,7 @@ describe('voice-local: a whole call over AudioSocket', () => {
       seen.push(messages.map((m) => ({ ...m })) as ChatMessage[]);
       return (async function* () {
         await new Promise((r) => setTimeout(r, 600)); // the model takes a moment
-        yield { type: 'text', delta: 'Thank you. I have noted that.' } as LlmEvent;
+        yield { type: 'text', delta: 'Thank you. Which ward is that in?' } as LlmEvent;
       })();
     };
     try {
@@ -454,7 +454,7 @@ describe('voice-local: a whole call over AudioSocket', () => {
         expect(users).toEqual(["I'm calling you from Rantya, Kabong ward."]);
         // Exactly one reply was spoken, for the whole answer (the acknowledgements put on disk are not replies).
         const replies = assistant.said.slice(before).filter((t) => ![...ACKS, HOLDING_LINE].includes(t));
-        expect(replies).toEqual(['Thank you. I have noted that.']);
+        expect(replies).toEqual(['Thank you. Which ward is that in?']);
         // And the model was asked once for the first half (dropped) and once for the whole: never answered twice.
         expect(seen.length).toBeLessThanOrEqual(2);
       } finally {
