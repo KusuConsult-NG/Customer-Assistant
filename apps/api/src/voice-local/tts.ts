@@ -16,7 +16,28 @@ import { TtsCache } from './tts-cache';
  */
 export interface SpeechEngine {
   readonly name: string;
+  /**
+   * Version of OUR processing of this engine's audio (resampling). Part of the
+   * cache key, so a clip rendered through an older resampler is not replayed
+   * from disk for ever after the resampler is fixed. Unset for engines that
+   * deliver 8 kHz themselves, whose cached clips stay valid.
+   */
+  readonly dsp?: string;
   synthesize(text: string, signal?: AbortSignal): Promise<Buffer>;
+}
+
+/** Bumped whenever resampling changes what a resampled engine's clip sounds like. */
+export const RESAMPLER_VERSION = 'kaiser-3400-v2';
+
+/**
+ * The turn's abort signal AND a deadline. A live call passes its own signal
+ * (barge-in cancels synthesis); on its own that signal has no deadline, so a
+ * provider that accepts the request and never answers left the caller in
+ * silence for the rest of the call instead of failing over.
+ */
+export function deadline(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 const xml = (s: string) =>
@@ -69,7 +90,7 @@ export class AzureTts implements SpeechEngine {
         'User-Agent': 'citizen-contact-centre',
       },
       body: this.ssml(text),
-      signal: signal ?? AbortSignal.timeout(10_000),
+      signal: deadline(signal, 10_000),
     });
     if (!res.ok) throw new Error(`Azure TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
     const audio = Buffer.from(await res.arrayBuffer());
@@ -80,6 +101,7 @@ export class AzureTts implements SpeechEngine {
 
 export class OpenAiTts implements SpeechEngine {
   readonly name = 'openai';
+  readonly dsp = RESAMPLER_VERSION;
   readonly voice: string;
   readonly model: string;
   readonly rate: string;
@@ -122,7 +144,7 @@ export class OpenAiTts implements SpeechEngine {
         speed: Number(this.rate),
         ...(this.model.includes('gpt-4o-mini-tts') ? { instructions: this.instructions } : {}),
       }),
-      signal: signal ?? AbortSignal.timeout(15_000),
+      signal: deadline(signal, 15_000),
     });
     if (!res.ok) throw new Error(`OpenAI TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
     const pcm24k = Buffer.from(await res.arrayBuffer());
@@ -157,7 +179,7 @@ export class DeepgramTts implements SpeechEngine {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ text: clean }),
-      signal: signal ?? AbortSignal.timeout(10_000),
+      signal: deadline(signal, 10_000),
     });
     if (!res.ok) throw new Error(`Deepgram TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
     const audio = Buffer.from(await res.arrayBuffer());
@@ -168,6 +190,7 @@ export class DeepgramTts implements SpeechEngine {
 
 export class YarnGptTts implements SpeechEngine {
   readonly name = 'yarngpt';
+  readonly dsp = RESAMPLER_VERSION;
   readonly voice: string;
   readonly rate = '1.0';
   private readonly baseUrl: string;
@@ -188,7 +211,7 @@ export class YarnGptTts implements SpeechEngine {
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
     const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
-    const timeout = signal ?? AbortSignal.timeout(30_000);
+    const timeout = deadline(signal, 30_000);
     const prep = await fetch(`${this.baseUrl}/api/v1/tts/prepare`, {
       method: 'POST',
       headers: {
@@ -230,6 +253,9 @@ function spitchMaxConcurrency(): number {
 
 async function withSpitchSlot<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   if (spitchInFlight >= spitchMaxConcurrency()) {
+    // Wait for a slot to be HANDED over: the releasing request passes its slot
+    // to the first waiter without giving it back, so a newcomer arriving in
+    // between cannot take it too and make it three in flight (Tier 1's cap).
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
         const idx = spitchQueue.indexOf(wake);
@@ -244,19 +270,26 @@ async function withSpitchSlot<T>(fn: () => Promise<T>, signal?: AbortSignal): Pr
       signal?.addEventListener('abort', onAbort, { once: true });
       spitchQueue.push(wake);
     });
+  } else {
+    spitchInFlight++;
   }
-  spitchInFlight++;
   try {
     return await fn();
   } finally {
-    spitchInFlight--;
     const next = spitchQueue.shift();
     if (next) next();
+    else spitchInFlight--;
   }
+}
+
+/** For tests: how many Spitch requests hold a slot right now. */
+export function spitchSlotsInUse(): number {
+  return spitchInFlight;
 }
 
 export class SpitchTts implements SpeechEngine {
   readonly name = 'spitch';
+  readonly dsp = RESAMPLER_VERSION;
   readonly voice: string;
   readonly language: string;
   readonly rate = '1.0';
@@ -299,11 +332,13 @@ export class SpitchTts implements SpeechEngine {
             voice: this.voice,
             format: 'wav',
           }),
-          signal: signal ?? AbortSignal.timeout(15_000),
+          signal: deadline(signal, 15_000),
         });
         if (res.status === 429 && tries < 2) {
           lastErr = (await res.text().catch(() => '')).slice(0, 200);
-          await new Promise((r) => setTimeout(r, 350 * (tries + 1)));
+          const after = Number(res.headers.get('retry-after'));
+          const waitMs = Number.isFinite(after) && after > 0 ? Math.min(2_000, after * 1000) : 350 * (tries + 1);
+          await new Promise((r) => setTimeout(r, waitMs));
           continue;
         }
         if (!res.ok) {
@@ -359,7 +394,7 @@ export class ElevenLabsTts implements SpeechEngine {
             speed: this.settings.speed,
           },
         }),
-        signal: signal ?? AbortSignal.timeout(15_000),
+        signal: deadline(signal, 15_000),
       },
     );
     if (!res.ok) throw new Error(`ElevenLabs TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
@@ -393,7 +428,15 @@ export class CachedSpeech {
 
   key(text: string): string {
     return TtsCache.keyOf(
-      { engine: this.engine.name, voice: this.engine.voice ?? this.engine.voiceId ?? '', rate: this.engine.rate ?? '', format: 'slin8k' },
+      {
+        engine: this.engine.name,
+        voice: this.engine.voice ?? this.engine.voiceId ?? '',
+        rate: this.engine.rate ?? '',
+        format: 'slin8k',
+        // Only for resampled engines, so the Governor's ElevenLabs clips (8 kHz
+        // µ-law, never resampled) keep their keys and stay playable without a key.
+        ...(this.engine.dsp ? { dsp: this.engine.dsp } : {}),
+      },
       text,
     );
   }

@@ -8,8 +8,10 @@ import {
   agentPromptFor,
   firstMessageFor,
   isPlateauStateOrg,
+  openingForUnknownCaller,
   pickPlateauMalePersona,
   pickPlateauPersona,
+  renderWelcome,
   resolvePersona,
   type AgentOrganization,
 } from '../agent-tools/agent-tool-catalog';
@@ -115,7 +117,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     const missing: string[] = [];
     if (!process.env.LOCAL_VOICE_SECRET?.trim()) missing.push('LOCAL_VOICE_SECRET');
     if (!process.env.DEEPGRAM_API_KEY?.trim()) missing.push('DEEPGRAM_API_KEY');
-    if (!this.assistantEngine()) missing.push('AZURE_SPEECH_KEY / OPENAI_API_KEY / DEEPGRAM_API_KEY');
+    if (!this.assistantEngine()) missing.push('SPITCH_API_KEY / YARNGPT_API_KEY / AZURE_SPEECH_KEY / OPENAI_API_KEY / DEEPGRAM_API_KEY');
     if (!llmConfig().apiKey) missing.push('OPENAI_API_KEY');
     const enabled = LocalVoiceService.enabled();
     return { enabled, ready: enabled && missing.length === 0 && !!this.server, missing };
@@ -304,9 +306,14 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     // and `{{sip_welcome}}` for returning callers) whenever it has a Governor
     // segment, so returning callers still hear the Governor's welcome too.
     const hasGovernorIntro = /<governor>/i.test(org.welcomeMessage ?? '');
+    // Rendered at THIS moment's clock: firstMessageFor has no clock and says
+    // "Hello" for {greeting}, so every caller heard "Hello, and welcome…" — and
+    // since `voice:prerender` renders the Governor's "Good morning/afternoon/
+    // evening" lines, no pre-rendered clip ever matched: each call fetched his
+    // line live from ElevenLabs, or spoke it in the assistant's voice.
     const opening = fill(
       hasGovernorIntro
-        ? firstMessageFor(agentOrg, persona)
+        ? openingForUnknownCaller(renderWelcome(agentOrg, now, persona))
         : (start.conversation_config_override?.agent.first_message ?? firstMessageFor(agentOrg, persona))
     );
 

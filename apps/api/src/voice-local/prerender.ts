@@ -18,6 +18,7 @@
 import * as path from 'path';
 import { GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS } from '../agent-tools/elevenlabs-contracts';
 import {
+  PLATEAU_FEMALE_NAMES,
   PLATEAU_MALE_NAMES,
   TEAM_PERSONAS,
   isPlateauStateOrg,
@@ -26,17 +27,30 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from '../agent-tools/agent-tool-catalog';
-import { CachedSpeech, ElevenLabsTts, type SpeechEngine } from './tts';
+import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { openingSegments } from './voice-session';
 
 /** A moment in each greeting period at the agency's clock (Lagos is UTC+1 with no DST). */
 const SAMPLE_TIMES = ['2026-01-05T07:00:00Z', '2026-01-05T12:30:00Z', '2026-01-05T18:00:00Z'].map((t) => new Date(t));
 
-/** Every distinct Governor line a caller can hear, exactly as the voice line will speak it. */
-export function governorLines(org: AgentOrganization): string[] {
+/**
+ * Every distinct Governor line a caller can hear, exactly as the voice line will speak it.
+ *
+ * With Spitch as the assistant's engine the voice line picks a FEMALE Plateau
+ * name on half of all calls (LocalVoiceService.begin), and the Governor names
+ * her. Rendering only the male roster left those 300 lines unrendered: each was
+ * fetched live on the call, or — with no ElevenLabs key — spoken in the female
+ * assistant's own voice in place of the Governor's.
+ */
+export function governorLines(org: AgentOrganization, includeFemale = assistantTtsFromEnv()?.name === 'spitch'): string[] {
+  const named = (names: readonly string[], base: TeamPersona) =>
+    names.map((name) => ({ ...base, id: name.toLowerCase(), name, greetingPhrase: `my name is ${name}` }));
   const personas: TeamPersona[] = isPlateauStateOrg(org)
-    ? PLATEAU_MALE_NAMES.map((name) => ({ ...TEAM_PERSONAS.nanpan, id: name.toLowerCase(), name, greetingPhrase: `my name is ${name}` }))
+    ? [
+        ...named(PLATEAU_MALE_NAMES, TEAM_PERSONAS.nanpan),
+        ...(includeFemale ? named(PLATEAU_FEMALE_NAMES, { ...TEAM_PERSONAS.sarah, gender: 'female' }) : []),
+      ]
     : [resolvePersona(org.persona)];
   const lines = new Set<string>();
   for (const persona of personas) {
@@ -100,7 +114,15 @@ async function main() {
   const key = config?.apiKey ? decryptSecret(config.apiKey, `HostedAgentConfig.apiKey org=${org.id}`) : process.env.ELEVENLABS_API_KEY ?? '';
   const dir = process.env.VOICE_CACHE_DIR?.trim() || path.join(process.env.STORAGE_DIR?.trim() || process.cwd(), 'tts-cache');
   const cache = new TtsCache(dir, Number(process.env.VOICE_CACHE_MAX_MB || 2048) * 1024 * 1024);
-  const engine: SpeechEngine = new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
+  // The SAME engine the voice line uses for the Governor (LocalVoiceService.governorVoice),
+  // or the clips land under a key the call never looks up.
+  const spitchKey = process.env.SPITCH_API_KEY?.trim();
+  const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
+  const engine: SpeechEngine =
+    spitchKey && spitchGovVoice
+      ? new SpitchTts({ key: spitchKey, voice: spitchGovVoice, language: process.env.SPITCH_LANGUAGE?.trim() || 'en' })
+      : new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
+  console.log(`Governor engine: ${engine.name}${spitchGovVoice && spitchKey ? ` (voice ${spitchGovVoice})` : ''}`);
   const speech = new CachedSpeech(engine as any, cache);
   const r = await prerender(lines, speech, cache, apply);
   console.log(
