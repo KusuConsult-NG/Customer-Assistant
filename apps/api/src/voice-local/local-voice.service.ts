@@ -332,6 +332,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       `\n\nIt is now ${now.toLocaleString('en-GB', { timeZone: org.timezone || 'Africa/Lagos', dateStyle: 'full', timeStyle: 'short' })} at the agency.` +
       ` Caller status: ${vars.sip_callerstatus || 'unknown'}.` +
       `\nYou are speaking on a telephone line. Speak in short spoken sentences; never use lists, headings or symbols.` +
+      `\nEvery character you write is read aloud. Never write stage directions or notes such as "[Ending the call now.]"; to end the call, say goodbye and call end_call.` +
       `\nNever say you have updated, saved, registered or noted something in the records unless you call the tool that does it in that same reply. When the script says to save everything once at the end, acknowledge the detail ("Thank you, Rantya.") and ask the next question; do not say you are updating anything.`;
     // Keep the agency's stored opening (which includes the `<governor>` intro
     // and `{{sip_welcome}}` for returning callers) whenever it has a Governor

@@ -71,7 +71,9 @@ const TOOL_FILLER_MS = 1_200;
  * sentence on the live line, and silence that long reads as a dropped call.
  */
 export const ACK_AFTER_MS = 900;
-export const ACKS = ['Alright.', 'Okay.'];
+// Two words at least: Spitch rendered a bare "Okay." as 0.09 s (jude) and
+// 0.43 s (the Governor's voice) of audio in which Deepgram heard nothing.
+export const ACKS = ['Alright, one moment.', 'Okay, let me check.'];
 export const HOLDING_LINE = 'One moment, please.';
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
@@ -369,7 +371,7 @@ export class VoiceSession {
 
   /** Queue a sentence: synthesised in order, played as soon as it is ready. */
   private say(sentence: string, signal: AbortSignal): void {
-    const text = sentence.trim();
+    const text = speakable(sentence);
     if (!text) return;
     const synth = this.deps.assistantVoice.speak(text, { personal: this.setup.personal, signal }).catch((err: any) => {
       if (!signal.aborted) this.fail(`speech: ${err?.message ?? err}`);
@@ -539,6 +541,23 @@ export class VoiceSession {
     })();
     return this.finishing;
   }
+}
+
+/**
+ * What may be SPOKEN of a model's sentence. The model sometimes writes stage
+ * directions ("Goodbye. [Ending the call now.]") and text formatting; every
+ * character sent to the voice is read aloud. Square-bracketed asides, markdown
+ * marks and ellipses go; the words stay.
+ */
+export function speakable(sentence: string): string {
+  return sentence
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/[*_#`~|<>]/g, ' ')
+    .replace(/(\.\s*){2,}|…/g, ', ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/^[\s,.;:]+|[\s,;:]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** The opening as the caller hears it in text: markup gone, one space between parts. */

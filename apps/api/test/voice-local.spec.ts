@@ -23,7 +23,7 @@ import { SentenceSplitter, type ChatMessage, type LlmEvent } from '../src/voice-
 import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local/tts';
 import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
-import { openingSegments } from '../src/voice-local/voice-session';
+import { ACKS, HOLDING_LINE, openingSegments, speakable } from '../src/voice-local/voice-session';
 import { governorLines, prerender } from '../src/voice-local/prerender';
 import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
@@ -328,7 +328,7 @@ describe('voice-local: a whole call over AudioSocket', () => {
       // The acknowledgements are put on disk after the opening.
       const cache = (voice as any).cache as TtsCache;
       const onDisk = (t: string) => !!cache.get(new CachedSpeech(assistant, cache).key(t));
-      await until(() => ['Alright.', 'Okay.', 'One moment, please.'].every(onDisk));
+      await until(() => [...ACKS, HOLDING_LINE].every(onDisk));
       // The opening has finished playing: silence for longer than its own 1 s pause.
       await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
       assistant.delayMs = 2_000; // a slow provider for the reply
@@ -478,6 +478,15 @@ describe('voice-local: parts', () => {
       { kind: 'assistant', text: "I'm Dalyop. How may I help you today?" },
     ]);
     expect(openingSegments('Hello! How can I help?')).toEqual([{ kind: 'assistant', text: 'Hello! How can I help?' }]);
+  });
+
+  it('never sends stage directions, markdown or ellipses to the voice', () => {
+    expect(speakable('Goodbye. [Ending the call now.]')).toBe('Goodbye.');
+    expect(speakable('[Ending the call now.]')).toBe('');
+    expect(speakable('Your reference is **48213**.')).toBe('Your reference is 48213.');
+    expect(speakable('Let me check... one moment.')).toBe('Let me check, one moment.');
+    expect(speakable('Thank you, Steven.')).toBe('Thank you, Steven.');
+    expect(ACKS.every((a) => a.split(/\s+/).length >= 2)).toBe(true);
   });
 
   it('lets the first piece of a reply end at a comma, so the caller hears it sooner', () => {
