@@ -12,9 +12,12 @@
  * live call uses. What is checked is what a caller would HEAR.
  *
  * Each scenario is a call reported from the live line:
- *   - a returning caller corrects their location: it must be SAVED as soon as
- *     it is confirmed (it used to be held for one save at the end, lost when
- *     the call ended, and asked again on the next call);
+ *   - a returning caller corrects their location: the WHOLE new location is
+ *     read back first, and saved as soon as they confirm it (it used to be
+ *     held for one save at the end, lost when the call ended, and asked again
+ *     on the next call; then saved unconfirmed, keeping a ward never said);
+ *   - the same, when only part of the place is given and it is misheard
+ *     ("Gyel B" heard as "Galby"): nothing is saved before a read-back;
  *   - a returning caller whose profile is complete: no profile question again;
  *   - a new caller: each detail saved as it is confirmed, never asked twice.
  */
@@ -45,6 +48,11 @@ export interface Scenario {
 const saved = (turns: Turn[], upTo: number, field: string, re: RegExp) =>
   turns.slice(0, upTo + 1).some((t) => t.calls.some((c) => c.name === 'update-caller-profile' && re.test(String(c.args[field] ?? ''))));
 const asks = (text: string, re: RegExp) => /\?/.test(text) && re.test(text);
+/** A location change saved in turns up to `upTo` WITHOUT the caller's yes to a read-back. */
+const savedUnconfirmed = (turns: Turn[], upTo: number) =>
+  turns
+    .slice(0, upTo + 1)
+    .some((t) => t.calls.some((c) => c.name === 'update-caller-profile' && (c.args.community || c.args.ward || c.args.lga) && !/^(true|yes)$/i.test(String(c.args.locationConfirmed))));
 const claimsSave = /\b(updated|saved|noted (it|that|your)|registered your|recorded your)\b/i;
 
 /** Problems common to every scenario, in what the caller would hear. */
@@ -76,8 +84,37 @@ export function scenarios(org: { name: string }): Scenario[] {
       lines: ["No. I'm now calling from Rantya, Rantya ward, still in Jos North.", "Yes, that's correct.", 'Yes, you can use this number.'],
       check: (turns) => {
         const p = commonProblems(turns);
+        const first = turns[0].replies.join(' ');
+        if (!(asks(first, /rant/i) && /jos north/i.test(first))) p.push(`the new location was not read back in full before saving: "${first}"`);
+        if (turns[0].calls.some((c) => c.name === 'update-caller-profile' && /^(true|yes)$/i.test(String(c.args.locationConfirmed)))) {
+          p.push('saved the new location as confirmed before the caller had heard it read back');
+        }
         if (!saved(turns, 1, 'community', /rant/i) && !saved(turns, 1, 'ward', /rant/i)) p.push('the corrected location (Rantya) was not saved by the time the caller confirmed it');
         turns.forEach((t, i) => t.replies.forEach((r) => asks(r, /your (full )?name/i) && p.push(`turn ${i + 1}: asked a returning caller's name: "${r}"`)));
+        return p;
+      },
+    },
+    {
+      name: 'returning caller gives only part of a new place, misheard',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos South; ward: Kabong; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Kabong ward, Jos South?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos South', ward: 'Kabong', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      // What the live line heard on 26 Nov 2026 when the caller said "Gyel B".
+      lines: ["Okay. No. I'm not in Kabong. I am in Galby."],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const text = turns[0].replies.join(' ');
+        if (savedUnconfirmed(turns, 0) || turns[0].calls.some((c) => c.name === 'update-caller-profile' && /^(true|yes)$/i.test(String(c.args.locationConfirmed)))) {
+          p.push('saved a changed location before the caller confirmed a read-back');
+        }
+        if (!/\?/.test(text)) p.push(`did not ask the caller to confirm or clarify the new place: "${text}"`);
+        if (/how may|assist you today|reason for your call/i.test(text)) p.push(`moved on to the reason for the call before the location was settled: "${text}"`);
         return p;
       },
     },
@@ -128,7 +165,17 @@ export function scenarios(org: { name: string }): Scenario[] {
 /** What the stand-in tools answer: shaped like the real ones, writing nothing. */
 function standIn(sc: Scenario, name: string, args: Record<string, any>): unknown {
   if (name === 'lookup-customer') return sc.lookup;
-  if (name === 'update-caller-profile') return { ok: true, data: { saved: true, fields: Object.keys(args) } };
+  if (name === 'update-caller-profile') {
+    // The real tool's rule (AgentToolsService.updateCallerProfile): changing a
+    // location on file needs locationConfirmed, else nothing is saved.
+    const onFile = (sc.lookup as any)?.data ?? {};
+    const differs = (k: string, f: string) => args[k] && onFile[f] && String(args[k]).trim().toLowerCase() !== String(onFile[f]).trim().toLowerCase();
+    if ((differs('community', 'community') || differs('ward', 'ward') || differs('lga', 'lga')) && !/^(true|yes)$/i.test(String(args.locationConfirmed))) {
+      const loc = [args.community || onFile.community, (args.ward || onFile.ward) && `${args.ward || onFile.ward} ward`, args.lga || onFile.lga].filter(Boolean).join(', ');
+      return { ok: false, speak: '', data: { saved: false, locationToConfirm: loc, instruction: `Read this whole location back to the caller and ask if it is correct: "${loc}". Wait for a clear yes, then call update-caller-profile again with locationConfirmed=true. Nothing was saved yet.` } };
+    }
+    return { ok: true, data: { saved: true, fields: Object.keys(args) } };
+  }
   return { ok: true, data: {} };
 }
 

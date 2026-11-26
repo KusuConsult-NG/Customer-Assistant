@@ -1,5 +1,5 @@
+import { PLATEAU_ORG_WORDS, plateauPlaceWords } from '../agent-tools/plateau-vocabulary';
 import WebSocket from 'ws';
-import { PLATEAU_LGAS } from '@ace/database';
 import { deepgramListenUrl, deepgramModel } from '../telephony/voice-ai.service';
 import { SAMPLE_RATE } from './audiosocket';
 
@@ -42,11 +42,10 @@ export function deepgramUrl(): string {
   });
   // Keywords are a nova-2 feature; nova-3 calls the same thing keyterm.
   const boostKey = deepgramModel().startsWith('nova-3') ? 'keyterm' : 'keywords';
-  // Well-known Jos/Bukuru communities too: "Rantya" was heard as "Rainbow"
-  // on a real call. Kept short on purpose; a long list dilutes every boost.
-  const communities = ['Rantya', 'Rayfield', 'Rukuba', 'Bukuru', 'Lamingo', 'Kabong', 'Rock Haven', 'Tudun Wada', 'Angwan Rogo', 'Gada Biyu', 'Farin Gada', 'Terminus', 'Dadin Kowa', 'Zarmaganda', 'Hwolshe', 'Anglo Jos', 'Bauchi Road', 'Mararaba Jama'];
-  for (const lga of [...PLATEAU_LGAS, ...new Set(communities), 'Plateau', 'Jos', 'PLASCHEMA', 'SUBEB', 'SEMA', 'Operation Rainbow']) {
-    params.append(boostKey, boostKey === 'keywords' ? `${lga}:2` : lga);
+  // The same Plateau places the ElevenLabs agent is told (plateau-vocabulary.ts).
+  // "Rantya" was heard as "Rainbow", and "Gyel B" as "Galby", on real calls.
+  for (const word of [...plateauPlaceWords(), ...PLATEAU_ORG_WORDS]) {
+    params.append(boostKey, boostKey === 'keywords' ? `${word}:2` : word);
   }
   return deepgramListenUrl(params);
 }

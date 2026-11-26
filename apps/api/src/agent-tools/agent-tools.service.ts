@@ -718,6 +718,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       community?: string;
       /** true only after alternativePhone was read back and the caller said yes. */
       alternativePhoneConfirmed?: boolean | string;
+      /** true ONLY after a CHANGED location was read back in full and the caller said yes. */
+      locationConfirmed?: boolean | string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
@@ -763,6 +765,39 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
 
       const prevMeta = (contact.metadata as Record<string, any>) || {};
       const metaUpdates: Record<string, any> = {};
+
+      // A location on file is what the next call greets the caller with
+      // ("Are you still calling from …?"), so CHANGING one takes a read-back of
+      // the whole location and a yes. 26 Nov 2026: "I am in Gyel B", heard as
+      // "Galby", was saved as "Galby, Kabong ward" — a ward the caller never
+      // said — and the next call's garbled correction was saved the same way.
+      // Filling a part that was empty, or restating what is there, needs none.
+      const same = (a: unknown, b: unknown) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+      const next = {
+        community: body.community?.trim() || prevMeta.community || '',
+        ward: body.ward?.trim() || prevMeta.ward || '',
+        lga: body.lga?.trim() ? resolveLga(body.lga) ?? body.lga.trim() : contact.city || '',
+      };
+      const changes =
+        (!!body.community?.trim() && !!prevMeta.community && !same(next.community, prevMeta.community)) ||
+        (!!body.ward?.trim() && !!prevMeta.ward && !same(next.ward, prevMeta.ward)) ||
+        (!!body.lga?.trim() && !!contact.city && !same(next.lga, contact.city));
+      if (changes && !yes(body.locationConfirmed)) {
+        const locationToConfirm = [next.community, next.ward && `${next.ward} ward`, next.lga].filter(Boolean).join(', ');
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            saved: false,
+            locationToConfirm,
+            instruction:
+              `Read this whole location back to the caller and ask if it is correct: "${locationToConfirm}". ` +
+              'Any part they did not restate is what was on file before, so they can correct it. ' +
+              'Wait for a clear yes, then call update-caller-profile again with the location and locationConfirmed=true. ' +
+              'If they correct any part, read the corrected location back the same way. Nothing was saved yet.',
+          },
+        };
+      }
 
       const updateData: any = {};
       if (rawName && !isPlaceholderContactName(rawName)) {
