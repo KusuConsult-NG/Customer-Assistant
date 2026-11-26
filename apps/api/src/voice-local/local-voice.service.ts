@@ -26,7 +26,7 @@ import { CALL_RECORDING_BUCKET, storageDriver, uploadObject } from '../common/ob
 import { FrameReader, KIND, encodeFrame, uuidFromPayload } from './audiosocket';
 import { streamChat } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
-import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, type SpeechEngine } from './tts';
+import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { localToolDefinitions, runLocalTool } from './voice-tools';
 import { VoiceSession, type Outcome } from './voice-session';
@@ -345,6 +345,19 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
    * once `npm run voice:prerender` has run, no ElevenLabs key is needed.
    */
   private async governorVoice(organizationId: string): Promise<CachedSpeech | null> {
+    const spitchKey = process.env.SPITCH_API_KEY?.trim();
+    const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
+    if (spitchKey && spitchGovVoice) {
+      return new CachedSpeech(
+        new SpitchTts({
+          key: spitchKey,
+          voice: spitchGovVoice,
+          language: process.env.SPITCH_LANGUAGE?.trim() || 'en',
+        }),
+        this.cache,
+      );
+    }
+
     const config = await prisma.hostedAgentConfig
       .findUnique({ where: { organizationId }, select: { apiKey: true } })
       .catch(() => null);
