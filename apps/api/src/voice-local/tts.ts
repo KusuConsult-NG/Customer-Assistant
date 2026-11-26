@@ -484,6 +484,19 @@ export class CachedSpeech {
     return { ok: false, attempts: tries, last };
   }
 
+  /** A new take of `text`, heard but NOT stored: for a person to listen to and choose (governor-takes.ts). */
+  async take(text: string): Promise<{ audio: Buffer; verdict: ClipVerdict | null }> {
+    const audio = await this.engine.synthesize(text);
+    return { audio, verdict: this.check ? await this.check(text, audio) : null };
+  }
+
+  /** Store `audio` as the clip every call plays for `text`, replacing what is there. */
+  install(text: string, audio: Buffer): void {
+    if (!this.cache) throw new Error('no clip store to install into');
+    if (!audio.length) throw new Error('empty clip');
+    this.cache.put(this.key(text), audio);
+  }
+
   /** Hear the clip already on disk for `text`. Null when there is none, or no check. */
   async recheck(text: string): Promise<ClipVerdict | null> {
     const clip = this.peek(text);
