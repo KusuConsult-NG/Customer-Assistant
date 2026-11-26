@@ -192,6 +192,16 @@ describe('voice-local: a whole call over AudioSocket', () => {
       await until(() => pbx.played.length > 20);
       expect(stt.received).toBeGreaterThan(0); // caller audio is reaching recognition
 
+      // The stream never stops, even with nothing to say: a stopped RTP stream
+      // makes the far end's jitter buffer resync and clip the next sentence.
+      // At 50 frames a second, about 25 arrive in half a second either way.
+      await until(() => pbx.played.length > 0 && pbx.played.slice(-10).every((f) => f.every((b) => b === 0)), 10_000);
+      const before = pbx.played.length;
+      await new Promise((r) => setTimeout(r, 500));
+      const inHalfSecond = pbx.played.length - before;
+      expect(inHalfSecond).toBeGreaterThanOrEqual(18);
+      expect(inHalfSecond).toBeLessThanOrEqual(30);
+
       // The caller asks; the model calls the REAL search-knowledge tool.
       stt.events!.onInterim('what events');
       stt.events!.onFinal('What events are in December?', true);
