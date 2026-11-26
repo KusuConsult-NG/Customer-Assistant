@@ -218,6 +218,43 @@ export class YarnGptTts implements SpeechEngine {
   }
 }
 
+// Shared in-process concurrency gate for Spitch API requests so parallel
+// sentence pre-fetching (e.g. speakOpening) never trips Tier 1's 3-request cap.
+let spitchInFlight = 0;
+const spitchQueue: Array<() => void> = [];
+
+function spitchMaxConcurrency(): number {
+  const n = Number(process.env.SPITCH_MAX_CONCURRENCY || 2);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 2;
+}
+
+async function withSpitchSlot<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (spitchInFlight >= spitchMaxConcurrency()) {
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        const idx = spitchQueue.indexOf(wake);
+        if (idx >= 0) spitchQueue.splice(idx, 1);
+        reject(signal?.reason ?? new Error('Spitch request aborted'));
+      };
+      const wake = () => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      if (signal?.aborted) return onAbort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      spitchQueue.push(wake);
+    });
+  }
+  spitchInFlight++;
+  try {
+    return await fn();
+  } finally {
+    spitchInFlight--;
+    const next = spitchQueue.shift();
+    if (next) next();
+  }
+}
+
 export class SpitchTts implements SpeechEngine {
   readonly name = 'spitch';
   readonly voice: string;
@@ -247,26 +284,38 @@ export class SpitchTts implements SpeechEngine {
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
     const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
-    const res = await fetch(`${this.baseUrl}/v1/speech`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.opts.key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: clean,
-        language: this.language,
-        voice: this.voice,
-        format: 'wav',
-      }),
-      signal: signal ?? AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) {
-      throw new Error(`Spitch TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
-    }
-    const wav = Buffer.from(await res.arrayBuffer());
-    if (!wav.length) throw new Error('Spitch TTS returned no audio');
-    return wavToSlin8k(wav);
+    const attempt = async (): Promise<Buffer> => {
+      let lastErr = '';
+      for (let tries = 0; tries < 3; tries++) {
+        const res = await fetch(`${this.baseUrl}/v1/speech`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.opts.key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: clean,
+            language: this.language,
+            voice: this.voice,
+            format: 'wav',
+          }),
+          signal: signal ?? AbortSignal.timeout(15_000),
+        });
+        if (res.status === 429 && tries < 2) {
+          lastErr = (await res.text().catch(() => '')).slice(0, 200);
+          await new Promise((r) => setTimeout(r, 350 * (tries + 1)));
+          continue;
+        }
+        if (!res.ok) {
+          throw new Error(`Spitch TTS refused (HTTP ${res.status}) ${(await res.text().catch(() => '')).slice(0, 200)}`);
+        }
+        const wav = Buffer.from(await res.arrayBuffer());
+        if (!wav.length) throw new Error('Spitch TTS returned no audio');
+        return wavToSlin8k(wav);
+      }
+      throw new Error(`Spitch TTS refused (HTTP 429) ${lastErr}`);
+    };
+    return withSpitchSlot(attempt, signal);
   }
 }
 
