@@ -103,40 +103,46 @@ function tap(k: Kernel, d: number): number {
 
 /** Mono samples at `rate` → slin16 at 8 kHz, band-limited for the telephone. */
 export function resampleTo8k(mono: ArrayLike<number>, rate: number): Buffer {
+  // Typed arrays throughout, never Buffer.readInt16LE/writeInt16LE per sample:
+  // this runs on the call's event loop, so its cost is time the 20 ms
+  // playback clock waits.
   const inFrames = mono.length;
   if (rate === SAMPLE_RATE) {
-    const out = Buffer.alloc(inFrames * 2);
-    for (let i = 0; i < inFrames; i++) out.writeInt16LE(clamp16(mono[i]), i * 2);
-    return out;
+    const out = new Int16Array(inFrames);
+    for (let i = 0; i < inFrames; i++) out[i] = clamp16(mono[i]);
+    return Buffer.from(out.buffer, out.byteOffset, out.byteLength);
   }
   const ratio = rate / SAMPLE_RATE;
   const outFrames = Math.max(1, Math.floor(inFrames / ratio));
-  const out = Buffer.alloc(outFrames * 2);
+  const out = new Int16Array(outFrames);
   const k = kernelFor(rate);
   if (Number.isInteger(ratio)) {
     // 24/16/48 kHz: every output sample sits exactly on an input sample, so
-    // one set of weights serves them all — no table interpolation, several
-    // times cheaper. This runs on the call's event loop, where a long clip's
-    // resampling would otherwise delay the 20 ms playback clock.
-    const w = new Float64Array(2 * k.half + 1);
-    for (let d = -k.half; d <= k.half; d++) w[d + k.half] = tap(k, d);
+    // one set of weights serves them all — no table interpolation.
+    const half = k.half;
+    const w = new Float64Array(2 * half + 1);
+    for (let d = -half; d <= half; d++) w[d + half] = tap(k, d);
     let full = 0;
-    for (const x of w) full += x;
+    for (let j = 0; j < w.length; j++) full += w[j];
     for (let i = 0; i < outFrames; i++) {
       const t = i * ratio;
-      const lo = Math.max(0, t - k.half);
-      const hi = Math.min(inFrames - 1, t + k.half);
+      const lo = t - half;
+      const hi = t + half;
       let acc = 0;
-      let wSum = lo === t - k.half && hi === t + k.half ? full : 0;
-      const exact = wSum !== 0;
-      for (let s = lo; s <= hi; s++) {
-        const x = w[s - t + k.half];
-        acc += mono[s] * x;
-        if (!exact) wSum += x;
+      if (lo >= 0 && hi < inFrames) {
+        for (let j = 0, s = lo; s <= hi; j++, s++) acc += mono[s] * w[j];
+        out[i] = clamp16(acc / full);
+      } else {
+        let wSum = 0;
+        for (let s = Math.max(0, lo); s <= Math.min(inFrames - 1, hi); s++) {
+          const x = w[s - lo];
+          acc += mono[s] * x;
+          wSum += x;
+        }
+        out[i] = clamp16(wSum > 0 ? acc / wSum : 0);
       }
-      out.writeInt16LE(clamp16(wSum > 0 ? acc / wSum : 0), i * 2);
     }
-    return out;
+    return Buffer.from(out.buffer, out.byteOffset, out.byteLength);
   }
   for (let i = 0; i < outFrames; i++) {
     const t = i * ratio;
@@ -151,9 +157,9 @@ export function resampleTo8k(mono: ArrayLike<number>, rate: number): Buffer {
     }
     // Normalised by the weights actually used, so DC is exact everywhere,
     // including the first and last few milliseconds of a clip.
-    out.writeInt16LE(clamp16(wSum > 0 ? acc / wSum : 0), i * 2);
+    out[i] = clamp16(wSum > 0 ? acc / wSum : 0);
   }
-  return out;
+  return Buffer.from(out.buffer, out.byteOffset, out.byteLength);
 }
 
 function clamp16(v: number): number {
@@ -163,9 +169,9 @@ function clamp16(v: number): number {
 /** 24 kHz 16-bit mono PCM (OpenAI TTS `response_format: 'pcm'`) → slin16/8000. */
 export function downsample24kTo8k(pcm24k: Buffer): Buffer {
   const n = Math.floor(pcm24k.length / 2);
-  const mono = new Float64Array(n);
-  for (let i = 0; i < n; i++) mono[i] = pcm24k.readInt16LE(i * 2);
-  return resampleTo8k(mono, 24000);
+  const samples = new Int16Array(n);
+  Buffer.from(samples.buffer).set(pcm24k.subarray(0, n * 2));
+  return resampleTo8k(Float64Array.from(samples), 24000);
 }
 
 /**
@@ -229,6 +235,17 @@ export function wavToSlin8k(wav: Buffer): Buffer {
   const frameSize = channels * bytes;
   const inFrames = Math.floor(dataLength / frameSize);
   const mono = new Float64Array(inFrames);
+  if (format === 1 && bitsPerSample === 16) {
+    // The common case (Spitch, YarnGPT): one aligned copy, read as Int16Array.
+    const samples = new Int16Array(inFrames * channels);
+    Buffer.from(samples.buffer).set(wav.subarray(dataOffset, dataOffset + inFrames * frameSize));
+    for (let i = 0; i < inFrames; i++) {
+      let sum = 0;
+      for (let c = 0; c < channels; c++) sum += samples[i * channels + c];
+      mono[i] = sum / channels;
+    }
+    return resampleTo8k(mono, sampleRate);
+  }
   for (let i = 0; i < inFrames; i++) {
     let sum = 0;
     const base = dataOffset + i * frameSize;

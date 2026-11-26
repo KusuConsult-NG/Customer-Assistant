@@ -409,11 +409,13 @@ export class VoiceSession {
    *     restarted, and the far end's jitter buffer resynchronised on the
    *     restart, dropping the first packets — the start of the next sentence.
    *     Silence is sent instead, so the stream never stops.
-   *   - after any event-loop stall it sent every overdue frame at once. A
-   *     burst of RTP overruns a carrier's small jitter buffer and is dropped.
-   *     It now sends at most two frames per tick and, when further behind than
-   *     that, lets the lateness go (the speech starts a few ms later) rather
-   *     than catching up in a burst.
+   *   - the clock it kept was not the wall clock. After an event-loop stall
+   *     the stream must CATCH UP: a jitter buffer holds audio that arrives a
+   *     little early, and drops audio that arrives late. Measured through a
+   *     real Asterisk with a busy event loop, dropping the lost time instead
+   *     left the stream at 43 frames a second against the 50 the far end
+   *     plays. So overdue frames go out at once, at most five per tick (a
+   *     100 ms burst), and only a stall longer than 200 ms is written off.
    */
   private startPump(): void {
     const silenceFrame = Buffer.alloc(FRAME_BYTES);
@@ -421,9 +423,9 @@ export class VoiceSession {
     const tick = () => {
       if (this.outcome) return;
       const now = this.now();
-      if (now - next > 2 * FRAME_MS) next = now - FRAME_MS; // behind: drop the lateness, never burst
+      if (now - next > 10 * FRAME_MS) next = now - FRAME_MS; // a long stall: write it off
       let sent = 0;
-      while (now >= next && sent < 2) {
+      while (now >= next && sent < 5) {
         const frame = this.playQueue.shift();
         if (frame) {
           this.recorder.add('agent', this.clockIndex(), frame);
