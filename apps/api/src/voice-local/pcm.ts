@@ -260,6 +260,68 @@ export function wavToSlin8k(wav: Buffer): Buffer {
   return resampleTo8k(mono, sampleRate);
 }
 
+// ── Speaking rate ───────────────────────────────────────────────────────────
+//
+// Spitch has no speed setting we have found, and the agency wants the pace of
+// the ElevenLabs agent. Playing the clip faster would raise the pitch (a
+// "chipmunk" voice), so it is time-compressed instead with WSOLA: overlapping
+// 30 ms windows taken from the input at `speed` x the output hop, each one
+// shifted (within ±6 ms) to line up with the waveform already written, then
+// cross-faded. Pitch and voice are unchanged; only the pace is.
+
+const WSOLA_WINDOW = 240; // 30 ms at 8 kHz
+const WSOLA_HOP = WSOLA_WINDOW / 2;
+const WSOLA_SEEK = 48; // ±6 ms
+
+/** slin16/8000 spoken `speed` times faster (0.5–2), pitch unchanged. 1 returns the input. */
+export function changeTempo(slin: Buffer, speed: number): Buffer {
+  if (!Number.isFinite(speed) || Math.abs(speed - 1) < 0.005) return slin;
+  const s = Math.min(2, Math.max(0.5, speed));
+  const n = Math.floor(slin.length / 2);
+  if (n < WSOLA_WINDOW * 2) return slin;
+  const x = new Int16Array(n);
+  Buffer.from(x.buffer).set(slin.subarray(0, n * 2));
+  const outLen = Math.floor(n / s);
+  const y = new Float64Array(outLen + WSOLA_WINDOW);
+  const norm = new Float64Array(outLen + WSOLA_WINDOW);
+  const win = new Float64Array(WSOLA_WINDOW);
+  for (let i = 0; i < WSOLA_WINDOW; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / WSOLA_WINDOW);
+  let prevIn = 0; // where the last window was actually taken from
+  for (let outPos = 0; outPos < outLen; outPos += WSOLA_HOP) {
+    const nominal = Math.round(outPos * s);
+    // Natural continuation of the previous window, which the new one should resemble.
+    const natural = prevIn + WSOLA_HOP;
+    let best = nominal;
+    if (outPos > 0) {
+      let bestScore = -Infinity;
+      for (let d = -WSOLA_SEEK; d <= WSOLA_SEEK; d++) {
+        const cand = nominal + d;
+        if (cand < 0 || cand + WSOLA_WINDOW > n || natural + WSOLA_WINDOW > n) continue;
+        let score = 0;
+        for (let k = 0; k < WSOLA_HOP; k++) score += x[cand + k] * x[natural + k];
+        if (score > bestScore) {
+          bestScore = score;
+          best = cand;
+        }
+      }
+    }
+    if (best + WSOLA_WINDOW > n) best = n - WSOLA_WINDOW;
+    if (best < 0) break;
+    for (let k = 0; k < WSOLA_WINDOW; k++) {
+      // The first window has nothing before it to cross-fade with: its
+      // rising half is taken at full weight, or the clip would start with a
+      // few samples divided by almost nothing (a click).
+      const w = outPos === 0 && k < WSOLA_HOP ? 1 : win[k];
+      y[outPos + k] += x[best + k] * w;
+      norm[outPos + k] += w;
+    }
+    prevIn = best;
+  }
+  const out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) out[i] = clamp16(norm[i] > 1e-3 ? y[i] / norm[i] : 0);
+  return Buffer.from(out.buffer, out.byteOffset, out.byteLength);
+}
+
 // ── Clip edges ────────────────────────────────────────────────────────────
 //
 // Each sentence is synthesised on its own, so each clip's edges are heard:

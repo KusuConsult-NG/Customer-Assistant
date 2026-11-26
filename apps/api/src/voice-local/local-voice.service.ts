@@ -29,7 +29,7 @@ import { FRAME_BYTES, FrameReader, KIND, encodeFrame, uuidFromPayload } from './
 import { mulawBufferToSlin, warmResampler } from './pcm';
 import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
-import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, type SpeechEngine } from './tts';
+import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { localToolDefinitions, runLocalTool } from './voice-tools';
 import { VoiceSession, type Outcome } from './voice-session';
@@ -393,6 +393,8 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
           key: spitchKey,
           voice: spitchGovVoice,
           language: process.env.SPITCH_LANGUAGE?.trim() || 'en',
+          // His own pace setting; unset, he speaks at the assistant's.
+          speed: speedFromEnv('SPITCH_GOVERNOR_SPEED', speedFromEnv('SPITCH_SPEED')),
         }),
         this.cache,
       );
