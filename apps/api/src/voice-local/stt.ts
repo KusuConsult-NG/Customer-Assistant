@@ -1,6 +1,6 @@
-import { PLATEAU_ORG_WORDS, plateauPlaceWords } from '../agent-tools/plateau-vocabulary';
+import { localLineRecognitionTerms } from '../agent-tools/plateau-vocabulary';
 import WebSocket from 'ws';
-import { deepgramListenUrl, deepgramModel } from '../telephony/voice-ai.service';
+import { deepgramListenUrl } from '../telephony/voice-ai.service';
 import { SAMPLE_RATE } from './audiosocket';
 
 export interface SttEvents {
@@ -21,14 +21,26 @@ export interface SttStream {
 export type SttFactory = (events: SttEvents) => Promise<SttStream>;
 
 /**
+ * The line's recognition model. nova-3, measured on the caller's side of four
+ * real calls on 26 Nov 2026: nova-2 heard "In 10/26?" for "in 2026" and lost
+ * "calling" and "projects"; nova-3 got all three in every setting.
+ * LOCAL_VOICE_STT_MODEL overrides it; DEEPGRAM_MODEL is the old Twilio path's.
+ */
+export function localSttModel(): string {
+  const m = process.env.LOCAL_VOICE_STT_MODEL?.trim();
+  return m && /^[A-Za-z0-9_.-]{3,40}$/.test(m) ? m : 'nova-3';
+}
+
+/**
  * The Deepgram URL for AudioSocket audio: linear16 at 8 kHz — what Asterisk
  * sends, untranscoded. Interim results drive barge-in; endpointing plus
  * utterance-end decide when the caller has finished a turn. Plateau's LGA
  * names are boosted, because phone ASR otherwise hears "Bokkos" as "books".
  */
 export function deepgramUrl(): string {
+  const model = localSttModel();
   const params = new URLSearchParams({
-    model: deepgramModel(),
+    model,
     language: 'en',
     encoding: 'linear16',
     sample_rate: String(SAMPLE_RATE),
@@ -41,10 +53,10 @@ export function deepgramUrl(): string {
     vad_events: 'true',
   });
   // Keywords are a nova-2 feature; nova-3 calls the same thing keyterm.
-  const boostKey = deepgramModel().startsWith('nova-3') ? 'keyterm' : 'keywords';
-  // The same Plateau places the ElevenLabs agent is told (plateau-vocabulary.ts).
-  // "Rantya" was heard as "Rainbow", and "Gyel B" as "Galby", on real calls.
-  for (const word of [...plateauPlaceWords(), ...PLATEAU_ORG_WORDS]) {
+  const boostKey = model.startsWith('nova-3') ? 'keyterm' : 'keywords';
+  // A short, measured list: boosting community names put them into ordinary
+  // speech (plateau-vocabulary.ts, localLineRecognitionTerms).
+  for (const word of localLineRecognitionTerms()) {
     params.append(boostKey, boostKey === 'keywords' ? `${word}:2` : word);
   }
   return deepgramListenUrl(params);
