@@ -96,6 +96,31 @@ export async function* streamChat(
 }
 
 /**
+ * Ask for one token with the call's script and tools, while the opening is
+ * still playing, so the provider caches the long shared beginning (~12,000
+ * tokens) before the caller's first question. Best effort: a failure only
+ * means the first reply reads the prompt uncached, as it did before.
+ */
+export async function warmPromptCache(messages: ChatMessage[], tools: OpenAiTool[], fetchImpl: typeof fetch = fetch): Promise<void> {
+  const { apiKey } = llmConfig();
+  if (!apiKey) return;
+  await fetchImpl(chatCompletionsUrl(), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: voiceModel(),
+      messages: [...messages, { role: 'user', content: '(The call has just connected.)' }],
+      tools,
+      tool_choice: 'auto',
+      max_tokens: 1,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  })
+    .then((r) => r.arrayBuffer())
+    .catch(() => undefined);
+}
+
+/**
  * Cuts streamed text into sentences worth speaking on their own. Short
  * fragments wait for more, so "Yes." is not a separate synthesis call.
  */

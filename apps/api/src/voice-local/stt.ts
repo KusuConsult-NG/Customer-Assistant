@@ -42,7 +42,10 @@ export function deepgramUrl(): string {
   });
   // Keywords are a nova-2 feature; nova-3 calls the same thing keyterm.
   const boostKey = deepgramModel().startsWith('nova-3') ? 'keyterm' : 'keywords';
-  for (const lga of [...PLATEAU_LGAS, 'Plateau', 'Jos', 'PLASCHEMA', 'SUBEB', 'SEMA', 'Operation Rainbow']) {
+  // Well-known Jos/Bukuru communities too: "Rantya" was heard as "Rainbow"
+  // on a real call. Kept short on purpose; a long list dilutes every boost.
+  const communities = ['Rantya', 'Rayfield', 'Rukuba', 'Bukuru', 'Lamingo', 'Kabong', 'Rock Haven', 'Tudun Wada', 'Angwan Rogo', 'Gada Biyu', 'Farin Gada', 'Terminus', 'Dadin Kowa', 'Zarmaganda', 'Hwolshe', 'Anglo Jos', 'Bauchi Road', 'Mararaba Jama'];
+  for (const lga of [...PLATEAU_LGAS, ...new Set(communities), 'Plateau', 'Jos', 'PLASCHEMA', 'SUBEB', 'SEMA', 'Operation Rainbow']) {
     params.append(boostKey, boostKey === 'keywords' ? `${lga}:2` : lga);
   }
   return deepgramListenUrl(params);

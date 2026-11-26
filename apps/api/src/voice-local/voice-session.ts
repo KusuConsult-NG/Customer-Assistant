@@ -44,6 +44,8 @@ export interface SessionDeps {
   governorVoice: CachedSpeech | null;
   llm(messages: ChatMessage[], tools: OpenAiTool[], signal: AbortSignal): AsyncIterable<LlmEvent>;
   tools: OpenAiTool[];
+  /** Optional: prime the model provider's prompt cache while the opening plays. */
+  warm?(messages: ChatMessage[], tools: OpenAiTool[]): Promise<void>;
   runTool(name: string, args: Record<string, any>): Promise<unknown>;
   log(event: string, detail?: Record<string, unknown>): void;
   now?: () => number;
@@ -143,6 +145,7 @@ export class VoiceSession {
       return this.fail(`speech recognition: ${err?.message ?? err}`);
     }
     this.startPump();
+    void this.deps.warm?.(this.messages, this.deps.tools).catch(() => undefined);
     this.watchdog = setInterval(() => this.checkSilence(), 1_000);
     this.watchdog.unref?.();
 

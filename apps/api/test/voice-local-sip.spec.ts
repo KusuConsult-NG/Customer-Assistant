@@ -59,6 +59,7 @@ run('voice-local: a real SIP caller through the real dialplan', () => {
     tenant = await createTenant(app, 'sip-e2e');
     process.env.LOCAL_VOICE_ORGANIZATION_SLUG = (await prisma.organization.findUnique({ where: { id: tenant.orgId } }))!.slug;
     voice = app.get(LocalVoiceService);
+    voice.warmLlm = undefined; // no provider in this suite
     voice.stt = async () => ({ send: (f: Buffer) => void heardByRecognition.push(Buffer.from(f)), close: () => undefined });
     voice.llm = async function* (): AsyncGenerator<LlmEvent> {
       /* no turn is completed in this test */

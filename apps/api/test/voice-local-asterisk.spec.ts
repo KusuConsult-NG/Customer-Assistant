@@ -72,6 +72,7 @@ run('voice-local against a real Asterisk', () => {
     tenant = await createTenant(app, 'asterisk-e2e');
     process.env.LOCAL_VOICE_ORGANIZATION_SLUG = (await prisma.organization.findUnique({ where: { id: tenant.orgId } }))!.slug;
     voice = app.get(LocalVoiceService);
+    voice.warmLlm = undefined; // no provider in this suite
     voice.stt = async (ev) => {
       if (sttFails) throw new Error('recognition down');
       events = ev;
