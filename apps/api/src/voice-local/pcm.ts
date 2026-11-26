@@ -113,6 +113,31 @@ export function resampleTo8k(mono: ArrayLike<number>, rate: number): Buffer {
   const outFrames = Math.max(1, Math.floor(inFrames / ratio));
   const out = Buffer.alloc(outFrames * 2);
   const k = kernelFor(rate);
+  if (Number.isInteger(ratio)) {
+    // 24/16/48 kHz: every output sample sits exactly on an input sample, so
+    // one set of weights serves them all — no table interpolation, several
+    // times cheaper. This runs on the call's event loop, where a long clip's
+    // resampling would otherwise delay the 20 ms playback clock.
+    const w = new Float64Array(2 * k.half + 1);
+    for (let d = -k.half; d <= k.half; d++) w[d + k.half] = tap(k, d);
+    let full = 0;
+    for (const x of w) full += x;
+    for (let i = 0; i < outFrames; i++) {
+      const t = i * ratio;
+      const lo = Math.max(0, t - k.half);
+      const hi = Math.min(inFrames - 1, t + k.half);
+      let acc = 0;
+      let wSum = lo === t - k.half && hi === t + k.half ? full : 0;
+      const exact = wSum !== 0;
+      for (let s = lo; s <= hi; s++) {
+        const x = w[s - t + k.half];
+        acc += mono[s] * x;
+        if (!exact) wSum += x;
+      }
+      out.writeInt16LE(clamp16(wSum > 0 ? acc / wSum : 0), i * 2);
+    }
+    return out;
+  }
   for (let i = 0; i < outFrames; i++) {
     const t = i * ratio;
     const start = Math.max(0, Math.ceil(t - k.half));

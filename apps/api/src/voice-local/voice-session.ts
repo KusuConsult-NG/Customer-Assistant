@@ -1,4 +1,4 @@
-import { FRAME_MS } from './audiosocket';
+import { FRAME_BYTES, FRAME_MS } from './audiosocket';
 import { CallRecorder, forPlayback, rms, silence, toFrames } from './pcm';
 import { SentenceSplitter, type ChatMessage, type LlmEvent, type ToolCall } from './llm';
 import type { CachedSpeech } from './tts';
@@ -392,26 +392,47 @@ export class VoiceSession {
     this.lastActivity = this.now();
   }
 
+  /**
+   * One frame every 20 ms, EVERY 20 ms, for the whole call.
+   *
+   * Asterisk forwards AudioSocket frames to the caller's RTP leg as they
+   * arrive; nothing re-times them on the local line. So the timing heard by
+   * the carrier is decided here, and two habits of the old pump made callers
+   * hear words skipped:
+   *
+   *   - it sent NOTHING between sentences. The RTP stream stopped and
+   *     restarted, and the far end's jitter buffer resynchronised on the
+   *     restart, dropping the first packets — the start of the next sentence.
+   *     Silence is sent instead, so the stream never stops.
+   *   - after any event-loop stall it sent every overdue frame at once. A
+   *     burst of RTP overruns a carrier's small jitter buffer and is dropped.
+   *     It now sends at most two frames per tick and, when further behind than
+   *     that, lets the lateness go (the speech starts a few ms later) rather
+   *     than catching up in a burst.
+   */
   private startPump(): void {
-    let started = this.now();
-    let sent = 0;
-    this.pump = setInterval(() => {
-      if (!this.playQueue.length) {
-        // Idle: re-anchor so the next sentence starts immediately, not in a burst.
-        started = this.now();
-        sent = 0;
-        return;
-      }
-      const due = Math.floor((this.now() - started) / FRAME_MS) + 1;
-      while (sent < due && this.playQueue.length) {
-        const frame = this.playQueue.shift()!;
-        this.recorder.add('agent', this.clockIndex(), frame);
-        this.deps.sendAudio(frame);
-        this.playedFrames++;
+    const silenceFrame = Buffer.alloc(FRAME_BYTES);
+    let next = this.now();
+    const tick = () => {
+      if (this.outcome) return;
+      const now = this.now();
+      if (now - next > 2 * FRAME_MS) next = now - FRAME_MS; // behind: drop the lateness, never burst
+      let sent = 0;
+      while (now >= next && sent < 2) {
+        const frame = this.playQueue.shift();
+        if (frame) {
+          this.recorder.add('agent', this.clockIndex(), frame);
+          this.playedFrames++;
+          this.lastActivity = now;
+        }
+        this.deps.sendAudio(frame ?? silenceFrame);
+        next += FRAME_MS;
         sent++;
       }
-      this.lastActivity = this.now();
-    }, FRAME_MS);
+      this.pump = setTimeout(tick, Math.max(1, next - this.now()));
+      this.pump.unref?.();
+    };
+    this.pump = setTimeout(tick, 0);
     this.pump.unref?.();
   }
 
@@ -438,7 +459,7 @@ export class VoiceSession {
     this.outcome = outcome;
     this.finishing = (async () => {
       this.turnAbort?.abort();
-      if (this.pump) clearInterval(this.pump);
+      if (this.pump) clearTimeout(this.pump);
       if (this.watchdog) clearInterval(this.watchdog);
       this.playQueue = [];
       try {
