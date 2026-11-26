@@ -138,11 +138,19 @@ export class SentenceSplitter {
     this.buf += delta;
     const out: string[] = [];
     if (this.opts.firstAtComma && this.emitted === 0) {
+      // Only where a real clause follows the comma: at least three words
+      // already received with no sentence end among them. "Thank you for
+      // confirming that, Steven. Now…" must not become "…that" / "Steven." —
+      // a pause before the caller's own name.
       const c = this.buf.match(/^([^.!?]{24,}?,)(\s+)([\s\S]*)$/);
       if (c && c[1].trim().split(/\s+/).length >= 4) {
-        out.push(c[1].trim());
-        this.buf = c[3];
-        this.emitted++;
+        const after = c[3].split(/\s+/).filter(Boolean);
+        const clause = after.length >= 3 && !after.slice(0, 3).some((w) => /[.!?]/.test(w));
+        if (clause) {
+          out.push(c[1].trim());
+          this.buf = c[3];
+          this.emitted++;
+        }
       }
     }
     for (;;) {

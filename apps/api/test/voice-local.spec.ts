@@ -614,10 +614,26 @@ describe('voice-local: parts', () => {
 
   it('lets the first piece of a reply end at a comma, so the caller hears it sooner', () => {
     const sp = new SentenceSplitter({ firstAtComma: true });
-    expect(sp.push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual(['Yes, the Jos Carnival opens on the twentieth,']);
-    expect(sp.push('with a parade, then music. ')).toEqual(['with a parade, then music.']); // later pieces: sentences only
+    // Held until a clause follows the comma (three words, no sentence end), then cut there.
+    expect(sp.push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual([]);
+    expect(sp.push('with a parade, then music. ')).toEqual(['Yes, the Jos Carnival opens on the twentieth,', 'with a parade, then music.']); // later pieces: sentences only
     expect(new SentenceSplitter({ firstAtComma: true }).push('Yes, sure. ')).toEqual([]); // too short to split early
     expect(new SentenceSplitter().push('Yes, the Jos Carnival opens on the twentieth, ')).toEqual([]);
+  });
+
+  it('never cuts the first piece just before the caller\'s name (sentences from the server run)', () => {
+    const run = (text: string) => {
+      const sp = new SentenceSplitter({ firstAtComma: true });
+      const out: string[] = [];
+      // Streamed a few characters at a time, as the model sends it.
+      for (let i = 0; i < text.length; i += 4) out.push(...sp.push(text.slice(i, i + 4)));
+      const rest = sp.flush();
+      return rest ? [...out, rest] : out;
+    };
+    expect(run('Thank you for confirming that, Steven. Now, how may the Plateau State Government assist you today?')[0]).toBe('Thank you for confirming that, Steven.');
+    expect(run("Thank you for that update, Steven. I've noted that you're now calling from Rantya.")[0]).toBe('Thank you for that update, Steven.');
+    // A real clause after the comma still starts early.
+    expect(run('Thank you for calling the centre, and I will help you with that today.')[0]).toBe('Thank you for calling the centre,');
   });
 
   it('speaks streamed text a sentence at a time', () => {
