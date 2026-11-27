@@ -361,16 +361,29 @@ export function spitchDeadlineMs(text: string): number {
   return Math.min(45_000, 15_000 + 100 * text.length);
 }
 
+/**
+ * With SPITCH_KEEP_COMMAS=1, commas inside a sentence of at most this many
+ * characters are sent to Spitch, so it pauses where a speaker would. Off by
+ * default: the 26 Nov measurement found "comma" spoken only in a 155-character
+ * sentence, but it has not been heard on the live line since the commas were
+ * removed, so it is switched on only after someone has listened to it.
+ */
+export const KEEP_COMMAS_MAX_CHARS = 120;
+
 export class SpitchTts implements SpeechEngine {
   readonly name = 'spitch';
-  readonly dsp = RESAMPLER_VERSION;
+  /** Part of the cache key: clips made with commas are never mixed with clips made without. */
+  readonly dsp: string;
+  readonly keepCommas: boolean;
   readonly voice: string;
   readonly language: string;
   /** Part of the cache key: a clip made at another speed is never replayed. '1.0' is the speed every existing clip was made at. */
   readonly rate: string;
   readonly speed: number;
   private readonly baseUrl: string;
-  constructor(private readonly opts: { key: string; voice?: string; language?: string; url?: string; speed?: number }) {
+  constructor(private readonly opts: { key: string; voice?: string; language?: string; url?: string; speed?: number; keepCommas?: boolean }) {
+    this.keepCommas = opts.keepCommas === true;
+    this.dsp = this.keepCommas ? `${RESAMPLER_VERSION}+commas` : RESAMPLER_VERSION;
     this.voice = opts.voice || 'jude';
     this.language = opts.language || 'en';
     this.baseUrl = (opts.url || 'https://api.spitch.app').replace(/\/+$/, '');
@@ -391,20 +404,24 @@ export class SpitchTts implements SpeechEngine {
       language: process.env.SPITCH_LANGUAGE?.trim() || undefined,
       url: process.env.SPITCH_API_URL?.trim() || undefined,
       speed: speedFromEnv('SPITCH_SPEED'),
+      keepCommas: process.env.SPITCH_KEEP_COMMAS?.trim() === '1',
     });
+  }
+
+  /** The text as Spitch is given it (see synthesize). */
+  spitchText(text: string): string {
+    const noTags = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    const keepCommas = this.keepCommas && noTags.length <= KEEP_COMMAS_MAX_CHARS;
+    let clean = noTags.replace(/:\s*$/g, '').replace(/(?<!\d)\.(?=\s|$)/g, '');
+    if (!keepCommas) clean = clean.replace(/,(?=\s|$)/g, '');
+    return clean.replace(/\s+/g, ' ').trim();
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
     // Strip XML tags and punctuation that Spitch occasionally reads aloud as
     // words ("full stop", "comma"), while preserving decimal numbers (e.g. 39.7)
     // and ? / ! intonation marks.
-    const clean = text
-      .replace(/<\/?[a-z][^>]*>/gi, ' ')
-      .replace(/:\s*$/g, '')
-      .replace(/(?<!\d)\.(?=\s|$)/g, '')
-      .replace(/,(?=\s|$)/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const clean = this.spitchText(text);
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
     const cb = spitchCircuitState();
     if (cb.open) {

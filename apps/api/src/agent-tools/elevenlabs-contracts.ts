@@ -297,7 +297,7 @@ export function agentDefinition(spec: AgentSpec) {
           : {}),
         prompt: {
           prompt: spec.systemPrompt,
-          llm: (spec.llm ?? (process.env.ELEVENLABS_AGENT_LLM?.trim() || 'gpt-4o-mini')) as ElevenLabs.Llm,
+          llm: (spec.llm ?? (process.env.ELEVENLABS_AGENT_LLM?.trim() || 'gpt-4o')) as ElevenLabs.Llm,
           toolIds: spec.toolIds,
           timezone: spec.timezone,
           builtInTools: {

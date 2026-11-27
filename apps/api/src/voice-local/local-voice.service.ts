@@ -354,7 +354,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
         governorVoice,
         llm: (m, t, s) => this.llm(m, t, s),
         warm: this.warmLlm,
-        tools: localToolDefinitions(),
+        tools: localToolDefinitions({ contactCentre: isPlateauStateOrg(agentOrg) }),
         runTool: (name, args) => runLocalTool(this.tools, name, args, { organizationId: reg.organizationId, callerNumber, conversationId }),
         log: (event, detail) => this.log.log(`${event} uuid=${reg.uuid} ${detail ? JSON.stringify(detail) : ''}`),
       },
