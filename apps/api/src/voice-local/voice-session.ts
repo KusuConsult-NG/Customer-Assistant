@@ -125,8 +125,34 @@ const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
 
+/** A caller frame louder than this is someone speaking; a phone line's own noise stays well below it. */
+export const CALLER_VOICE_RMS = 300;
+
+/**
+ * What reached the call from the caller's side, for the call-ended log line.
+ * A call where the caller "was not heard" is told apart at once: no audio
+ * frames at all (nothing came from Asterisk), frames but no voice in them
+ * (the line delivered silence), or voice but no words (recognition failed).
+ */
+export interface CallerHearing {
+  /** Seconds of caller audio that arrived from Asterisk. */
+  audioSecs: number;
+  /** Seconds of it loud enough to be speech. */
+  voiceSecs: number;
+  /** The loudest 20 ms frame (RMS). */
+  peak: number;
+  /** Recognition results with words in them: in progress, and final. */
+  interims: number;
+  finals: number;
+}
+
 export class VoiceSession {
   readonly transcript: TranscriptTurn[] = [];
+  private callerFrames = 0;
+  private callerVoiceFrames = 0;
+  private callerPeak = 0;
+  private interims = 0;
+  private finals = 0;
   readonly recorder = new CallRecorder();
   outcome: Outcome | null = null;
   failure: string | null = null;
@@ -243,12 +269,22 @@ export class VoiceSession {
     return this.responding || this.pendingTurn || this.continuing || this.playQueue.length > 0;
   }
 
+  /** What reached the call from the caller (see CallerHearing). */
+  get hearing(): CallerHearing {
+    const secs = (frames: number) => Math.round((frames * FRAME_MS) / 100) / 10;
+    return { audioSecs: secs(this.callerFrames), voiceSecs: secs(this.callerVoiceFrames), peak: Math.round(this.callerPeak), interims: this.interims, finals: this.finals };
+  }
+
   /** One AudioSocket audio frame from the caller. */
   onCallerAudio(frame: Buffer): void {
     if (this.outcome) return;
     this.callerIndex = Math.max(this.callerIndex + 1, this.clockIndex());
     this.recorder.add('caller', this.callerIndex, frame);
-    this.recentLevel = this.recentLevel * 0.7 + rms(frame) * 0.3;
+    const level = rms(frame);
+    this.callerFrames++;
+    if (level > CALLER_VOICE_RMS) this.callerVoiceFrames++;
+    if (level > this.callerPeak) this.callerPeak = level;
+    this.recentLevel = this.recentLevel * 0.7 + level * 0.3;
     this.stt?.send(frame);
   }
 
@@ -260,6 +296,7 @@ export class VoiceSession {
   // ── Listening ─────────────────────────────────────────────────────────────
 
   private onInterim(text: string): void {
+    if (text) this.interims++;
     this.lastCallerSpeech = this.now();
     this.lastActivity = this.now();
     // The caller carries on after a pause, before any of the reply has been
@@ -299,6 +336,7 @@ export class VoiceSession {
 
   private onFinal(text: string, endOfTurn: boolean): void {
     if (text) {
+      this.finals++;
       this.heard.push(text);
       this.lastCallerSpeech = this.now();
       this.lastActivity = this.now();
