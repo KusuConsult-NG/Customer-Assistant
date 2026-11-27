@@ -32,8 +32,12 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  same => n,NoOp(voice-local register: ${LV})
  same => n,GotoIf($["${LV:0:3}" != "ok "]?elevenlabs)
  same => n,Answer()
- ; Smooth incoming AlphaTech RTP jitter before AudioSocket feeds Deepgram STT
- same => n,Set(JITTERBUFFER(adaptive)=300,60,40)
+ ; NO jitter buffer on this path. One was added here on 27 Nov 2026
+ ; (JITTERBUFFER(adaptive)=300,60,40) and the caller's audio stopped reaching
+ ; the voice line: a 52 s call delivered 0.4 s of it, and the assistant asked
+ ; its question and never heard the answer. Removed from the running bridge,
+ ; the next call delivered 37.5 s of 38. Speech recognition needs no playout
+ ; smoothing; a jitter buffer is for audio played to a person.
  ; Dial(AudioSocket/…), NOT the AudioSocket() application: tested on Asterisk
  ; 20.6, the application HANGS UP the caller when the server closes, so the
  ; fallback below could never run. A dialled AudioSocket leg ending returns
