@@ -199,6 +199,28 @@ export const SEARCH_KNOWLEDGE_PASSAGE_CHARS = 4_000;
 /** A matched document this short (in chunks) is read whole; the WhatsApp engine uses the same limit. */
 const WHOLE_DOCUMENT_MAX_CHUNKS = 12;
 
+/** The furthest ahead a callback may be promised: 14 days. */
+export const MAX_CALLBACK_MINUTES = 14 * 24 * 60;
+
+/** The callback delay the model asked for, in minutes: 60 when missing, never below 1 or past 14 days. */
+export function callbackMinutes(whenMinutes: unknown): number {
+  const n = Number(whenMinutes);
+  if (whenMinutes === undefined || whenMinutes === null || whenMinutes === '' || !Number.isFinite(n)) return 60;
+  return Math.min(MAX_CALLBACK_MINUTES, Math.max(1, Math.round(n)));
+}
+
+/**
+ * The window a callback is promised in, as the caller hears it and the
+ * dashboard shows it. Up to a day and a half stays "Tomorrow" as before;
+ * further out is said in days, so 72 hours is "In 3 days", not "Tomorrow".
+ */
+export function callbackPromisedText(minutes: number): string {
+  if (minutes <= 60) return 'Within the hour';
+  if (minutes <= 240) return 'Later today';
+  if (minutes <= 36 * 60) return 'Tomorrow';
+  return `In ${Math.round(minutes / 1440)} days`;
+}
+
 @Injectable()
 export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('AgentTools');
@@ -1305,6 +1327,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       fullName?: string;
       callbackNumber?: string;
       numberConfirmed?: boolean | string;
+      /** true when the caller asked to move a callback they already have to whenMinutes. */
+      reschedule?: boolean | string;
     }
   ): Promise<ToolResult> {
     try {
@@ -1356,6 +1380,29 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
         },
         orderBy: { dueAt: 'asc' },
       });
+      const spokenNumber = targetNumber.replace(/\D/g, '').split('').join(' ');
+      const wantsMove = input.reschedule === true || /^(true|yes)$/i.test(String(input.reschedule ?? ''));
+      if (existing && wantsMove && Number.isFinite(Number(input.whenMinutes))) {
+        // The caller asked to move the callback they already have (test call
+        // local-0a9bafd4, 27 Nov 2026: "I need a call in seventy two hours" —
+        // the line could only repeat that one was booked for tomorrow). The
+        // same promise is moved, never a second one made.
+        const minutes = callbackMinutes(input.whenMinutes);
+        const hours = await outboundContactHoursFrom(prisma, organizationId);
+        const dueAt = nextServiceTime(new Date(Date.now() + minutes * 60_000), hours);
+        const promisedText = callbackPromisedText(minutes);
+        const moved = await prisma.callbackRequest.update({
+          where: { id: existing.id },
+          data: { dueAt, promisedText, ...(input.callbackNumber?.trim() ? { phoneNumber: targetNumber } : {}) },
+        });
+        return {
+          ok: true,
+          speak:
+            `I have moved your callback, reference ${spokenReference(callbackReference(moved))}. ` +
+            `Someone will call you back ${promisedText.toLowerCase()} on ${spokenNumber}.`,
+          data: { callbackId: moved.id, reference: callbackReference(moved), rescheduled: true, dueAt: dueAt.toISOString(), callbackNumber: targetNumber },
+        };
+      }
       if (existing) {
         if (input.callbackNumber?.trim() && existing.phoneNumber !== targetNumber) {
           await prisma.callbackRequest.update({
@@ -1367,14 +1414,20 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
           ok: true,
           speak:
             `You already have a callback booked, reference ${spokenReference(callbackReference(existing))}, ` +
-            `${existing.promisedText.toLowerCase()} on ${targetNumber.replace(/\D/g, '').split('').join(' ')}. I have not booked a second one.`,
-          data: { callbackId: existing.id, reference: callbackReference(existing), duplicate: true, callbackNumber: targetNumber },
+            `${existing.promisedText.toLowerCase()} on ${spokenNumber}. I have not booked a second one.`,
+          data: {
+            callbackId: existing.id,
+            reference: callbackReference(existing),
+            duplicate: true,
+            callbackNumber: targetNumber,
+            instruction:
+              'If the caller wants this callback at a different time, call request-callback again with reschedule=true and whenMinutes set to the time they asked for. It moves this callback; do not tell them to sort it out with the officer.',
+          },
         };
       }
 
-      const minutes = Number.isFinite(input.whenMinutes) ? Number(input.whenMinutes) : 60;
-      const promisedText =
-        minutes <= 60 ? 'Within the hour' : minutes <= 240 ? 'Later today' : 'Tomorrow';
+      const minutes = callbackMinutes(input.whenMinutes);
+      const promisedText = callbackPromisedText(minutes);
 
       // Outbound contact hours, matching the orchestrator's callback flow —
       // the same promise made on a voice call and on WhatsApp must fall due

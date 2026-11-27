@@ -586,7 +586,11 @@ export function agentToolCatalog(
         ),
         whenMinutes: askedOf(
           'number',
-          'How soon, in minutes: 60 for within the hour, 240 for later today, 1440 for tomorrow. Ask which suits them; do not assume.'
+          'How soon, in minutes: 60 for within the hour, 240 for later today, 1440 for tomorrow, 2880 for two days, 4320 for three days (72 hours); at most 14 days. Use the time the caller asked for; do not assume.'
+        ),
+        reschedule: askedOf(
+          'boolean',
+          'true ONLY when the caller already has a callback booked and has asked to move it to a different time (whenMinutes). Moves the existing callback instead of saying one is already booked.'
         ),
       },
       ['phoneNumber', 'reason', 'whenMinutes', 'numberConfirmed']

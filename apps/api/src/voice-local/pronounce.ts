@@ -33,7 +33,23 @@ export interface Pronunciation {
   confirmed: string;
 }
 
-export const PRONUNCIATIONS: Pronunciation[] = [];
+export const PRONUNCIATIONS: Pronunciation[] = [
+  {
+    written: 'PLASCHEMA',
+    say: 'Plas-cheh-ma',
+    confirmed:
+      'Sound "PLAS-CHE-MA" given by the owner (Steven) after test call local-0a9bafd4, 27 Nov 2026 (Spitch said "plaschem"); ' +
+      'same sound as the old ElevenLabs rule "PLAS-CHEH-MA". Check the spelling by ear with pronunciation-takes.js; ' +
+      'LOCAL_VOICE_PRONOUNCE="PLASCHEMA=…" overrides it without a rebuild.',
+  },
+];
+
+/** The code table with any word the server setting also lists replaced by the server's spelling. */
+export function activePronunciations(): Pronunciation[] {
+  const fromEnv = pronunciationsFromEnv();
+  const overridden = new Set(fromEnv.map((p) => p.written.toLowerCase()));
+  return [...PRONUNCIATIONS.filter((p) => !overridden.has(p.written.toLowerCase())), ...fromEnv];
+}
 
 let parsed: { raw: string; table: Pronunciation[] } | null = null;
 
@@ -56,7 +72,7 @@ export function pronunciationsFromEnv(raw = process.env.LOCAL_VOICE_PRONOUNCE ??
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** `text` with every listed word replaced by its spoken spelling. */
-export function pronounced(text: string, table: Pronunciation[] = [...PRONUNCIATIONS, ...pronunciationsFromEnv()]): string {
+export function pronounced(text: string, table: Pronunciation[] = activePronunciations()): string {
   let out = text;
   for (const p of table) {
     if (!p.written.trim() || !p.say.trim()) continue;
