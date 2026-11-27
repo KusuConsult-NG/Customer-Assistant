@@ -121,6 +121,22 @@ export function prebufferWaitMs(): number {
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 && n <= 5_000 ? Math.round(n) : MAX_PREBUFFER_WAIT_MS;
 }
+/**
+ * The longest the caller is left in silence, from the moment their turn was
+ * committed, before a reply that is ready starts playing — however long the
+ * pre-buffer would still wait for the rest of the reply. The owner's rule
+ * (27 Nov 2026): the agent carries on within about 2.5 s of the caller going
+ * quiet; recognition's endpointing (~0.4 s) comes before this clock starts.
+ * It cannot make the model or the voice faster: a first sentence not yet made
+ * plays the moment it is. LOCAL_VOICE_REPLY_DEADLINE_MS (0–8000) on the server.
+ */
+export const REPLY_DEADLINE_MS = 2_000;
+export function replyDeadlineMs(): number {
+  const raw = process.env.LOCAL_VOICE_REPLY_DEADLINE_MS?.trim();
+  if (!raw) return REPLY_DEADLINE_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= 8_000 ? Math.round(n) : REPLY_DEADLINE_MS;
+}
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
@@ -730,7 +746,10 @@ export class VoiceSession {
       }
       this.turnPrebuffer.push({ audio: clip, text, cached: r.cached, clause });
       this.turnPrebufferMs += Math.round(clip.length / 16);
-      const wait = prebufferWaitMs();
+      // The pre-buffer waits for the rest of the reply, but never past the
+      // reply deadline counted from when the caller's turn was committed.
+      const sinceCaller = this.turnStartedAt ? this.now() - this.turnStartedAt : 0;
+      const wait = Math.min(prebufferWaitMs(), Math.max(0, replyDeadlineMs() - sinceCaller));
       if (wait === 0 || (this.turnStreamDone && this.turnPendingSynths === 0) || this.turnPrebufferMs >= MIN_PREBUFFER_MS) {
         this.flushPrebuffer();
       } else if (!this.prebufferTimer) {

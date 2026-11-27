@@ -583,6 +583,41 @@ describe('Agent tools', () => {
       expect(res.body.speak).toMatch(/call back/i);
     }, 30_000);
 
+    it('moves a callback the caller already has when they ask for another time, never booking a second', async () => {
+      // Test call local-0a9bafd4, 27 Nov 2026: "I need a call in seventy two
+      // hours" — the line could only say one was already booked for tomorrow.
+      const phone = `+2348${(Date.now() + 13).toString().slice(-9)}`;
+      const first = await post('request-callback', keyA, {
+        phoneNumber: phone,
+        fullName: 'Wants It Later',
+        reason: 'speak to PLASCHEMA',
+        whenMinutes: 1440,
+      }).expect(201);
+      expect(first.body.data.reference).toMatch(/^[1-9]\d{4}$/);
+
+      // Without reschedule it still refuses a duplicate, and says how to move it.
+      const again = await post('request-callback', keyA, { phoneNumber: phone, reason: 'speak to PLASCHEMA', whenMinutes: 4320 }).expect(201);
+      expect(again.body.data.duplicate).toBe(true);
+      expect(again.body.data.instruction).toMatch(/reschedule=true/);
+
+      const moved = await post('request-callback', keyA, {
+        phoneNumber: phone,
+        reason: 'speak to PLASCHEMA',
+        whenMinutes: 4320,
+        reschedule: true,
+      }).expect(201);
+      expect(moved.body.ok).toBe(true);
+      expect(moved.body.data.rescheduled).toBe(true);
+      expect(moved.body.data.reference).toBe(first.body.data.reference);
+      expect(moved.body.speak).toMatch(/moved your callback/i);
+      expect(moved.body.speak).toMatch(/in 3 days/i);
+
+      const rows = await prisma.callbackRequest.findMany({ where: { organizationId: orgA, phoneNumber: { in: [phone, phone.replace('+', '')] } } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].promisedText).toBe('In 3 days');
+      expect(rows[0].dueAt.getTime()).toBeGreaterThanOrEqual(Date.now() + 70 * 3600_000);
+    }, 30_000);
+
     it('remembers an open complaint by its reference', async () => {
       const phone = `+2348${(Date.now() + 4).toString().slice(-9)}`;
       const filed = await post('create-ticket', keyA, {

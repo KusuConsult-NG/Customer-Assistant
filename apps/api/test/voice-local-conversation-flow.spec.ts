@@ -28,6 +28,8 @@ import {
   LONG_SENTENCE_CHARS,
   MAX_PREBUFFER_WAIT_MS,
   prebufferWaitMs,
+  REPLY_DEADLINE_MS,
+  replyDeadlineMs,
   SENTENCE_GAP_MS,
   splitLongSentence,
   unconfirmedReport,
@@ -455,6 +457,27 @@ describe('the pause before a reply is a server setting', () => {
     expect(await firstSoundAfter('0')).toBeLessThan(600);
     expect(await firstSoundAfter(undefined)).toBeGreaterThan(1_200);
   }, 20_000);
+
+  it('never leaves the caller waiting past the reply deadline, however long the pre-buffer would wait', async () => {
+    const saved = process.env.LOCAL_VOICE_REPLY_DEADLINE_MS;
+    try {
+      delete process.env.LOCAL_VOICE_REPLY_DEADLINE_MS;
+      expect(replyDeadlineMs()).toBe(REPLY_DEADLINE_MS);
+      for (const bad of ['-1', '9000', 'soon']) {
+        process.env.LOCAL_VOICE_REPLY_DEADLINE_MS = bad;
+        expect(replyDeadlineMs()).toBe(REPLY_DEADLINE_MS);
+      }
+      // Pre-buffer allowed 5 s, deadline 300 ms: the first sentence plays at
+      // the deadline, without waiting 1.5 s for the slow second sentence.
+      process.env.LOCAL_VOICE_REPLY_DEADLINE_MS = '300';
+      expect(replyDeadlineMs()).toBe(300);
+      const first = await firstSoundAfter('5000');
+      expect(first).toBeLessThan(900);
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_VOICE_REPLY_DEADLINE_MS;
+      else process.env.LOCAL_VOICE_REPLY_DEADLINE_MS = saved;
+    }
+  }, 20_000);
 });
 
 describe('pronunciations set on the server, and hearing them first', () => {
@@ -475,7 +498,22 @@ describe('pronunciations set on the server, and hearing them first', () => {
       if (saved === undefined) delete process.env.LOCAL_VOICE_PRONOUNCE;
       else process.env.LOCAL_VOICE_PRONOUNCE = saved;
     }
-    expect(pronounced('Welcome to the Plateau State Government.')).toBe('Welcome to the Plateau State Government.');
+    // Without a server override, the permanent confirmed spelling ("Platoe") applies.
+    expect(pronounced('Welcome to the Plateau State Government.')).toBe('Welcome to the Platoe State Government.');
+  });
+
+  it('says PLASCHEMA as PLAS-CHE-MA, and a server setting for the same word wins', () => {
+    const saved = process.env.LOCAL_VOICE_PRONOUNCE;
+    try {
+      delete process.env.LOCAL_VOICE_PRONOUNCE;
+      expect(pronounced('Speak to someone from PLASCHEMA today.')).toBe('Speak to someone from Plas-cheh-ma today.');
+      expect(pronounced('free Plaschema health insurance')).toBe('free Plas-cheh-ma health insurance');
+      process.env.LOCAL_VOICE_PRONOUNCE = 'PLASCHEMA=Plas-che-mah';
+      expect(pronounced('Speak to someone from PLASCHEMA today.')).toBe('Speak to someone from Plas-che-mah today.');
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_VOICE_PRONOUNCE;
+      else process.env.LOCAL_VOICE_PRONOUNCE = saved;
+    }
   });
 
   it('renders the word as written and each spelling, in every voice, and returns a link for each', async () => {
