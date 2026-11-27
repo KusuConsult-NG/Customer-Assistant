@@ -107,6 +107,20 @@ export const CLAUSE_GAP_MS = 60;
  */
 export const LONG_SENTENCE_CHARS = 120;
 export const MAX_PREBUFFER_WAIT_MS = 2_500;
+/**
+ * The longest a reply's first words wait for the rest to be ready, from the
+ * server setting LOCAL_VOICE_PREBUFFER_WAIT_MS (milliseconds, 0–5000), else
+ * MAX_PREBUFFER_WAIT_MS. 0 starts every reply as soon as its first sentence is
+ * synthesised: the shortest silence after the caller, at the risk of a pause
+ * between sentences when the voice is slow. Read on every turn, so a change
+ * needs only an api restart.
+ */
+export function prebufferWaitMs(): number {
+  const raw = process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS?.trim();
+  if (!raw) return MAX_PREBUFFER_WAIT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= 5_000 ? Math.round(n) : MAX_PREBUFFER_WAIT_MS;
+}
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
@@ -575,6 +589,16 @@ export class VoiceSession {
         this.messages.push({ role: 'tool', tool_call_id: call.id, content: '{"ok":false,"message":"The arguments were not valid JSON. Try again."}' });
         continue;
       }
+      const refusal = unconfirmedReport(call.function.name, args, lastCallerWords(this.messages));
+      if (refusal) {
+        // The model read a "No, nothing else." as the yes to its summary and
+        // registered the report (conversation check, 27 Nov 2026). Nothing is
+        // written; the model is told why and asks again.
+        // The caller's own words are not logged: only that it happened.
+        this.deps.log('voice_local_report_not_confirmed');
+        this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(refusal) });
+        continue;
+      }
       // A slow lookup gets a short spoken holding line — only when fillers are enabled and at most once per turn.
       const filler =
         ackAfterMs() > 0
@@ -668,13 +692,14 @@ export class VoiceSession {
       }
       this.turnPrebuffer.push({ audio: clip, text, cached: r.cached, clause });
       this.turnPrebufferMs += Math.round(clip.length / 16);
-      if ((this.turnStreamDone && this.turnPendingSynths === 0) || this.turnPrebufferMs >= MIN_PREBUFFER_MS) {
+      const wait = prebufferWaitMs();
+      if (wait === 0 || (this.turnStreamDone && this.turnPendingSynths === 0) || this.turnPrebufferMs >= MIN_PREBUFFER_MS) {
         this.flushPrebuffer();
       } else if (!this.prebufferTimer) {
         this.prebufferTimer = setTimeout(() => {
           this.prebufferTimer = null;
           if (!signal.aborted && !this.outcome) this.flushPrebuffer();
-        }, MAX_PREBUFFER_WAIT_MS);
+        }, wait);
         this.prebufferTimer.unref?.();
       }
     });
@@ -967,4 +992,40 @@ export function splitLongSentence(text: string): string[] {
   }
   if (best < 0) return [text];
   return [...splitLongSentence(text.slice(0, best + 1).trim()), ...splitLongSentence(text.slice(best + 1).trim())];
+}
+
+/**
+ * The caller's most recent words in the history: the last user message that
+ * is not a note from the system ("[No reply from the caller…]", "[Note from
+ * the system…]"). Empty when the caller has not spoken.
+ */
+export function lastCallerWords(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'user') continue;
+    const text = String(m.content ?? '').trim();
+    if (text.startsWith('[')) continue;
+    return text.replace(/^\(Said while the greeting was still playing[^)]*\)\s*/, '');
+  }
+  return '';
+}
+
+/**
+ * A report is registered as CONFIRMED only after a yes. When the caller's last
+ * words begin with "No" ("No, nothing else.", "No, that is wrong"), a
+ * create-ticket with summaryConfirmed is refused and nothing is written. An
+ * emergency still happening (isOngoing) is never held for a summary, so it is
+ * never refused here.
+ */
+export function unconfirmedReport(tool: string, args: Record<string, any>, callerSaid: string): Record<string, unknown> | null {
+  if (tool !== 'create-ticket') return null;
+  if (!/^(true|yes)$/i.test(String(args.summaryConfirmed ?? ''))) return null;
+  if (/^(true|yes)$/i.test(String(args.isOngoing ?? ''))) return null;
+  if (!/^\W*no\b/i.test(callerSaid)) return null;
+  return {
+    ok: false,
+    message:
+      `Nothing was registered. The caller's last words were "${callerSaid.slice(0, 120)}", which is not a yes to your summary. ` +
+      'If they corrected something, correct the summary and read it back; otherwise ask "Is this summary accurate?" and wait for a clear yes before calling create-ticket again.',
+  };
 }

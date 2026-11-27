@@ -18,11 +18,21 @@ import { agentPromptFor, CONTACT_CENTRE_TOOLS, SYSTEM_PROMPT } from '../src/agen
 import { callSystemPrompt } from '../src/voice-local/call-setup';
 import { voiceModel } from '../src/voice-local/llm';
 import { parsePls } from '../src/voice-local/pronunciations-export';
-import { pronounced, PRONUNCIATIONS } from '../src/voice-local/pronounce';
+import { pronounced, PRONUNCIATIONS, pronunciationsFromEnv } from '../src/voice-local/pronounce';
+import { DEFAULT_SENTENCE, parseTakeArgs, renderTakes, takeTexts } from '../src/voice-local/pronunciation-takes';
 import { rms } from '../src/voice-local/pcm';
 import { CachedSpeech, KEEP_COMMAS_MAX_CHARS, RESAMPLER_VERSION, SpitchTts } from '../src/voice-local/tts';
 import { localToolDefinitions } from '../src/voice-local/voice-tools';
-import { LONG_SENTENCE_CHARS, SENTENCE_GAP_MS, splitLongSentence, VoiceSession } from '../src/voice-local/voice-session';
+import {
+  lastCallerWords,
+  LONG_SENTENCE_CHARS,
+  MAX_PREBUFFER_WAIT_MS,
+  prebufferWaitMs,
+  SENTENCE_GAP_MS,
+  splitLongSentence,
+  unconfirmedReport,
+  VoiceSession,
+} from '../src/voice-local/voice-session';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const state = require('../../../scripts/update-state-info-center.js');
 
@@ -282,4 +292,220 @@ describe('the call loop speaks with pauses, in parts, and in the right words', (
       PRONUNCIATIONS.pop();
     }
   }, 15_000);
+});
+
+// ── 27 Nov, second round: from the server's conversation check on the new code ──
+
+describe('a report is registered only after a clear yes', () => {
+  const prompt = agentPromptFor(plateau as any);
+  const local = callSystemPrompt(plateau as any, { id: 'x', name: 'Gwaman' } as any, { sip_callerstatus: 'new' }, new Date('2026-11-27T19:00:00Z'));
+
+  it('says what is and is not a yes, asks the closing question first, and saves the LGA when named', () => {
+    expect(prompt).toMatch(/"No", "Nothing else", a correction or anything unclear is NOT a yes/);
+    expect(prompt).toMatch(/always ask the PHASE 3 closing question \("Is there any additional information, evidence or detail/);
+    expect(local).toMatch(/clearly names their Local Government Area, call update-caller-profile with that lga in the SAME reply/);
+  });
+
+  it('refuses create-ticket after the caller says "No…", and only then', () => {
+    const confirmed = { summaryConfirmed: true };
+    expect(unconfirmedReport('create-ticket', confirmed, 'No, nothing else.')).toMatchObject({ ok: false });
+    expect(unconfirmedReport('create-ticket', confirmed, '  no that is wrong')).toMatchObject({ ok: false });
+    expect(unconfirmedReport('create-ticket', confirmed, 'Yes, that is correct.')).toBeNull();
+    expect(unconfirmedReport('create-ticket', confirmed, 'Nothing more, that is right.')).toBeNull();
+    // An emergency still happening is never held for a summary.
+    expect(unconfirmedReport('create-ticket', { ...confirmed, isOngoing: true }, 'No, they are still shooting')).toBeNull();
+    // Not a confirmed registration, or not a report: not this guard's business.
+    expect(unconfirmedReport('create-ticket', {}, 'No.')).toBeNull();
+    expect(unconfirmedReport('update-caller-profile', confirmed, 'No.')).toBeNull();
+  });
+
+  it("reads the caller's own last words, never a note from the system", () => {
+    expect(
+      lastCallerWords([
+        { role: 'system', content: 's' },
+        { role: 'user', content: 'No, nothing else.' },
+        { role: 'assistant', content: 'Is this accurate?' },
+        { role: 'user', content: '[No reply from the caller for 12 seconds (check 1). They have not spoken.]' },
+      ]),
+    ).toBe('No, nothing else.');
+    expect(lastCallerWords([{ role: 'user', content: '(Said while the greeting was still playing, before you asked your question:) No thanks' }])).toBe('No thanks');
+    expect(lastCallerWords([{ role: 'system', content: 's' }])).toBe('');
+  });
+
+  it('on a call: nothing is written after "No, nothing else.", and the report is filed after "Yes"', async () => {
+    const written: string[] = [];
+    const toolReplies: string[] = [];
+    let stt: any = null;
+    const ticket = { id: 't1', type: 'function' as const, function: { name: 'create-ticket', arguments: '{"subject":"Borehole","summaryConfirmed":true}' } };
+    const session = new VoiceSession(
+      {
+        sendAudio: () => undefined,
+        close: () => undefined,
+        stt: async (ev) => {
+          stt = ev;
+          return { send: () => undefined, close: () => undefined };
+        },
+        assistantVoice: new CachedSpeech({ name: 't', synthesize: async () => Buffer.alloc(320) } as any, null),
+        governorVoice: null,
+        llm: async function* (messages) {
+          const last = messages[messages.length - 1];
+          if (last.role === 'tool') {
+            toolReplies.push(String(last.content));
+            yield { type: 'text' as const, delta: 'Is this summary accurate?' };
+            return;
+          }
+          yield { type: 'tool_calls' as const, calls: [ticket] };
+        },
+        tools: [],
+        runTool: async (name) => {
+          written.push(name);
+          return { ok: true };
+        },
+        log: () => undefined,
+      },
+      { systemPrompt: 'test', opening: 'Hello.', personal: [] },
+    );
+    await session.start();
+    await new Promise((r) => setTimeout(r, 200));
+    const answer = async (said: string) => {
+      stt.onFinal(said, true);
+      const until = Date.now() + 3_000;
+      do await new Promise((r) => setTimeout(r, 30));
+      while (Date.now() < until && session.busy);
+    };
+    await answer('No, nothing else.');
+    expect(written).toEqual([]);
+    expect(toolReplies[0]).toMatch(/Nothing was registered/);
+    await answer('Yes, that is correct.');
+    expect(written).toEqual(['create-ticket']);
+    await session.finish('completed');
+  }, 15_000);
+});
+
+describe('the pause before a reply is a server setting', () => {
+  const saved = process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS;
+    else process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS = saved;
+  });
+
+  it('defaults to what it was, takes 0–5000 ms, and ignores anything else', () => {
+    delete process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS;
+    expect(prebufferWaitMs()).toBe(MAX_PREBUFFER_WAIT_MS);
+    process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS = '800';
+    expect(prebufferWaitMs()).toBe(800);
+    process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS = '0';
+    expect(prebufferWaitMs()).toBe(0);
+    for (const bad of ['-1', '9000', 'fast']) {
+      process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS = bad;
+      expect(prebufferWaitMs()).toBe(MAX_PREBUFFER_WAIT_MS);
+    }
+  });
+
+  /** How long after the caller finished the reply's first sound left, with a slow second sentence. */
+  async function firstSoundAfter(wait: string | undefined): Promise<number> {
+    if (wait === undefined) delete process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS;
+    else process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS = wait;
+    let stt: any = null;
+    let askedAt = 0;
+    let firstLoud = 0;
+    const tone = Buffer.alloc(16 * 300);
+    for (let i = 0; i < tone.length / 2; i++) tone.writeInt16LE(Math.round(5000 * Math.sin(i / 3)), i * 2);
+    const session = new VoiceSession(
+      {
+        sendAudio: (f) => {
+          if (askedAt && !firstLoud && rms(f) > 200) firstLoud = Date.now();
+        },
+        close: () => undefined,
+        stt: async (ev) => {
+          stt = ev;
+          return { send: () => undefined, close: () => undefined };
+        },
+        assistantVoice: new CachedSpeech(
+          {
+            name: 't',
+            synthesize: async (text: string) => {
+              await new Promise((r) => setTimeout(r, /slow/.test(text) ? 1_500 : 20));
+              return tone;
+            },
+          } as any,
+          null,
+        ),
+        governorVoice: null,
+        llm: async function* () {
+          yield { type: 'text' as const, delta: 'Thank you for that, Steven. This second sentence is slow to make.' };
+        },
+        tools: [],
+        runTool: async () => ({ ok: true }),
+        log: () => undefined,
+      },
+      { systemPrompt: 'test', opening: 'Hello there.', personal: [] },
+    );
+    await session.start();
+    await new Promise((r) => setTimeout(r, 500));
+    askedAt = Date.now();
+    stt.onFinal('Hello', true);
+    const until = Date.now() + 5_000;
+    while (Date.now() < until && !firstLoud) await new Promise((r) => setTimeout(r, 20));
+    await session.finish('completed');
+    return firstLoud - askedAt;
+  }
+
+  it('at 0 the reply starts without waiting for its slow second sentence; by default it waits', async () => {
+    expect(await firstSoundAfter('0')).toBeLessThan(600);
+    expect(await firstSoundAfter(undefined)).toBeGreaterThan(1_200);
+  }, 20_000);
+});
+
+describe('pronunciations set on the server, and hearing them first', () => {
+  it('reads "Word=Spelling; Other=Spelling", quotes and all, and skips what is malformed', () => {
+    expect(pronunciationsFromEnv('"Plateau=Plah-toe; Gyel = Jel; =x; nothing; Bad=;"').map((p) => [p.written, p.say])).toEqual([
+      ['Plateau', 'Plah-toe'],
+      ['Gyel', 'Jel'],
+    ]);
+    expect(pronunciationsFromEnv('')).toEqual([]);
+  });
+
+  it('a server setting reaches what the voice is given', () => {
+    const saved = process.env.LOCAL_VOICE_PRONOUNCE;
+    process.env.LOCAL_VOICE_PRONOUNCE = 'Plateau=Plah-toe';
+    try {
+      expect(pronounced('Welcome to the Plateau State Government.')).toBe('Welcome to the Plah-toe State Government.');
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_VOICE_PRONOUNCE;
+      else process.env.LOCAL_VOICE_PRONOUNCE = saved;
+    }
+    expect(pronounced('Welcome to the Plateau State Government.')).toBe('Welcome to the Plateau State Government.');
+  });
+
+  it('renders the word as written and each spelling, in every voice, and returns a link for each', async () => {
+    const req = parseTakeArgs(['Plateau', 'Plah-toe', 'Plah toe']);
+    expect(req.sentence).toBe(DEFAULT_SENTENCE);
+    expect(takeTexts(req).map((t) => t.text)).toEqual([
+      'Thank you for calling the Plateau State Government Citizen Contact Centre.',
+      'Thank you for calling the Plah-toe State Government Citizen Contact Centre.',
+      'Thank you for calling the Plah toe State Government Citizen Contact Centre.',
+    ]);
+    const said: string[] = [];
+    const stored: string[] = [];
+    const engine = (name: string) => ({ name, synthesize: async (t: string) => (said.push(`${name}:${t}`), Buffer.alloc(1600)) });
+    const takes = await renderTakes(req, [{ name: 'jude', engine: engine('jude') }, { name: 'lucy', engine: engine('lucy') }], {
+      upload: async (name, wav) => {
+        expect(wav.subarray(0, 4).toString()).toBe('RIFF');
+        stored.push(name);
+        return `pronunciation-takes/${name}`;
+      },
+      link: async (path) => `https://example.test/api/files/call-recordings/${path}`,
+    });
+    expect(takes).toHaveLength(6);
+    expect(said.filter((s) => s.startsWith('lucy:'))).toHaveLength(3);
+    expect(takes[1]).toMatchObject({ voice: 'jude', label: 'spelled: Plah-toe' });
+    expect(new Set(stored).size).toBe(6);
+  });
+
+  it('refuses a request it cannot render', () => {
+    expect(() => parseTakeArgs(['Plateau'])).toThrow(/Usage/);
+    expect(() => parseTakeArgs(['Gyel', 'Jel', '--sentence', 'no placeholder'])).toThrow(/\{word\}/);
+    expect(parseTakeArgs(['Gyel', 'Jel', '--sentence', 'You are in {word} B ward.']).sentence).toBe('You are in {word} B ward.');
+  });
 });
