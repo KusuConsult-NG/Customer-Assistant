@@ -1,4 +1,5 @@
-import { changeTempo, downsample24kTo8k, forPlayback, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
+import { changeTempo, downsample24kTo8k, forPlayback, rms, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
+import { VoiceSession } from '../src/voice-local/voice-session';
 import {
   assistantTtsFromEnv,
   AzureTts,
@@ -15,7 +16,7 @@ import {
   spitchDeadlineMs,
   spitchSlotsInUse,
 } from '../src/voice-local/tts';
-import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES, pickPlateauPersona } from '../src/agent-tools/agent-tool-catalog';
+import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES, SYSTEM_PROMPT, pickPlateauPersona } from '../src/agent-tools/agent-tool-catalog';
 
 describe('voice-local TTS providers & PCM downsampling', () => {
   const saved = { ...process.env };
@@ -106,8 +107,8 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     const speech = Buffer.alloc(8000 * 2); // 1 s: 400 ms silence, 200 ms speech at full level, 400 ms silence
     for (let i = 3200; i < 4800; i++) speech.writeInt16LE(i % 2 ? 9000 : -9000, i * 2);
     const out = forPlayback(speech);
-    // 30 ms lead + 200 ms speech + 220 ms trail.
-    expect(out.length / 2).toBe(240 + 1600 + 1760);
+    // 30 ms lead + 200 ms speech + 130 ms trail.
+    expect(out.length / 2).toBe(240 + 1600 + 1040);
     expect(out.readInt16LE(0)).toBe(0);
     expect(out.readInt16LE(out.length - 2)).toBe(0);
     // A clip that starts at full level is faded in, not clicked in.
@@ -350,5 +351,91 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     } finally {
       global.fetch = realFetch;
     }
+  });
+
+  it('pre-buffers multi-sentence replies so a slower second sentence never causes a mid-speech silence gap', async () => {
+    const tone = (ms: number) => {
+      const buf = Buffer.alloc(ms * 16);
+      for (let i = 0; i < buf.length / 2; i++) buf.writeInt16LE(Math.round(5000 * Math.sin(i / 3)), i * 2);
+      return buf;
+    };
+    const logs: Array<{ event: string; detail?: Record<string, unknown> }> = [];
+    const sentFrames: Buffer[] = [];
+    let sttEvents: any = null;
+    const engine = {
+      name: 'spitch',
+      voice: 'jude',
+      async synthesize(text: string): Promise<Buffer> {
+        // Sentence 1 returns fast (15 ms, short 120 ms clip); Sentence 2 takes 260 ms
+        // (longer than Sentence 1's duration). Without pre-buffering, playQueue would
+        // underrun and emit dead silence between the two sentences.
+        if (text.includes('water project')) {
+          await new Promise((r) => setTimeout(r, 260));
+          return tone(160);
+        }
+        await new Promise((r) => setTimeout(r, 15));
+        return tone(120);
+      },
+    };
+    const session = new VoiceSession(
+      {
+        sendAudio: (frame) => sentFrames.push(frame),
+        close: () => undefined,
+        stt: async (events) => {
+          sttEvents = events;
+          return { send: () => undefined, close: () => undefined };
+        },
+        assistantVoice: new CachedSpeech(engine as any, null),
+        governorVoice: null,
+        llm: async function* () {
+          yield { type: 'text', delta: 'Sure, I can help you with that. ' };
+          yield { type: 'text', delta: 'The water project in Jos North is currently active.' };
+        },
+        tools: [],
+        runTool: async () => ({ ok: true }),
+        log: (event, detail) => logs.push({ event, detail }),
+      },
+      { systemPrompt: 'test', opening: 'Hello.', personal: [] },
+    );
+
+    await session.start();
+    // Wait for opening to drain, then clear captured frames before the caller's turn.
+    await new Promise((r) => setTimeout(r, 220));
+    sentFrames.length = 0;
+
+    sttEvents.onFinal('Tell me about the water project', true);
+    const deadlineAt = Date.now() + 3_000;
+    while (Date.now() < deadlineAt && (session.busy || !logs.some((l) => l.event === 'voice_local_turn'))) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await session.finish('completed');
+
+    expect(logs.some((l) => l.event === 'voice_local_turn')).toBe(true);
+    expect(logs.some((l) => l.event === 'voice_local_playback_underrun')).toBe(false);
+
+    // Measure the longest silent run strictly between the first audible frame and last audible frame.
+    const audibleIndices = sentFrames.map((f, idx) => (rms(f) > 200 ? idx : -1)).filter((i) => i >= 0);
+    expect(audibleIndices.length).toBeGreaterThanOrEqual(10);
+    const firstAudible = audibleIndices[0];
+    const lastAudible = audibleIndices[audibleIndices.length - 1];
+    let maxSilentRun = 0;
+    let curSilentRun = 0;
+    for (let i = firstAudible; i <= lastAudible; i++) {
+      if (rms(sentFrames[i]) <= 200) {
+        curSilentRun++;
+        maxSilentRun = Math.max(maxSilentRun, curSilentRun);
+      } else {
+        curSilentRun = 0;
+      }
+    }
+    // Only the normal inter-sentence trim pad (~160 ms = 8 frames) should exist — never a 250ms+ mid-speech gap.
+    expect(maxSilentRun).toBeLessThanOrEqual(10);
+  });
+
+  it('guards SYSTEM_PROMPT against filler names, personal cash handout tickets, and Bukuru/Gyel ASR mishears', () => {
+    expect(SYSTEM_PROMPT).toContain('NEVER ACCEPT FILLERS OR NON-ANSWERS AS A NAME OR LOCATION');
+    expect(SYSTEM_PROMPT).toContain('Out-of-scope, personal cash handouts, or unrealistic/prank requests (DO NOT LOG A TICKET)');
+    expect(SYSTEM_PROMPT).toContain('Bukuru Lowcost');
+    expect(SYSTEM_PROMPT).toContain('Gyel D');
   });
 });

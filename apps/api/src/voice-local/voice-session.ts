@@ -82,6 +82,15 @@ export const ACKS = ['One second, please.', 'Just a moment.'];
 export const HOLDING_LINE = 'One moment, please.';
 /** After the caller carries on speaking: how long to wait for the rest of their words before answering what was said. */
 export const CONTINUATION_WAIT_MS = 2_500;
+/**
+ * Hold the start of a multi-sentence reply until either every sentence of the
+ * round is synthesised, at least this much contiguous audio is buffered, or
+ * MAX_PREBUFFER_WAIT_MS elapses after the first sentence arrives. Prevents
+ * playQueue underruns (1–4 s mid-speech pauses) when a short first sentence
+ * finishes playing before a slower non-streaming Spitch second sentence returns.
+ */
+export const MIN_PREBUFFER_MS = 4_500;
+export const MAX_PREBUFFER_WAIT_MS = 2_500;
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
@@ -113,6 +122,12 @@ export class VoiceSession {
   private callerIndex = -1;
   private speechChain: Promise<void> = Promise.resolve();
   private spokenThisTurn = '';
+  private turnPlaybackStarted = false;
+  private turnStreamDone = false;
+  private turnPendingSynths = 0;
+  private turnPrebuffer: Array<{ audio: Buffer; text: string; cached: boolean }> = [];
+  private turnPrebufferMs = 0;
+  private prebufferTimer: NodeJS.Timeout | null = null;
   private turnStartedAt = 0;
   private turnFirstText = 0;
   private turnFirstAudio = 0;
@@ -340,6 +355,7 @@ export class VoiceSession {
 
   /** Drop the reply being prepared, without treating it as the caller talking over it. */
   private abortReplyQuietly(): void {
+    this.clearPrebuffer();
     this.playQueue = [];
     this.turnAbort?.abort();
     this.speechChain = Promise.resolve();
@@ -368,6 +384,7 @@ export class VoiceSession {
   }
 
   private interrupt(): void {
+    this.clearPrebuffer();
     this.playQueue = [];
     this.turnAbort?.abort();
     this.speechChain = Promise.resolve();
@@ -426,6 +443,10 @@ export class VoiceSession {
           }
         };
         this.spokenThisTurn = '';
+        this.turnPlaybackStarted = false;
+        this.turnStreamDone = false;
+        this.turnPendingSynths = 0;
+        this.clearPrebuffer();
         for await (const ev of this.deps.llm(this.messages, this.deps.tools, abort.signal)) {
           if (abort.signal.aborted) break;
           if (ev.type === 'text') {
@@ -438,6 +459,10 @@ export class VoiceSession {
         }
         const rest = splitter.flush();
         if (rest && !abort.signal.aborted) emit(rest);
+        this.turnStreamDone = true;
+        if (!abort.signal.aborted && !this.outcome && this.turnPendingSynths === 0 && this.turnPrebuffer.length > 0) {
+          this.flushPrebuffer();
+        }
 
         if (abort.signal.aborted) {
           // Keep what was actually said — for the model, so it knows where it
@@ -468,9 +493,14 @@ export class VoiceSession {
         if (held.length) {
           if (wrote && !abort.signal.aborted) {
             // Now true: say it, after the write that makes it so.
+            this.turnStreamDone = false;
             for (const h of held) {
               spokenParts.push(h);
               this.say(h, abort.signal);
+            }
+            this.turnStreamDone = true;
+            if (!this.outcome && this.turnPendingSynths === 0 && this.turnPrebuffer.length > 0) {
+              this.flushPrebuffer();
             }
             const lastAssistant = [...this.messages].reverse().find((m) => m.role === 'assistant') as { content: string | null } | undefined;
             if (lastAssistant) lastAssistant.content = told();
@@ -489,6 +519,9 @@ export class VoiceSession {
         if (this.hangupRequested) break;
       }
       await this.speechChain;
+      if (!abort.signal.aborted && !this.outcome && this.turnPrebuffer.length > 0) {
+        this.flushPrebuffer();
+      }
     } catch (err: any) {
       if (!abort.signal.aborted) this.fail(`model: ${err?.message ?? err}`);
     } finally {
@@ -553,29 +586,73 @@ export class VoiceSession {
     return wrote;
   }
 
-  /** Queue a sentence: synthesised in order, played as soon as it is ready. */
+  private clearPrebuffer(): void {
+    if (this.prebufferTimer) {
+      clearTimeout(this.prebufferTimer);
+      this.prebufferTimer = null;
+    }
+    this.turnPrebuffer = [];
+    this.turnPrebufferMs = 0;
+  }
+
+  private flushPrebuffer(): void {
+    if (this.prebufferTimer) {
+      clearTimeout(this.prebufferTimer);
+      this.prebufferTimer = null;
+    }
+    this.turnPlaybackStarted = true;
+    const clips = this.turnPrebuffer.splice(0);
+    this.turnPrebufferMs = 0;
+    for (const c of clips) this.enqueueSpoken(c.audio, c.text, c.cached);
+  }
+
+  private enqueueSpoken(clip: Buffer, text: string, cached: boolean): void {
+    this.spokenThisTurn += (this.spokenThisTurn ? ' ' : '') + text;
+    if (this.turnStartedAt && !this.turnFirstAudio) {
+      this.turnFirstAudio = this.now();
+      // Where the wait went: model to first words, then speech synthesis.
+      this.deps.log('voice_local_turn', {
+        model_ms: this.turnFirstText ? this.turnFirstText - this.turnStartedAt : null,
+        first_audio_ms: this.turnFirstAudio - this.turnStartedAt,
+        chars: text.length,
+        cached,
+      });
+    }
+    this.enqueue(clip);
+  }
+
+  /** Queue a sentence: synthesised in parallel, pre-buffered so multi-sentence replies play seamlessly without mid-speech gaps. */
   private say(sentence: string, signal: AbortSignal): void {
     const text = speakable(sentence);
     if (!text) return;
+    this.turnPendingSynths++;
     const synth = this.deps.assistantVoice.speak(text, { personal: this.setup.personal, signal }).catch((err: any) => {
       if (!signal.aborted) this.fail(`speech: ${err?.message ?? err}`);
       return null;
     });
     this.speechChain = this.speechChain.then(async () => {
       const r = await synth;
+      this.turnPendingSynths = Math.max(0, this.turnPendingSynths - 1);
       if (!r || signal.aborted || this.outcome) return;
-      this.spokenThisTurn += (this.spokenThisTurn ? ' ' : '') + text;
-      if (this.turnStartedAt && !this.turnFirstAudio) {
-        this.turnFirstAudio = this.now();
-        // Where the wait went: model to first words, then speech synthesis.
-        this.deps.log('voice_local_turn', {
-          model_ms: this.turnFirstText ? this.turnFirstText - this.turnStartedAt : null,
-          first_audio_ms: this.turnFirstAudio - this.turnStartedAt,
-          chars: text.length,
-          cached: r.cached,
-        });
+      const clip = forPlayback(r.audio);
+      if (this.turnPlaybackStarted) {
+        if (this.playQueue.length === 0) {
+          this.deps.log('voice_local_playback_underrun', { chars: text.length, cached: r.cached });
+        }
+        this.enqueueSpoken(clip, text, r.cached);
+        return;
       }
-      this.enqueue(forPlayback(r.audio));
+      this.turnPrebuffer.push({ audio: clip, text, cached: r.cached });
+      this.turnPrebufferMs += Math.round(clip.length / 16);
+      if ((this.turnStreamDone && this.turnPendingSynths === 0) || this.turnPrebufferMs >= MIN_PREBUFFER_MS) {
+        this.flushPrebuffer();
+      } else if (!this.prebufferTimer) {
+        this.prebufferTimer = setTimeout(() => {
+          this.prebufferTimer = null;
+          if (!signal.aborted && !this.outcome) this.flushPrebuffer();
+        }, MAX_PREBUFFER_WAIT_MS);
+        this.prebufferTimer.unref?.();
+      }
     });
   }
 
@@ -713,6 +790,7 @@ export class VoiceSession {
     this.outcome = outcome;
     this.finishing = (async () => {
       this.turnAbort?.abort();
+      this.clearPrebuffer();
       if (this.ackTimer) clearTimeout(this.ackTimer);
       if (this.continuationTimer) clearTimeout(this.continuationTimer);
       if (this.pump) clearTimeout(this.pump);
