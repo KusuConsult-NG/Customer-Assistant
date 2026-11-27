@@ -39,8 +39,13 @@ export const PRONUNCIATIONS: Pronunciation[] = [
     say: 'Plas-cheh-ma',
     confirmed:
       'Sound "PLAS-CHE-MA" given by the owner (Steven) after test call local-0a9bafd4, 27 Nov 2026 (Spitch said "plaschem"); ' +
-      'same sound as the old ElevenLabs rule "PLAS-CHEH-MA". Check the spelling by ear with pronunciation-takes.js; ' +
-      'LOCAL_VOICE_PRONOUNCE="PLASCHEMA=…" overrides it without a rebuild.',
+      'same sound as the old ElevenLabs rule "PLAS-CHEH-MA". Permanent entry.',
+  },
+  {
+    written: 'Plateau',
+    say: 'Platoe',
+    confirmed:
+      'Confirmed by ear by the owner (Steven) on 27 Nov 2026 in both spitch-jude-3.wav and spitch-lucy-3.wav (Option 3: "Platoe"). Permanent entry.',
   },
 ];
 

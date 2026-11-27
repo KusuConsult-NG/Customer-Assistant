@@ -498,7 +498,8 @@ describe('pronunciations set on the server, and hearing them first', () => {
       if (saved === undefined) delete process.env.LOCAL_VOICE_PRONOUNCE;
       else process.env.LOCAL_VOICE_PRONOUNCE = saved;
     }
-    expect(pronounced('Welcome to the Plateau State Government.')).toBe('Welcome to the Plateau State Government.');
+    // Without a server override, the permanent confirmed spelling ("Platoe") applies.
+    expect(pronounced('Welcome to the Plateau State Government.')).toBe('Welcome to the Platoe State Government.');
   });
 
   it('says PLASCHEMA as PLAS-CHE-MA, and a server setting for the same word wins', () => {
