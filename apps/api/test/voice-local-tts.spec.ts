@@ -10,6 +10,7 @@ import {
   resetSpitchCircuit,
   spitchCircuitState,
   SpitchTts,
+  StaticGovernorAudio,
   YarnGptTts,
   spitchDeadlineMs,
   spitchSlotsInUse,
@@ -323,5 +324,31 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     expect(isCacheable('Your reference number is PS-2026-0042.', [])).toBe(false);
     expect(isCacheable('We will call you on 08031234567.', [])).toBe(false);
     expect(isCacheable('To help us resolve your issue, this call is being recorded.', ['Steven'])).toBe(true);
+  });
+
+  it('plays ONLY the 3 approved studio Governor WAV recordings with zero network TTS calls', async () => {
+    const gov = StaticGovernorAudio.fromDisk();
+    expect(gov).not.toBeNull();
+    const realFetch = global.fetch;
+    let fetchCalls = 0;
+    global.fetch = (async () => {
+      fetchCalls++;
+      throw new Error('must never call network TTS for approved Governor greetings');
+    }) as any;
+    try {
+      const morning = await gov!.synthesize('Good morning, and welcome to the Plateau State Government Citizen Contact Centre.');
+      const afternoon = await gov!.synthesize('Good afternoon, and welcome to the Plateau State Government Citizen Contact Centre.');
+      const evening = await gov!.synthesize('Good evening, and welcome to the Plateau State Government Citizen Contact Centre.');
+      // All 3 approved clips are ~8.7–8.9s at 8 kHz 16-bit mono (~139 KB each) and distinct.
+      expect(morning.length).toBeGreaterThan(100_000);
+      expect(afternoon.length).toBeGreaterThan(100_000);
+      expect(evening.length).toBeGreaterThan(100_000);
+      expect(morning.equals(afternoon)).toBe(false);
+      expect(afternoon.equals(evening)).toBe(false);
+      expect(morning.equals(evening)).toBe(false);
+      expect(fetchCalls).toBe(0);
+    } finally {
+      global.fetch = realFetch;
+    }
   });
 });

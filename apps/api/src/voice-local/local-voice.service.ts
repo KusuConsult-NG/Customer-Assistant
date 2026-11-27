@@ -26,7 +26,16 @@ import { mulawBufferToSlin, warmResampler } from './pcm';
 import { callOpening, callSystemPrompt } from './call-setup';
 import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
-import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, spitchCircuitState, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
+import {
+  assistantTtsFromEnv,
+  CachedSpeech,
+  ElevenLabsTts,
+  spitchCircuitState,
+  SpitchTts,
+  speedFromEnv,
+  StaticGovernorAudio,
+  type SpeechEngine,
+} from './tts';
 import { TtsCache } from './tts-cache';
 import { clipCheckFromEnv, type ClipCheck } from './speech-check';
 import { localToolDefinitions, runLocalTool } from './voice-tools';
@@ -100,7 +109,9 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   llm = streamChat;
   warmLlm: ((m: any[], t: any[]) => Promise<void>) | undefined = (m, t) => warmPromptCache(m, t);
   assistantEngine: (gender?: 'male' | 'female') => SpeechEngine | null = (gender) => assistantTtsFromEnv(gender);
-  governorEngine = (key: string): SpeechEngine => new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
+  private static readonly defaultGovernorEngine = (key: string): SpeechEngine =>
+    StaticGovernorAudio.fromDisk() ?? new ElevenLabsTts(key, GOVERNOR_VOICE_ID, VOICE_MODEL_ID, VOICE_SETTINGS);
+  governorEngine: (key: string) => SpeechEngine = LocalVoiceService.defaultGovernorEngine;
 
   constructor(
     private readonly tools: AgentToolsService,
@@ -357,11 +368,20 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * The Governor's cloned voice, for the `<governor>` part of the opening.
-   * Uses whatever already-rendered clip is on disk first (CachedSpeech), so
-   * once `npm run voice:prerender` has run, no ElevenLabs key is needed.
+   * The Governor's voice, for the `<governor>` part of the opening.
+   * ALWAYS plays the 3 approved studio WAV recordings in
+   * `data/voice-assets/governor/` (good-morning / good-afternoon / good-evening)
+   * directly with zero AI synthesis. Only a test stub replacing `governorEngine`
+   * bypasses them.
    */
   private async governorVoice(organizationId: string): Promise<CachedSpeech | null> {
+    if (this.governorEngine === LocalVoiceService.defaultGovernorEngine) {
+      const approved = StaticGovernorAudio.fromDisk();
+      if (approved) {
+        return new CachedSpeech(approved, null);
+      }
+    }
+
     const spitchKey = process.env.SPITCH_API_KEY?.trim();
     const spitchGovVoice = process.env.SPITCH_GOVERNOR_VOICE?.trim();
     if (spitchKey && spitchGovVoice) {

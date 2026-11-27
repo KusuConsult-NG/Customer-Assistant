@@ -28,7 +28,9 @@ Treat this codebase as **critical government production infrastructure**, not an
 
 ## 2. Voice & Knowledge Base Invariants
 
-1. **No Synthetic Fillers or Robotic Punctuation:**
+1. **Approved Governor Greeting Recordings (Strict Lock):**
+   - ONLY the 3 approved studio recordings bundled in `data/voice-assets/governor/` (`good-morning.wav`, `good-afternoon.wav`, `good-evening.wav`) may be played for the `<governor>` greeting (`StaticGovernorAudio`). Never synthesize the Governor's voice via Spitch, ElevenLabs, or any other AI TTS.
+2. **No Synthetic Fillers or Robotic Punctuation:**
    - `SpitchTts.synthesize()` strips commas and sentence-final periods/colons so Spitch never speaks `"comma"` or `"full stop"` aloud.
    - Keep `LOCAL_VOICE_ACK_AFTER_MS=0` in production and do not add `"Let me check"` / `"One second, please"` lookup-bridge instructions to `agent-tool-catalog.ts`.
 2. **Anti-Hallucination & Grounded Knowledge:**

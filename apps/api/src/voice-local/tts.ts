@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { changeTempo, downsample24kTo8k, mulawBufferToSlin, wavToSlin8k } from './pcm';
 import { TtsCache } from './tts-cache';
 import type { ClipCheck, ClipVerdict } from './speech-check';
@@ -635,5 +637,75 @@ export class CachedSpeech {
       this.checking.add(job);
     }
     return { audio, cached: false };
+  }
+}
+
+export type GovernorGreetingSlot = 'morning' | 'afternoon' | 'evening';
+
+const GOVERNOR_SLOT_FILES: Record<GovernorGreetingSlot, string> = {
+  morning: 'good-morning.wav',
+  afternoon: 'good-afternoon.wav',
+  evening: 'good-evening.wav',
+};
+
+/**
+ * Serves ONLY the 3 official, studio-recorded, approved Governor greetings
+ * bundled in `data/voice-assets/governor/` (`good-morning.wav`,
+ * `good-afternoon.wav`, `good-evening.wav`). Never synthesises the Governor's
+ * voice via AI TTS.
+ */
+export class StaticGovernorAudio implements SpeechEngine {
+  readonly name = 'governor-approved-wav';
+  readonly voice = 'approved-studio';
+  private readonly pcmBySlot: Record<GovernorGreetingSlot, Buffer>;
+
+  constructor(dir: string) {
+    this.pcmBySlot = {
+      morning: wavToSlin8k(fs.readFileSync(path.join(dir, GOVERNOR_SLOT_FILES.morning))),
+      afternoon: wavToSlin8k(fs.readFileSync(path.join(dir, GOVERNOR_SLOT_FILES.afternoon))),
+      evening: wavToSlin8k(fs.readFileSync(path.join(dir, GOVERNOR_SLOT_FILES.evening))),
+    };
+  }
+
+  /** Locate `data/voice-assets/governor` across dev (`apps/api`), tests, and Docker (`/app`). */
+  static resolveDir(): string | null {
+    const candidates = [
+      process.env.GOVERNOR_AUDIO_DIR?.trim(),
+      path.resolve(process.cwd(), 'data/voice-assets/governor'),
+      path.resolve(process.cwd(), '../../data/voice-assets/governor'),
+      path.resolve(__dirname, '../../../../data/voice-assets/governor'),
+      path.resolve(__dirname, '../../../../../data/voice-assets/governor'),
+    ].filter(Boolean) as string[];
+    for (const dir of candidates) {
+      if (
+        fs.existsSync(path.join(dir, GOVERNOR_SLOT_FILES.morning)) &&
+        fs.existsSync(path.join(dir, GOVERNOR_SLOT_FILES.afternoon)) &&
+        fs.existsSync(path.join(dir, GOVERNOR_SLOT_FILES.evening))
+      ) {
+        return dir;
+      }
+    }
+    return null;
+  }
+
+  static fromDisk(): StaticGovernorAudio | null {
+    const dir = StaticGovernorAudio.resolveDir();
+    return dir ? new StaticGovernorAudio(dir) : null;
+  }
+
+  static slotForText(text: string, now = new Date()): GovernorGreetingSlot {
+    const lower = text.toLowerCase();
+    if (lower.includes('good morning')) return 'morning';
+    if (lower.includes('good afternoon')) return 'afternoon';
+    if (lower.includes('good evening')) return 'evening';
+    // Fallback strictly to Africa/Lagos clock so only one of the 3 approved clips ever plays.
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', hour12: false }).format(now));
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  }
+
+  async synthesize(text: string): Promise<Buffer> {
+    return this.pcmBySlot[StaticGovernorAudio.slotForText(text)];
   }
 }
