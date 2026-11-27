@@ -70,7 +70,11 @@ const TOOL_FILLER_MS = 2_400;
  * acknowledgement from disk so long lookups never feel like dead air.
  * High enough (2.4 s) that normal replies speak directly without robotic fillers.
  */
-export const ACK_AFTER_MS = 2_400;
+export const ACK_AFTER_MS = 1_400;
+function ackAfterMs(): number {
+  const n = Number(process.env.LOCAL_VOICE_ACK_AFTER_MS);
+  return Number.isFinite(n) && n >= 200 ? n : ACK_AFTER_MS;
+}
 // Two words at least: Spitch rendered a bare "Okay." as 0.09 s of silence.
 export const ACKS = ['One second, please.', 'Just a moment.'];
 export const HOLDING_LINE = 'One moment, please.';
@@ -355,7 +359,7 @@ export class VoiceSession {
       this.ackPlayedThisTurn = true;
       this.enqueue(forPlayback(clip));
       this.deps.log('voice_local_ack', { text, ms: this.now() - this.turnStartedAt });
-    }, ACK_AFTER_MS);
+    }, ackAfterMs());
     this.ackTimer.unref?.();
   }
 
