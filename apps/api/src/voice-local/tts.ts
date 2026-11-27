@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { changeTempo, downsample24kTo8k, mulawBufferToSlin, wavToSlin8k } from './pcm';
 import { TtsCache } from './tts-cache';
 import type { ClipCheck, ClipVerdict } from './speech-check';
@@ -318,6 +320,36 @@ export function spitchSlotsInUse(): number {
   return spitchInFlight;
 }
 
+// Circuit breaker for Spitch TTS: after 3 consecutive provider failures (5xx,
+// 429 exhaustion, timeouts, or network errors), fail fast for 30 s so Asterisk
+// immediately routes new calls to ElevenLabs instead of hanging callers.
+const SPITCH_CB_THRESHOLD = 3;
+const SPITCH_CB_COOLDOWN_MS = 30_000;
+let spitchConsecutiveFailures = 0;
+let spitchOpenUntil = 0;
+
+export function spitchCircuitState(now = Date.now()): { open: boolean; consecutiveFailures: number; retryAfterMs: number } {
+  const retryAfterMs = Math.max(0, spitchOpenUntil - now);
+  return { open: retryAfterMs > 0, consecutiveFailures: spitchConsecutiveFailures, retryAfterMs };
+}
+
+export function resetSpitchCircuit(): void {
+  spitchConsecutiveFailures = 0;
+  spitchOpenUntil = 0;
+}
+
+function recordSpitchSuccess(): void {
+  spitchConsecutiveFailures = 0;
+  spitchOpenUntil = 0;
+}
+
+function recordSpitchFailure(): void {
+  spitchConsecutiveFailures++;
+  if (spitchConsecutiveFailures >= SPITCH_CB_THRESHOLD) {
+    spitchOpenUntil = Date.now() + SPITCH_CB_COOLDOWN_MS;
+  }
+}
+
 /** A speaking-rate multiplier from the environment, 0.5–2; anything else is 1 (unchanged). */
 export function speedFromEnv(name: string, fallback = 1): number {
   const v = Number(process.env[name]?.trim());
@@ -374,6 +406,10 @@ export class SpitchTts implements SpeechEngine {
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
+    const cb = spitchCircuitState();
+    if (cb.open) {
+      throw new Error(`Spitch TTS circuit open (${Math.ceil(cb.retryAfterMs / 1000)}s remaining)`);
+    }
     const attempt = async (): Promise<Buffer> => {
       let lastErr = '';
       for (let tries = 0; tries < 3; tries++) {
@@ -409,7 +445,14 @@ export class SpitchTts implements SpeechEngine {
       }
       throw new Error(`Spitch TTS refused (HTTP 429) ${lastErr}`);
     };
-    return withSpitchSlot(attempt, signal);
+    try {
+      const audio = await withSpitchSlot(attempt, signal);
+      recordSpitchSuccess();
+      return audio;
+    } catch (err) {
+      if (!signal?.aborted) recordSpitchFailure();
+      throw err;
+    }
   }
 }
 
@@ -594,5 +637,75 @@ export class CachedSpeech {
       this.checking.add(job);
     }
     return { audio, cached: false };
+  }
+}
+
+export type GovernorGreetingSlot = 'morning' | 'afternoon' | 'evening';
+
+const GOVERNOR_SLOT_FILES: Record<GovernorGreetingSlot, string> = {
+  morning: 'good-morning.wav',
+  afternoon: 'good-afternoon.wav',
+  evening: 'good-evening.wav',
+};
+
+/**
+ * Serves ONLY the 3 official, studio-recorded, approved Governor greetings
+ * bundled in `data/voice-assets/governor/` (`good-morning.wav`,
+ * `good-afternoon.wav`, `good-evening.wav`). Never synthesises the Governor's
+ * voice via AI TTS.
+ */
+export class StaticGovernorAudio implements SpeechEngine {
+  readonly name = 'governor-approved-wav';
+  readonly voice = 'approved-studio';
+  private readonly pcmBySlot: Record<GovernorGreetingSlot, Buffer>;
+
+  constructor(dir: string) {
+    this.pcmBySlot = {
+      morning: wavToSlin8k(fs.readFileSync(path.join(dir, GOVERNOR_SLOT_FILES.morning))),
+      afternoon: wavToSlin8k(fs.readFileSync(path.join(dir, GOVERNOR_SLOT_FILES.afternoon))),
+      evening: wavToSlin8k(fs.readFileSync(path.join(dir, GOVERNOR_SLOT_FILES.evening))),
+    };
+  }
+
+  /** Locate `data/voice-assets/governor` across dev (`apps/api`), tests, and Docker (`/app`). */
+  static resolveDir(): string | null {
+    const candidates = [
+      process.env.GOVERNOR_AUDIO_DIR?.trim(),
+      path.resolve(process.cwd(), 'data/voice-assets/governor'),
+      path.resolve(process.cwd(), '../../data/voice-assets/governor'),
+      path.resolve(__dirname, '../../../../data/voice-assets/governor'),
+      path.resolve(__dirname, '../../../../../data/voice-assets/governor'),
+    ].filter(Boolean) as string[];
+    for (const dir of candidates) {
+      if (
+        fs.existsSync(path.join(dir, GOVERNOR_SLOT_FILES.morning)) &&
+        fs.existsSync(path.join(dir, GOVERNOR_SLOT_FILES.afternoon)) &&
+        fs.existsSync(path.join(dir, GOVERNOR_SLOT_FILES.evening))
+      ) {
+        return dir;
+      }
+    }
+    return null;
+  }
+
+  static fromDisk(): StaticGovernorAudio | null {
+    const dir = StaticGovernorAudio.resolveDir();
+    return dir ? new StaticGovernorAudio(dir) : null;
+  }
+
+  static slotForText(text: string, now = new Date()): GovernorGreetingSlot {
+    const lower = text.toLowerCase();
+    if (lower.includes('good morning')) return 'morning';
+    if (lower.includes('good afternoon')) return 'afternoon';
+    if (lower.includes('good evening')) return 'evening';
+    // Fallback strictly to Africa/Lagos clock so only one of the 3 approved clips ever plays.
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', hour12: false }).format(now));
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  }
+
+  async synthesize(text: string): Promise<Buffer> {
+    return this.pcmBySlot[StaticGovernorAudio.slotForText(text)];
   }
 }

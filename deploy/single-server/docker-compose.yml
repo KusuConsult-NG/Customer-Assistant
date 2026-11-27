@@ -32,6 +32,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=1GB", "-c", "effective_cache_size=3GB"]
     shm_size: 512mb
+    mem_limit: 2g
+    pids_limit: 300
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ace -d ace"]
       interval: 5s
@@ -44,6 +46,8 @@ services:
     restart: unless-stopped
     # BullMQ needs noeviction: an evicted job key is a document that is never indexed.
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 768m
+    pids_limit: 128
     volumes:
       - redis_data:/data
     healthcheck:
@@ -61,6 +65,13 @@ services:
       QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
       - qdrant_data:/qdrant/storage
+    mem_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     logging: *logging
 
   api:
@@ -111,7 +122,10 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      qdrant: { condition: service_started }
+      qdrant: { condition: service_healthy }
+    mem_limit: 2g
+    pids_limit: 512
+    stop_grace_period: 30s
     logging: *logging
 
   web:
@@ -128,6 +142,13 @@ services:
         NEXT_PUBLIC_API_URL: same-origin
     image: ace-web:latest
     restart: unless-stopped
+    mem_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on: [api]
     logging: *logging
 
@@ -163,6 +184,9 @@ services:
     # The calls come first. Default share is 1024; this is four times that, so
     # under contention the kernel gives the bridge the CPU before anything else.
     cpu_shares: 4096
+    mem_limit: 1g
+    pids_limit: 512
+    stop_grace_period: 30s
     env_file:
       - path: ../../infra/sip-bridge/bridge.env
         required: false

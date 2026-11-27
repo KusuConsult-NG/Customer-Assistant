@@ -5,8 +5,12 @@ import {
   CachedSpeech,
   DeepgramTts,
   ElevenLabsTts,
+  isCacheable,
   OpenAiTts,
+  resetSpitchCircuit,
+  spitchCircuitState,
   SpitchTts,
+  StaticGovernorAudio,
   YarnGptTts,
   spitchDeadlineMs,
   spitchSlotsInUse,
@@ -290,5 +294,61 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     const maleEngine = assistantTtsFromEnv(malePersona.gender) as SpitchTts;
     expect(maleEngine).toBeInstanceOf(SpitchTts);
     expect(maleEngine.voice).toBe('jude');
+  });
+
+  it('opens the Spitch circuit breaker after 3 consecutive failures and fails fast without calling fetch', async () => {
+    resetSpitchCircuit();
+    const realFetch = global.fetch;
+    let calls = 0;
+    global.fetch = (async () => {
+      calls++;
+      return new Response('upstream error', { status: 503 });
+    }) as any;
+    try {
+      const spitch = new SpitchTts({ key: 'sp-test', voice: 'jude' });
+      for (let i = 0; i < 3; i++) {
+        await expect(spitch.synthesize('Hello Plateau State')).rejects.toThrow(/HTTP 503/);
+      }
+      expect(calls).toBe(3);
+      expect(spitchCircuitState().open).toBe(true);
+      await expect(spitch.synthesize('Hello again')).rejects.toThrow(/circuit open/);
+      expect(calls).toBe(3); // failed fast — no extra network call
+    } finally {
+      global.fetch = realFetch;
+      resetSpitchCircuit();
+    }
+  });
+
+  it('never caches citizen personal names, phone numbers, or reference numbers in shared tts-cache', () => {
+    expect(isCacheable('Welcome back, Steven.', ['Steven'])).toBe(false);
+    expect(isCacheable('Your reference number is PS-2026-0042.', [])).toBe(false);
+    expect(isCacheable('We will call you on 08031234567.', [])).toBe(false);
+    expect(isCacheable('To help us resolve your issue, this call is being recorded.', ['Steven'])).toBe(true);
+  });
+
+  it('plays ONLY the 3 approved studio Governor WAV recordings with zero network TTS calls', async () => {
+    const gov = StaticGovernorAudio.fromDisk();
+    expect(gov).not.toBeNull();
+    const realFetch = global.fetch;
+    let fetchCalls = 0;
+    global.fetch = (async () => {
+      fetchCalls++;
+      throw new Error('must never call network TTS for approved Governor greetings');
+    }) as any;
+    try {
+      const morning = await gov!.synthesize('Good morning, and welcome to the Plateau State Government Citizen Contact Centre.');
+      const afternoon = await gov!.synthesize('Good afternoon, and welcome to the Plateau State Government Citizen Contact Centre.');
+      const evening = await gov!.synthesize('Good evening, and welcome to the Plateau State Government Citizen Contact Centre.');
+      // All 3 approved clips are ~8.7–8.9s at 8 kHz 16-bit mono (~139 KB each) and distinct.
+      expect(morning.length).toBeGreaterThan(100_000);
+      expect(afternoon.length).toBeGreaterThan(100_000);
+      expect(evening.length).toBeGreaterThan(100_000);
+      expect(morning.equals(afternoon)).toBe(false);
+      expect(afternoon.equals(evening)).toBe(false);
+      expect(morning.equals(evening)).toBe(false);
+      expect(fetchCalls).toBe(0);
+    } finally {
+      global.fetch = realFetch;
+    }
   });
 });
