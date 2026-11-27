@@ -72,7 +72,9 @@ const TOOL_FILLER_MS = 2_400;
  */
 export const ACK_AFTER_MS = 1_400;
 function ackAfterMs(): number {
-  const n = Number(process.env.LOCAL_VOICE_ACK_AFTER_MS);
+  const raw = process.env.LOCAL_VOICE_ACK_AFTER_MS?.trim();
+  if (raw === '0' || raw === 'off' || raw === 'false') return 0;
+  const n = Number(raw);
   return Number.isFinite(n) && n >= 200 ? n : ACK_AFTER_MS;
 }
 // Two words at least: Spitch rendered a bare "Okay." as 0.09 s of silence.
@@ -350,6 +352,8 @@ export class VoiceSession {
     this.turnFirstAudio = 0;
     this.ackPlayedThisTurn = false;
     if (this.ackTimer) clearTimeout(this.ackTimer);
+    const delay = ackAfterMs();
+    if (delay <= 0) return;
     this.ackTimer = setTimeout(() => {
       this.ackTimer = null;
       if (this.turnFirstAudio || this.outcome || this.playQueue.length || this.ackPlayedThisTurn) return;
@@ -359,7 +363,7 @@ export class VoiceSession {
       this.ackPlayedThisTurn = true;
       this.enqueue(forPlayback(clip));
       this.deps.log('voice_local_ack', { text, ms: this.now() - this.turnStartedAt });
-    }, ackAfterMs());
+    }, delay);
     this.ackTimer.unref?.();
   }
 
@@ -522,21 +526,24 @@ export class VoiceSession {
         this.messages.push({ role: 'tool', tool_call_id: call.id, content: '{"ok":false,"message":"The arguments were not valid JSON. Try again."}' });
         continue;
       }
-      // A slow lookup gets a short spoken holding line — at most once per turn.
-      const filler = setTimeout(() => {
-        if (this.ackPlayedThisTurn) return;
-        const clip = this.deps.assistantVoice.peek(HOLDING_LINE);
-        if (!signal.aborted && this.playQueue.length === 0 && clip) {
-          this.ackPlayedThisTurn = true;
-          this.enqueue(forPlayback(clip));
-        }
-      }, TOOL_FILLER_MS);
+      // A slow lookup gets a short spoken holding line — only when fillers are enabled and at most once per turn.
+      const filler =
+        ackAfterMs() > 0
+          ? setTimeout(() => {
+              if (this.ackPlayedThisTurn) return;
+              const clip = this.deps.assistantVoice.peek(HOLDING_LINE);
+              if (!signal.aborted && this.playQueue.length === 0 && clip) {
+                this.ackPlayedThisTurn = true;
+                this.enqueue(forPlayback(clip));
+              }
+            }, TOOL_FILLER_MS)
+          : null;
       const started = this.now();
       let result: unknown;
       try {
         result = await this.deps.runTool(call.function.name, args);
       } finally {
-        clearTimeout(filler);
+        if (filler) clearTimeout(filler);
       }
       const ok = (result as any)?.ok !== false;
       if (ok && WRITE_TOOLS.has(call.function.name)) wrote = true;
