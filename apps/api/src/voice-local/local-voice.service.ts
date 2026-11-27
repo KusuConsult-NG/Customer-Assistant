@@ -434,8 +434,12 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     this.live.delete(session);
     const outcome = session.outcome ?? 'completed';
     this.outcomes.set(reg.uuid, { outcome, at: Date.now() });
+    // What reached us from the caller: tells "no audio from the line",
+    // "audio but silent" and "voice but no words" apart (CallerHearing).
+    const h = session.hearing;
     this.log.log(
       `voice_local_call_ended uuid=${reg.uuid} outcome=${outcome} secs=${Math.round((Date.now() - session.startedAt) / 1000)}` +
+        ` caller_audio_secs=${h.audioSecs} caller_voice_secs=${h.voiceSecs} caller_peak=${h.peak} heard_interim=${h.interims} heard_final=${h.finals}` +
         (session.failure ? ` failure=${JSON.stringify(session.failure)}` : ''),
     );
     try {

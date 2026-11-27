@@ -349,6 +349,40 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
   });
 
+  it('logs, when the call ends, how much of the caller reached us: audio, voice and words', async () => {
+    // A live call on 27 Nov: the agent asked its question and never heard the
+    // answer, and nothing in the log said whether the caller's audio had
+    // arrived at all. The recording's caller side was zero for the whole call.
+    const logged: string[] = [];
+    const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
+    const reg = await register('+2348031110011');
+    const uuid = reg.text.split(' ')[1];
+    const pbx = asterisk(uuid);
+    try {
+      await until(() => stt.events !== null);
+      await new Promise((r) => setTimeout(r, 400)); // silence from the line
+      pbx.talking(true);
+      await new Promise((r) => setTimeout(r, 1_000)); // a second of voice
+      pbx.talking(false);
+      stt.events!.onInterim('yes I am');
+      stt.events!.onFinal('Yes, I am.', false);
+      await new Promise((r) => setTimeout(r, 200));
+      pbx.hangUp();
+      await until(() => logged.some((l) => l.startsWith(`voice_local_call_ended uuid=${uuid}`)), 8_000);
+      const line = logged.find((l) => l.startsWith(`voice_local_call_ended uuid=${uuid}`))!;
+      const num = (k: string) => Number(line.match(new RegExp(`${k}=([\\d.]+)`))![1]);
+      expect(num('caller_audio_secs')).toBeGreaterThanOrEqual(1.4);
+      expect(num('caller_voice_secs')).toBeGreaterThanOrEqual(0.8);
+      expect(num('caller_voice_secs')).toBeLessThanOrEqual(1.3);
+      expect(num('caller_peak')).toBeGreaterThan(3_000);
+      expect(num('heard_interim')).toBe(1);
+      expect(num('heard_final')).toBe(1);
+    } finally {
+      spy.mockRestore();
+      pbx.stop();
+    }
+  }, 20_000);
+
   it('says a short acknowledgement from disk when the reply is slow to synthesise, and logs where the wait went', async () => {
     const logged: string[] = [];
     const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
