@@ -130,13 +130,14 @@ export class OpenAiTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
-    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // Strip XML tags and punctuation that Spitch occasionally reads aloud as
+    // words ("full stop", "comma"), while preserving decimal numbers (e.g. 39.7)
     // and ? / ! intonation marks.
     const clean = text
       .replace(/<\/?[a-z][^>]*>/gi, ' ')
       .replace(/:\s*$/g, '')
       .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/,(?=\s|$)/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
@@ -178,13 +179,14 @@ export class DeepgramTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
-    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // Strip XML tags and punctuation that Spitch occasionally reads aloud as
+    // words ("full stop", "comma"), while preserving decimal numbers (e.g. 39.7)
     // and ? / ! intonation marks.
     const clean = text
       .replace(/<\/?[a-z][^>]*>/gi, ' ')
       .replace(/:\s*$/g, '')
       .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/,(?=\s|$)/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
@@ -229,13 +231,14 @@ export class YarnGptTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
-    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // Strip XML tags and punctuation that Spitch occasionally reads aloud as
+    // words ("full stop", "comma"), while preserving decimal numbers (e.g. 39.7)
     // and ? / ! intonation marks.
     const clean = text
       .replace(/<\/?[a-z][^>]*>/gi, ' ')
       .replace(/:\s*$/g, '')
       .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/,(?=\s|$)/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
@@ -360,13 +363,14 @@ export class SpitchTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
-    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // Strip XML tags and punctuation that Spitch occasionally reads aloud as
+    // words ("full stop", "comma"), while preserving decimal numbers (e.g. 39.7)
     // and ? / ! intonation marks.
     const clean = text
       .replace(/<\/?[a-z][^>]*>/gi, ' ')
       .replace(/:\s*$/g, '')
       .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/,(?=\s|$)/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
@@ -434,13 +438,14 @@ export class ElevenLabsTts implements SpeechEngine {
   ) {}
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
-    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // Strip XML tags and punctuation that Spitch occasionally reads aloud as
+    // words ("full stop", "comma"), while preserving decimal numbers (e.g. 39.7)
     // and ? / ! intonation marks.
     const clean = text
       .replace(/<\/?[a-z][^>]*>/gi, ' ')
       .replace(/:\s*$/g, '')
       .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/,(?=\s|$)/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
