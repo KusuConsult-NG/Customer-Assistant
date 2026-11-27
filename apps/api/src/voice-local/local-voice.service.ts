@@ -26,7 +26,7 @@ import { mulawBufferToSlin, warmResampler } from './pcm';
 import { callOpening, callSystemPrompt } from './call-setup';
 import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
-import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
+import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, spitchCircuitState, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { clipCheckFromEnv, type ClipCheck } from './speech-check';
 import { localToolDefinitions, runLocalTool } from './voice-tools';
@@ -173,6 +173,14 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     if (!r.ready) {
       this.log.warn(`voice_local_not_ready missing=${r.missing.join(',') || 'listener'}`);
       return 'fallback not-ready';
+    }
+    const primaryTts = this.assistantEngine();
+    if (primaryTts instanceof SpitchTts) {
+      const cb = spitchCircuitState();
+      if (cb.open) {
+        this.log.warn(`voice_local_spitch_circuit_open failures=${cb.consecutiveFailures} retryAfterMs=${cb.retryAfterMs}`);
+        return 'fallback spitch-circuit-open';
+      }
     }
     if (this.live.size >= (this.server?.maxConnections ?? 30)) return 'fallback busy';
     const organizationId = await this.organizationFor(calledNumber).catch(() => null);

@@ -318,6 +318,36 @@ export function spitchSlotsInUse(): number {
   return spitchInFlight;
 }
 
+// Circuit breaker for Spitch TTS: after 3 consecutive provider failures (5xx,
+// 429 exhaustion, timeouts, or network errors), fail fast for 30 s so Asterisk
+// immediately routes new calls to ElevenLabs instead of hanging callers.
+const SPITCH_CB_THRESHOLD = 3;
+const SPITCH_CB_COOLDOWN_MS = 30_000;
+let spitchConsecutiveFailures = 0;
+let spitchOpenUntil = 0;
+
+export function spitchCircuitState(now = Date.now()): { open: boolean; consecutiveFailures: number; retryAfterMs: number } {
+  const retryAfterMs = Math.max(0, spitchOpenUntil - now);
+  return { open: retryAfterMs > 0, consecutiveFailures: spitchConsecutiveFailures, retryAfterMs };
+}
+
+export function resetSpitchCircuit(): void {
+  spitchConsecutiveFailures = 0;
+  spitchOpenUntil = 0;
+}
+
+function recordSpitchSuccess(): void {
+  spitchConsecutiveFailures = 0;
+  spitchOpenUntil = 0;
+}
+
+function recordSpitchFailure(): void {
+  spitchConsecutiveFailures++;
+  if (spitchConsecutiveFailures >= SPITCH_CB_THRESHOLD) {
+    spitchOpenUntil = Date.now() + SPITCH_CB_COOLDOWN_MS;
+  }
+}
+
 /** A speaking-rate multiplier from the environment, 0.5–2; anything else is 1 (unchanged). */
 export function speedFromEnv(name: string, fallback = 1): number {
   const v = Number(process.env[name]?.trim());
@@ -374,6 +404,10 @@ export class SpitchTts implements SpeechEngine {
       .replace(/\s+/g, ' ')
       .trim();
     if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
+    const cb = spitchCircuitState();
+    if (cb.open) {
+      throw new Error(`Spitch TTS circuit open (${Math.ceil(cb.retryAfterMs / 1000)}s remaining)`);
+    }
     const attempt = async (): Promise<Buffer> => {
       let lastErr = '';
       for (let tries = 0; tries < 3; tries++) {
@@ -409,7 +443,14 @@ export class SpitchTts implements SpeechEngine {
       }
       throw new Error(`Spitch TTS refused (HTTP 429) ${lastErr}`);
     };
-    return withSpitchSlot(attempt, signal);
+    try {
+      const audio = await withSpitchSlot(attempt, signal);
+      recordSpitchSuccess();
+      return audio;
+    } catch (err) {
+      if (!signal?.aborted) recordSpitchFailure();
+      throw err;
+    }
   }
 }
 

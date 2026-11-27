@@ -17,4 +17,6 @@ apps/api/uploads
 apps/web/test-results
 apps/web/playwright-report
 infra/sip-bridge/bridge.env
+deploy/single-server/backups
+deploy/single-server/server.env
 *.log

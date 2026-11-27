@@ -5,7 +5,10 @@ import {
   CachedSpeech,
   DeepgramTts,
   ElevenLabsTts,
+  isCacheable,
   OpenAiTts,
+  resetSpitchCircuit,
+  spitchCircuitState,
   SpitchTts,
   YarnGptTts,
   spitchDeadlineMs,
@@ -290,5 +293,35 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     const maleEngine = assistantTtsFromEnv(malePersona.gender) as SpitchTts;
     expect(maleEngine).toBeInstanceOf(SpitchTts);
     expect(maleEngine.voice).toBe('jude');
+  });
+
+  it('opens the Spitch circuit breaker after 3 consecutive failures and fails fast without calling fetch', async () => {
+    resetSpitchCircuit();
+    const realFetch = global.fetch;
+    let calls = 0;
+    global.fetch = (async () => {
+      calls++;
+      return new Response('upstream error', { status: 503 });
+    }) as any;
+    try {
+      const spitch = new SpitchTts({ key: 'sp-test', voice: 'jude' });
+      for (let i = 0; i < 3; i++) {
+        await expect(spitch.synthesize('Hello Plateau State')).rejects.toThrow(/HTTP 503/);
+      }
+      expect(calls).toBe(3);
+      expect(spitchCircuitState().open).toBe(true);
+      await expect(spitch.synthesize('Hello again')).rejects.toThrow(/circuit open/);
+      expect(calls).toBe(3); // failed fast — no extra network call
+    } finally {
+      global.fetch = realFetch;
+      resetSpitchCircuit();
+    }
+  });
+
+  it('never caches citizen personal names, phone numbers, or reference numbers in shared tts-cache', () => {
+    expect(isCacheable('Welcome back, Steven.', ['Steven'])).toBe(false);
+    expect(isCacheable('Your reference number is PS-2026-0042.', [])).toBe(false);
+    expect(isCacheable('We will call you on 08031234567.', [])).toBe(false);
+    expect(isCacheable('To help us resolve your issue, this call is being recorded.', ['Steven'])).toBe(true);
   });
 });
