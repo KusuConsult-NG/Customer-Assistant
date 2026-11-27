@@ -331,7 +331,7 @@ export function changeTempo(slin: Buffer, speed: number): Buffer {
 /** Below this a sample is silence (about -46 dBFS). */
 const SILENCE_LEVEL = 160;
 const KEEP_LEAD_MS = 30;
-const KEEP_TRAIL_MS = 220;
+const KEEP_TRAIL_MS = 130;
 const FADE_MS = 5;
 
 /** Trim a clip's leading/trailing silence to a fixed short pad and fade its edges. */

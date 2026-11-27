@@ -731,6 +731,32 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     try {
       const phone = (body?.phoneNumber || '').trim();
       const rawName = (body?.fullName || '').trim();
+      const FILLER_INPUT =
+        /^(?:yeah|yes|yep|yup|no|nope|ok|okay|alright|hello|hi|hey|what|huh|go ahead|go on|english|nothing|none|\d+)(?:[\s?!.,]+(?:yeah|yes|yep|no|ok|okay|what|go ahead|go on|\d+))*[?!.,\s]*$/i;
+      if (rawName && FILLER_INPUT.test(rawName)) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            rejectedName: rawName,
+            instruction:
+              `"${rawName}" is a conversational filler, not a person's name. Do NOT save it or ask "is your name ${rawName}?". ` +
+              'Politely ask the caller for their actual first and last name (or continue without a name if they prefer not to give one).',
+          },
+        };
+      }
+      const rawCommunity = (body?.community || '').trim();
+      if (rawCommunity && FILLER_INPUT.test(rawCommunity)) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            rejectedCommunity: rawCommunity,
+            instruction:
+              `"${rawCommunity}" is not a valid community name. Politely ask the caller to state the name of their community in Plateau State.`,
+          },
+        };
+      }
 
       // An alternative number is a promise that somebody can be reached on it.
       // A digit misheard on a phone line makes that a promise to a stranger, so
