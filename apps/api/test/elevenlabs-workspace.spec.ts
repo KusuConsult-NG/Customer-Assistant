@@ -533,11 +533,15 @@ describe('the ElevenLabs workspace boundary', () => {
       const { raw, header } = signed(body, ENV_SECRET);
 
       await post('/api/webhooks/elevenlabs', raw, header).expect(200);
-      await settle();
 
-      const call = await prisma.callLog.findUnique({
-        where: { callSid: body.data.metadata.phone_call.call_sid },
-      });
+      // Ingestion runs after the 200. A fixed 250 ms wait failed under the
+      // full suite's load with the row simply not written yet; wait for it.
+      const where = { callSid: body.data.metadata.phone_call.call_sid };
+      let call = await prisma.callLog.findUnique({ where });
+      for (let waited = 0; !call && waited < 5_000; waited += 50) {
+        await new Promise((r) => setTimeout(r, 50));
+        call = await prisma.callLog.findUnique({ where });
+      }
       expect(call?.organizationId).toBe(sharedOrgId);
     });
   });

@@ -14,9 +14,13 @@ export interface ToolCall {
 
 export type LlmEvent = { type: 'text'; delta: string } | { type: 'tool_calls'; calls: ToolCall[] };
 
-/** The model the phone line uses. Matches the ElevenLabs agent default (gpt-4o-mini) for low latency and ~16x lower token cost. */
+/**
+ * The model the phone line uses: gpt-4o by default, the model the line was
+ * built and tested on, as for the ElevenLabs agent. LOCAL_VOICE_LLM_MODEL
+ * overrides it; compare models on the server with conversation-check.ts.
+ */
 export function voiceModel(): string {
-  return process.env.LOCAL_VOICE_LLM_MODEL?.trim() || 'gpt-4o-mini';
+  return process.env.LOCAL_VOICE_LLM_MODEL?.trim() || 'gpt-4o';
 }
 
 /**

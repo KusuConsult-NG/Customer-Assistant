@@ -1,5 +1,5 @@
 import { changeTempo, downsample24kTo8k, forPlayback, rms, wavFile, wavToSlin8k } from '../src/voice-local/pcm';
-import { VoiceSession } from '../src/voice-local/voice-session';
+import { SENTENCE_GAP_MS, VoiceSession } from '../src/voice-local/voice-session';
 import {
   assistantTtsFromEnv,
   AzureTts,
@@ -428,8 +428,9 @@ describe('voice-local TTS providers & PCM downsampling', () => {
         curSilentRun = 0;
       }
     }
-    // Only the normal inter-sentence trim pad (~160 ms = 8 frames) should exist — never a 250ms+ mid-speech gap.
-    expect(maxSilentRun).toBeLessThanOrEqual(10);
+    // Only the deliberate pause between sentences (SENTENCE_GAP_MS, plus the
+    // clips' own trim pads) — never a slow second sentence's mid-speech gap.
+    expect(maxSilentRun).toBeLessThanOrEqual(Math.ceil((SENTENCE_GAP_MS + 160) / 20) + 1);
   });
 
   it('guards SYSTEM_PROMPT against filler names, personal cash handout tickets, and Bukuru/Gyel ASR mishears', () => {

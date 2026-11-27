@@ -919,7 +919,7 @@ describe('The Contact Centre script on the phone line', () => {
       // Any other ending is the agency's own wording and stays.
       expect(openingForUnknownCaller("I'm Gwaman, the virtual assistant.")).toBe("I'm Gwaman, the virtual assistant.");
       // The rule the agent works to says the same.
-      expect(agentPromptFor(plateau)).toMatch(/NEVER ask for a name before lookup-customer has answered/);
+      expect(agentPromptFor(plateau)).toMatch(/NEVER ask for a name before you know who is calling/);
     });
 
     // By the agency's decision the Governor greets and hands over: he does not

@@ -4,6 +4,7 @@ import { SentenceSplitter, type ChatMessage, type LlmEvent, type ToolCall } from
 import type { CachedSpeech } from './tts';
 import type { SttFactory, SttStream } from './stt';
 import type { OpenAiTool } from './voice-tools';
+import { pronounced } from './pronounce';
 
 /**
  * One phone call answered by the server's own voice pipeline:
@@ -90,6 +91,21 @@ export const CONTINUATION_WAIT_MS = 2_500;
  * finishes playing before a slower non-streaming Spitch second sentence returns.
  */
 export const MIN_PREBUFFER_MS = 4_500;
+/**
+ * Silence put between two sentences of a reply. Every clip is trimmed to 30 ms
+ * before and 130 ms after its speech (pcm.ts forPlayback), and the voice is
+ * sent no full stop, so without this sentences ran into each other 0.16 s
+ * apart — breathless. With it the gap is about 0.36 s, a speaker's pause.
+ */
+export const SENTENCE_GAP_MS = 200;
+/** Between the two halves of a long sentence split at its comma: a comma's pause. */
+export const CLAUSE_GAP_MS = 60;
+/**
+ * A sentence longer than this is sent to the voice in parts, split at a comma.
+ * Measured on the server on 26 Nov 2026: the one long (155-character) sentence
+ * was the one the voices read punctuation aloud in.
+ */
+export const LONG_SENTENCE_CHARS = 120;
 export const MAX_PREBUFFER_WAIT_MS = 2_500;
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
@@ -125,7 +141,7 @@ export class VoiceSession {
   private turnPlaybackStarted = false;
   private turnStreamDone = false;
   private turnPendingSynths = 0;
-  private turnPrebuffer: Array<{ audio: Buffer; text: string; cached: boolean }> = [];
+  private turnPrebuffer: Array<{ audio: Buffer; text: string; cached: boolean; clause: boolean }> = [];
   private turnPrebufferMs = 0;
   private prebufferTimer: NodeJS.Timeout | null = null;
   private turnStartedAt = 0;
@@ -603,10 +619,13 @@ export class VoiceSession {
     this.turnPlaybackStarted = true;
     const clips = this.turnPrebuffer.splice(0);
     this.turnPrebufferMs = 0;
-    for (const c of clips) this.enqueueSpoken(c.audio, c.text, c.cached);
+    for (const c of clips) this.enqueueSpoken(c.audio, c.text, c.cached, c.clause);
   }
 
-  private enqueueSpoken(clip: Buffer, text: string, cached: boolean): void {
+  /** `clause`: the second half of a sentence split at its comma (a shorter pause before it). */
+  private enqueueSpoken(clip: Buffer, text: string, cached: boolean, clause = false): void {
+    // A pause before every sentence but the reply's first, so the voice breathes.
+    if (this.spokenThisTurn) this.enqueue(silence(clause ? CLAUSE_GAP_MS : SENTENCE_GAP_MS));
     this.spokenThisTurn += (this.spokenThisTurn ? ' ' : '') + text;
     if (this.turnStartedAt && !this.turnFirstAudio) {
       this.turnFirstAudio = this.now();
@@ -625,8 +644,13 @@ export class VoiceSession {
   private say(sentence: string, signal: AbortSignal): void {
     const text = speakable(sentence);
     if (!text) return;
+    splitLongSentence(text).forEach((part, i) => this.sayPart(part, i > 0, signal));
+  }
+
+  /** One clip of a reply. `text` is what the caller is told (and recorded); the voice is given its spoken form. */
+  private sayPart(text: string, clause: boolean, signal: AbortSignal): void {
     this.turnPendingSynths++;
-    const synth = this.deps.assistantVoice.speak(text, { personal: this.setup.personal, signal }).catch((err: any) => {
+    const synth = this.deps.assistantVoice.speak(pronounced(text), { personal: this.setup.personal, signal }).catch((err: any) => {
       if (!signal.aborted) this.fail(`speech: ${err?.message ?? err}`);
       return null;
     });
@@ -639,10 +663,10 @@ export class VoiceSession {
         if (this.playQueue.length === 0) {
           this.deps.log('voice_local_playback_underrun', { chars: text.length, cached: r.cached });
         }
-        this.enqueueSpoken(clip, text, r.cached);
+        this.enqueueSpoken(clip, text, r.cached, clause);
         return;
       }
-      this.turnPrebuffer.push({ audio: clip, text, cached: r.cached });
+      this.turnPrebuffer.push({ audio: clip, text, cached: r.cached, clause });
       this.turnPrebufferMs += Math.round(clip.length / 16);
       if ((this.turnStreamDone && this.turnPendingSynths === 0) || this.turnPrebufferMs >= MIN_PREBUFFER_MS) {
         this.flushPrebuffer();
@@ -924,4 +948,23 @@ export function openingSegments(opening: string): OpeningSegment[] {
   }
   pushText(opening.slice(last));
   return out;
+}
+
+/**
+ * A sentence longer than LONG_SENTENCE_CHARS, split at the comma nearest its
+ * middle that leaves at least four words on each side; each half split again
+ * while still too long. Shorter sentences, and long ones with no such comma,
+ * are returned whole.
+ */
+export function splitLongSentence(text: string): string[] {
+  if (text.length <= LONG_SENTENCE_CHARS) return [text];
+  const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+  let best = -1;
+  for (let i = text.indexOf(','); i >= 0; i = text.indexOf(',', i + 1)) {
+    if (!/\s/.test(text[i + 1] ?? '')) continue; // "1,000" is not a clause break
+    if (words(text.slice(0, i)) < 4 || words(text.slice(i + 1)) < 4) continue;
+    if (best < 0 || Math.abs(i - text.length / 2) < Math.abs(best - text.length / 2)) best = i;
+  }
+  if (best < 0) return [text];
+  return [...splitLongSentence(text.slice(0, best + 1).trim()), ...splitLongSentence(text.slice(best + 1).trim())];
 }

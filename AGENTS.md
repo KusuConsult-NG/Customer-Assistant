@@ -11,7 +11,7 @@ Treat this codebase as **critical government production infrastructure**, not an
 1. **Approved Production Stack (Retain Unless Explicitly Authorised):**
    - **Host:** MTN Cloud Nigeria VPS (Docker Compose: Caddy, Next.js `web`, NestJS `api`, Asterisk 20 `bridge`, PostgreSQL 17, Redis 7.4 + BullMQ, Qdrant).
    - **Telephony:** AlphaTech PBX & SIP trunk (`+2348000000456`) → Asterisk 20 → local AudioSocket (`127.0.0.1:9092`).
-   - **Primary Voice AI Pipeline (`LOCAL_VOICE_PIPELINE=1`):** Deepgram Nova-3 (STT) → OpenAI `gpt-4o-mini` (LLM + embeddings) → Spitch (primary Nigerian TTS, `jude` / `lucy` + cloned Governor greeting `SPITCH_GOVERNOR_VOICE`).
+   - **Primary Voice AI Pipeline (`LOCAL_VOICE_PIPELINE=1`):** Deepgram Nova-3 (STT) → OpenAI `gpt-4o` (the voice line's model; `LOCAL_VOICE_LLM_MODEL` on the server decides, and a change is compared on the server with `conversation-check.js` first) → Spitch (primary Nigerian TTS, `jude` / `lucy` + cloned Governor greeting `SPITCH_GOVERNOR_VOICE`).
    - **Warm Voice Backup:** ElevenLabs Conversational AI (automatic failover when local registration returns `fallback <reason>` or an AudioSocket leg fails).
    - **Messaging:** Meta WhatsApp Cloud API.
    - **Networking:** Galaxy Backbone DNS + Caddy TLS + WireGuard administrative VPN.
@@ -31,8 +31,11 @@ Treat this codebase as **critical government production infrastructure**, not an
 1. **Approved Governor Greeting Recordings (Strict Lock):**
    - ONLY the 3 approved studio recordings bundled in `data/voice-assets/governor/` (`good-morning.wav`, `good-afternoon.wav`, `good-evening.wav`) may be played for the `<governor>` greeting (`StaticGovernorAudio`). Never synthesize the Governor's voice via Spitch, ElevenLabs, or any other AI TTS.
 2. **No Synthetic Fillers or Robotic Punctuation:**
-   - `SpitchTts.synthesize()` strips commas and sentence-final periods/colons so Spitch never speaks `"comma"` or `"full stop"` aloud.
+   - `SpitchTts.synthesize()` strips commas and sentence-final periods/colons so Spitch never speaks `"comma"` or `"full stop"` aloud. `SPITCH_KEEP_COMMAS=1` keeps commas in sentences of at most 120 characters; switch it on only after listening to it on the line.
+   - Keep the breathing room in replies (`voice-session.ts`): `SENTENCE_GAP_MS` of silence between sentences, and sentences over `LONG_SENTENCE_CHARS` sent to the voice in parts split at a comma. Without them sentences ran into each other 0.16 s apart.
+   - A word the voice says wrongly is fixed in `voice-local/pronounce.ts` (replies only, never the opening), with who confirmed it by ear and when. `pronunciations-export.js` prints the old ElevenLabs dictionary as a starting point.
    - Keep `LOCAL_VOICE_ACK_AFTER_MS=0` in production and do not add `"Let me check"` / `"One second, please"` lookup-bridge instructions to `agent-tool-catalog.ts`.
+   - One rule per topic in the voice instructions. Contradictory rules (thank the caller by name / read the name back first; never say "let me check" / a persona suggesting it) made the model take a different side on different calls. The caller is looked up as the call connects, so `lookup-customer` runs on the first turn only when the caller status is unknown. The contact centre's model is given only `CONTACT_CENTRE_TOOLS`.
 2. **Anti-Hallucination & Grounded Knowledge:**
    - The assistant must answer Plateau State government questions **strictly from verified knowledge base retrieval** (`search_knowledge`). If the knowledge base does not contain the verified answer, offer an official callback or ticket — never fabricate names, dates, fees, or office addresses.
    - Never leak internal URLs (such as `tinyurl.com/accountabilityhub`) into knowledge docs or prompts.

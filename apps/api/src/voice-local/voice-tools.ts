@@ -1,4 +1,4 @@
-import { agentToolCatalog, CALLER_VARIABLE, CONVERSATION_VARIABLE, TOOL_NAMES, type ToolName } from '../agent-tools/agent-tool-catalog';
+import { agentToolCatalog, CALLER_VARIABLE, CONTACT_CENTRE_TOOLS, CONVERSATION_VARIABLE, TOOL_NAMES, type ToolName } from '../agent-tools/agent-tool-catalog';
 import type { AgentToolsService, ToolResult } from '../agent-tools/agent-tools.service';
 
 /**
@@ -32,9 +32,15 @@ export const END_CALL_TOOL: OpenAiTool = {
   },
 };
 
-export function localToolDefinitions(): OpenAiTool[] {
+/**
+ * `contactCentre`: the State contact centre's line, which takes reports and
+ * books callbacks only (CONTACT_CENTRE_TOOLS). Every other agency gets every
+ * catalog tool, as before.
+ */
+export function localToolDefinitions(opts: { contactCentre?: boolean } = {}): OpenAiTool[] {
   const catalog = agentToolCatalog({ baseUrl: 'http://local.invalid', authorization: 'local' });
-  const defs = LOCAL_TOOLS.map((name) => {
+  const names = opts.contactCentre ? LOCAL_TOOLS.filter((t) => CONTACT_CENTRE_TOOLS.has(t)) : LOCAL_TOOLS;
+  const defs = names.map((name) => {
     const cfg: any = (catalog[name] as any).toolConfig;
     const schema = cfg.apiSchema.requestBodySchema;
     const properties: Record<string, unknown> = {};

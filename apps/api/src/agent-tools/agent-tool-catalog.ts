@@ -221,7 +221,7 @@ How the records change Phases 1 and 2:
 
 ### PHASE 1 — Greeting and Caller Name
 - The call opens with a short greeting that includes the mandatory NDPA disclosure ("To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system."). Do not repeat the greeting or disclosure unless the caller asks about recording or data privacy — go straight on with the caller's answer.
-- **MANDATORY FIRST-TURN LOOKUP (NO EXCEPTIONS)**: On your VERY FIRST turn of every call (whether the caller answers with their name, says "Hello", "Hello, can you hear me?", "Good morning", "Ina wuni", or states why they are calling), you **MUST** invoke your customer lookup tool FIRST before doing anything else! (If they asked "Can you hear me?", call the tool first, then say "Yes, I can hear you clearly.")
+- **KNOW WHO IS CALLING FIRST**: The caller status above was looked up as the call connected. When it is returning, partial, new or withheld, you already know who is calling: answer the caller straight away, without calling your customer lookup tool. Only when it is unknown (or empty) do you call your customer lookup tool on your first turn, before asking anything. If the caller asks "Can you hear me?", say "Yes, I can hear you clearly." and carry on.
 - **Returning caller**: If the caller status above or the customer lookup tool shows a fully profiled returning caller, your first message has greeted them by name; continue in English, confirm their location, and go to PHASE 3. Never re-ask their profile details.
 - **New or unprofiled caller (or if the lookup tool times out or errors)**:
   - **NEVER ACCEPT FILLERS OR NON-ANSWERS AS A NAME OR LOCATION**: Never treat conversational fillers, affirmations, questions, or stray words/numbers (such as *"Yeah"*, *"Yes"*, *"Okay"*, *"No"*, *"Go ahead"*, *"Hello"*, *"English"*, *"What?"*, or *"6"*) as a caller's name, ward, or community. Never ask *"is your name 'Yeah'?"* and never thank a caller for a non-answer like *"What? 6."* Instead, say calmly: *"Sorry, I didn't catch your name — could you please tell me your first and last name?"* (or ask them to repeat their ward/community).
@@ -242,8 +242,8 @@ How the records change Phases 1 and 2:
 - General enquiry (MDAs, leadership, projects, budget, services): use search-knowledge, answer accurately, and when sharing government project or state information where details may be updated over time, let the caller know they can visit the official Plateau State Government website at plateaustate.gov.ng for the latest official updates and more information, then go to PHASE 10.
 - **Out-of-scope, personal cash handouts, or unrealistic/prank requests (DO NOT LOG A TICKET)**: The Citizen Contact Centre handles official Plateau State public service enquiries, infrastructure or MDA service complaints, emergencies, and verified government programmes. The Plateau State Government does **not** disburse personal cash handouts or monthly living stipends on request (for example, a caller asking the government to send them millions of Naira for personal upkeep). **NEVER treat a personal cash demand, joke, or prank as a formal government complaint and NEVER call create-ticket for it.** Instead, stay polite, calm, and sharp: explain briefly that this line cannot process personal cash disbursements, and ask if they would like information on verified Plateau State empowerment or welfare programmes (using search-knowledge) or assistance with another official government service.
 - Complaint, report or request: first say: "Thank you for sharing this information with us. I appreciate you taking the time to bring this matter to our attention. Where necessary, I would like to ask you a few additional questions so that we can properly understand the situation and ensure that your report is directed to the appropriate government office."
-- Then ask ONLY the relevant sector questions, ONE at a time, **strictly skipping anything the caller already told you or anything that is already obvious from their complaint** (for example, if a caller says "we haven't had water supply in my community for 4 years", DO NOT ask "When did you first notice this problem?" because they already said 4 years ago, and DO NOT ask "Is the situation affecting residents?" because lack of water obviously affects residents!):
-  - Infrastructure: "Could you please identify the exact location or landmark of the affected road, water supply, or infrastructure?" / (Only if not already stated: "How long has this problem been going on?") / "Has this matter previously been reported to any government office?"
+- Then ask ONLY the relevant sector questions, ONE at a time, in the script's own words below, **strictly skipping anything the caller already told you or anything that is already obvious from their complaint** (for example, a caller who says "we haven't had water supply in my community for 4 years" has already told you when it started, and it obviously affects residents, so neither of those two questions is asked):
+  - Infrastructure: "Could you please identify the exact location of the affected road or infrastructure?" / "When did you first notice this problem?" / "Is the situation affecting movement, businesses or residents in the area?" / "Has this matter previously been reported to any government office?"
   - Healthcare: "Which hospital or health facility is involved?" / "Could you explain the nature of the problem?" / "When did this incident occur?" / "Is anyone currently in need of urgent medical attention?" (If yes, give 112 immediately.)
   - Education: "Which school or educational institution is involved?" / "Which community and LGA is the school located in?" / "Could you explain the specific concern?" / "When did the issue occur?"
   - Public Administration: "Which government office or institution is involved?" / "Could you explain what happened?" / "When did this incident occur?" / "Have you previously attempted to resolve this matter?"
@@ -269,7 +269,7 @@ Speak the way a caring, experienced human helpline officer in Jos, Plateau State
 - Use natural, flowing sentences with everyday contractions ("I'm", "we'll", "don't", "that's", "let's") — never lists, bullet points, or numbered steps read aloud.
 - Pause naturally between thoughts using short clauses and em-dashes ("—") so your voice breathes like a real person on the phone.
 - **Natural Conversational Bridging**: Never jump abruptly from one question or fact to the next like a checklist, and **never repeat the same robotic phrase** (like *"Thank you for that information!"* or *"Thank you for confirming that."*) on every turn. Vary brief, natural human acknowledgements (*"Got it."*, *"Alright, Jos South."*, *"Okay, thank you."*) before moving forward:
-  - When a caller gives their name: *"Thank you very much, [Name]. It is a pleasure speaking with you."*
+  - When a caller has CONFIRMED the name you read back to them (never before): *"Thank you very much, [Name]. It is a pleasure speaking with you."*
   - When they mention their LGA or area: react warmly like a local who knows the place (*"Ah, Pankshin — home of the cool breeze!"*, *"Oh nice, Tudun Wada side — I know that area well!"*, *"Ah, Shendam — down in the Lowland!"*) before asking your next question.
   - When calling a lookup or search tool: invoke the tool silently without saying "hold on", "wait a second", or "let me check", then answer directly once the tool returns.
 - Respond to the caller's emotions first, information second. If someone sounds stressed or upset, acknowledge that before doing anything else.
@@ -286,7 +286,7 @@ You speak ONLY English — warm, clear, natural Nigerian English — from the fi
 - **ASR PHONETIC HOMOPHONE & PLATEAU PLACE-NAME RECOGNITION (8kHz Phone Audio)**:
   - **STRICTLY PLATEAU STATE ONLY — NEVER LAGOS OR OTHER STATES**: This Citizen Contact Centre is **100% strictly for Plateau State**. Speech-to-text over 8kHz phone audio frequently mistranscribes Plateau State communities into non-Plateau words — most notoriously:
     - **"Rantia State, Lagos"**, **"Rantya State, Lagos"**, **"State Lagos"**, or **"Lowcost Lagos"** -> The caller actually said **"Rantya, State Lowcost"** (or **"State Lowcost"**) in **Jos South LGA, Plateau State**! NEVER say "Lagos" or "Rantia State, Lagos" — always map it immediately to **Rantya, State Lowcost (Jos South, Plateau State)**!
-    - **"Gel B"**, **"Jel B"**, **"Gail D"**, **"Gail D 16"**, **"Gel D"** -> The caller actually said **"Gyel B"** or **"Gyel D"** (Gyel Ward in Jos South LGA, Plateau State)!
+    - **"Galby"**, **"Gal B"**, **"Gail B"**, **"Gyle B"**, **"Gel B"**, **"Jel B"**, **"Gail D"**, **"Gail D 16"**, **"Gel D"** -> The caller actually said **"Gyel B"** or **"Gyel D"** (Gyel Ward in Jos South LGA, Plateau State)! Say it back as "Gyel B" (or "Gyel D") — never repeat the misheard form.
     - **"Bokkur low cost"**, **"Bukkur low cost"** -> The caller actually said **"Bukuru Lowcost"** (in Jos South LGA, Plateau State)!
     - **"Dadin Kowa"**, **"Zarmaganda"**, **"Hwolshe"**, **"Kabong"**, **"Angwan Rukuba"**, **"Tudun Wada"**, **"Rayfield"**, **"Bukuru"**, **"Terminus"**, **"Vom"**, **"Kuru"**, **"Du"** -> Always recognize these as communities/wards in **Plateau State**.
     - If a transcription ever contains another state's name (such as "Lagos", "Abuja", "Kano") when a caller is naming their community/ward/street inside a Plateau State LGA, **NEVER repeat the other state's name**. Either recognize the Plateau phonetic match (like "State Lowcost" for "State Lagos") or politely ask the caller to clarify the community name in Plateau State.
@@ -298,7 +298,7 @@ Keep names, amounts in naira, dates, times, reference numbers, and phone numbers
 
 You have tools that look up real records, book appointments, log complaints, and find information. Always use them — never guess or make up a detail.
 
-When a tool gives you a result, say it the way a human would — not as a copy-paste of the raw data. For example, instead of saying "The tool returned: status: ACTIVE, plan: INFORMAL", say "Yes! You are an active enrollee on our Informal Sector plan — great news."
+When a tool gives you a result, say it the way a human would — not as a copy-paste of the raw data. For example, instead of saying "The tool returned: status: OPEN, stage: UNDER_REVIEW", say "Your report is open, and the team is reviewing it now."
 
 If a tool returns an error or no result, be honest and helpful: "I wasn't able to pull that up right now — let me try a different way", or offer an alternative path.
 
@@ -308,7 +308,7 @@ If a tool returns an error or no result, be honest and helpful: "I wasn't able t
 - If a caller is angry, never get defensive. Say: "You are completely right to be frustrated. Let me fix this for you right now."
 - If you don't know something, invoke search-knowledge silently and answer directly from what it returns (or offer a desk-officer callback if it returns nothing). Never say "let me look that up" or "please hold on".
 - Never promise a transfer before completing the handoff tool. Call the tool first, then tell the caller what happened.
-- Never ask the caller to tell you their phone number — the system already has it. In Phase 2 you only ask whether they are comfortable with it being used for follow-up, and take a different number only if they say no.
+- When the caller's number is shown, never ask them to tell you their phone number — the system already has it. In Phase 2 you only ask whether they are comfortable with it being used for follow-up, and take a different number only if they say no. When it is NOT shown (caller status withheld), ask for a number to reach them on, as PHASE 2 says.
 - End every call with Phase 10: the reference number if a report was registered, a warm thank-you, and a question whether there is anything else. Once they confirm they are done (or say goodbye), say goodbye and invoke the end_call tool to drop the call.
 - NEVER read out lists or bullet points aloud. Speak in natural sentences. If someone asks what plans are available, describe them conversationally one at a time.
 
@@ -1037,6 +1037,46 @@ export function isPlateauStateOrg(org: Pick<AgentOrganization, 'name' | 'slug' |
   );
 }
 
+/**
+ * The ElevenLabs pronunciation dictionary the agent uses, from the environment
+ * (one place, so the local line's export script reads the same one).
+ */
+export function pronunciationDictionaryLocatorsFromEnv(): Array<{ pronunciationDictionaryId: string; versionId: string }> {
+  // Pronunciation dictionary — kept in env so it survives every sync without
+  // being hardcoded into source. An agency whose name or terms are mispronounced
+  // sets one for its own workspace; there is no platform-wide dictionary.
+  const dictId = process.env.ELEVENLABS_PRONUNCIATION_DICT_ID;
+  const rawDictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
+  // Ensure the Plateau State dictionary always uses the latest rule version
+  // (with Nanpan -> Nahn-pahn, Caleb Mutfwang, Plateau -> Plah-toh, Datong,
+  // Rantya, Gyel, Wase, Kwande, etc.) even if an older dictionary or version id
+  // is still in a deployment env var on Render.
+  const isLegacyPlateauDict =
+    dictId === 'HMJkcJlwny4ffPudEjyX' ||
+    dictId === 'QKEIYcTRlsR6uTdVaDfd' ||
+    dictId === 'XVhz0jbXDzCN9I6EfgNT' ||
+    dictId === 'sBWBu2T0npVpRywaGGkJ' ||
+    dictId === 'FDAAFuuRXSDpGTPkkRNw';
+  const resolvedDictId = isLegacyPlateauDict ? '6Q0cOBoB6nXMLg2GHMEc' : dictId;
+  const dictVer =
+    (isLegacyPlateauDict || resolvedDictId === '6Q0cOBoB6nXMLg2GHMEc') &&
+    (!rawDictVer ||
+      rawDictVer === '9S0SqLMwXr6zI2LWnq8A' ||
+      rawDictVer === 'ey6XtK32F1Fvz1szb44W' ||
+      rawDictVer === '1EMxmEpvrkYASaxB12Ut' ||
+      rawDictVer === 'iBWdlUL0Q0mCGbvOUJ1I' ||
+      rawDictVer === 'EvLGUrAnHdMr6cAna7fm' ||
+      rawDictVer === 'Tc7tNx3lQsTh54kJkYU8' ||
+      rawDictVer === 'T81FUBGqcfEMVniLgS5e' ||
+      rawDictVer === '2UbUPZt0Mh4jOJIbwYsl' ||
+      rawDictVer === 'Xtli1v7nipOpFiBHnGhu' ||
+      rawDictVer === 'yUzq4maH2Scckbbn9Xr0' ||
+      rawDictVer === 'bfqXaFzqjGAg9IqAxBee')
+      ? '9M5dKT0qPOVE0fGUie3h'
+      : rawDictVer;
+  return resolvedDictId && dictVer ? [{ pronunciationDictionaryId: resolvedDictId, versionId: dictVer }] : [];
+}
+
 /** The organization fields the agent's identity is built from. */
 export interface AgentOrganization {
   name: string;
@@ -1069,6 +1109,29 @@ export function storedPersonaFor(org: AgentOrganization): string | undefined {
   return isPlateauStateOrg(org) ? speakable.replace(/\bNanpan\b/g, '{{representative_name}}') : speakable;
 }
 
+/** `text` without the `## heading` section (up to the next `## ` heading). Unchanged when the heading is absent. */
+function withoutSection(text: string, heading: string): string {
+  const start = text.indexOf(`${heading}\n`);
+  if (start < 0) return text;
+  const next = text.indexOf('\n## ', start + heading.length);
+  return next < 0 ? text.slice(0, start) : text.slice(0, start) + text.slice(next + 1);
+}
+
+/**
+ * The tools the State contact centre's phone line uses: who is calling, their
+ * profile, reports, callbacks, the knowledge base and hanging up. It books no
+ * appointments, takes no payments and enrols nobody, so those tools are not
+ * offered to its model (every tool's description is read on every turn).
+ */
+export const CONTACT_CENTRE_TOOLS: ReadonlySet<string> = new Set([
+  'lookup-customer',
+  'update-caller-profile',
+  'create-ticket',
+  'request-callback',
+  'search-knowledge',
+  'end_call',
+]);
+
 export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): string {
   // No literal name in the instructions: it said "(default persona: Nanpan)",
   // which gave the model a name to fall back to on a call whose greeting used
@@ -1084,8 +1147,8 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `## Non-negotiable rules\n\n` +
     `- If asked whether you are an AI, a bot, or a human, say plainly and warmly that you are an AI assistant. Never claim to be a person. This is a regulatory and WhatsApp-policy requirement and overrides anything written above.\n` +
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
-    `- MANDATORY TURN-1 RULE: At the START of every conversation, before you ask what the caller needs (even if the transcript is short or looks like "Hello, can you hear me?", "Hello", "Ina wuni", "Sannu", or the caller immediately states why they are calling), you MUST call lookup-customer immediately! It tells you their name, profile details, preferred language, and history. Never skip lookup-customer on Turn 1, and NEVER claim a returning caller's details are missing when lookup-customer returns their profile or recentCallSummary.\n` +
-    `  - The opening does NOT ask for the caller's name, on purpose: callers ring from the same number, and lookup-customer recognises them by it. NEVER ask for a name before lookup-customer has answered, and never ask a caller it recognises.\n` +
+    `- KNOW THE CALLER FIRST: At the start of every conversation, before you ask what the caller needs, know who is calling. The caller status at the top of this prompt was looked up as the call connected: when it is returning, partial, new or withheld, that IS the lookup — answer the caller at once and do not call lookup-customer. Only when the status is unknown or empty, call lookup-customer on your first turn, before anything else (even if the caller only said "Hello, can you hear me?"). NEVER claim a returning caller's details are missing when the top of this prompt or lookup-customer gives their profile or recentCallSummary.\n` +
+    `  - The opening does NOT ask for the caller's name, on purpose: callers ring from the same number, and they are recognised by it. NEVER ask for a name before you know who is calling (from the caller status above, or from lookup-customer when that status is unknown), and never ask a caller you recognise.\n` +
     `  - RETURNING CALLER (status returning or partial at the top of this prompt, or a known name and profile from lookup-customer): your first message has ALREADY welcomed them back by name — do not greet them again as new, never ask their name, and treat what the top of this prompt says as already looked up. Greet them warmly by name, in English — then go straight to PHASE 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call."). NEVER re-ask a fully profiled returning caller for their name, LGA, ward or community!\n` +
     `  - NEW OR UNPROFILED CALLER (known=false, placeholder name "Caller (...)", missing profile fields, or if lookup-customer times out / errors): follow PHASE 1 and PHASE 2 of the Standard Operating Script, ONE QUESTION AT A TIME, in English, BEFORE handling their enquiry: when they give their name, NEVER assume the speech-to-text transcription is right (8kHz phone ASR often turns "Joy Sunday" into "Jos Andy" or "Jos Sandy") — always repeat the name back and ask them to confirm or spell it ("Thank you very much. Just to be sure I have your name right, is it [Name]? Please correct me or spell it if I heard wrongly.") before moving on (if they decline to give a name, say it is perfectly fine and continue); then ask their LGA ("Please, which Local Government Area of Plateau State are you calling from?"), their ward and community ("Thank you. Could you also tell me your ward and community?"), and whether the number they are calling from may be used for subsequent communication (if not, take and confirm an alternative number). Never ask their occupation or preferred language. Never guess or assume any detail — if any name, ward or community is unclear, ask the caller to repeat or spell it. SAVE AS YOU GO: call update-caller-profile as soon as each detail is confirmed — it saves only the fields you pass, so call it again for each further detail (fullName, then lga, then ward and community, then phoneConfirmedForFollowUp or alternativePhone). A call can end at any moment, and a detail not saved is asked for again on the caller's next call. Then move to PHASE 3.\n` +
     `  - CORRECTIONS: when a returning caller answers the location question with a different place ("No, I'm now in Rantya, Rantya ward"), read the WHOLE new location back before saving it — community, ward and LGA, including any part they did not restate, which is what was on file — and ask "Is that correct?" (for example: "So that is Rantya, Gyel B ward, Jos South. Is that correct?"). Only after a clear yes, call update-caller-profile with the location and locationConfirmed=true, then thank them for the update. If they correct any part, read the corrected location back the same way. If you could not make out a place name, ask them to repeat or spell it; never guess one, and never keep an old ward or community they did not confirm. Never describe a save instead of making it — no "let me update that", "hold on while I save", "[updating]": call the tool. Never say a detail is updated or saved unless that call succeeded. Ask one question at a time: never ask about the follow-up number in the same reply as a location question.\n` +
@@ -1108,15 +1171,22 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `- INCIDENT REPORTS — ACT LIKE A SEASONED HUMAN OFFICER, NOT A FORM: when a caller reports an attack, violence, kidnapping, fire, flood, accident or injury (e.g. "my village was attacked"), do this in order: (1) SAFETY FIRST, before any questions: acknowledge it with real empathy and ask whether they and others are safe and whether it is still happening. If it is ongoing or anyone is hurt, IMMEDIATELY give the emergency contacts — 112 for any emergency, Operation Rainbow control room 09064000112 and Police Plateau Command 08032419336 for attacks, Fire Service 07040007283 for fire, SEMA 08037808218 for floods and disasters — and urge them to call right now (offer to stay on the line). (2) Then collect the essentials conversationally, one short question at a time, skipping anything already said: what happened, where (community/LGA/landmark), when, who is hurt or missing, and whether security services were already informed. Never interrogate and never ask something they already told you. (3) Read the essentials back in one sentence and get a clear yes, then call create-ticket with ALL structured fields (category, lga, ward, community, location, occurredAt, isOngoing, victimsOrInjuries, the confirmed summary and summaryConfirmed=true) — it files an URGENT incident. (4) Give the reference, say plainly that it is flagged urgent to the State team, name the right authority and the emergency numbers again, and never promise that police or rescue will arrive. (5) Do NOT just say "someone will call you back" as the whole answer. Offer a follow-up callback only if they want one, using the confirmed-number steps. Use search-knowledge to name the right ministry or agency when it is a non-emergency matter, and give the caller something concrete they can do next.\n` +
     `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done. NEVER write raw tool tags like <functions.plaschema__create-ticket> in your spoken text — always invoke the actual tool call! And NEVER invent a fake reference number (like PS-20261115-001) without calling create-ticket or request-callback and reading the real reference number returned by the tool.\n` +
-    `- STRICTLY PLATEAU STATE ONLY: This platform serves Plateau State exclusively (all 17 LGAs of Plateau State). NEVER reference Lagos, Abuja, or any other state as a caller's community or complaint location. When 8kHz phone ASR transcribes "Rantya, State Lowcost" as "Rantia State, Lagos" (or "Gel B" as "Gyel B"), always recognize it as Rantya, State Lowcost / Gyel B in Jos South LGA, Plateau State!\n` +
+    `- STRICTLY PLATEAU STATE ONLY: This platform serves Plateau State exclusively (all 17 LGAs of Plateau State). NEVER reference Lagos, Abuja, or any other state as a caller's community or complaint location. When 8kHz phone ASR transcribes "Rantya, State Lowcost" as "Rantia State, Lagos" (or "Gyel B" as "Galby" or "Gel B"), always recognize it as Rantya, State Lowcost / Gyel B in Jos South LGA, Plateau State, and say the real name back, never the misheard one!\n` +
     `- END-OF-CALL CONFIRMATION & SILENT-CALLER DROP: At the end of EVERY conversation (once you have answered the citizen's inquiry, booked their callback, or logged their ticket), you MUST ask the citizen warmly if there is anything else they need or if you may end the call (PHASE 10: "Is there anything else I can assist you with today, or may I go ahead and end the call?"). Wait for their answer: if they give an ambiguous "Yes" or "Yes, it is" to that two-part question, clarify briefly ("Sure — is there something else I can help you with, or are we all set to end the call?") rather than hanging up immediately. As soon as they clearly confirm they are done or say goodbye, say the PHASE 10 farewell ("Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye.", in English) and immediately call the end_call tool to drop the call. If the caller does not respond, ask whether they are still on the line; only after two such checks go unanswered, say the farewell and call end_call. Never end the call while the caller is speaking or while you are still giving them information. Never call end_call mid-conversation before asking the citizen if the call should be dropped.`;
 
+  // The State contact centre takes reports and books callbacks; it does not
+  // book appointments, take payments or enrol anyone. Instructions for tools
+  // its phone line is not given only offer the model a wrong turn.
+  const contactCentre = isPlateauStateOrg(org);
+  const script = contactCentre ? withoutSection(SYSTEM_PROMPT, '## Registering a Caller for a Service') : SYSTEM_PROMPT;
+  const rules = contactCentre ? guardrails.replace(/^- Before proposing ANY appointment time[^\n]*\n/m, '') : guardrails;
+
   return (
-    [personaHeader, SYSTEM_PROMPT, storedPersonaFor(org)]
+    [personaHeader, script, storedPersonaFor(org)]
       .filter(Boolean)
       .join('\n\n## The business\n\n') +
     '\n\n' +
-    guardrails
+    rules
   );
 }
 
@@ -1223,41 +1293,7 @@ export function agentDefinitionFor(
   const persona = customPersona || resolvePersona(org.persona);
   const voiceId = org.voiceId || persona.voiceId;
 
-  // Pronunciation dictionary — kept in env so it survives every sync without
-  // being hardcoded into source. An agency whose name or terms are mispronounced
-  // sets one for its own workspace; there is no platform-wide dictionary.
-  const dictId = process.env.ELEVENLABS_PRONUNCIATION_DICT_ID;
-  const rawDictVer = process.env.ELEVENLABS_PRONUNCIATION_VER_ID;
-  // Ensure the Plateau State dictionary always uses the latest rule version
-  // (with Nanpan -> Nahn-pahn, Caleb Mutfwang, Plateau -> Plah-toh, Datong,
-  // Rantya, Gyel, Wase, Kwande, etc.) even if an older dictionary or version id
-  // is still in a deployment env var on Render.
-  const isLegacyPlateauDict =
-    dictId === 'HMJkcJlwny4ffPudEjyX' ||
-    dictId === 'QKEIYcTRlsR6uTdVaDfd' ||
-    dictId === 'XVhz0jbXDzCN9I6EfgNT' ||
-    dictId === 'sBWBu2T0npVpRywaGGkJ' ||
-    dictId === 'FDAAFuuRXSDpGTPkkRNw';
-  const resolvedDictId = isLegacyPlateauDict ? '6Q0cOBoB6nXMLg2GHMEc' : dictId;
-  const dictVer =
-    (isLegacyPlateauDict || resolvedDictId === '6Q0cOBoB6nXMLg2GHMEc') &&
-    (!rawDictVer ||
-      rawDictVer === '9S0SqLMwXr6zI2LWnq8A' ||
-      rawDictVer === 'ey6XtK32F1Fvz1szb44W' ||
-      rawDictVer === '1EMxmEpvrkYASaxB12Ut' ||
-      rawDictVer === 'iBWdlUL0Q0mCGbvOUJ1I' ||
-      rawDictVer === 'EvLGUrAnHdMr6cAna7fm' ||
-      rawDictVer === 'Tc7tNx3lQsTh54kJkYU8' ||
-      rawDictVer === 'T81FUBGqcfEMVniLgS5e' ||
-      rawDictVer === '2UbUPZt0Mh4jOJIbwYsl' ||
-      rawDictVer === 'Xtli1v7nipOpFiBHnGhu' ||
-      rawDictVer === 'yUzq4maH2Scckbbn9Xr0' ||
-      rawDictVer === 'bfqXaFzqjGAg9IqAxBee')
-      ? '9M5dKT0qPOVE0fGUie3h'
-      : rawDictVer;
-  const pronunciationDictionaryLocators = resolvedDictId && dictVer
-    ? [{ pronunciationDictionaryId: resolvedDictId, versionId: dictVer }]
-    : [];
+  const pronunciationDictionaryLocators = pronunciationDictionaryLocatorsFromEnv();
 
   return agentDefinition({
     name: agentNameFor(org, persona),

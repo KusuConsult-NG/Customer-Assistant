@@ -203,8 +203,11 @@ run('voice-local against a real Asterisk', () => {
       (voice as any).cache = savedCache;
     }
 
-    // Every sentence was synthesised and none was skipped.
-    for (const a of answer) expect(spoken).toContain(a);
+    // Every sentence was synthesised and none was skipped — compared as Spitch
+    // is sent it (no full stops since ad65857; this suite runs only with
+    // Asterisk, so the old literal comparison went stale unseen).
+    const asSent = new SpitchTts({ key: 'k' });
+    for (const a of answer) expect(spoken).toContain(asSent.spitchText(a));
 
     // The stream never stopped: no gap between frames longer than the stalls
     // themselves, and never a burst of more than two frames at once.
@@ -236,7 +239,8 @@ run('voice-local against a real Asterisk', () => {
     // Nothing dropped: the speech the caller's side recorded is as long as
     // every sentence we synthesised (the Governor's line is the 1 s tone).
     // The acknowledgements are put on disk after the opening but only played when a reply is slow.
-    const played = spoken.filter((t) => ![...ACKS, HOLDING_LINE].includes(t));
+    const notPlayed = [...ACKS, HOLDING_LINE].map((t) => asSent.spitchText(t));
+    const played = spoken.filter((t) => !notPlayed.includes(t));
     const expectedSpeechSecs = played.reduce((n, t) => n + t.split(/\s+/).length * SECS_PER_WORD, 0);
     const sentSpeechSecs = sent.filter((f) => f.loud).length * 0.02;
     const heard = fs.readFileSync('/tmp/heard-slow.wav');
