@@ -509,3 +509,105 @@ describe('pronunciations set on the server, and hearing them first', () => {
     expect(parseTakeArgs(['Gyel', 'Jel', '--sentence', 'You are in {word} B ward.']).sentence).toBe('You are in {word} B ward.');
   });
 });
+
+// ── Go-live checklist A4 and H2: the call loop itself ──────────────────────
+
+describe('checklist A4: the agent stops when the caller talks over it', () => {
+  it('stops its speech within a frame or two of the caller speaking, then answers what they said', async () => {
+    let stt: any = null;
+    const sent: Buffer[] = [];
+    const logs: string[] = [];
+    const answered: string[] = [];
+    const tone = Buffer.alloc(16 * 4_000); // four seconds of speech
+    for (let i = 0; i < tone.length / 2; i++) tone.writeInt16LE(Math.round(5000 * Math.sin(i / 3)), i * 2);
+    const session = new VoiceSession(
+      {
+        sendAudio: (f) => sent.push(f),
+        close: () => undefined,
+        stt: async (ev) => {
+          stt = ev;
+          return { send: () => undefined, close: () => undefined };
+        },
+        assistantVoice: new CachedSpeech({ name: 't', synthesize: async () => tone } as any, null),
+        governorVoice: null,
+        llm: async function* (messages) {
+          const last = String(messages[messages.length - 1].content ?? '');
+          answered.push(last);
+          yield { type: 'text' as const, delta: /wait/i.test(last) ? 'Of course, go ahead.' : 'Here is a long answer that takes a while to say.' };
+        },
+        tools: [],
+        runTool: async () => ({ ok: true }),
+        log: (e) => logs.push(e),
+      },
+      { systemPrompt: 'test', opening: 'Hello.', personal: [] },
+    );
+    await session.start();
+    await new Promise((r) => setTimeout(r, 4_300)); // the opening (four seconds) has played
+    stt.onFinal('Tell me about the projects.', true);
+    const until = Date.now() + 3_000;
+    while (Date.now() < until && !sent.slice(-5).some((f) => rms(f) > 200)) await new Promise((r) => setTimeout(r, 20));
+    // The caller talks over it: loud audio and words.
+    const loud = Buffer.alloc(320);
+    for (let i = 0; i < 160; i++) loud.writeInt16LE(Math.round(6000 * Math.sin(i / 2)), i * 2);
+    for (let i = 0; i < 10; i++) session.onCallerAudio(loud);
+    const before = sent.length;
+    stt.onInterim('wait wait please');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(logs).toContain('voice_local_barge_in');
+    // Within 200 ms the stream is silence: the long answer stopped.
+    expect(sent.slice(before + 2).every((f) => rms(f) <= 200)).toBe(true);
+    stt.onFinal('Wait, wait please.', true);
+    const end = Date.now() + 3_000;
+    while (Date.now() < end && !answered.some((a) => /wait/i.test(a))) await new Promise((r) => setTimeout(r, 20));
+    expect(answered.some((a) => /wait/i.test(a))).toBe(true);
+    await session.finish('completed');
+  }, 20_000);
+});
+
+describe('checklist H2: a silent caller is asked whether they are there, then the call ends', () => {
+  it('sends the model a no-reply note after 12 s of silence, at most three times, and hangs up when it calls end_call', async () => {
+    // Real time plus jumps: the audio player runs on this clock, so it must keep moving.
+    let offset = 0;
+    const notes: string[] = [];
+    let closed = false;
+    const session = new VoiceSession(
+      {
+        sendAudio: () => undefined,
+        close: () => (closed = true),
+        stt: async () => ({ send: () => undefined, close: () => undefined }),
+        assistantVoice: new CachedSpeech({ name: 't', synthesize: async () => Buffer.alloc(320) } as any, null),
+        governorVoice: null,
+        now: () => Date.now() + offset,
+        llm: async function* (messages) {
+          const last = String(messages[messages.length - 1].content ?? '');
+          if (/No reply from the caller/.test(last)) notes.push(last);
+          if (/check 3/.test(last)) {
+            yield { type: 'text' as const, delta: 'Thank you for calling. Goodbye.' };
+            yield { type: 'tool_calls' as const, calls: [{ id: 'e', type: 'function' as const, function: { name: 'end_call', arguments: '{}' } }] };
+            return;
+          }
+          yield { type: 'text' as const, delta: 'Are you still there?' };
+        },
+        tools: [],
+        runTool: async () => ({ ok: true }),
+        log: () => undefined,
+      },
+      { systemPrompt: 'test', opening: 'Hello.', personal: [] },
+    );
+    await session.start();
+    for (let i = 0; i < 3 && !closed; i++) {
+      // Silence counts from when the agent last spoke: wait for it to finish.
+      const quiet = Date.now() + 3_000;
+      while (Date.now() < quiet && session.busy) await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 100));
+      offset += 12_500; // twelve and a half silent seconds
+      const until = Date.now() + 3_000;
+      while (Date.now() < until && notes.length < i + 1) await new Promise((r) => setTimeout(r, 50));
+    }
+    const until = Date.now() + 3_000;
+    while (Date.now() < until && !closed) await new Promise((r) => setTimeout(r, 50));
+    expect(notes.map((n) => n.match(/check (\d)/)![1])).toEqual(['1', '2', '3']);
+    expect(closed).toBe(true);
+    expect(session.outcome).toBe('completed');
+  }, 20_000);
+});
