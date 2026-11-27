@@ -10,6 +10,9 @@ noload = cdr_radius.so
 noload = cel_radius.so
 noload = res_phoneprov.so
 noload = res_pjsip_phoneprov_provider.so
+; Force simple_bridge instead of native_rtp so JITTERBUFFER(adaptive) actually
+; smooths intercontinental Lagos <-> ElevenLabs RTP jitter instead of being bypassed.
+noload = bridge_native_rtp.so
 ; Sound-card and desktop-audio channels: a bridge has no sound card, and
 ; loading them only prints ALSA/JACK errors into the log.
 noload = chan_alsa.so

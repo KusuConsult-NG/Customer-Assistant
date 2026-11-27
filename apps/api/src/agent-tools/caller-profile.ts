@@ -134,14 +134,32 @@ export function profileOf(contact: ContactProfileFields | null): CallerProfile {
  *
  * Every one needs a placeholder on the agent too (see `dynamicVariablesFor`):
  * a conversation that starts without the webhook — a preview, an outbound call
- * that sends its own data — would otherwise read `{{caller_status}}` literally.
+ * that sends its own data — would otherwise read `{{sip_callerstatus}}` literally.
  * The defaults say "unknown", which sends the agent to its lookup tool.
  */
+/**
+ * The last sentence of the opening for a caller nobody recognised. The stored
+ * first message ends with `{{sip_welcome}}`, and this is its default.
+ */
+export const WELCOME_DEFAULT = 'How may I help you today?';
+
+/**
+ * Why these are named `sip_…`: ElevenLabs turns every `X-` SIP header on an
+ * inbound call into a dynamic variable named `sip_<header>`, lower-cased.
+ * The bridge looks the caller up as the call arrives and sends
+ * X-Callerstatus, X-Callername, X-Callerprofile, X-Callermissing and
+ * X-Welcome, so the prompt and the FIRST MESSAGE know who is calling before
+ * the model says a word. Recognition used to depend on the model choosing to
+ * call lookup-customer on its first turn, and on 13 of 15 live calls it did
+ * not: profiled callers who had rung 27 times were greeted as strangers.
+ * The names have no `_` or `-` after `sip_` because ElevenLabs rewrites both.
+ */
 export const CALLER_VARIABLE_DEFAULTS = {
-  caller_status: 'unknown',
-  caller_name: 'not on file',
-  caller_profile: 'not looked up yet',
-  caller_missing_fields: 'not looked up yet',
+  sip_callerstatus: 'unknown',
+  sip_callername: 'not on file',
+  sip_callerprofile: 'not looked up yet',
+  sip_callermissing: 'not looked up yet',
+  sip_welcome: WELCOME_DEFAULT,
 } as const;
 
 export type CallerVariables = Record<keyof typeof CALLER_VARIABLE_DEFAULTS, string>;
@@ -159,13 +177,29 @@ export function locationPhrase(profile: CallerProfile): string | null {
 export function callerVariablesFor(profile: CallerProfile): CallerVariables {
   const said = (f: ProfileField) => profile.values[f] ?? 'MISSING';
   return {
-    caller_status: profile.status,
-    caller_name: profile.name ?? 'not on file',
-    caller_profile:
+    sip_callerstatus: profile.status,
+    sip_callername: profile.name ?? 'not on file',
+    sip_callerprofile:
       profile.status === 'new' && !locationPhrase(profile)
         ? 'none on file'
         : `LGA: ${said('lga')}; ward: ${said('ward')}; community: ${said('community')}; ` +
           `follow-up number: ${profile.followUp ?? 'not yet agreed'}`,
-    caller_missing_fields: profile.missing.length ? profile.missing.map((f) => FIELD_LABELS[f]).join(', ') : 'none',
+    sip_callermissing: profile.missing.length ? profile.missing.map((f) => FIELD_LABELS[f]).join(', ') : 'none',
+    sip_welcome: welcomeLineFor(profile),
   };
+}
+
+/**
+ * The opening's last sentence, for THIS caller. A caller we know by name is
+ * welcomed back by it and asked only to confirm where they are calling from
+ * (Phase 2 for a returning caller), or for what is still missing. Anyone
+ * else hears the default question.
+ */
+export function welcomeLineFor(profile: CallerProfile): string {
+  if (!profile.name) return WELCOME_DEFAULT;
+  const opening = `Welcome back, ${profile.name}.`;
+  if (!profile.values.lga) return `${opening} Please, which Local Government Area of Plateau State are you calling from?`;
+  const location = missingPhrase(profile, LOCATION_FIELDS);
+  if (location) return `${opening} Could you tell me your ${location}?`;
+  return `${opening} Are you still calling from ${locationPhrase(profile)}?`;
 }

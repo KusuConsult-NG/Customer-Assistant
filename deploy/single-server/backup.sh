@@ -22,8 +22,24 @@ say "Uploaded files"
 dc exec -T api tar czf - -C /data files > "$dir/files.tar.gz"
 tar tzf "$dir/files.tar.gz" > /dev/null || die "the files archive in $dir could not be read back"
 
-(cd "$dir" && sha256sum database.dump files.tar.gz > SHA256SUMS)
+say "Qdrant vector snapshot"
+QKEY="$(env_get QDRANT_API_KEY)"
+if [ -n "$QKEY" ]; then
+  snap="$(dc exec -T api curl -fsS -X POST -H "api-key: $QKEY" http://qdrant:6333/snapshots | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')"
+  if [ -n "$snap" ]; then
+    dc exec -T api curl -fsS -H "api-key: $QKEY" "http://qdrant:6333/snapshots/$snap" > "$dir/qdrant.snapshot" || rm -f "$dir/qdrant.snapshot"
+  fi
+fi
+
+(cd "$dir" && sha256sum database.dump files.tar.gz $([ -f qdrant.snapshot ] && echo qdrant.snapshot) > SHA256SUMS)
 echo "$(du -sh "$dir" | cut -f1) in $HERE/$dir"
+
+ENC_KEY="$(env_get BACKUP_ENCRYPTION_KEY)"
+if [ -n "$ENC_KEY" ]; then
+  say "Encrypting backup archive (AES-256-CBC + PBKDF2)"
+  tar czf - -C "$dir" . | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "pass:$ENC_KEY" -out "$dir/backup.tar.gz.enc"
+  chmod 600 "$dir/backup.tar.gz.enc"
+fi
 
 say "Keeping $KEEP days on this server"
 find backups -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP" -exec rm -rf {} +

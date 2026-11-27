@@ -2384,11 +2384,17 @@ function CallHealthPanel({ health, error }: { health: any; error: string | null 
     );
   }
   if (health.total === 0) {
-    return <p className="text-xs text-slate-600 dark:text-slate-400">No calls ended in the last {health.windowHours} hours.</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-slate-600 dark:text-slate-400">No calls ended in the last {health.windowHours} hours.</p>
+        <CallerRecognitionPanel recognition={health.recognition} windowHours={health.windowHours} />
+      </div>
+    );
   }
   const pct = health.abnormalRate === null ? null : Math.round(health.abnormalRate * 100);
   return (
     <div className="space-y-3">
+      <CallerRecognitionPanel recognition={health.recognition} windowHours={health.windowHours} />
       {health.alert ? (
         <div role="alert" className="flex gap-2.5 p-3 rounded-xl bg-red-500/[0.06] border border-red-200 dark:border-red-500/20">
           <AlertTriangle className="w-4 h-4 text-red-700 dark:text-red-400 flex-shrink-0 mt-0.5" />
@@ -2425,6 +2431,60 @@ function CallHealthPanel({ health, error }: { health: any; error: string | null 
         ))}
       </ul>
 
+    </div>
+  );
+}
+
+/**
+ * Whether calls reached the agent carrying the SIP bridge's caller lookup.
+ * Without it a returning caller is greeted as a stranger, and nothing else
+ * fails, so this is the only place it shows.
+ */
+function CallerRecognitionPanel({ recognition, windowHours }: { recognition: any; windowHours: number }) {
+  if (recognition === null || recognition === undefined) {
+    return (
+      <p className="text-xs text-amber-700 dark:text-amber-300">
+        Could not read whether returning callers were recognised. Not known is not the same as fine; check again shortly.
+      </p>
+    );
+  }
+  if (!recognition.expected) return null;
+  if (recognition.inboundCalls === 0) {
+    return <p className="text-xs text-slate-600 dark:text-slate-400">Returning callers: no incoming calls in the last {windowHours} hours to check.</p>;
+  }
+  const pct = recognition.missedRate === null ? null : Math.round(recognition.missedRate * 100);
+  return (
+    <div className="space-y-1.5">
+      {recognition.alert ? (
+        <div role="alert" className="flex gap-2.5 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/20">
+          <AlertTriangle className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed space-y-1">
+            <p>
+              {recognition.missed} of {recognition.inboundCalls} incoming calls ({pct}%) reached the agent without the caller lookup, so those callers were greeted as strangers.
+            </p>
+            <p>
+              {recognition.lastLookedUpAt
+                ? `The last call that was looked up: ${new Date(recognition.lastLookedUpAt).toLocaleString()}.`
+                : `No call in the last ${windowHours} hours was looked up.`}{' '}
+              Usual causes: the platform was asleep or slow when the call came in, or the phone bridge&apos;s shared secret no longer matches the platform&apos;s. The State platform team can check both.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+          <CheckCircle2 className="w-3.5 h-3.5" /> Returning callers: {recognition.lookedUp} of {recognition.inboundCalls} incoming calls were looked up before the agent answered.
+        </p>
+      )}
+      {recognition.recentMisses?.length > 0 && (
+        <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
+          {recognition.recentMisses.map((c: any) => (
+            <p key={c.conversationId} className="font-mono">
+              {c.at ? new Date(c.at).toLocaleString() : 'time unknown'} · not looked up
+              {c.durationSecs !== null && c.durationSecs !== undefined ? ` · ${c.durationSecs}s` : ''} · {c.conversationId}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

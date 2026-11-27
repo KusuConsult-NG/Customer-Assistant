@@ -58,6 +58,12 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'ELEVENLABS_API_KEY', required: false, description: 'ElevenLabs API key — TTS, and the SHARED hosted-agent workspace, usable only when ELEVENLABS_ALLOW_SHARED_WORKSPACE is set' },
   { key: 'ELEVENLABS_ALLOW_SHARED_WORKSPACE', required: false, description: 'Set only on a single-tenant deployment: lets tenants without their own key run in the shared ELEVENLABS_API_KEY workspace, where one workspace holds every tenant’s numbers, WhatsApp lines and transcripts' },
   { key: 'ELEVENLABS_BASE_URL', required: false, description: 'ElevenLabs host; set to a residency endpoint (api.eu.residency.elevenlabs.io) to keep data in-jurisdiction' },
+  { key: 'SIP_BRIDGE_SECRET', required: false, description: 'Shared with the SIP bridge (infra/sip-bridge): lets it ask who is calling before the agent answers, so a profiled caller is welcomed back by name. Unset, every caller is greeted as new' },
+  { key: 'STORAGE_DIR', required: false, description: 'Single-server deployment: a PERMANENT, backed-up directory for uploads and call recordings. Unset with no Supabase storage, production uploads are refused' },
+  { key: 'STORAGE_LINK_SECRET', required: false, description: 'Signs the expiring links to files kept on this server (STORAGE_DIR). The single-server installer generates one; unset, links are signed with a key derived from JWT_SECRET' },
+  { key: 'LOCAL_VOICE_PIPELINE', required: false, description: 'Set to 1 to answer calls on this server (Asterisk AudioSocket → Deepgram → model → Azure). Off, every call goes to the ElevenLabs agent as before' },
+  { key: 'AZURE_SPEECH_KEY', required: false, description: 'Azure Speech key for the local voice line (Nigerian English voice); without it the local line falls back to ElevenLabs' },
+  { key: 'AZURE_SPEECH_REGION', required: false, description: 'Azure Speech region of that key, e.g. westeurope or southafricanorth' },
   { key: 'ENCRYPTION_KEY', required: false, description: 'AES-256 key (openssl rand -base64 32) for credentials at rest — unset, storing a tenant workspace key is REFUSED rather than written in the clear' },
   { key: 'ENCRYPTION_KEY_PREVIOUS', required: false, description: 'The key retired at the last rotation, tried only on decrypt; remove once scripts/encrypt-secrets.js --apply has re-encrypted everything' },
   { key: 'ELEVENLABS_WEBHOOK_SECRET', required: false, description: 'Signing secret for the SHARED workspace’s post-call webhook — unset, /api/webhooks/elevenlabs returns 500 and every transcript is retried rather than trusted. A tenant with its own workspace stores its own secret and receives on /api/webhooks/elevenlabs/:organizationId instead' },
@@ -69,7 +75,6 @@ export const ENV_SPECS: EnvSpec[] = [
   { key: 'TELNYX_PUBLIC_KEY', required: false, description: 'Telnyx Ed25519 public key (required to verify Telnyx webhooks)' },
   { key: 'SUPABASE_URL', required: false, description: 'Supabase project URL — with SUPABASE_SERVICE_ROLE_KEY, uploaded documents and selfies are stored in Supabase Storage' },
   { key: 'SUPABASE_SERVICE_ROLE_KEY', required: false, description: 'Supabase service role key (see SUPABASE_URL)' },
-  { key: 'STORAGE_DIR', required: false, description: 'A PERSISTENT directory for uploaded documents and selfies when Supabase is not used (the single-server deployment mounts a backed-up volume here). In production with neither this nor Supabase, uploads are REFUSED rather than written to a disk a redeploy wipes' },
   // ── Email, over HTTPS, from whichever provider is configured ──────────────
   //
   // SMTP is NOT an alternative on this host: Render blocks outbound traffic to

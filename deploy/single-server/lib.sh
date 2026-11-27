@@ -17,8 +17,13 @@ env_get() {
   printf '%s' "${line#*=}"
 }
 
-# The bridge runs only once its settings exist.
-if [ -f ../../infra/sip-bridge/bridge.env ]; then export COMPOSE_PROFILES=bridge; fi
+# Optional parts. The bridge runs only once its settings exist; the named
+# Cloudflare Tunnel only once its token is in server.env.
+profiles=()
+if [ -f ../../infra/sip-bridge/bridge.env ]; then profiles+=(bridge); fi
+if [ -n "$(env_get CLOUDFLARE_TUNNEL_TOKEN)" ]; then profiles+=(tunnel); fi
+COMPOSE_PROFILES="$(IFS=,; echo "${profiles[*]}")"
+export COMPOSE_PROFILES
 
 # The optional build CA (EXTRA_CA_CERT), where the build is allowed to read it.
 extra_ca="$(grep -E '^EXTRA_CA_CERT=' server.env | tail -n1 | cut -d= -f2- || true)"

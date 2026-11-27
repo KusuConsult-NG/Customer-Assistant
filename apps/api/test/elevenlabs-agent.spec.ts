@@ -418,7 +418,7 @@ describe('ElevenLabs agent provisioning', () => {
         // the opening is spoken before the caller has been looked up, and a
         // returning caller must not be asked their name. openingForUnknownCaller.
         expect(agentConfig?.first_message).toBe(
-          greeting.replace('{greeting}', 'Hello').replace('To get started, may I kindly know your full name?', 'How may I help you today?')
+          greeting.replace('{greeting}', 'Hello').replace('To get started, may I kindly know your full name?', '{{sip_welcome}}')
         );
         expect(agentConfig?.prompt?.prompt).toContain('## Standard Operating Script (Phases 1 to 10)');
         expect(agentConfig?.prompt?.prompt).toContain('THIS SCRIPT SUPERSEDES OLDER WORDING ABOVE');
@@ -504,7 +504,7 @@ describe('ElevenLabs agent provisioning', () => {
         expect(hook?.request_headers?.Authorization).toEqual({ secret_id: 'secret_1' });
         expect(JSON.stringify(req?.body)).not.toContain(AGENT_KEY_PREFIX);
         // And the defaults a conversation without the webhook falls back to.
-        expect(req?.body?.conversation_config?.agent?.dynamic_variables?.dynamic_variable_placeholders?.caller_status).toBe(
+        expect(req?.body?.conversation_config?.agent?.dynamic_variables?.dynamic_variable_placeholders?.sip_callerstatus).toBe(
           'unknown'
         );
       }

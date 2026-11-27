@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install and configure the Alphatech → ElevenLabs SIP bridge on Ubuntu 22.04/24.04.
+# Install and configure the Alphatech SIP bridge on Ubuntu 22.04/24.04: calls to the
+# server's own voice line (LOCAL_VOICE=1) with ElevenLabs as the fallback, or to ElevenLabs only.
 #   cp bridge.env.example bridge.env && nano bridge.env && sudo ./setup.sh
 # Safe to re-run: it re-renders the config from bridge.env and restarts Asterisk.
 set -euo pipefail
@@ -23,11 +24,11 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq asterisk gettext-base ufw curl >/dev/null
 
-# Validated and rendered by render.sh, which the single-server container uses too.
+# Validated and rendered by render.sh, which the single-server container uses
+# too, so the native bridge and the container cannot drift apart.
 ./render.sh /etc/asterisk
 PUBLIC_IP="$(grep -m1 '^external_media_address' /etc/asterisk/pjsip.conf | awk '{print $3}')"
 chown asterisk:asterisk /etc/asterisk/{pjsip,extensions,rtp,modules}.conf
-chmod 640 /etc/asterisk/pjsip.conf
 
 echo "==> Firewall: SSH, SIP 5060 (UDP+TCP), RTP 10000-20000/UDP"
 ufw allow OpenSSH >/dev/null

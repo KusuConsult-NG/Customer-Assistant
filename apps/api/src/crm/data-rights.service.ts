@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, recordAgencyAudit, Prisma, type Actor } from '@ace/database';
+import { localRecordingFrom } from '../common/call-recording';
+import { CALL_RECORDING_BUCKET, deleteObject } from '../common/object-storage';
 
 const ERASED = '[erased at the citizen’s request]';
 
@@ -97,6 +99,15 @@ export class DataRightsService {
     const convIds = (await prisma.conversation.findMany({ where: { organizationId, contactId }, select: { id: true } })).map((c) => c.id);
     const ticketIds = (await prisma.ticket.findMany({ where: { organizationId, contactId }, select: { id: true } })).map((t) => t.id);
 
+    // Audio this server recorded itself is a FILE, not a column: emptying the
+    // reference would leave the citizen's voice on disk with nothing pointing
+    // at it. Collected before the reference is cleared, deleted after commit.
+    const localAudio = (
+      await prisma.callLog.findMany({ where: { organizationId, contactId }, select: { recordingUrl: true } })
+    )
+      .map((c) => localRecordingFrom(c.recordingUrl))
+      .filter((p): p is string => !!p);
+
     const counts = await prisma.$transaction(async (tx) => {
       const messages = await tx.message.updateMany({ where: { conversationId: { in: convIds } }, data: { content: ERASED, mediaUrl: null, metadata: Prisma.DbNull } });
       const calls = await tx.callLog.updateMany({
@@ -133,6 +144,7 @@ export class DataRightsService {
       });
       return { messages: messages.count, calls: calls.count, cases: cases.count, callbacks: callbacks.count };
     });
+    for (const storagePath of localAudio) await deleteObject(CALL_RECORDING_BUCKET, storagePath);
 
     await recordAgencyAudit(actor, organizationId, {
       action: 'citizen.data_erased',

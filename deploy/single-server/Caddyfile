@@ -3,16 +3,38 @@
 # open.
 {
 	email {$ACME_EMAIL}
+
+	# The internal :8080 listener is reached only by the tunnel daemon on the
+	# compose network (it is not published to the host), so the client address
+	# that daemon forwards can be trusted HERE. Without this, Caddy discards
+	# it and every request through the tunnel reaches the API as the tunnel's
+	# own address: one shared rate limit (5 sign-ins a minute for the whole
+	# State) and every request recorded as plain http.
+	# Never add this to the public listener: there, anyone could forge it.
+	servers :8080 {
+		trusted_proxies static private_ranges
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
 }
 
-{$DOMAIN} {
+(app_routes) {
 	encode zstd gzip
+
+	# The voice line's registration is for the Asterisk bridge on this host
+	# only (it calls the API directly on 127.0.0.1). Never from outside.
+	handle /api/voice-local/* {
+		respond 404
+	}
 
 	# The API: REST, the dashboard's live sockets, and Twilio's media stream
 	# (/telephony/stream/… only — /telephony on its own is a dashboard page).
 	@api path /api/* /socket.io/* /telephony/stream/*
 	handle @api {
 		reverse_proxy api:4000 {
+			# ONE address, the real client's, as Caddy determined it — so the
+			# API (TRUST_PROXY=1: it trusts exactly one hop, this one) sees each
+			# citizen separately on both listeners.
+			header_up X-Forwarded-For {client_ip}
 			# Uploads are base64 in JSON; the API enforces its own 50 MB limit.
 			transport http {
 				read_timeout 5m
@@ -33,4 +55,17 @@
 		output stdout
 		format console
 	}
+}
+
+# The public listener: the domain, with a certificate Caddy fetches itself.
+# Behind a named Cloudflare Tunnel, CADDY_PUBLIC_SITE is http://:8081 instead
+# (see docker-compose.yml): nothing reaches it, and no certificate is asked for.
+{$CADDY_PUBLIC_SITE} {
+	import app_routes
+}
+
+# Internal-only HTTP listener on the compose network (port 8080 is not
+# published to the host): where the Cloudflare Tunnel delivers everything.
+:8080 {
+	import app_routes
 }

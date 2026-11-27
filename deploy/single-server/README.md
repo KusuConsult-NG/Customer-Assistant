@@ -36,7 +36,9 @@ dashboard or a large upload cannot make a call stutter.
 
 1. **DNS.** Create an A record for the domain the platform will use (for
    example `care.example.gov.ng`) pointing at the server's public IP. Caddy cannot
-   obtain the HTTPS certificate until this resolves.
+   obtain the HTTPS certificate until this resolves. **If ports 80/443 will
+   not be open to everyone, skip this and follow "No open web ports: a named
+   Cloudflare Tunnel" below instead.**
 
 2. **Get the code and prepare the server** (as root):
 
@@ -89,6 +91,69 @@ dashboard or a large upload cannot make a call stutter.
    ```bash
    docker compose --env-file server.env exec api node scripts/grant-platform-admin.js someone@agency.gov.ng --apply
    ```
+
+## No open web ports: a named Cloudflare Tunnel
+
+For a server whose firewall must not accept web traffic from everyone (the
+MTN Cloud server). The tunnel connects **out** to Cloudflare, and the
+dashboard, the API, WhatsApp and ElevenLabs' webhooks all come back in through
+it. Cloudflare holds the HTTPS certificate, so ports 80 and 443 stay closed.
+The phone ports (5060, UDP 10000–20000) are separate and are not carried by
+the tunnel.
+
+**What you need:** a free Cloudflare account, and the domain (or the
+subdomain the platform will use) with its DNS managed by Cloudflare.
+
+**1. Create the tunnel in Cloudflare.** Dashboard → **Zero Trust** →
+**Networks** → **Tunnels** → **Create a tunnel** → **Cloudflared**. Name it
+(e.g. `mtn-server`). On the install page, copy the **token**: the long value
+after `--token` in any of the install commands. Do not run those commands;
+the server runs the tunnel itself.
+
+**2. Give it the public hostname.** Next page, **Public Hostname**:
+
+| Field | Value |
+|---|---|
+| Subdomain / Domain | the address the platform will use, e.g. `contact` + `plateaustate.gov.ng` |
+| Service type | `HTTP` |
+| URL | `caddy:8080` |
+
+Save. Cloudflare creates the DNS record itself.
+
+**3. On the server**, in `server.env` (`sudo nano server.env`):
+
+```
+DOMAIN=contact.plateaustate.gov.ng
+CLOUDFLARE_TUNNEL_TOKEN=<the token>
+CADDY_PUBLIC_SITE=http://:8081
+```
+
+The token is a secret: whoever holds it can serve your domain. Paste it only
+into `server.env`, never into chat or a ticket.
+
+**4. Deploy:**
+
+```bash
+sudo ./deploy.sh
+```
+
+It starts the tunnel and checks `https://DOMAIN/api/health` end to end, out
+through Cloudflare and back down the tunnel. Only once that answers does it
+remove the temporary quick tunnel (`ace-tunnel`), so a mistake in the new one
+never leaves the server unreachable. In Cloudflare, the tunnel then
+shows **Healthy**.
+
+**5. Close the web ports** in the cloud firewall: delete the TCP 80, TCP 443
+and UDP 443 inbound rules. Nothing depends on them any more.
+
+Three Cloudflare settings to leave alone for this hostname: **Bot Fight
+Mode**, **Under Attack mode** and any **WAF challenge**. Each answers a
+machine with a challenge page, and Meta's and ElevenLabs' webhooks are
+machines: messages and call records would stop arriving with nothing on this
+server saying why. Uploads are limited to 100 MB by Cloudflare's free plan,
+above the API's own 50 MB.
+
+Tunnel logs: `docker compose --env-file server.env logs --tail 50 tunnel`.
 
 ## Moving from Supabase and Render
 
@@ -179,7 +244,7 @@ can be repeated.
 |---|---|
 | Deploy an update | `git pull && ./deploy.sh` |
 | What is running | `docker compose --env-file server.env ps` |
-| Logs | `docker compose --env-file server.env logs -f api` (or `web`, `caddy`, `bridge`) |
+| Logs | `docker compose --env-file server.env logs -f api` (or `web`, `caddy`, `bridge`, `tunnel`) |
 | Bridge status | `docker compose --env-file server.env exec bridge /opt/bridge/check.sh` |
 | Back up now | `./backup.sh` |
 | Last night's backup | `systemctl status ace-backup` |
@@ -204,6 +269,10 @@ in `infra/sip-bridge/bridge.env`, and run `./deploy.sh`.
 `SELF_SIGNED_CERT_IN_CHAIN`, set `EXTRA_CA_CERT` in `server.env` to the
 network's CA certificate. It is used for the build and by the running API, and
 certificate checking stays on.
+
+**The server's own voice line** (answering calls here instead of ElevenLabs)
+is off until it has passed the live-call checks. How to switch it on and test
+it on this setup: `PHASE3.md` in this folder.
 
 ## What has and has not been proven
 

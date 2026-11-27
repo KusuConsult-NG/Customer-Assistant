@@ -40,10 +40,15 @@ const ENV_VALIDATION = join(__dirname, '..', 'src', 'config', 'env.validation.ts
  * whether it was a decision or an oversight.
  */
 const DELIBERATELY_OMITTED: Record<string, string> = {
-  STORAGE_DIR:
-    'Files on the server\'s own disk. Render\'s disk is wiped on every deploy, so ' +
-    'Render keeps files in Supabase Storage; only the single-server deployment ' +
-    'sets it, to a backed-up volume (deploy/single-server/docker-compose.yml).',
+  // The single-server deployment (deploy/vps) sets these in its own generated
+  // env file; on Render they must stay unset. A Render container's disk is
+  // wiped by every deploy, so STORAGE_DIR there would lose every upload, and
+  // the local voice line needs Asterisk on the same machine.
+  STORAGE_DIR: 'Single-server only (deploy/vps/install.sh). On Render the disk is wiped by every deploy; files go to Supabase.',
+  STORAGE_LINK_SECRET: 'Single-server only (deploy/vps/install.sh generates it). Render keeps files in Supabase, which signs its own links.',
+  LOCAL_VOICE_PIPELINE: 'Single-server only: needs Asterisk on the same machine (deploy/vps).',
+  AZURE_SPEECH_KEY: 'Single-server voice line only (deploy/vps/deploy.env).',
+  AZURE_SPEECH_REGION: 'Single-server voice line only (deploy/vps/deploy.env).',
   ELEVENLABS_ALLOW_SHARED_WORKSPACE:
     'Single-tenant opt-in. Setting it here would put every tenant\'s numbers, ' +
     'WhatsApp lines and transcripts in one ElevenLabs workspace.',

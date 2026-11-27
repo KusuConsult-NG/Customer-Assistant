@@ -1,0 +1,9 @@
+storage:
+  storage_path: /var/lib/qdrant/storage
+  snapshots_path: /var/lib/qdrant/snapshots
+service:
+  host: 127.0.0.1
+  http_port: 6333
+  grpc_port: 6334
+  api_key: ${QDRANT_API_KEY}
+telemetry_disabled: true

@@ -32,7 +32,9 @@ env:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # Pinned to Ubuntu 24.04 LTS (matches production host and avoids ubuntu-latest
+    # rolling to 26.04 where Playwright's --with-deps font packages fail apt).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     services:

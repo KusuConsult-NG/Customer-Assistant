@@ -1920,7 +1920,7 @@ export class ConversationOrchestrator {
     try {
       org = await prisma.organization.findUnique({
         where: { id: context.organizationId },
-        select: { name: true, aiPersonaPrompt: true, welcomeMessage: true },
+        select: { name: true, timezone: true, aiPersonaPrompt: true, welcomeMessage: true },
       });
     } catch (dbErr: any) {
       console.error(JSON.stringify({
@@ -1947,12 +1947,30 @@ export class ConversationOrchestrator {
     // ── GPT-4o synthesis — uses the org's configured persona prompt ───────────
     const openAiKey = process.env.OPENAI_API_KEY;
 
-    // If it's a greeting AND no knowledge base context, just use the welcome message.
+    // If it's a greeting AND no knowledge base context, render the welcome message for text chat.
     const GREETING_WORDS = ['hello', 'hi', 'good day', 'hey', 'good morning', 'good afternoon', 'good evening'];
     const isGreeting = GREETING_WORDS.some((g) => lowerInput.startsWith(g)) && cleanInput.length < 30;
     if (isGreeting) {
-      const synthesizedReply = org?.welcomeMessage ??
+      let synthesizedReply = org?.welcomeMessage ??
         `Hello! Welcome to ${orgName}. How can I help you today?`;
+      if (org?.welcomeMessage) {
+        let hour = (new Date().getUTCHours() + 1) % 24;
+        try {
+          hour = Number(
+            new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: org.timezone || 'Africa/Lagos' }).format(new Date())
+          );
+        } catch { /* fallback to WAT */ }
+        const tod = hour >= 5 && hour < 12 ? 'Good morning' : hour >= 12 && hour < 17 ? 'Good afternoon' : 'Good evening';
+        synthesizedReply = synthesizedReply
+          .replace(/\{greeting\}/g, tod)
+          .replace(/\{name\}/g, 'Nanpan')
+          .replace(/<break\s+[^>]*\/>/gi, ' ')
+          .replace(/<\/?governor>/gi, ' ')
+          .replace(/Our virtual assistant,\s*[^.,]+,\s*will help you now\.\s*/gi, '')
+          .replace(/\bthis call is being recorded\b/gi, 'this conversation is being recorded')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
       return {
         replyText: synthesizedReply,
         intentDetected: 'GREETING',

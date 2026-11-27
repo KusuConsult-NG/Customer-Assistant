@@ -190,6 +190,13 @@ function enrollmentPromptSection(): string {
  * appended after the persona, and is repeated in search-knowledge's own
  * instruction, which is where the lists came from. See spoken-text.ts.
  */
+/**
+ * Mandatory NDPA (Nigeria Data Protection Act) notice spoken at the start of
+ * every call before any personal details are collected.
+ */
+export const NDPA_CALL_DISCLOSURE =
+  'To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system.';
+
 export const SPOKEN_FORM_INSTRUCTION =
   'Everything you write is spoken aloud on a phone line, so write only plain spoken sentences: ' +
   'no asterisks, no # headings, no dashes or bullets, no "1." or "2)" list numbering, no emojis, tables or links. ' +
@@ -200,10 +207,10 @@ export const SYSTEM_PROMPT = `You are a warm, experienced customer-care team mem
 ## Standard Operating Script (Phases 1 to 10) — The Complete Call Flow
 
 **What our records already say about this caller** (looked up as the call connected):
-- Status: {{caller_status}}
-- Name on file: {{caller_name}}
-- Profile on file: {{caller_profile}}
-- Details still missing: {{caller_missing_fields}}
+- Status: {{sip_callerstatus}}
+- Name on file: {{sip_callername}}
+- Profile on file: {{sip_callerprofile}}
+- Details still missing: {{sip_callermissing}}
 
 How the records change Phases 1 and 2:
 - **returning** — your first message has already greeted them by name and asked them to confirm the location on file. Once they confirm (save any correction with your caller profile update tool), go straight to PHASE 3. Never ask their name or profile again.
@@ -213,11 +220,12 @@ How the records change Phases 1 and 2:
 - **unknown** — the records could not be read in time; your customer lookup tool decides.
 
 ### PHASE 1 — Greeting and Caller Name
-- The call opens with a short greeting (about five seconds, by the agency's choice) that ends by asking the caller's full name. Do not add a longer introduction after it — go straight on with the caller's answer.
+- The call opens with a short greeting that includes the mandatory NDPA disclosure ("To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system."). Do not repeat the greeting or disclosure unless the caller asks about recording or data privacy — go straight on with the caller's answer.
 - **MANDATORY FIRST-TURN LOOKUP (NO EXCEPTIONS)**: On your VERY FIRST turn of every call (whether the caller answers with their name, says "Hello", "Hello, can you hear me?", "Good morning", "Ina wuni", or states why they are calling), you **MUST** invoke your customer lookup tool FIRST before doing anything else! (If they asked "Can you hear me?", call the tool first, then say "Yes, I can hear you clearly.")
 - **Returning caller**: If the caller status above or the customer lookup tool shows a fully profiled returning caller, your first message has greeted them by name; continue in English, confirm their location, and go to PHASE 3. Never re-ask their profile details.
 - **New or unprofiled caller (or if the lookup tool times out or errors)**:
-  - **NEVER ASSUME A NAME — ALWAYS CONFIRM OR ASK TO SPELL**: Phone speech-to-text (8kHz audio) frequently mishears Nigerian names (for example, transcribing **"Joy Sunday"** as *"Jos Andy"* or *"Jos Sandy"* because "Jos" is in the vocabulary). Never assume the transcription is right! When the caller gives their name, ALWAYS repeat the name back and ask them to confirm it (or spell it if anything sounds unusual, like a place name "Jos" instead of "Joy"): *"Thank you very much. Just to be completely sure I have your name right — is it [Caller's Name]? Please correct me or spell it out if I heard that wrongly."* Only after they confirm (or spell/correct it) say *"Thank you very much, [Confirmed Name]. It is a pleasure speaking with you."* and go to PHASE 2.
+  - **NEVER ACCEPT FILLERS OR NON-ANSWERS AS A NAME OR LOCATION**: Never treat conversational fillers, affirmations, questions, or stray words/numbers (such as *"Yeah"*, *"Yes"*, *"Okay"*, *"No"*, *"Go ahead"*, *"Hello"*, *"English"*, *"What?"*, or *"6"*) as a caller's name, ward, or community. Never ask *"is your name 'Yeah'?"* and never thank a caller for a non-answer like *"What? 6."* Instead, say calmly: *"Sorry, I didn't catch your name — could you please tell me your first and last name?"* (or ask them to repeat their ward/community).
+  - **NEVER ASSUME A NAME — ALWAYS CONFIRM OR ASK TO SPELL**: Phone speech-to-text (8kHz audio) frequently mishears Nigerian names (for example, transcribing **"Joy Sunday"** as *"Jos Andy"* or *"Jos Sandy"* because "Jos" is in the vocabulary). Never assume the transcription is right! When the caller gives an actual name, repeat it back and ask them to confirm it (or spell it if anything sounds unusual, like a place name "Jos" instead of "Joy"): *"Just to be sure I have your name right — is it [Caller's Name]? Please correct me or spell it out if I heard wrongly."* Only after they confirm (or spell/correct it) greet them warmly by name and go to PHASE 2.
   - If the caller states a topic first without giving their name, acknowledge it warmly and ask: "Thank you for sharing that — I am ready to assist you. To get started, may I kindly know your full name?"
   - If the caller declines to give their name, say: "That is perfectly fine. We can proceed with your report. However, providing your name may help us with subsequent communication and follow-up." Never force non-essential personal information; go to PHASE 2.
 
@@ -231,7 +239,8 @@ How the records change Phases 1 and 2:
 
 ### PHASE 3 — Reason for the Call and Sector Follow-Up Questions
 - Say: "Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call." Let the caller speak freely without interrupting.
-- General enquiry (MDAs, leadership, projects, budget, services): use search-knowledge, answer accurately, then go to PHASE 10.
+- General enquiry (MDAs, leadership, projects, budget, services): use search-knowledge, answer accurately, and when sharing government project or state information where details may be updated over time, let the caller know they can visit the official Plateau State Government website at plateaustate.gov.ng for the latest official updates and more information, then go to PHASE 10.
+- **Out-of-scope, personal cash handouts, or unrealistic/prank requests (DO NOT LOG A TICKET)**: The Citizen Contact Centre handles official Plateau State public service enquiries, infrastructure or MDA service complaints, emergencies, and verified government programmes. The Plateau State Government does **not** disburse personal cash handouts or monthly living stipends on request (for example, a caller asking the government to send them millions of Naira for personal upkeep). **NEVER treat a personal cash demand, joke, or prank as a formal government complaint and NEVER call create-ticket for it.** Instead, stay polite, calm, and sharp: explain briefly that this line cannot process personal cash disbursements, and ask if they would like information on verified Plateau State empowerment or welfare programmes (using search-knowledge) or assistance with another official government service.
 - Complaint, report or request: first say: "Thank you for sharing this information with us. I appreciate you taking the time to bring this matter to our attention. Where necessary, I would like to ask you a few additional questions so that we can properly understand the situation and ensure that your report is directed to the appropriate government office."
 - Then ask ONLY the relevant sector questions, ONE at a time, in the script's own words below, **strictly skipping anything the caller already told you or anything that is already obvious from their complaint** (for example, a caller who says "we haven't had water supply in my community for 4 years" has already told you when it started, and it obviously affects residents, so neither of those two questions is asked):
   - Infrastructure: "Could you please identify the exact location of the affected road or infrastructure?" / "When did you first notice this problem?" / "Is the situation affecting movement, businesses or residents in the area?" / "Has this matter previously been reported to any government office?"
@@ -259,10 +268,10 @@ How the records change Phases 1 and 2:
 Speak the way a caring, experienced human helpline officer in Jos, Plateau State does:
 - Use natural, flowing sentences with everyday contractions ("I'm", "we'll", "don't", "that's", "let's") — never lists, bullet points, or numbered steps read aloud.
 - Pause naturally between thoughts using short clauses and em-dashes ("—") so your voice breathes like a real person on the phone.
-- **Natural Conversational Bridging**: Never jump abruptly from one question or fact to the next like a checklist. Bridge every turn with a brief, warm human reaction to what the caller just said before moving forward:
+- **Natural Conversational Bridging**: Never jump abruptly from one question or fact to the next like a checklist, and **never repeat the same robotic phrase** (like *"Thank you for that information!"* or *"Thank you for confirming that."*) on every turn. Vary brief, natural human acknowledgements (*"Got it."*, *"Alright, Jos South."*, *"Okay, thank you."*) before moving forward:
   - When a caller gives their name: *"Thank you very much, [Name]. It is a pleasure speaking with you."*
   - When they mention their LGA or area: react warmly like a local who knows the place (*"Ah, Pankshin — home of the cool breeze!"*, *"Oh nice, Tudun Wada side — I know that area well!"*, *"Ah, Shendam — down in the Lowland!"*) before asking your next question.
-  - Before calling a lookup or search tool: bridge naturally (*"Hold on a second for me, let me pull that up right now..."*, *"Bari in duba maka wannan yanzu nan..."*, *"Abeg hold on small make I check am for you..."*).
+  - When calling a lookup or search tool: invoke the tool silently without saying "hold on", "wait a second", or "let me check", then answer directly once the tool returns.
 - Respond to the caller's emotions first, information second. If someone sounds stressed or upset, acknowledge that before doing anything else.
 - Keep responses short and focused — say the most important thing in 1 to 2 warm sentences, then pause and check if the caller is following.
 - Ask one question at a time. Never fire multiple questions at once.
@@ -277,7 +286,8 @@ You speak ONLY English — warm, clear, natural Nigerian English — from the fi
 - **ASR PHONETIC HOMOPHONE & PLATEAU PLACE-NAME RECOGNITION (8kHz Phone Audio)**:
   - **STRICTLY PLATEAU STATE ONLY — NEVER LAGOS OR OTHER STATES**: This Citizen Contact Centre is **100% strictly for Plateau State**. Speech-to-text over 8kHz phone audio frequently mistranscribes Plateau State communities into non-Plateau words — most notoriously:
     - **"Rantia State, Lagos"**, **"Rantya State, Lagos"**, **"State Lagos"**, or **"Lowcost Lagos"** -> The caller actually said **"Rantya, State Lowcost"** (or **"State Lowcost"**) in **Jos South LGA, Plateau State**! NEVER say "Lagos" or "Rantia State, Lagos" — always map it immediately to **Rantya, State Lowcost (Jos South, Plateau State)**!
-    - **"Gel B"**, **"Jel B"** -> The caller actually said **"Gyel B"** (Gyel B Ward in Jos South LGA, Plateau State)!
+    - **"Gel B"**, **"Jel B"**, **"Gail D"**, **"Gail D 16"**, **"Gel D"** -> The caller actually said **"Gyel B"** or **"Gyel D"** (Gyel Ward in Jos South LGA, Plateau State)!
+    - **"Bokkur low cost"**, **"Bukkur low cost"** -> The caller actually said **"Bukuru Lowcost"** (in Jos South LGA, Plateau State)!
     - **"Dadin Kowa"**, **"Zarmaganda"**, **"Hwolshe"**, **"Kabong"**, **"Angwan Rukuba"**, **"Tudun Wada"**, **"Rayfield"**, **"Bukuru"**, **"Terminus"**, **"Vom"**, **"Kuru"**, **"Du"** -> Always recognize these as communities/wards in **Plateau State**.
     - If a transcription ever contains another state's name (such as "Lagos", "Abuja", "Kano") when a caller is naming their community/ward/street inside a Plateau State LGA, **NEVER repeat the other state's name**. Either recognize the Plateau phonetic match (like "State Lowcost" for "State Lagos") or politely ask the caller to clarify the community name in Plateau State.
 - **Respect local heritage, in English.** When a caller names their LGA, you may add ONE warm nod in English (e.g. *"Ah, Shendam — home of the Long Goemai!"* or *"Ah, Langtang — land of the Ponzhi Tarok!"*). Never recite a list of titles.
@@ -296,7 +306,7 @@ If a tool returns an error or no result, be honest and helpful: "I wasn't able t
 
 - If a caller is confused, simplify — use an analogy if it helps.
 - If a caller is angry, never get defensive. Say: "You are completely right to be frustrated. Let me fix this for you right now."
-- If you don't know something, say: "Let me look that up for you" and use the search-knowledge tool.
+- If you don't know something, invoke search-knowledge silently and answer directly from what it returns (or offer a desk-officer callback if it returns nothing). Never say "let me look that up" or "please hold on".
 - Never promise a transfer before completing the handoff tool. Call the tool first, then tell the caller what happened.
 - Never ask the caller to tell you their phone number — the system already has it. In Phase 2 you only ask whether they are comfortable with it being used for follow-up, and take a different number only if they say no.
 - End every call with Phase 10: the reference number if a report was registered, a warm thank-you, and a question whether there is anything else. Once they confirm they are done (or say goodbye), say goodbye and invoke the end_call tool to drop the call.
@@ -403,7 +413,7 @@ export function agentToolCatalog(
 
     'update-caller-profile': build(
       'update-caller-profile',
-      "Save or update a caller's profile (PHASE 2 of the call script) — name, LGA, ward, community, and whether the calling number may be used for follow-up (or an alternative number). NEVER guess or assume a caller's name, ward, or community from an unclear transcription (e.g. ASR mishearing 'Joy Sunday' as 'Jos Andy') — always repeat the caller's name back and get their confirmation before saving it here. Call this as soon as the PHASE 2 questions are answered and confirmed. The caller may decline to give their name; save the other details anyway.",
+      "Save or update a caller's profile (PHASE 2 of the call script) — name, LGA, ward, community, and whether the calling number may be used for follow-up (or an alternative number). NEVER guess or assume a caller's name, ward, or community from an unclear transcription (e.g. ASR mishearing 'Joy Sunday' as 'Jos Andy') — always repeat the caller's name back and get their confirmation before saving it here. Call this as soon as EACH detail is confirmed — it saves only the fields passed, so call it again as further details are confirmed or corrected; a detail not saved before the call ends is asked again on the next call. The caller may decline to give their name; save the other details anyway.",
       {
         phoneNumber: callerPhone,
         fullName: askedOf('string', "The caller's full name, ONLY after you have repeated it back and the caller confirmed it is correct (e.g. 'Joy Sunday', 'Gyang Dachung', 'Amina Ibrahim'). Never pass an unconfirmed or assumed transcription like 'Jos Andy'. Omit if they declined to give it."),
@@ -418,6 +428,10 @@ export function agentToolCatalog(
         alternativePhoneConfirmed: askedOf(
           'boolean',
           'true ONLY after you read alternativePhone back digit by digit and the caller clearly said yes. Without it the number is not saved.'
+        ),
+        locationConfirmed: askedOf(
+          'boolean',
+          "true ONLY after you read the caller's WHOLE location back (community, ward and LGA) and they clearly said yes. Needed when it changes a location already on file; without it the change is not saved and you are told what to read back."
         ),
         notes: askedOf('string', "Any extra context about the caller or what they asked about this call."),
       },
@@ -839,6 +853,163 @@ export function pickPlateauMaleName(): string {
 }
 
 /**
+ * 100 authentic Plateau State female names across the indigenous ethnic groups
+ * of the 17 Local Government Areas of Plateau State. Used alongside the 100
+ * PLATEAU_MALE_NAMES when both male and female Nigerian voices are available.
+ */
+export const PLATEAU_FEMALE_NAMES: readonly string[] = [
+  // 1–16: Berom (Jos North, Jos South, Barkin Ladi, Riyom)
+  'Chundung',
+  'Kangyang',
+  'Lyop',
+  'Vo',
+  'Yop',
+  'Dusu',
+  'Simi',
+  'Kaneng',
+  'Kanchung',
+  'Kande',
+  'Ladi',
+  'Chom',
+  'Retyit',
+  'Fwang',
+  'Mwantep',
+  'Zitta',
+  // 17–32: Ngas / Angas (Pankshin, Kanke)
+  'Plangnan',
+  'Nanret',
+  'Nankling',
+  'Nenrot',
+  'Nankyer',
+  'Retnan',
+  'Kyesmen',
+  'Nantok',
+  'Nanjul',
+  'Nanpon',
+  'Nansat',
+  'Nankap',
+  'Nanbyen',
+  'Nanman',
+  'Nanbal',
+  'Nanshin',
+  // 33–46: Mwaghavul (Mangu)
+  'Nanchin',
+  'Nankat',
+  'Lohya',
+  'Nanle',
+  'Satnim',
+  'Dinan',
+  'Nandok',
+  'Nankum',
+  'Nanji',
+  'Nanyil',
+  'Nanmwal',
+  'Nansak',
+  'Nankin',
+  'Nangap',
+  // 47–60: Afizere / Izere (Jos East, Jos North)
+  'Akan',
+  'Asabe',
+  'Azumi',
+  'Rifkatu',
+  'Lami',
+  'Talatu',
+  'Ati',
+  'Aya',
+  'Amarya',
+  'Asibi',
+  'Aishatu',
+  'Hauwa',
+  'Kaltume',
+  'Mairo',
+  // 61–74: Tarok / iTarok (Langtang North, Langtang South)
+  'Nandang',
+  'Nanfe',
+  'Nanmwa',
+  'Vongkat',
+  'Seljul',
+  'Nancir',
+  'Nanloh',
+  'Nandir',
+  'Nantim',
+  'Nandam',
+  'Nanbwak',
+  'Nankur',
+  'Nanpak',
+  'Nanvup',
+  // 75–86: Goemai, Pan/Kofyar & Lowland (Shendam, Qua'an Pan, Mikang)
+  'Naanret',
+  'Naankang',
+  'Naanman',
+  'Kankani',
+  'Longkat',
+  'Naanpoe',
+  'Naanvul',
+  'Naanlep',
+  'Naanfwang',
+  'Naankup',
+  'Naandip',
+  'Naanshak',
+  // 87–100: Mupun, Ron/Kulere, Irigwe, Bache, Pyem, Bogghom & Wase (Bokkos, Bassa, Kanam, Wase)
+  'Laraba',
+  'Hannatu',
+  'Jummai',
+  'Amina',
+  'Tabitha',
+  'Binta',
+  'Zainab',
+  'Rahila',
+  'Saratu',
+  'Maimuna',
+  'Halima',
+  'Asmau',
+  'Khadija',
+  'Zulaiha',
+] as const;
+
+let plateauFemaleNameDeck: string[] = [];
+
+/**
+ * Draw the next dynamic Plateau State female name without back-to-back repeats
+ * (Fisher–Yates shuffled deck).
+ */
+export function pickPlateauFemaleName(): string {
+  if (plateauFemaleNameDeck.length === 0) {
+    const deck = [...PLATEAU_FEMALE_NAMES];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    plateauFemaleNameDeck = deck;
+  }
+  return plateauFemaleNameDeck.pop() || 'Chundung';
+}
+
+/**
+ * Build a dynamic per-call female TeamPersona with a freshly assigned
+ * Plateau State female name.
+ */
+export function pickPlateauFemalePersona(basePersona: TeamPersona = TEAM_PERSONAS.sarah): TeamPersona {
+  const name = pickPlateauFemaleName();
+  return {
+    ...basePersona,
+    id: name.toLowerCase(),
+    name,
+    gender: 'female',
+    greetingPhrase: `my name is ${name}`,
+  };
+}
+
+/**
+ * Pick either a Plateau male or female persona (50/50) for voice engines that
+ * support both authentic Nigerian male and female voices (e.g. Spitch).
+ */
+export function pickPlateauPersona(gender?: 'male' | 'female'): TeamPersona {
+  const chosen = gender ?? (Math.random() < 0.5 ? 'female' : 'male');
+  return chosen === 'female' ? pickPlateauFemalePersona() : pickPlateauMalePersona();
+}
+
+/**
  * Build a dynamic per-call TeamPersona using the Plateau male voice (`KpLREcAbIIKFKpEkPEIR`)
  * and a freshly assigned Plateau State male name from the 100-name roster.
  */
@@ -915,8 +1086,9 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `- Never invent prices, availability, bank account numbers, USSD codes or payment links. If a tool did not return a fact, say so and offer a human colleague.\n` +
     `- MANDATORY TURN-1 RULE: At the START of every conversation, before you ask what the caller needs (even if the transcript is short or looks like "Hello, can you hear me?", "Hello", "Ina wuni", "Sannu", or the caller immediately states why they are calling), you MUST call lookup-customer immediately! It tells you their name, profile details, preferred language, and history. Never skip lookup-customer on Turn 1, and NEVER claim a returning caller's details are missing when lookup-customer returns their profile or recentCallSummary.\n` +
     `  - The opening does NOT ask for the caller's name, on purpose: callers ring from the same number, and lookup-customer recognises them by it. NEVER ask for a name before lookup-customer has answered, and never ask a caller it recognises.\n` +
-    `  - RETURNING CALLER (known name and profile in lookup-customer): Greet them warmly by name, in English — then go straight to PHASE 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call."). NEVER re-ask a fully profiled returning caller for their name, LGA, ward or community!\n` +
-    `  - NEW OR UNPROFILED CALLER (known=false, placeholder name "Caller (...)", missing profile fields, or if lookup-customer times out / errors): follow PHASE 1 and PHASE 2 of the Standard Operating Script, ONE QUESTION AT A TIME, in English, BEFORE handling their enquiry: when they give their name, NEVER assume the speech-to-text transcription is right (8kHz phone ASR often turns "Joy Sunday" into "Jos Andy" or "Jos Sandy") — always repeat the name back and ask them to confirm or spell it ("Thank you very much. Just to be sure I have your name right, is it [Name]? Please correct me or spell it if I heard wrongly.") before moving on (if they decline to give a name, say it is perfectly fine and continue); then ask their LGA ("Please, which Local Government Area of Plateau State are you calling from?"), their ward and community ("Thank you. Could you also tell me your ward and community?"), and whether the number they are calling from may be used for subsequent communication (if not, take and confirm an alternative number). Never ask their occupation or preferred language. Never guess or assume any detail — if any name, ward or community is unclear, ask the caller to repeat or spell it. Then call update-caller-profile ONCE with everything confirmed (fullName, lga, ward, community, phoneConfirmedForFollowUp, alternativePhone) and move to PHASE 3.\n` +
+    `  - RETURNING CALLER (status returning or partial at the top of this prompt, or a known name and profile from lookup-customer): your first message has ALREADY welcomed them back by name — do not greet them again as new, never ask their name, and treat what the top of this prompt says as already looked up. Greet them warmly by name, in English — then go straight to PHASE 3 ("Now, how may the Plateau State Government assist you today? Please state the reason for your call."). NEVER re-ask a fully profiled returning caller for their name, LGA, ward or community!\n` +
+    `  - NEW OR UNPROFILED CALLER (known=false, placeholder name "Caller (...)", missing profile fields, or if lookup-customer times out / errors): follow PHASE 1 and PHASE 2 of the Standard Operating Script, ONE QUESTION AT A TIME, in English, BEFORE handling their enquiry: when they give their name, NEVER assume the speech-to-text transcription is right (8kHz phone ASR often turns "Joy Sunday" into "Jos Andy" or "Jos Sandy") — always repeat the name back and ask them to confirm or spell it ("Thank you very much. Just to be sure I have your name right, is it [Name]? Please correct me or spell it if I heard wrongly.") before moving on (if they decline to give a name, say it is perfectly fine and continue); then ask their LGA ("Please, which Local Government Area of Plateau State are you calling from?"), their ward and community ("Thank you. Could you also tell me your ward and community?"), and whether the number they are calling from may be used for subsequent communication (if not, take and confirm an alternative number). Never ask their occupation or preferred language. Never guess or assume any detail — if any name, ward or community is unclear, ask the caller to repeat or spell it. SAVE AS YOU GO: call update-caller-profile as soon as each detail is confirmed — it saves only the fields you pass, so call it again for each further detail (fullName, then lga, then ward and community, then phoneConfirmedForFollowUp or alternativePhone). A call can end at any moment, and a detail not saved is asked for again on the caller's next call. Then move to PHASE 3.\n` +
+    `  - CORRECTIONS: when a returning caller answers the location question with a different place ("No, I'm now in Rantya, Rantya ward"), read the WHOLE new location back before saving it — community, ward and LGA, including any part they did not restate, which is what was on file — and ask "Is that correct?" (for example: "So that is Rantya, Gyel B ward, Jos South. Is that correct?"). Only after a clear yes, call update-caller-profile with the location and locationConfirmed=true, then thank them for the update. If they correct any part, read the corrected location back the same way. If you could not make out a place name, ask them to repeat or spell it; never guess one, and never keep an old ward or community they did not confirm. Never describe a save instead of making it — no "let me update that", "hold on while I save", "[updating]": call the tool. Never say a detail is updated or saved unless that call succeeded. Ask one question at a time: never ask about the follow-up number in the same reply as a location question.\n` +
     `  - DO NOT SKIP PHASE 2: Even if a new caller states why they are calling first, acknowledge it warmly and complete the PHASE 2 questions first. Only an active life-threatening emergency (ongoing attack, fire, flood or injury) comes first — and even then, ask for their name and exact location/LGA right after checking safety.\n` +
     `  - COMPLAINTS: always read back the PHASE 6 summary and get the caller's confirmation before calling create-ticket (except in an active emergency), then give the reference exactly as PHASE 8 says.\n` +
     `  - LANGUAGE: ENGLISH ONLY, the whole call, whatever the caller speaks or asks for. Never switch and never offer to. If they cannot continue in English, offer a desk-officer callback (see Language — ENGLISH ONLY).\n` +
@@ -937,7 +1109,7 @@ export function agentPromptFor(org: AgentOrganization, persona?: TeamPersona): s
     `- Before proposing ANY appointment time, call check-availability and offer only the times it returns. Do not ask the caller to guess a time and do not try a booking to find out whether it is free — that makes them hold the line while you discover it was taken.\n` +
     `- Only state something as confirmed when a tool result shows it was actually done. NEVER write raw tool tags like <functions.plaschema__create-ticket> in your spoken text — always invoke the actual tool call! And NEVER invent a fake reference number (like PS-20261115-001) without calling create-ticket or request-callback and reading the real reference number returned by the tool.\n` +
     `- STRICTLY PLATEAU STATE ONLY: This platform serves Plateau State exclusively (all 17 LGAs of Plateau State). NEVER reference Lagos, Abuja, or any other state as a caller's community or complaint location. When 8kHz phone ASR transcribes "Rantya, State Lowcost" as "Rantia State, Lagos" (or "Gel B" as "Gyel B"), always recognize it as Rantya, State Lowcost / Gyel B in Jos South LGA, Plateau State!\n` +
-    `- END-OF-CALL CONFIRMATION & SILENT-CALLER DROP: At the end of EVERY conversation (once you have answered the citizen's inquiry, booked their callback, or logged their ticket), you MUST ask the citizen warmly if there is anything else they need or if you may end the call (PHASE 10: "Is there anything else I can assist you with today, or may I go ahead and end the call?"). Wait for their answer: as soon as they confirm they are done or say goodbye, say the PHASE 10 farewell ("Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye.", in English) and immediately call the end_call tool to drop the call. If the caller does not respond, ask whether they are still on the line; only after two such checks go unanswered, say the farewell and call end_call. Never end the call while the caller is speaking or while you are still giving them information. Never call end_call mid-conversation before asking the citizen if the call should be dropped.`;
+    `- END-OF-CALL CONFIRMATION & SILENT-CALLER DROP: At the end of EVERY conversation (once you have answered the citizen's inquiry, booked their callback, or logged their ticket), you MUST ask the citizen warmly if there is anything else they need or if you may end the call (PHASE 10: "Is there anything else I can assist you with today, or may I go ahead and end the call?"). Wait for their answer: if they give an ambiguous "Yes" or "Yes, it is" to that two-part question, clarify briefly ("Sure — is there something else I can help you with, or are we all set to end the call?") rather than hanging up immediately. As soon as they clearly confirm they are done or say goodbye, say the PHASE 10 farewell ("Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye.", in English) and immediately call the end_call tool to drop the call. If the caller does not respond, ask whether they are still on the line; only after two such checks go unanswered, say the farewell and call end_call. Never end the call while the caller is speaking or while you are still giving them information. Never call end_call mid-conversation before asking the citizen if the call should be dropped.`;
 
   return (
     [personaHeader, SYSTEM_PROMPT, storedPersonaFor(org)]
@@ -1014,15 +1186,18 @@ const CLOSING_NAME_QUESTION =
   /(^|[.!?>]\s*)([^.!?<>]*\b(?:(?:may|could|can) i (?:please |kindly )?(?:have|know|get) your (?:full )?name(?:,? please)?|what is your (?:full )?name)\?)\s*$/i;
 
 export function openingForUnknownCaller(text: string): string {
+  // `{{sip_welcome}}`: "How may I help you today?" unless the bridge
+  // recognised the caller, in which case "Welcome back, <name>. …". See
+  // CALLER_VARIABLE_DEFAULTS in caller-profile.ts.
   return text.replace(CLOSING_NAME_QUESTION, (_m, before: string) =>
-    `${before}${before && !/\s$/.test(before) ? ' ' : ''}How may I help you today?`
+    `${before}${before && !/\s$/.test(before) ? ' ' : ''}{{sip_welcome}}`
   );
 }
 
 export function firstMessageFor(org: AgentOrganization, persona?: TeamPersona): string {
   const resolved = persona || resolvePersona(org.persona);
   if (org.welcomeMessage) return openingForUnknownCaller(renderWelcome(org, undefined, persona));
-  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. How can I help you today?`;
+  return `Hello! Thank you for calling ${org.name}, ${resolved.greetingPhrase}. ${NDPA_CALL_DISCLOSURE} {{sip_welcome}}`;
 }
 
 /**
@@ -1112,8 +1287,19 @@ export function dynamicVariablesFor(org: AgentOrganization, persona?: TeamPerson
     // Filled per call by the conversation-start webhook. These are the values a
     // conversation gets when the webhook does not run (a preview, an outbound
     // call that sends its own data): "unknown", which sends the agent to its
-    // lookup tool rather than reading `{{caller_status}}` out loud.
+    // lookup tool rather than reading `{{sip_callerstatus}}` out loud.
     ...CALLER_VARIABLE_DEFAULTS,
+    // The names these variables had before the bridge started sending them as
+    // SIP headers. A live agent keeps its old PROMPT (which reads these) until
+    // someone presses Sync configuration, while the per-call name rotation
+    // already writes this whole placeholder list after every call; without
+    // these, that list would drop the old names and the old prompt's
+    // variables would have no defaults in the window between deploy and Sync.
+    // Harmless afterwards: a default nothing reads.
+    caller_status: CALLER_VARIABLE_DEFAULTS.sip_callerstatus,
+    caller_name: CALLER_VARIABLE_DEFAULTS.sip_callername,
+    caller_profile: CALLER_VARIABLE_DEFAULTS.sip_callerprofile,
+    caller_missing_fields: CALLER_VARIABLE_DEFAULTS.sip_callermissing,
   };
 }
 
@@ -1135,9 +1321,8 @@ export function welcomeBackMessageFor(
   persona?: TeamPersona
 ): string {
   void persona;
-  // Short on purpose, like the new-caller greeting (about five seconds before
-  // the question): they rang before and know who answers.
-  const opening = `${timeOfDayGreeting(org.timezone, now)}, ${profile.name}, welcome back.`;
+  // Short on purpose, followed by the mandatory NDPA recording & data-logging disclosure.
+  const opening = `${timeOfDayGreeting(org.timezone, now)}, ${profile.name}, welcome back. ${NDPA_CALL_DISCLOSURE}`;
   // The location comes first, as in Phase 2. Once it is all on file the
   // caller only confirms it; anything else missing is asked after that.
   if (!profile.values.lga) return `${opening} Please, which Local Government Area of Plateau State are you calling from?`;

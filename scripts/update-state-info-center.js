@@ -218,7 +218,7 @@ Communication Style:
 // voice and the assistant's: without it the hand-over ran the two together.
 // ElevenLabs reads the tag on the English model (eleven_turbo_v2) the agent
 // uses; it is never spoken.
-const STATE_WELCOME_MESSAGE = `<governor>{greeting}, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I'm {name}, the virtual assistant. May I have your full name?`;
+const STATE_WELCOME_MESSAGE = `<governor>{greeting}, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, {name}, will help you now.</governor> <break time="1.0s" /> I'm {name}, the virtual assistant. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system. May I have your full name?`;
 
 async function main() {
   console.log('Connecting to database...');

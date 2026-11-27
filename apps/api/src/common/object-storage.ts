@@ -8,7 +8,9 @@ const log = new AceLogger('ObjectStorage');
 
 export const KNOWLEDGE_BUCKET = 'knowledge-documents';
 export const SELFIE_BUCKET = 'onboarding-selfies';
-const BUCKETS = new Set([KNOWLEDGE_BUCKET, SELFIE_BUCKET]);
+/** Audio of calls answered by the server's own voice pipeline (voice-local). */
+export const CALL_RECORDING_BUCKET = 'call-recordings';
+const BUCKETS = new Set([KNOWLEDGE_BUCKET, SELFIE_BUCKET, CALL_RECORDING_BUCKET]);
 
 /**
  * Where uploaded files live — ONE decision, made from configuration.
@@ -69,7 +71,17 @@ function supabaseHeaders(key: string): Record<string, string> {
  */
 function localFile(bucket: string, storagePath: string): string {
   if (!BUCKETS.has(bucket)) throw new NotFoundException('No such file.');
-  if (!storagePath || storagePath.includes('\0') || path.isAbsolute(storagePath)) {
+  // Every segment a plain name: what this module writes is
+  // `<organizationId>/<time>_<safe name>`, so anything else (`..`, an empty
+  // segment, a NUL, a character outside the safe set) is refused before the
+  // resolved-path check below, not only by it.
+  const parts = String(storagePath ?? '').split('/');
+  if (
+    !storagePath ||
+    path.isAbsolute(storagePath) ||
+    parts.length < 2 ||
+    parts.some((p) => !p || p === '.' || p === '..' || !/^[A-Za-z0-9._-]+$/.test(p))
+  ) {
     throw new BadRequestException('Invalid file path.');
   }
   const root = path.join(storageRoot(), bucket);
@@ -144,10 +156,12 @@ export function writeLocalObject(
   fileName = path.basename(storagePath).replace(/^\d+_/, '')
 ): string {
   const file = localFile(bucket, storagePath);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, bytes);
+  // Owner and group only, whatever the process umask: these are citizens'
+  // photographs, call recordings and agency documents.
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o750 });
+  fs.writeFileSync(file, bytes, { mode: 0o640 });
   const meta: LocalMeta = { contentType: mimeType || 'application/octet-stream', fileName };
-  fs.writeFileSync(metaPath(file), JSON.stringify(meta));
+  fs.writeFileSync(metaPath(file), JSON.stringify(meta), { mode: 0o640 });
   return file;
 }
 

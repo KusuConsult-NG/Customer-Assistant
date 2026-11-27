@@ -51,9 +51,8 @@ name: Keep API warm
 
 on:
   schedule:
-    # Every 5 minutes. Render's free tier sleeps after 15 minutes idle, so
-    # this leaves 10 minutes of headroom for GitHub Actions queue delays.
-    - cron: '*/5 * * * *'
+    # Every 30 minutes health check against the MTN Cloud deployment.
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -67,9 +66,9 @@ jobs:
     steps:
       - name: Ping the health probe
         env:
-          # The repository variable wins when it is set; otherwise the known
-          # production address, so this works with no setup at all.
-          API_BASE_URL: ${{ vars.API_BASE_URL || 'https://ace-api-n7ix.onrender.com' }}
+          # The repository variable wins when it is set; otherwise the MTN Cloud
+          # production address.
+          API_BASE_URL: ${{ vars.API_BASE_URL || 'https://contact.plateaustate.gov.ng' }}
         run: |
           if [ -z "$API_BASE_URL" ]; then
             # Only reachable if someone sets the variable to an empty string.

@@ -33,6 +33,7 @@
  *
  * 4. `responseTimeoutSecs` must be between 5 and 300 inclusive.
  */
+import { PLATEAU_GIVEN_NAMES, PLATEAU_ORG_WORDS, PLATEAU_PEOPLES, plateauPlaceWords } from './plateau-vocabulary';
 import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 
 /**
@@ -296,7 +297,7 @@ export function agentDefinition(spec: AgentSpec) {
           : {}),
         prompt: {
           prompt: spec.systemPrompt,
-          llm: spec.llm ?? 'gpt-4o',
+          llm: (spec.llm ?? (process.env.ELEVENLABS_AGENT_LLM?.trim() || 'gpt-4o-mini')) as ElevenLabs.Llm,
           toolIds: spec.toolIds,
           timezone: spec.timezone,
           builtInTools: {
@@ -320,62 +321,8 @@ export function agentDefinition(spec: AgentSpec) {
         // ulaw_8000 = G.711 μ-law, the universal phone/PSTN format.
         // pcm_16000 is for browser WebRTC — it fails silently over Twilio.
         userInputAudioFormat: 'ulaw_8000',
-        keywords: [
-          'Berom',
-          'Ngas',
-          'Mwaghavul',
-          'Tarok',
-          'Goemai',
-          'Afizere',
-          'Irigwe',
-          'PLASCHEMA',
-          'Mutfwang',
-          'Naanlong',
-          'Pankshin',
-          'Shendam',
-          'Langtang',
-          'Bokkos',
-          'Mangu',
-          'Barkin Ladi',
-          'Riyom',
-          'Bassa',
-          'Wase',
-          'Mikang',
-          'Kanam',
-          'Kanke',
-          'Jos North',
-          'Jos South',
-          'Jos East',
-          'Tudun Wada',
-          'Rantya',
-          'State Lowcost',
-          'Gyel',
-          'Bukuru',
-          'Rayfield',
-          'Hwolshe',
-          'Dadin Kowa',
-          'Zarmaganda',
-          'Kabong',
-          'Rukuba',
-          'Angwan Rogo',
-          'Terminus',
-          'Vom',
-          'Du',
-          'Kuru',
-          'Foron',
-          'Heipang',
-          'Gindiri',
-          'Joy',
-          'Sunday',
-          'Gyang',
-          'Dachung',
-          'Davou',
-          'Pam',
-          'Dung',
-          'Chundung',
-          'Nanret',
-          'Ladi',
-        ],
+        // One list for both lines (plateau-vocabulary.ts): they drifted apart once.
+        keywords: [...PLATEAU_PEOPLES, ...PLATEAU_ORG_WORDS, ...plateauPlaceWords(), ...PLATEAU_GIVEN_NAMES],
       },
       turn: {
         turnTimeout: 3.5,

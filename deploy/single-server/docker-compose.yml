@@ -32,6 +32,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=1GB", "-c", "effective_cache_size=3GB"]
     shm_size: 512mb
+    mem_limit: 2g
+    pids_limit: 300
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ace -d ace"]
       interval: 5s
@@ -44,6 +46,8 @@ services:
     restart: unless-stopped
     # BullMQ needs noeviction: an evicted job key is a document that is never indexed.
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 768m
+    pids_limit: 128
     volumes:
       - redis_data:/data
     healthcheck:
@@ -61,6 +65,13 @@ services:
       QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
       - qdrant_data:/qdrant/storage
+    mem_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     logging: *logging
 
   api:
@@ -95,13 +106,26 @@ services:
       SUPABASE_URL: ""
       SUPABASE_SERVICE_ROLE_KEY: ""
       QDRANT_API_KEY: ${QDRANT_API_KEY}
+      # The voice line's AudioSocket must accept the bridge's connection,
+      # which reaches the container through the localhost port below.
+      AUDIOSOCKET_HOST: 0.0.0.0
+    # LOCALHOST ONLY: for the phone bridge, which runs on the host's network
+    # (network_mode: host) and asks the API who is calling before the agent
+    # answers (/api/sip-bridge/caller), and for the voice line's AudioSocket.
+    # Nothing outside this server can reach either; Caddy stays the only door.
+    ports:
+      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:9092:9092"
     volumes:
       - files:/data/files
       - ./.extra-ca.pem:/etc/ssl/extra-ca.pem:ro
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      qdrant: { condition: service_started }
+      qdrant: { condition: service_healthy }
+    mem_limit: 2g
+    pids_limit: 512
+    stop_grace_period: 30s
     logging: *logging
 
   web:
@@ -110,10 +134,21 @@ services:
       dockerfile: Dockerfile.web
       secrets: [extra_ca]
       args:
-        # The dashboard and the API share this one origin (Caddy routes /api).
-        NEXT_PUBLIC_API_URL: https://${DOMAIN:?set DOMAIN in server.env}
+        # The dashboard and the API share one origin (Caddy routes /api), so the
+        # dashboard calls the API on whatever address it was loaded from. A
+        # fixed address was compiled in before, and the site is reached through
+        # a tunnel whose address changes on every restart: each new address
+        # left every officer's dashboard calling the old one until a rebuild.
+        NEXT_PUBLIC_API_URL: same-origin
     image: ace-web:latest
     restart: unless-stopped
+    mem_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on: [api]
     logging: *logging
 
@@ -126,6 +161,11 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN}
+      # The address Caddy serves publicly. Normally the domain itself (Caddy
+      # then fetches its certificate). Behind a named Cloudflare Tunnel, set to
+      # http://:8081 in server.env: no public port is open, Cloudflare holds
+      # the certificate, and asking Let's Encrypt for one could only fail.
+      CADDY_PUBLIC_SITE: ${CADDY_PUBLIC_SITE:-${DOMAIN}}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in server.env (certificate expiry notices)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -144,12 +184,32 @@ services:
     # The calls come first. Default share is 1024; this is four times that, so
     # under contention the kernel gives the bridge the CPU before anything else.
     cpu_shares: 4096
+    mem_limit: 1g
+    pids_limit: 512
+    stop_grace_period: 30s
     env_file:
       - path: ../../infra/sip-bridge/bridge.env
         required: false
     volumes:
       - ./bridge/sounds:/opt/bridge/sounds:ro
     profiles: ["bridge"]
+    logging: *logging
+
+  # A NAMED Cloudflare Tunnel: the way in when no inbound port is open. It
+  # connects OUT to Cloudflare and carries the dashboard, the API, WhatsApp
+  # and ElevenLabs' webhooks to Caddy's internal :8080 listener. Runs only
+  # when CLOUDFLARE_TUNNEL_TOKEN is set (lib.sh turns the profile on). The
+  # route (public hostname -> http://caddy:8080) is set in Cloudflare's
+  # dashboard, not here. Pinned: a tunnel daemon that updates itself is a
+  # change nobody deployed.
+  tunnel:
+    image: cloudflare/cloudflared:2025.10.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [caddy]
+    profiles: ["tunnel"]
     logging: *logging
 
 secrets:

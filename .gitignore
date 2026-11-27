@@ -64,8 +64,6 @@ storage/
 .qdrant-initialized
 infra/sip-bridge/bridge.env
 
-# Single-server deployment: secrets and local backups never go in git.
-deploy/single-server/server.env
-deploy/single-server/backups/
-deploy/single-server/.extra-ca.pem
-deploy/single-server/migrate.env
+# Speech cache written by the local voice line when no STORAGE_DIR is set
+tts-cache/
+uploads/

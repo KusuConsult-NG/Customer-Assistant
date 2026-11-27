@@ -229,6 +229,58 @@ describe('The Contact Centre script on the phone line', () => {
       });
     });
 
+    describe('update-caller-profile: changing a location already on file', () => {
+      // 26 Nov 2026: a returning caller in Rantya, Kabong ward, Jos South said
+      // "I am in Gyel B" (heard as "Galby"). The agent saved "Galby, Kabong
+      // ward" — a ward the caller never said — without reading it back; on the
+      // next call it saved the caller's garbled correction the same way. A
+      // location on file is what the next call greets them with, so changing it
+      // takes a read-back of the WHOLE location and a yes.
+      const onFile = { city: 'Jos South', metadata: { ward: 'Kabong', community: 'Rantya', phoneConfirmedForFollowUp: true } };
+
+      it('saves nothing, and hands back the whole location to read, when a saved place would change unconfirmed', async () => {
+        const c = await known(onFile);
+        const res = await post('update-caller-profile', { phoneNumber: c.phoneNumber, community: 'Galby' });
+        expect(res.body.ok).toBe(false);
+        expect(res.body.speak).toBe('');
+        expect(res.body.data.saved).toBe(false);
+        // The ward the caller did not restate is in the read-back, so they can correct it.
+        expect(res.body.data.locationToConfirm).toBe('Galby, Kabong ward, Jos South');
+        expect(res.body.data.instruction).toMatch(/Read this whole location back/);
+        expect(res.body.data.instruction).toMatch(/locationConfirmed=true/);
+        const row = await prisma.contact.findUnique({ where: { id: c.id } });
+        expect(row?.metadata).toMatchObject({ community: 'Rantya', ward: 'Kabong' });
+      });
+
+      it('saves the change once the caller has confirmed the read-back', async () => {
+        const c = await known(onFile);
+        const res = await post('update-caller-profile', { phoneNumber: c.phoneNumber, community: 'Rantya', ward: 'Gyel B', lga: 'Jos South', locationConfirmed: true });
+        expect(res.body.ok).toBe(true);
+        const row = await prisma.contact.findUnique({ where: { id: c.id } });
+        expect(row?.metadata).toMatchObject({ community: 'Rantya', ward: 'Gyel B' });
+        expect(row?.city).toBe('Jos South');
+      });
+
+      it('an LGA change counts too, compared in the State\'s spelling', async () => {
+        const c = await known(onFile);
+        // "jos south" is the same LGA: nothing to confirm.
+        expect((await post('update-caller-profile', { phoneNumber: c.phoneNumber, lga: 'jos south' })).body.ok).toBe(true);
+        const moved = await post('update-caller-profile', { phoneNumber: c.phoneNumber, lga: 'Bokkos' });
+        expect(moved.body.ok).toBe(false);
+        expect(moved.body.data.locationToConfirm).toBe('Rantya, Kabong ward, Bokkos');
+        expect((await prisma.contact.findUnique({ where: { id: c.id } }))?.city).toBe('Jos South');
+      });
+
+      it('restating the place on file, or filling a part that was empty, needs no read-back', async () => {
+        const c = await known(onFile);
+        expect((await post('update-caller-profile', { phoneNumber: c.phoneNumber, community: 'rantya', ward: 'Kabong' })).body.ok).toBe(true);
+        const partial = await known({ city: 'Jos South', metadata: {} });
+        const res = await post('update-caller-profile', { phoneNumber: partial.phoneNumber, ward: 'Gyel B', community: 'Rantya' });
+        expect(res.body.ok).toBe(true);
+        expect((await prisma.contact.findUnique({ where: { id: partial.id } }))?.metadata).toMatchObject({ ward: 'Gyel B', community: 'Rantya' });
+      });
+    });
+
     describe('update-caller-profile', () => {
       it('saves the LGA in the State\'s spelling, the ward and community, and hands over to Phase 3', async () => {
         const number = phone();
@@ -619,9 +671,9 @@ describe('The Contact Centre script on the phone line', () => {
         expect(res.body.type).toBe('conversation_initiation_client_data');
         expect(res.body.dynamic_variables).toMatchObject({
           organization_name: 'Profiling Test Centre',
-          caller_status: 'new',
-          caller_name: 'not on file',
-          caller_missing_fields: 'full name, LGA, ward, community',
+          sip_callerstatus: 'new',
+          sip_callername: 'not on file',
+          sip_callermissing: 'full name, LGA, ward, community',
         });
         // This agency's greeting asks for no time of day, so there is nothing to override.
         expect(res.body.conversation_config_override).toBeUndefined();
@@ -638,14 +690,16 @@ describe('The Contact Centre script on the phone line', () => {
         const c = await known();
         const res = await callStarts(c.phoneNumber).expect(200);
         expect(res.body.dynamic_variables).toMatchObject({
-          caller_status: 'returning',
-          caller_name: 'Hauwa Musa',
-          caller_missing_fields: 'none',
+          sip_callerstatus: 'returning',
+          sip_callername: 'Hauwa Musa',
+          sip_callermissing: 'none',
         });
-        expect(res.body.dynamic_variables.caller_profile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
-        expect(res.body.dynamic_variables.caller_profile).not.toMatch(/occupation|language/);
+        expect(res.body.dynamic_variables.sip_callerprofile).toMatch(/ward: Ali Kazaure; community: Angwan Rogo; follow-up number: calling number/);
+        expect(res.body.dynamic_variables.sip_callerprofile).not.toMatch(/occupation|language/);
         const first = res.body.conversation_config_override.agent.first_message;
-        expect(first).toMatch(/^Good (morning|afternoon|evening), Hauwa Musa, welcome back\. Are you still calling from/);
+        expect(first).toMatch(
+          /^Good (morning|afternoon|evening), Hauwa Musa, welcome back\. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system\. Are you still calling from/
+        );
         expect(first).toMatch(/Are you still calling from Angwan Rogo, Ali Kazaure ward, Jos South\?$/);
         expect(first).not.toMatch(/how (can|may) I (help|assist)/i);
       });
@@ -661,7 +715,7 @@ describe('The Contact Centre script on the phone line', () => {
       it('a caller who never gave an occupation or language is still a returning caller', async () => {
         const c = await known({ preferredLanguage: null });
         const res = await callStarts(c.phoneNumber).expect(200);
-        expect(res.body.dynamic_variables).toMatchObject({ caller_status: 'returning', caller_missing_fields: 'none' });
+        expect(res.body.dynamic_variables).toMatchObject({ sip_callerstatus: 'returning', sip_callermissing: 'none' });
       });
 
       it('known by name and LGA only: asked for the ward and community, in words', async () => {
@@ -673,7 +727,7 @@ describe('The Contact Centre script on the phone line', () => {
       it('finds a returning caller whatever shape the carrier sends the number in', async () => {
         const c = await known({ fullName: 'Ladi Gyang' });
         const res = await callStarts(`0${c.phoneNumber.slice(4)}`).expect(200);
-        expect(res.body.dynamic_variables.caller_name).toBe('Ladi Gyang');
+        expect(res.body.dynamic_variables.sip_callername).toBe('Ladi Gyang');
       });
 
       it('a placeholder name is a new caller: never read out, never welcomed back', async () => {
@@ -682,7 +736,7 @@ describe('The Contact Centre script on the phone line', () => {
           data: { organizationId: orgId, phoneNumber: number, fullName: `Caller (···${number.slice(-4)})` },
         });
         const res = await callStarts(number).expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('new');
+        expect(res.body.dynamic_variables.sip_callerstatus).toBe('new');
         expect(JSON.stringify(res.body)).not.toContain('Caller (');
         expect(res.body.conversation_config_override).toBeUndefined();
       });
@@ -690,14 +744,14 @@ describe('The Contact Centre script on the phone line', () => {
       it('an outbound callback looks up the citizen it is calling, and keeps its own first message', async () => {
         const c = await known({ fullName: 'Kaneng Bot' });
         const res = await callStarts(TOLL_FREE, c.phoneNumber).expect(200);
-        expect(res.body.dynamic_variables.caller_name).toBe('Kaneng Bot');
+        expect(res.body.dynamic_variables.sip_callername).toBe('Kaneng Bot');
         expect(res.body.conversation_config_override).toBeUndefined();
       });
 
       it('a withheld number is a caller whose number does not show, not an error', async () => {
         const res = await callStarts('anonymous').expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('withheld');
-        expect(res.body.dynamic_variables.caller_profile).toMatch(/number not shown/);
+        expect(res.body.dynamic_variables.sip_callerstatus).toBe('withheld');
+        expect(res.body.dynamic_variables.sip_callerprofile).toMatch(/number not shown/);
       });
 
       it('a forwarded call arriving as our own number is never matched to whoever was saved against it', async () => {
@@ -707,7 +761,7 @@ describe('The Contact Centre script on the phone line', () => {
           update: { fullName: 'Someone Earlier' },
         });
         const res = await callStarts(TOLL_FREE, TOLL_FREE).expect(200);
-        expect(res.body.dynamic_variables.caller_status).toBe('withheld');
+        expect(res.body.dynamic_variables.sip_callerstatus).toBe('withheld');
         expect(JSON.stringify(res.body)).not.toContain('Someone Earlier');
       });
 
@@ -719,7 +773,7 @@ describe('The Contact Centre script on the phone line', () => {
         try {
           await prisma.contact.create({ data: { organizationId: other.id, phoneNumber: number, fullName: 'Somebody Else' } });
           const res = await callStarts(number).expect(200);
-          expect(res.body.dynamic_variables.caller_status).toBe('new');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('new');
           expect(JSON.stringify(res.body)).not.toContain('Somebody Else');
         } finally {
           await prisma.organization.delete({ where: { id: other.id } }).catch(() => {});
@@ -756,7 +810,7 @@ describe('The Contact Centre script on the phone line', () => {
           await callStarts(phone()).expect(200); // the agency is now cached
           jest.spyOn(AgentToolsService.prototype as any, 'lookUpCaller').mockRejectedValue(new Error('pool exhausted'));
           const res = await callStarts(phone()).expect(200);
-          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('unknown');
           expect(res.body.conversation_config_override.agent.first_message).toMatch(/^Good (morning|afternoon|evening), and welcome/);
         });
       });
@@ -778,7 +832,7 @@ describe('The Contact Centre script on the phone line', () => {
           const started = Date.now();
           const res = await callStarts(phone()).expect(200);
           expect(Date.now() - started).toBeLessThan(2_000);
-          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('unknown');
           expect(res.body.dynamic_variables.organization_name).toBe('Profiling Test Centre');
           for (const name of await variablesTheAgentDefines()) {
             expect(typeof res.body.dynamic_variables[name]).toBe('string');
@@ -788,7 +842,7 @@ describe('The Contact Centre script on the phone line', () => {
         it('answers "unknown" when the lookup throws', async () => {
           jest.spyOn(AgentToolsService.prototype as any, 'lookUpCaller').mockRejectedValue(new Error('connection pool exhausted'));
           const res = await callStarts(phone()).expect(200);
-          expect(res.body.dynamic_variables.caller_status).toBe('unknown');
+          expect(res.body.dynamic_variables.sip_callerstatus).toBe('unknown');
         });
       });
 
@@ -796,7 +850,7 @@ describe('The Contact Centre script on the phone line', () => {
         const number = phone();
 
         const first = await callStarts(number).expect(200);
-        expect(first.body.dynamic_variables.caller_status).toBe('new');
+        expect(first.body.dynamic_variables.sip_callerstatus).toBe('new');
 
         // Phases 1–2, saved as the agent is told to.
         await post('update-caller-profile', {
@@ -809,9 +863,9 @@ describe('The Contact Centre script on the phone line', () => {
         });
 
         const second = await callStarts(number).expect(200);
-        expect(second.body.dynamic_variables).toMatchObject({ caller_status: 'returning', caller_name: 'Nanret Davou' });
+        expect(second.body.dynamic_variables).toMatchObject({ sip_callerstatus: 'returning', sip_callername: 'Nanret Davou' });
         expect(second.body.conversation_config_override.agent.first_message).toMatch(
-          /Nanret Davou, welcome back\. Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
+          /Nanret Davou, welcome back\. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system\. Are you still calling from Mushere Central, Mushere ward, Bokkos\?$/
         );
 
         const tool = await lookup(number);
@@ -832,10 +886,13 @@ describe('The Contact Centre script on the phone line', () => {
     };
     const shared = (o = plateau) => agentPromptFor({ ...o, aiPersonaPrompt: null });
 
-    it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, and ends by asking the name', () => {
+    const NDPA_NOTICE =
+      'To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system.';
+
+    it('the Plateau greeting is Phase 1, timed, says it is a virtual assistant, includes the NDPA notice, and ends by asking the name', () => {
       const morning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')); // 08:00 in Jos
       expect(morning).toBe(
-        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> <break time="1.0s" /> I'm Nanpan, the virtual assistant. May I have your full name?`
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, Nanpan, will help you now.</governor> <break time="1.0s" /> I'm Nanpan, the virtual assistant. ${NDPA_NOTICE} May I have your full name?`
       );
       expect(morning).not.toMatch(/how (can|may) I (help|assist)/i);
       // The stored copy cannot know the hour.
@@ -849,14 +906,16 @@ describe('The Contact Centre script on the phone line', () => {
     it('the stored opening does not ask for a name before the caller has been looked up', () => {
       const stored = firstMessageFor(plateau);
       expect(stored).not.toMatch(/your (full )?name/i);
-      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. How may I help you today\?$/);
+      // Ends with the NDPA notice and the bridge's welcome line: "How may I help you today?" unless the
+      // caller was recognised, then "Welcome back, <name>. …".
+      expect(stored).toMatch(/I'm Nanpan, the virtual assistant\. To help us resolve your issue and follow up with you, this call is being recorded and your personal details will be logged into our citizen support system\. \{\{sip_welcome\}\}$/);
       // The agency's own variant of the closing question is caught too.
       expect(
         openingForUnknownCaller("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. May I have your full name?")
-      ).toBe("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. How may I help you today?");
+      ).toBe("<governor>Hi! Welcome.</governor> <break time=\"1.0s\" /> Good morning, I'm Gwaman, the virtual assistant. {{sip_welcome}}");
       // The whole closing sentence goes, not just the question inside it.
       expect(openingForUnknownCaller('Hello, and welcome. My name is Nanpan. To get started, may I kindly know your full name?'))
-        .toBe('Hello, and welcome. My name is Nanpan. How may I help you today?');
+        .toBe('Hello, and welcome. My name is Nanpan. {{sip_welcome}}');
       // Any other ending is the agency's own wording and stays.
       expect(openingForUnknownCaller("I'm Gwaman, the virtual assistant.")).toBe("I'm Gwaman, the virtual assistant.");
       // The rule the agent works to says the same.
@@ -897,25 +956,26 @@ describe('The Contact Centre script on the phone line', () => {
 
       const dynamicMorning = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z'), firstPersona);
       expect(dynamicMorning).toBe(
-        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> <break time="1.0s" /> I'm ${firstPersona.name}, the virtual assistant. May I have your full name?`
+        `<governor>Good morning, and welcome to the Plateau State Government Citizen Contact Centre. Our virtual assistant, ${firstPersona.name}, will help you now.</governor> <break time="1.0s" /> I'm ${firstPersona.name}, the virtual assistant. ${NDPA_NOTICE} May I have your full name?`
       );
     });
 
-    // Nanpan's own spoken handoff after `</governor>` is cut to about five
-    // seconds (<= 14 words) before its question.
+    // Nanpan's own spoken handoff after `</governor>` stays concise even with the
+    // mandatory NDPA disclosure (<= 45 words) before its question.
     const words = (s: string) => s.trim().split(/\s+/).length;
-    it('every opening is about five seconds before its question', () => {
+    it('every opening stays concise and includes the NDPA disclosure before its question', () => {
       const nanpanPart = renderWelcome(plateau, new Date('2026-11-13T07:00:00Z')).replace(/^<governor>[\s\S]*?<\/governor>\s*/, '').replace(/^<break[^>]*\/>\s*/, '');
-      expect(words(nanpanPart)).toBeLessThanOrEqual(14);
+      expect(nanpanPart).toContain(NDPA_NOTICE);
+      expect(words(nanpanPart)).toBeLessThanOrEqual(45);
       const def = agentDefinitionFor(plateau, ['t1']) as any;
       // English only: no Hausa preset, so no second opening.
       expect(def.conversationConfig.languagePresets).toEqual({});
-      // A returning caller: the greeting before the location question.
+      // A returning caller: the greeting + NDPA disclosure before the location question.
       const back = welcomeBackMessageFor(plateau as any, {
         status: 'returning', name: 'Hauwa Musa', missing: [], followUp: null,
         values: { fullName: 'Hauwa Musa', lga: 'Jos South', ward: 'Vom', community: 'Vom Junction' },
       } as any, new Date('2026-11-13T07:00:00Z'));
-      expect(back).toBe('Good morning, Hauwa Musa, welcome back. Are you still calling from Vom Junction, Vom ward, Jos South?');
+      expect(back).toBe(`Good morning, Hauwa Musa, welcome back. ${NDPA_NOTICE} Are you still calling from Vom Junction, Vom ward, Jos South?`);
       expect(words(back.split('.')[0])).toBeLessThanOrEqual(6);
     });
 

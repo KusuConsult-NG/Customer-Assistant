@@ -520,8 +520,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
    * can promise that a returning caller is recognised.
    *
    * So the answer is fetched before the agent says a word, and put where the
-   * model cannot miss it: the prompt's own variables (`{{caller_status}}`,
-   * `{{caller_name}}` …), and — for a caller we know by name — a first message
+   * model cannot miss it: the prompt's own variables (`{{sip_callerstatus}}`,
+   * `{{sip_callername}}` …), and — for a caller we know by name — a first message
    * that greets them by it.
    *
    * ── Why it never fails ───────────────────────────────────────────────────
@@ -669,8 +669,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     if (!callerNumberShown(citizen, outbound ? [] : agency)) {
       const variables = {
         ...callerVariablesFor(profileOf(null)),
-        caller_status: 'withheld',
-        caller_profile: 'number not shown — ask for a number to reach them on',
+        sip_callerstatus: 'withheld',
+        sip_callerprofile: 'number not shown — ask for a number to reach them on',
       };
       return {
         reply: this.conversationStartReply(
@@ -718,6 +718,8 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
       community?: string;
       /** true only after alternativePhone was read back and the caller said yes. */
       alternativePhoneConfirmed?: boolean | string;
+      /** true ONLY after a CHANGED location was read back in full and the caller said yes. */
+      locationConfirmed?: boolean | string;
       homeAddress?: string;
       occupation?: string;
       preferredLanguage?: string;
@@ -729,6 +731,32 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
     try {
       const phone = (body?.phoneNumber || '').trim();
       const rawName = (body?.fullName || '').trim();
+      const FILLER_INPUT =
+        /^(?:yeah|yes|yep|yup|no|nope|ok|okay|alright|hello|hi|hey|what|huh|go ahead|go on|english|nothing|none|\d+)(?:[\s?!.,]+(?:yeah|yes|yep|no|ok|okay|what|go ahead|go on|\d+))*[?!.,\s]*$/i;
+      if (rawName && FILLER_INPUT.test(rawName)) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            rejectedName: rawName,
+            instruction:
+              `"${rawName}" is a conversational filler, not a person's name. Do NOT save it or ask "is your name ${rawName}?". ` +
+              'Politely ask the caller for their actual first and last name (or continue without a name if they prefer not to give one).',
+          },
+        };
+      }
+      const rawCommunity = (body?.community || '').trim();
+      if (rawCommunity && FILLER_INPUT.test(rawCommunity)) {
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            rejectedCommunity: rawCommunity,
+            instruction:
+              `"${rawCommunity}" is not a valid community name. Politely ask the caller to state the name of their community in Plateau State.`,
+          },
+        };
+      }
 
       // An alternative number is a promise that somebody can be reached on it.
       // A digit misheard on a phone line makes that a promise to a stranger, so
@@ -763,6 +791,39 @@ export class AgentToolsService implements OnModuleInit, OnModuleDestroy {
 
       const prevMeta = (contact.metadata as Record<string, any>) || {};
       const metaUpdates: Record<string, any> = {};
+
+      // A location on file is what the next call greets the caller with
+      // ("Are you still calling from …?"), so CHANGING one takes a read-back of
+      // the whole location and a yes. 26 Nov 2026: "I am in Gyel B", heard as
+      // "Galby", was saved as "Galby, Kabong ward" — a ward the caller never
+      // said — and the next call's garbled correction was saved the same way.
+      // Filling a part that was empty, or restating what is there, needs none.
+      const same = (a: unknown, b: unknown) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+      const next = {
+        community: body.community?.trim() || prevMeta.community || '',
+        ward: body.ward?.trim() || prevMeta.ward || '',
+        lga: body.lga?.trim() ? resolveLga(body.lga) ?? body.lga.trim() : contact.city || '',
+      };
+      const changes =
+        (!!body.community?.trim() && !!prevMeta.community && !same(next.community, prevMeta.community)) ||
+        (!!body.ward?.trim() && !!prevMeta.ward && !same(next.ward, prevMeta.ward)) ||
+        (!!body.lga?.trim() && !!contact.city && !same(next.lga, contact.city));
+      if (changes && !yes(body.locationConfirmed)) {
+        const locationToConfirm = [next.community, next.ward && `${next.ward} ward`, next.lga].filter(Boolean).join(', ');
+        return {
+          ok: false,
+          speak: '',
+          data: {
+            saved: false,
+            locationToConfirm,
+            instruction:
+              `Read this whole location back to the caller and ask if it is correct: "${locationToConfirm}". ` +
+              'Any part they did not restate is what was on file before, so they can correct it. ' +
+              'Wait for a clear yes, then call update-caller-profile again with the location and locationConfirmed=true. ' +
+              'If they correct any part, read the corrected location back the same way. Nothing was saved yet.',
+          },
+        };
+      }
 
       const updateData: any = {};
       if (rawName && !isPlaceholderContactName(rawName)) {

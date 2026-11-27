@@ -2,3 +2,4 @@
 [general]
 rtpstart = 10000
 rtpend = 20000
+strictrtp = no

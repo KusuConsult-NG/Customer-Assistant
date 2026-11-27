@@ -1,0 +1,53 @@
+# Plateau State Government Projects — Environment (Accountability Hub)
+
+For the most up-to-date official Plateau State Government information, news, and MDA contacts, visit **https://plateaustate.gov.ng**.
+
+This document lists all **12 Environment projects** tracked on the Plateau State Accountability Hub.
+
+### Tree planting exercise and donation of waste bins to schools and public organizations and CSO partnership
+- Code: PL-2025-059 | LGA: Barkin Ladi, Bassa, Bokkos, Jos East, Jos North, Jos South, Kanam, Kanke, Langtang North, Langtang South, Mangu, Mikang, Pankshin, Qua'an Pan, Riyom, Shendam, Wase | Ward: All LGA's | Agency: Plateau Environmental Protection and Sanitation Agency | Status: ongoing (0%)
+- Details: PEPSA – Environmental Sustainability, Tree Planting and Stakeholder Partnership Initiative focuses on promoting environmental protection, sustainable waste management, and community participation across Plateau State. The intervention involves tree planting exercises to encourage environmental conservation, distribution of waste bins to schools and public organizations to promote proper waste disposal, and collaboration with Civil Society Organizations (CSOs) to strengthen environmental advocacy and community engagement. Its overall objective is to improve environmental sustainability, promote proper sanitation practices, encourage stakeholder participation, and create cleaner, greener, and healthier communities across the state. Delivered: Environment Sustainability and Environmental Sanitation: 2000 Over 2000 trees were planted. Over 2000 trees were planted: High.
+
+### Fecal sludge management
+- Code: PL-2023-017 | LGA: Barkin Ladi, Bassa, Bokkos, Jos East, Jos North, Jos South, Kanam, Kanke, Langtang North, Langtang South, Mangu, Mikang, Pankshin, Qua'an Pan, Riyom, Shendam, Wase | Ward: All Communities | Agency: Plateau Environmental Protection and Sanitation Agency | Status: ongoing (0%)
+- Details: PEPSA – Faecal Sludge Management (FSM) focuses on promoting safe and sustainable management of human waste across communities in Plateau State. The initiative involves proper collection, transportation, treatment, and disposal of fecal sludge from household and public toilet facilities. It also promotes public awareness, improved sanitation practices, environmental monitoring, and collaboration with relevant stakeholders. Its overall objective is to prevent indiscriminate disposal of human waste, reduce environmental pollution, protect public health, and ensure a cleaner, safer, and healthier environment. Delivered: Faecal slodge management: 1 Fecal sludge management. Cleaner and healthier environment, reduced environmental offensive odour: High value.
+
+### Peer learning visit of management staff of Enugu State
+- Code: PL-2023-015 | LGA: Barkin Ladi, Bassa, Bokkos, Jos East, Jos North, Jos South, Kanam, Kanke, Langtang North, Langtang South, Mangu, Mikang, Pankshin, Qua'an Pan, Riyom, Shendam, Wase | Agency: Plateau Environmental Protection and Sanitation Agency | Status: ongoing (0%)
+- Details: PEPSA – Capacity Building and Peer Learning Visit to Enugu State Waste Management Authority (ESWAMA) focuses on strengthening the institutional capacity and professional knowledge of PEPSA management staff in environmental sanitation and waste management. The visit involved knowledge sharing, exchange of experiences, and observation of best practices in waste collection, disposal, recycling, environmental cleanliness, and sanitation management. Its overall objective is to identify practical waste management strategies, improve operational efficiency, and adopt relevant best practices to enhance environmental sanitation and cleanliness across Plateau State. Delivered: Peer learning visit of management staff of Enugu State: 1 1.
+
+### Health and Environment Sanitation
+- Code: PL-2023-012 | LGA: Barkin Ladi, Bassa, Bokkos, Jos East, Jos North, Jos South, Kanam, Kanke, Langtang North, Langtang South, Mangu, Mikang, Pankshin, Qua'an Pan, Riyom, Shendam, Wase | Ward: All LGA's | Agency: Plateau Environmental Protection and Sanitation Agency | Status: ongoing (0%) | Contract Sum: ₦5.00 million
+- Details: PEPSA – Monthly Environmental Sanitation and Public Health Initiative focuses on promoting a clean, healthy and hygienic environment through regular monthly sanitation exercises across Plateau State. The intervention involves community-wide environmental cleaning, clearing of drainages, proper waste disposal, removal of refuse from public spaces, and public sensitisation on hygiene and environmental health practices. Its overall objective is to improve environmental cleanliness, prevent the spread of diseases, reduce environmental pollution and encourage active community participation in maintaining a safe and healthy environment. Delivered: Clean environment: 1 1. Plateau State has moved up in rank to currently being among the top 7 cleanest states in Nigeria: +1 in ranking.
+
+### Consultancy Mobilization, Inception Reports
+- Code: PL-2026-142 | LGA: Barkin Ladi, Jos North, Jos South, Langtang South, Mangu, Riyom | Ward: Deng Deng Chim Chim – Old Water Board Community, Mangu LGA. Jirep (Ampang West) Gully Erosion Site, Mangu LGA. Kurra Falls (Jekko 1) Gully Erosion Remediation Site, Riyom LGA. St. Michael Angwan Rukuba Gully Erosion Site, Jos North LGA. Wazang Erosion Pond, Barkin Ladi LGA. Plateau Radio Television Corporation (PRTVC) Gully Erosion Site, Jos North LGA. Dorowa River Crossing, Langtang South LGA. Kabong Erosion Site, Jos North LGA. | Agency: Nigeria Erosion and Watershed Management Project (NEWMAP) | Status: ongoing (0%) | Contract Sum: ₦1.00 billion
+- Details: SITE DESIGNS, INCEPTION REPORTS (RAP, BASELINE, ESMP, ICMP, REVALIDATION) Delivered: SITE DESIGNS: 13 13 Site Designs; Preliminary Consultancies and Inception Reports: 5 4 Completed inception Reports, 1 report Ongoing. Captured in RAP, ESMP and Baseline Inception Reports: Captured in RAP, ESMP and Baseline Inception Reports.
+
+### 4. Rehabilitation/Reconstruction Gully Erosion
+- Code: PL-2026-123 | LGA: Jos North | Agency: Ministry of Environment, Climate Change and Mineral Development | Status: ongoing (0%)
+- Details: Rehabilitation/Reconstruction of Plateau Club Bingham University Teaching Hospital Gully Erosion Site In Jos North L.G.A Of Plateau State Delivered: Rehabilitation/Reconstruction of Plateau Club Bingham University Teaching Hospital Gully Erosion Site In Jos North L.G.A Of Plateau State: 1 4.5km.
+
+### Construction of Diffuse Light House
+- Code: PL-2025-055 | LGA: Barkin Ladi, Bokkos, Jos South | Agency: Ministry of Environment, Climate Change and Mineral Development | Status: completed (0%)
+- Details: Construction of Diffuse Light House (Barkin Ladi, Jos south and Bokkos L.G.A of Plateau State) Delivered: Construction of Diffuse Light House (Barkin Ladi, Jos south and Bokkos L.G.A of Plateau State): 3 3.
+
+### PURCHASE OF 20. TRACTORS
+- Code: PL-2024-019 | LGA: Barkin Ladi, Bassa, Bokkos, Jos East, Jos North, Jos South, Kanam, Kanke, Langtang North, Langtang South, Mangu, Mikang, Pankshin, Qua'an Pan, Riyom, Shendam, Wase | Agency: Ministry of Environment, Climate Change and Mineral Development | Status: completed (0%)
+- Details: Supply of 20no. TRACTORS with Harrows, Ploughs and accessories (20Nos.) Delivered: Supply of tractors: 20 20.
+
+### PLATEAU ACReSAL( Fencing of Jos Wild Life Park)
+- Code: PL-2023-023 | LGA: Barkin Ladi, Bassa, Bokkos, Jos North, Jos South, Kanke, Langtang South, Mangu, Mikang, Pankshin, Qua'an Pan, Shendam, Wase | Ward: Plateau- Club Bingham University,Jos WildLife Park, University of Jos,National Museum,Gwafan, Maza,Guratopp, Chol-guwi Community, Kuru Community,Kazong madu-Du Communit and Wholshe Community.NTV Village Tudu Mazat, Nzon Fan, Pomol Community and Pandadi Community.Angwan Mangoro,Zagun, Gurum Pengana and Kisanchi. Laminga, Bayan Dutse,Kwanga RafinSanyi and Shere.Byei Community,Dun in Bachi , Sopp Community and Ganawuri Community. Haihong, Jap Ruwi , Shukur and Tangur. Angwan Mission in Mangu Town, Ampang West, Ampang West Town and Mangun.Longkat, Wulme-tel,Tambes and Jimin.Kaler, Tipik, Dinting and Gashat. Pishei Community, Kunkyam Community, NAMARAN Community and Bankilong Community.Kumkwam Community,Lyangit Yashi Community, Kantang Community and Zamko Community.Pankwi Village, Lain Village, Nuut Villlage andTimtim Village.Angwan Gowam , Shindai, Angwan Dabawul and Dungnugeon.Kalong, Lu-lawan, Poediel and Gidan Adamu.Kampani-Rurak, Chabindi, Dogonruwa and Angwan Sarkin Yamma | Agency: Agro-Climatic Resilience in Semi-Arid Landscapes (ACReSAL) | Status: completed (0%) | Contract Sum: ₦40.37 billion
+- Details: 17.1km Fencing of the Jos Wild Life Park, Renovation of Office complex of Jos Wild Park, Provision and Installation of Water Harvesting Facilities in Jos North and Langtang North LGAs of Plateau State, Renovation of Office complex to Plateau State Ministries of Environment, Agriculture and Water Resources, Drilling of 4no. Solar Powered Boreholes to all the 16 LGAs except Langtang South for Irrigation Purpose, Domestic use and Animal Consumption Delivered: Construction of Perimeter Fence for security of the park and the wild animals, Prevention of Illegal Mining and damage to Biodiversity,Enhance: 1 17.1km; 3,200 tanks installed with 4000ltrs capacity: 3200 3200 tanks; Drilling of Solar Boreholes in 16LGAs: 90 90. Reach: 75 communities. Area under sustainable Landscape management: Hectare.
+
+### THE RECLAMATION OF GULLY AND CONSTRUCTION OF 1 DRAINAGE SYSTEM
+- Code: PL-2023-008 | LGA: Jos South | Ward: GURADUK | Agency: Ministry of Environment, Climate Change and Mineral Development | Status: completed (0%)
+- Details: constructed a drainage system Delivered: Drainage system: 1 1km.
+
+### ESTABLISHED OF WOODLOG
+- Code: PL-2024-079 | LGA: Mangu, Qua'an Pan | Ward: BARKI LADI, MANGU, QUAN-PAN And SHENDEM | Agency: Ministry of Environment, Climate Change and Mineral Development | Status: completed (0%)
+- Details: ESTABLISHED OF WOODLOG Delivered: 3: 3 3.
+
+### Supply and Distribution of 100,000 Seedling such as cycad plant
+- Code: PL-2024-078 | LGA: Jos East, Pankshin | Agency: Ministry of Environment, Climate Change and Mineral Development | Status: completed (0%)
+- Details: Supply and Distribution of 100,000 Seedling such as cycad plant Avodaro, Teak, Olive, Palm etc to farmers in following communities,Wokkos, Jiblik, Abwor,Shere Fobur, Fursum, Chip,Lankan, Vel etc Delivered: Supply and Distribution of 100,000 Seedling: 100000 100000.

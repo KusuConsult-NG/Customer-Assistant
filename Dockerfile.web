@@ -10,8 +10,8 @@ WORKDIR /app
 COPY . .
 # A network that inspects TLS (common on government networks) re-signs the
 # package registry's certificate with its own CA, and npm refuses it. Such a
-# CA can be given as the optional build secret `extra_ca` (EXTRA_CA_CERT in
-# server.env); without it nothing changes. Never by turning verification off.
+# CA can be given as the optional build secret `extra_ca`
+# (docker build --secret id=extra_ca,src=network-ca.pem …); without it nothing changes. Never by turning verification off.
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; \
     npm ci --no-audit --no-fund

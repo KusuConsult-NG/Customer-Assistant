@@ -46,11 +46,13 @@ export async function assertDatabaseGuarantees(): Promise<void> {
   }
 
   let present = false;
+  let definition = '';
   try {
-    const rows = await prisma.$queryRawUnsafe<Array<{ one: number }>>(
-      `SELECT 1 AS one FROM pg_constraint WHERE conname = 'bookings_no_staff_overlap'`
+    const rows = await prisma.$queryRawUnsafe<Array<{ def: string }>>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'bookings_no_staff_overlap'`
     );
     present = Array.isArray(rows) && rows.length > 0;
+    definition = present ? String(rows[0].def ?? '') : '';
   } catch (err: any) {
     // Could not ask. In production the app cannot serve without a database
     // anyway, so exiting lets the orchestrator restart and retry rather than
@@ -64,6 +66,25 @@ export async function assertDatabaseGuarantees(): Promise<void> {
     return;
   }
 
+  const apply =
+    "  for m in $(grep -l 'SQL-ONLY-MIGRATION' packages/database/prisma/migrations/*/migration.sql | sort); do\n" +
+    '    psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f "$m"\n' +
+    '  done\n\n';
+
+  if (present && !coversUnstaffed(definition)) {
+    // Found on the live deployment: the constraint EXISTED, so a check by name
+    // passed, but it was the first version — `WHERE "staffName" IS NOT NULL` —
+    // and every booking the phone agent makes has no staff name. Not a refusal
+    // to start: a deployment that runs today must not be taken down by a
+    // deploy of this check. It is said at ERROR level on every boot instead.
+    logger.error(
+      'bookings_no_staff_overlap is OUTDATED: it does not cover bookings with no staff assigned, ' +
+        'which is every booking the phone agent makes, so concurrent bookings for one slot can all ' +
+        `succeed. Apply the newer migration (it is safe to re-run):\n\n${apply}`
+    );
+    return;
+  }
+
   if (present) {
     logger.log('booking_overlap_constraint present — concurrent double-booking is impossible');
     return;
@@ -72,9 +93,7 @@ export async function assertDatabaseGuarantees(): Promise<void> {
   const remedy =
     'bookings_no_staff_overlap is MISSING. `db push` cannot create it (Prisma cannot express ' +
     'EXCLUDE), so it must be applied from the migrations by hand:\n\n' +
-    "  for m in $(grep -l 'EXCLUDE USING' packages/database/prisma/migrations/*/migration.sql | sort); do\n" +
-    '    psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f "$m"\n' +
-    '  done\n\n' +
+    apply +
     'Until it exists, concurrent bookings for the same slot all succeed and every ' +
     'caller is told their appointment was made.';
 
@@ -236,4 +255,9 @@ export async function assertDeclaredEnumsPresent(): Promise<void> {
   }
 
   logger.warn(`${remedy}\n\n(Starting anyway: NODE_ENV is not production.)`);
+}
+
+/** The newer constraint keys on COALESCE("staffName", '') so unstaffed bookings exclude each other too. */
+export function coversUnstaffed(definition: string): boolean {
+  return /COALESCE\(\s*"staffName"/i.test(definition) && !/"staffName"\s+IS\s+NOT\s+NULL/i.test(definition);
 }
