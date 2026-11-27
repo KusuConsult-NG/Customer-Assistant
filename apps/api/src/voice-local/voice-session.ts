@@ -63,17 +63,16 @@ export interface SessionSetup {
 export const SILENCE_NUDGE_MS = 12_000;
 /** Matches the ElevenLabs agent's own ceiling (elevenlabs-contracts.ts). */
 export const SILENCE_HANGUP_MS = 180_000;
-/** A tool slower than this gets a spoken "one moment" so the line is not dead. */
-const TOOL_FILLER_MS = 1_200;
+/** A tool slower than this gets a spoken holding line (only if no ack was already played). */
+const TOOL_FILLER_MS = 2_400;
 /**
- * No reply audio this long after the caller finished: say a short
- * acknowledgement that is already on disk. Spitch takes 2-6 s per new
- * sentence on the live line, and silence that long reads as a dropped call.
+ * No reply audio this long after the caller finished: say a single short
+ * acknowledgement from disk so long lookups never feel like dead air.
+ * High enough (2.4 s) that normal replies speak directly without robotic fillers.
  */
-export const ACK_AFTER_MS = 900;
-// Two words at least: Spitch rendered a bare "Okay." as 0.09 s (jude) and
-// 0.43 s (the Governor's voice) of audio in which Deepgram heard nothing.
-export const ACKS = ['Alright, one moment.', 'Okay, let me check.'];
+export const ACK_AFTER_MS = 2_400;
+// Two words at least: Spitch rendered a bare "Okay." as 0.09 s of silence.
+export const ACKS = ['One second, please.', 'Just a moment.'];
 export const HOLDING_LINE = 'One moment, please.';
 /** After the caller carries on speaking: how long to wait for the rest of their words before answering what was said. */
 export const CONTINUATION_WAIT_MS = 2_500;
@@ -113,6 +112,7 @@ export class VoiceSession {
   private turnFirstAudio = 0;
   private ackTimer: NodeJS.Timeout | null = null;
   private ackIndex = 0;
+  private ackPlayedThisTurn = false;
   /** Where the caller's words for the turn being answered sit (message and transcript), or -1 for a silence check. */
   private turnUserMessage = -1;
   private turnUserTranscript = -1;
@@ -339,18 +339,20 @@ export class VoiceSession {
     this.speechChain = Promise.resolve();
   }
 
-  /** The caller has finished: time the reply, and acknowledge if it is slow. */
+  /** The caller has finished: time the reply, and acknowledge only if genuinely slow. */
   private beginTurnClock(): void {
     this.turnStartedAt = this.now();
     this.turnFirstText = 0;
     this.turnFirstAudio = 0;
+    this.ackPlayedThisTurn = false;
     if (this.ackTimer) clearTimeout(this.ackTimer);
     this.ackTimer = setTimeout(() => {
       this.ackTimer = null;
-      if (this.turnFirstAudio || this.outcome || this.playQueue.length) return;
+      if (this.turnFirstAudio || this.outcome || this.playQueue.length || this.ackPlayedThisTurn) return;
       const text = ACKS[this.ackIndex++ % ACKS.length];
       const clip = this.deps.assistantVoice.peek(text);
       if (!clip) return;
+      this.ackPlayedThisTurn = true;
       this.enqueue(forPlayback(clip));
       this.deps.log('voice_local_ack', { text, ms: this.now() - this.turnStartedAt });
     }, ACK_AFTER_MS);
@@ -401,7 +403,9 @@ export class VoiceSession {
     let corrected = false;
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS && !abort.signal.aborted; round++) {
-        const splitter = new SentenceSplitter({ firstAtComma: !this.turnFirstAudio });
+        // Keep sentences whole instead of slicing mid-sentence at commas so
+        // speech cadence sounds warm and human rather than choppy.
+        const splitter = new SentenceSplitter({ firstAtComma: false });
         let text = '';
         let calls: ToolCall[] = [];
         const held: string[] = [];
@@ -514,11 +518,14 @@ export class VoiceSession {
         this.messages.push({ role: 'tool', tool_call_id: call.id, content: '{"ok":false,"message":"The arguments were not valid JSON. Try again."}' });
         continue;
       }
-      // A slow lookup gets a short spoken holding line, once per tool call.
+      // A slow lookup gets a short spoken holding line — at most once per turn.
       const filler = setTimeout(() => {
-        // From disk only: synthesised live it arrived after the lookup.
+        if (this.ackPlayedThisTurn) return;
         const clip = this.deps.assistantVoice.peek(HOLDING_LINE);
-        if (!signal.aborted && this.playQueue.length === 0 && clip) this.enqueue(forPlayback(clip));
+        if (!signal.aborted && this.playQueue.length === 0 && clip) {
+          this.ackPlayedThisTurn = true;
+          this.enqueue(forPlayback(clip));
+        }
       }, TOOL_FILLER_MS);
       const started = this.now();
       let result: unknown;

@@ -130,7 +130,16 @@ export class OpenAiTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
+    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // and ? / ! intonation marks.
+    const clean = text
+      .replace(/<\/?[a-z][^>]*>/gi, ' ')
+      .replace(/:\s*$/g, '')
+      .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
     const res = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
@@ -169,7 +178,16 @@ export class DeepgramTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
+    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // and ? / ! intonation marks.
+    const clean = text
+      .replace(/<\/?[a-z][^>]*>/gi, ' ')
+      .replace(/:\s*$/g, '')
+      .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
     const url =
       `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(this.voice)}` +
       '&encoding=linear16&sample_rate=8000&container=none';
@@ -211,7 +229,16 @@ export class YarnGptTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
+    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // and ? / ! intonation marks.
+    const clean = text
+      .replace(/<\/?[a-z][^>]*>/gi, ' ')
+      .replace(/:\s*$/g, '')
+      .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
     const timeout = deadline(signal, 30_000);
     const prep = await fetch(`${this.baseUrl}/api/v1/tts/prepare`, {
       method: 'POST',
@@ -333,7 +360,16 @@ export class SpitchTts implements SpeechEngine {
   }
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
+    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // and ? / ! intonation marks.
+    const clean = text
+      .replace(/<\/?[a-z][^>]*>/gi, ' ')
+      .replace(/:\s*$/g, '')
+      .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
     const attempt = async (): Promise<Buffer> => {
       let lastErr = '';
       for (let tries = 0; tries < 3; tries++) {
@@ -398,7 +434,16 @@ export class ElevenLabsTts implements SpeechEngine {
   ) {}
 
   async synthesize(text: string, signal?: AbortSignal): Promise<Buffer> {
-    const clean = text.replace(/<\/?[a-z][^>]*>/gi, ' ').replace(/\s+/g, ' ').trim();
+    // Strip XML tags, trailing periods/colons (Spitch sometimes reads isolated
+    // or trailing "." aloud as "full stop"), while keeping decimals like 39.7
+    // and ? / ! intonation marks.
+    const clean = text
+      .replace(/<\/?[a-z][^>]*>/gi, ' ')
+      .replace(/:\s*$/g, '')
+      .replace(/(?<!\d)\.(?=\s|$)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!/[a-zA-Z0-9]/.test(clean)) return Buffer.alloc(0);
     const res = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(this.voiceId)}?output_format=ulaw_8000`,
       {
