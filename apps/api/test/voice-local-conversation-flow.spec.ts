@@ -17,6 +17,7 @@
 import { agentPromptFor, CONTACT_CENTRE_TOOLS, SYSTEM_PROMPT } from '../src/agent-tools/agent-tool-catalog';
 import { callSystemPrompt } from '../src/voice-local/call-setup';
 import { callSummaryRequest, NO_CALLER_SPEECH_SUMMARY } from '../src/voice-local/local-voice.service';
+import { parseSampleArgs, renderVoiceSamples, SAMPLE_SENTENCE, SPITCH_VOICES } from '../src/voice-local/voice-samples';
 import { voiceModel } from '../src/voice-local/llm';
 import { parsePls } from '../src/voice-local/pronunciations-export';
 import { pronounced, PRONUNCIATIONS, pronunciationsFromEnv } from '../src/voice-local/pronounce';
@@ -665,5 +666,41 @@ describe('the call summary never invents a call', () => {
     const req = callSummaryRequest([opening, { role: 'user', message: 'Yes, I am.' }]) as any;
     expect(req.messages[0].content).toMatch(/Use ONLY what the transcript says\. Never add a request, reference number/);
     expect(req.messages[1].content).toBe(`Assistant: ${opening.message}\nCaller: Yes, I am.`);
+  });
+});
+
+describe('hearing every voice before choosing one', () => {
+  it('reads the sentence and the voices, and refuses a voice Spitch does not have', () => {
+    expect(parseSampleArgs([])).toEqual({ sentence: SAMPLE_SENTENCE, voices: [...SPITCH_VOICES] });
+    expect(parseSampleArgs(['Hello', 'there.', '--voices', 'Amina, jude'])).toEqual({ sentence: 'Hello there.', voices: ['amina', 'jude'] });
+    expect(() => parseSampleArgs(['--voices', 'nanpan'])).toThrow(/Not a Spitch voice: nanpan/);
+  });
+
+  it('gives a link for each voice, lists a refusal instead of stopping, and speaks the line\'s pronunciations', async () => {
+    const saved = process.env.LOCAL_VOICE_PRONOUNCE;
+    process.env.LOCAL_VOICE_PRONOUNCE = 'Plateau=Plah-toe';
+    const said: string[] = [];
+    try {
+      const out = await renderVoiceSamples(
+        { sentence: 'Welcome to Plateau State.', voices: ['amina', 'hana', 'jude'] },
+        (voice) => ({
+          name: 'spitch',
+          synthesize: async (t: string) => {
+            if (voice === 'hana') throw new Error('Spitch TTS refused (HTTP 400) voice not available for en');
+            said.push(`${voice}:${t}`);
+            return Buffer.alloc(1600);
+          },
+        }),
+        { upload: async (name) => `voice-samples/${name}`, link: async (p) => `https://example.test/${p}` },
+      );
+      expect(out.map((o) => o.voice)).toEqual(['amina', 'hana', 'jude']);
+      expect(out[0].link).toMatch(/voice-amina\.wav$/);
+      expect(out[1]).toEqual({ voice: 'hana', refused: expect.stringMatching(/not available for en/) });
+      expect(out[2].link).toMatch(/voice-jude\.wav$/);
+      expect(said).toEqual(['amina:Welcome to Plah-toe State.', 'jude:Welcome to Plah-toe State.']);
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_VOICE_PRONOUNCE;
+      else process.env.LOCAL_VOICE_PRONOUNCE = saved;
+    }
   });
 });
