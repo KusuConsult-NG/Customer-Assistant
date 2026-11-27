@@ -16,6 +16,7 @@
  */
 import { agentPromptFor, CONTACT_CENTRE_TOOLS, SYSTEM_PROMPT } from '../src/agent-tools/agent-tool-catalog';
 import { callSystemPrompt } from '../src/voice-local/call-setup';
+import { callSummaryRequest, NO_CALLER_SPEECH_SUMMARY } from '../src/voice-local/local-voice.service';
 import { voiceModel } from '../src/voice-local/llm';
 import { parsePls } from '../src/voice-local/pronunciations-export';
 import { pronounced, PRONUNCIATIONS, pronunciationsFromEnv } from '../src/voice-local/pronounce';
@@ -648,4 +649,21 @@ describe('checklist H2: a silent caller is asked whether they are there, then th
     expect(closed).toBe(true);
     expect(session.outcome).toBe('completed');
   }, 20_000);
+});
+
+describe('the call summary never invents a call', () => {
+  // 27 Nov: a call with no caller words was summarised as a grant enquiry
+  // with "reference number 123456" that nobody ever said.
+  const opening = { role: 'agent', message: 'Welcome back, Steven. Are you still calling from Rantya, Gyel B ward, Jos South?' };
+
+  it('says plainly that no caller speech was received, without asking the model', () => {
+    expect(callSummaryRequest([opening, { role: 'agent', message: 'Are you still on the line, Steven?' }])).toEqual({ fixed: NO_CALLER_SPEECH_SUMMARY });
+    expect(callSummaryRequest([opening, { role: 'user', message: '   ' }])).toEqual({ fixed: NO_CALLER_SPEECH_SUMMARY });
+  });
+
+  it('with caller words, gives the model the transcript and forbids adding anything', () => {
+    const req = callSummaryRequest([opening, { role: 'user', message: 'Yes, I am.' }]) as any;
+    expect(req.messages[0].content).toMatch(/Use ONLY what the transcript says\. Never add a request, reference number/);
+    expect(req.messages[1].content).toBe(`Assistant: ${opening.message}\nCaller: Yes, I am.`);
+  });
 });

@@ -501,24 +501,13 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
 
   /** One sentence for the call list, as ElevenLabs' analysis gives. Best effort. */
   private async summarise(session: VoiceSession): Promise<string | null> {
-    const text = session.transcript
-      .filter((t) => t.message)
-      .map((t) => `${t.role === 'user' ? 'Caller' : 'Assistant'}: ${t.message}`)
-      .join('\n')
-      .slice(0, 12_000);
-    if (!text || !llmConfig().apiKey) return null;
+    const req = callSummaryRequest(session.transcript);
+    if ('fixed' in req) return req.fixed;
+    if (!llmConfig().apiKey) return null;
     const res = await fetch(chatCompletionsUrl(), {
       method: 'POST',
       headers: { Authorization: `Bearer ${llmConfig().apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: llmConfig().chatModel,
-        temperature: 0,
-        max_tokens: 160,
-        messages: [
-          { role: 'system', content: 'Summarise this government contact-centre call in two sentences for an officer: what the caller wanted and what was done (reference numbers included). No names of the caller.' },
-          { role: 'user', content: text },
-        ],
-      }),
+      body: JSON.stringify({ model: llmConfig().chatModel, temperature: 0, max_tokens: 160, messages: req.messages }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return null;
@@ -526,8 +515,44 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     return data?.choices?.[0]?.message?.content?.trim() || null;
   }
 
+
   /** For the readiness screen and tests. */
   liveCalls(): number {
     return this.live.size;
   }
+}
+
+/** Said of a call in which nothing the caller said was heard. */
+export const NO_CALLER_SPEECH_SUMMARY = 'No caller speech was received on this call, so nothing was reported or done.';
+
+/**
+ * What the call list's one-line summary is made from. A call of 27 Nov had no
+ * caller words at all (their audio never reached the line) and its summary
+ * read "The caller inquired about … a government grant … reference number
+ * 123456 … under review": the model invented a conversation from the
+ * assistant's lines alone. With no caller words there is nothing to
+ * summarise, so the record says so plainly; otherwise the model is told to
+ * use only what the transcript says.
+ */
+export function callSummaryRequest(
+  transcript: Array<{ role: string; message: string }>,
+): { fixed: string } | { messages: Array<{ role: 'system' | 'user'; content: string }> } {
+  const turns = transcript.filter((t) => t.message?.trim());
+  if (!turns.some((t) => t.role === 'user')) return { fixed: NO_CALLER_SPEECH_SUMMARY };
+  const text = turns
+    .map((t) => `${t.role === 'user' ? 'Caller' : 'Assistant'}: ${t.message}`)
+    .join('\n')
+    .slice(0, 12_000);
+  return {
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Summarise this government contact-centre call in two sentences for an officer: what the caller wanted and what was done (reference numbers included). ' +
+          'Use ONLY what the transcript says. Never add a request, reference number, status, date or outcome that is not in it; ' +
+          'if the caller\'s request is unclear or the call ended before anything was done, say exactly that. No names of the caller.',
+      },
+      { role: 'user', content: text },
+    ],
+  };
 }
