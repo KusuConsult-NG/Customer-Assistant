@@ -112,7 +112,12 @@ describe('the bridge asks who is calling before the agent answers', () => {
   });
 
   it('a dialled number no agency owns answers the defaults, never another agency’s caller', async () => {
-    const f = fields((await ask('08031234001', '+2348000000001')).text);
+    // A number made for this test, so no other suite's agency can own it:
+    // +2348000000001 was given to an agency by elevenlabs-numbers.spec, and when
+    // the two files ran at once the bridge rightly answered "ok" for it.
+    const unowned = `+23481${String(Date.now()).slice(-8)}`;
+    expect(await prisma.telephonyConfig.count({ where: { phoneNumber: unowned } })).toBe(0);
+    const f = fields((await ask('08031234001', unowned)).text);
     expect(f.head).toBe('unknown');
     expect(f.sip_welcome).toBe(WELCOME_DEFAULT);
     expect(f.sip_callername).toBe('not on file');
