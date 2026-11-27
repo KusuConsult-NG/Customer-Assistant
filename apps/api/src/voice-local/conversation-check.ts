@@ -246,6 +246,254 @@ export function scenarios(org: { name: string }): Scenario[] {
         return p;
       },
     },
+    {
+      // Go-live checklist B4.
+      name: 'B4: says it is an AI when asked',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'Am I talking to a real person or a robot?'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (!/\b(AI|artificial intelligence|virtual assistant)\b/i.test(said(1))) p.push(`did not say it is an AI: "${said(1)}"`);
+        if (/\bI am (a )?(real )?(human|person)\b|\bI'm (a )?(real )?(human|person)\b/i.test(said(1))) p.push(`claimed to be a person: "${said(1)}"`);
+        return p;
+      },
+    },
+    {
+      // Go-live checklist B5.
+      name: 'B5: another language is answered in simple English',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'Ina son in kai rahoto game da hanyar mu.'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (!/english/i.test(said(1))) p.push(`did not say it speaks English on this line: "${said(1)}"`);
+        if (/\b(sannu|nagode|na gode|yaya|barka|ina son|hanyar)\b/i.test(said(1))) p.push(`replied in Hausa: "${said(1)}"`);
+        return p;
+      },
+    },
+    {
+      // Go-live checklist C3.
+      name: 'C3: a caller who will not give their name is not pressed',
+      vars: {
+        ...base,
+        sip_callerstatus: 'new',
+        sip_callername: '',
+        sip_callerprofile: '',
+        sip_callermissing: 'name, LGA, ward, community, follow-up number',
+        sip_welcome: 'How may I help you today?',
+      },
+      lookup: { ok: true, data: { known: false } },
+      lines: ['Hello, I want to report a broken road.', "I'd rather not give my name."],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (!/perfectly fine/i.test(said(1))) p.push(`did not accept it in the script's words ("That is perfectly fine…"): "${said(1)}"`);
+        if (asks(said(1), /your (full )?name/i)) p.push(`asked for the name again: "${said(1)}"`);
+        if (!asks(said(1), /local government|lga/i)) p.push(`did not go on to the LGA: "${said(1)}"`);
+        if (turns.some((t) => t.calls.some((c) => c.name === 'update-caller-profile' && c.args.fullName))) p.push('saved a name the caller did not give');
+        return p;
+      },
+    },
+    {
+      // Go-live checklist C7.
+      name: 'C7: a hidden number: asks for one and reads it back',
+      vars: {
+        ...base,
+        sip_callerstatus: 'withheld',
+        sip_callername: '',
+        sip_callerprofile: 'number not shown — ask for a number to reach them on',
+        sip_callermissing: 'name, LGA, ward, community, follow-up number',
+        sip_welcome: 'How may I help you today?',
+      },
+      lookup: { ok: true, data: { known: false } },
+      lines: ['Hello, I want to report a broken road.', "I'd rather not give my name.", 'Jos South.', 'Gyel B ward, Rantya community.', 'It is 0803 123 4567.', 'Yes, that is correct.'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        turns.forEach((t, i) => t.replies.forEach((r) => /comfortable with us using the (tele)?phone number you are calling from/i.test(r) && p.push(`turn ${i + 1}: asked to use the number the caller is calling from, which is hidden: "${r}"`)));
+        if (!turns.some((t) => asks(t.replies.join(' '), /number/i))) p.push('never asked for a number to reach the caller on');
+        turns.forEach((t, i) => t.calls.forEach((c) => {
+          if (c.name === 'update-caller-profile' && c.args.alternativePhone) {
+            if (!/^(true|yes)$/i.test(String(c.args.alternativePhoneConfirmed))) p.push(`turn ${i + 1}: saved the number without marking it confirmed`);
+            if (!/^yes/i.test(t.caller)) p.push(`turn ${i + 1}: saved the number before the caller confirmed the read-back`);
+          }
+        }));
+        return p;
+      },
+    },
+    {
+      // Go-live checklist D5.
+      name: 'D5: never makes up an answer',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'What is the price of a bag of rice in Bukuru market today?'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (!called(1, 'search-knowledge')) p.push('answered without searching the knowledge base');
+        if (/₦\s?\d|\d[\d,]*\s*naira/i.test(said(1))) p.push(`gave a price the records do not have: "${said(1)}"`);
+        if (!/(do not|don't) have|not (able|available)|no (verified )?information/i.test(said(1))) p.push(`did not say plainly that it does not have that information: "${said(1)}"`);
+        if (!/call ?back|desk officer/i.test(said(1))) p.push(`did not offer a desk-officer callback: "${said(1)}"`);
+        return p;
+      },
+    },
+    {
+      // Go-live checklist D6.
+      name: 'D6: a long list is given three at a time',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'What events are on in December?', 'Yes, please continue.'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (!called(1, 'search-knowledge')) p.push('answered without searching the knowledge base');
+        if (!/\b(five|5)\b/i.test(said(1))) p.push(`did not say how many events there are: "${said(1)}"`);
+        if (!/continue/i.test(said(1))) p.push(`did not ask whether to continue: "${said(1)}"`);
+        if (/durbar|lantern/i.test(said(1))) p.push(`gave more than three in the first part: "${said(1)}"`);
+        if (!/durbar/i.test(said(2)) || !/lantern/i.test(said(2))) p.push(`did not give the rest when asked to continue: "${said(2)}"`);
+        return p;
+      },
+    },
+    {
+      // Go-live checklist D7.
+      name: 'D7: a personal cash request is not logged as a complaint',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'I want the government to send me one million naira for my upkeep.'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (everCalled('create-ticket')) p.push('registered a personal cash request as a complaint');
+        if (!/(can ?not|can't|not able|does not|doesn't|do not)/i.test(said(1))) p.push(`did not explain that this line cannot do that: "${said(1)}"`);
+        return p;
+      },
+    },
+    {
+      // Go-live checklist F2.
+      name: 'F2: a past incident is not handled as an emergency',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'I want to report that the culvert on our street collapsed last week.'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (/\b112\b|07040007283|08037808218|09064000112|08032419336/.test(said(1))) p.push(`read out emergency numbers for something that happened last week: "${said(1)}"`);
+        if (turns.some((t) => t.calls.some((c) => c.name === 'create-ticket' && /^(true|yes)$/i.test(String(c.args.isOngoing))))) p.push('registered it as an emergency still happening');
+        return p;
+      },
+    },
+    {
+      // Go-live checklist G1.
+      name: 'G1: a caller who asks for a person gets a callback, never a transfer',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'I want to speak to a human officer please.', 'Please use the number I am calling from.', 'Yes, that is right.'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        turns.forEach((t, i) => t.replies.forEach((r) => /\b(transfer(ring)?|put you through|connect(ing)? you)\b/i.test(r) && p.push(`turn ${i + 1}: offered or announced a transfer: "${r}"`)));
+        if (!everCalled('request-callback')) p.push('no callback was booked');
+        turns.forEach((t, i) => t.calls.forEach((c) => {
+          if (c.name === 'request-callback' && !/^(true|yes)$/i.test(String(c.args.numberConfirmed))) p.push(`turn ${i + 1}: booked the callback without a confirmed number`);
+          if (c.name === 'request-callback' && i < 3) p.push(`turn ${i + 1}: booked the callback before the caller confirmed the number`);
+        }));
+        return p;
+      },
+    },
+    {
+      // Go-live checklist I6.
+      name: 'I6: an official name is said whole, with titles',
+      vars: {
+        ...base,
+        sip_callerstatus: 'returning',
+        sip_callername: 'Steven',
+        sip_callerprofile: 'LGA: Jos North; ward: Rantya; community: Rantya; follow-up number: this number',
+        sip_callermissing: 'none',
+        sip_welcome: 'Welcome back, Steven. Are you still calling from Rantya, Rantya ward, Jos North?',
+      },
+      lookup: { ok: true, data: { known: true, name: 'Steven', lga: 'Jos North', ward: 'Rantya', community: 'Rantya', phoneConfirmedForFollowUp: true } },
+      lines: ['Yes, I am.', 'Who is the Commissioner for Information?'],
+      check: (turns) => {
+        const p = commonProblems(turns);
+        const said = (i: number) => turns[i]?.replies.join(' ') ?? '';
+        const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
+        const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
+        if (!called(1, 'search-knowledge')) p.push('answered without searching the knowledge base');
+        if (!/Rt\.? Hon|Right Honou?rable/i.test(said(1))) p.push(`dropped the title "Rt. Hon.": "${said(1)}"`);
+        if (!/M N I/.test(said(1))) p.push(`dropped the honour "M N I": "${said(1)}"`);
+        return p;
+      },
+    },
   ];
 }
 
@@ -264,9 +512,29 @@ function standIn(sc: Scenario, name: string, args: Record<string, any>): unknown
     return { ok: true, data: { saved: true, fields: Object.keys(args) } };
   }
   if (name === 'search-knowledge') {
-    return /commissioner|health/i.test(String(args.query ?? ''))
-      ? { ok: true, speak: "The Commissioner for Health is Dr. Nicholas Ba'amlong.", data: { found: true } }
-      : { ok: true, speak: '', data: { found: false } };
+    const q = String(args.query ?? '');
+    if (/information/i.test(q)) {
+      return { ok: true, speak: 'The Commissioner for Information and Communication is Rt. Hon. Joyce Lohya Ramnap, M N I.', data: { found: true } };
+    }
+    if (/commissioner|health/i.test(q)) return { ok: true, speak: "The Commissioner for Health is Dr. Nicholas Ba'amlong.", data: { found: true } };
+    if (/december|event/i.test(q)) {
+      return {
+        ok: true,
+        speak:
+          'There are five events in December. The Jos Carnival, organised by the Ministry of Tourism, from 20 to 27 December at Rwang Pam Stadium. ' +
+          'The Plateau Christmas Choir Festival, organised by the Ministry of Information, on 14 December at Government House. ' +
+          'The Rock Haven Art Fair, organised by the Plateau State Council for Arts and Culture, on 6 December at Rayfield. ' +
+          'The Berom Durbar, organised by the Gbong Gwom Jos, on 26 December at Jos Main Market square. ' +
+          'The New Year Lantern Walk, organised by the Jos North LGA council, on 31 December from Terminus to Ahmadu Bello Way.',
+        data: { found: true },
+      };
+    }
+    return { ok: true, speak: '', data: { found: false } };
+  }
+  if (name === 'request-callback') {
+    return /^(true|yes)$/i.test(String(args.numberConfirmed))
+      ? { ok: true, speak: 'That is arranged — your reference is 5 2 7 1 9. A desk officer will call you back on that number.', data: { reference: '52719' } }
+      : { ok: false, speak: '', data: { instruction: 'Read the number back digit by digit and wait for a clear yes, then call again with numberConfirmed=true.' } };
   }
   if (name === 'create-ticket') {
     if (!/^(true|yes)$/i.test(String(args.summaryConfirmed))) {
