@@ -23,7 +23,7 @@
  */
 import { isPlateauStateOrg, TEAM_PERSONAS, type AgentOrganization, type TeamPersona } from '../agent-tools/agent-tool-catalog';
 import { callOpening, callSystemPrompt, type CallVariables } from './call-setup';
-import { streamChat } from './llm';
+import { streamChat, voiceModel } from './llm';
 import type { SttEvents } from './stt';
 import { CachedSpeech, type SpeechEngine } from './tts';
 import { localToolDefinitions } from './voice-tools';
@@ -34,7 +34,13 @@ export interface Turn {
   /** What the caller would hear, sentence by sentence. */
   replies: string[];
   calls: Array<{ name: string; args: Record<string, any> }>;
+  /** Set when the call failed during this turn (the model or a tool errored): why. */
+  failed?: string;
 }
+
+/** Whether a sentence of `text` ASKS (ends with "?") something matching `re`. The script's own statements do not count. */
+export const asksInSentence = (text: string, re: RegExp) =>
+  text.split(/(?<=[.!?])\s+/).some((sentence) => /\?\s*$/.test(sentence) && re.test(sentence));
 
 export interface Scenario {
   name: string;
@@ -311,7 +317,8 @@ export function scenarios(org: { name: string }): Scenario[] {
         const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
         const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
         if (!/perfectly fine/i.test(said(1))) p.push(`did not accept it in the script's words ("That is perfectly fine…"): "${said(1)}"`);
-        if (asks(said(1), /your (full )?name/i)) p.push(`asked for the name again: "${said(1)}"`);
+        // "However, providing your name may help us…" is the script's own line, not a question.
+        if (asksInSentence(said(1), /your (full )?name/i)) p.push(`asked for the name again: "${said(1)}"`);
         if (!asks(said(1), /local government|lga/i)) p.push(`did not go on to the LGA: "${said(1)}"`);
         if (turns.some((t) => t.calls.some((c) => c.name === 'update-caller-profile' && c.args.fullName))) p.push('saved a name the caller did not give');
         return p;
@@ -582,6 +589,7 @@ export async function runScenario(
     },
   };
   let events: SttEvents | null = null;
+  let failure = '';
   const session = new VoiceSession(
     {
       sendAudio: () => undefined,
@@ -598,7 +606,9 @@ export async function runScenario(
         calls.push({ name, args });
         return standIn(sc, name, args);
       },
-      log: () => undefined,
+      log: (event, data) => {
+        if (event === 'voice_local_failed_over') failure = String((data as any)?.reason ?? 'unknown');
+      },
     },
     { systemPrompt: callSystemPrompt(org, persona, sc.vars, now), opening: callOpening(org, persona, sc.vars, now), personal: [] },
   );
@@ -614,8 +624,15 @@ export async function runScenario(
     events!.onFinal(line, true);
     await new Promise((r) => setTimeout(r, 50));
     await settle(session, settleMs);
-    turns.push({ caller: line, replies: heard.slice(h0).filter((t) => !notReplies.has(t)), calls: calls.slice(c0) });
+    turns.push({
+      caller: line,
+      replies: heard.slice(h0).filter((t) => !notReplies.has(t)),
+      calls: calls.slice(c0),
+      ...(failure ? { failed: failure } : {}),
+    });
+    if (failure) break;
   }
+  if (failure && !turns.some((t) => t.failed)) turns.push({ caller: '(before the first answer)', replies: [], calls: [], failed: failure });
   await session.finish('completed');
   return turns;
 }
@@ -635,11 +652,16 @@ async function main() {
   if (!org) throw new Error(`No agency with slug "${slug}".`);
   const persona: TeamPersona = { ...TEAM_PERSONAS.nanpan, id: 'gwaman', name: 'Gwaman', greetingPhrase: 'my name is Gwaman' };
   let failed = 0;
+  let broken = 0;
+  console.log(`Model: ${voiceModel()} (LOCAL_VOICE_LLM_MODEL=${process.env.LOCAL_VOICE_LLM_MODEL?.trim() || '(not set)'})`);
   for (const sc of scenarios(org)) {
     let passes = 0;
     for (let r = 1; r <= runs; r++) {
       const turns = await runScenario(org, persona, sc);
-      const problems = sc.check(turns);
+      const failure = turns.find((t) => t.failed)?.failed;
+      // A call that broke says nothing about the agent: reported as such, never as a verdict.
+      const problems = failure ? [`THE CALL FAILED, not judged: ${failure}`] : sc.check(turns);
+      if (failure) broken++;
       if (!problems.length) passes++;
       console.log(`\n── ${sc.name} — run ${r}: ${problems.length ? 'FAIL' : 'PASS'}`);
       for (const t of turns) {
@@ -652,6 +674,7 @@ async function main() {
     console.log(`== ${sc.name}: ${passes}/${runs} passed`);
     if (passes < runs) failed++;
   }
+  if (broken) console.log(`\n${broken} run(s) FAILED to complete (see "THE CALL FAILED"): those results are not a test of the agent. Re-run once the cause is fixed.`);
   await prisma.$disconnect();
   process.exit(failed ? 1 : 0);
 }
