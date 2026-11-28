@@ -5,7 +5,7 @@
  * did not make, re-asking what it was told) is caught, with the reason.
  */
 import { TEAM_PERSONAS } from '../src/agent-tools/agent-tool-catalog';
-import { runScenario, scenarios } from '../src/voice-local/conversation-check';
+import { asksInSentence, runScenario, scenarios } from '../src/voice-local/conversation-check';
 import type { ChatMessage, LlmEvent } from '../src/voice-local/llm';
 
 const org: any = {
@@ -33,6 +33,32 @@ const call = (name: string, args: object): LlmEvent => ({ type: 'tool_calls', ca
 jest.setTimeout(60_000);
 
 describe('conversation check: the checker itself', () => {
+  it("C3: the script's own line about the name is not a question; asking for it again is", async () => {
+    const c3 = byName(/will not give their name/);
+    const scriptLine = model((said) =>
+      /rather not/.test(said)
+        ? [{ type: 'text', delta: 'That is perfectly fine. We can proceed with your report. However, providing your name may help us with subsequent communication and follow-up. Please, which Local Government Area of Plateau State are you calling from?' }]
+        : [{ type: 'text', delta: 'Thank you. May I kindly know your full name?' }],
+    );
+    expect(c3.check(await runScenario(org, persona, c3, scriptLine as any, { settleMs: 300 }))).toEqual([]);
+    const presses = model((said) =>
+      /rather not/.test(said)
+        ? [{ type: 'text', delta: 'That is perfectly fine. Could you tell me your name anyway? And which Local Government Area are you calling from?' }]
+        : [{ type: 'text', delta: 'Thank you. May I kindly know your full name?' }],
+    );
+    expect(c3.check(await runScenario(org, persona, c3, presses as any, { settleMs: 300 })).join('\n')).toMatch(/asked for the name again/);
+    expect(asksInSentence('However, providing your name may help. Which LGA?', /your name/)).toBe(false);
+  });
+
+  it('reports a call that broke (the model errored) as broken, with the reason, never as an empty answer', async () => {
+    const down = async function* (): AsyncGenerator<LlmEvent> {
+      throw new Error('Language model refused (HTTP 429) rate limit reached');
+    };
+    const turns = await runScenario(org, persona, complete, down as any, { settleMs: 300 });
+    expect(turns.find((t) => t.failed)?.failed).toMatch(/HTTP 429/);
+    expect(turns.length).toBeLessThanOrEqual(1); // nothing after the failure is played out
+  });
+
   it('passes a model that saves a confirmed correction at once', async () => {
     const good = model((said) =>
       /^No\./.test(said)

@@ -27,6 +27,7 @@ import { callOpening, callSystemPrompt } from './call-setup';
 import { streamChat, warmPromptCache } from './llm';
 import { deepgramStt, type SttFactory } from './stt';
 import {
+  assistantGenderFromEnv,
   assistantTtsFromEnv,
   CachedSpeech,
   ElevenLabsTts,
@@ -321,7 +322,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     const supportsDualGender = probeEngine?.name === 'spitch';
     const persona = isPlateauStateOrg(agentOrg)
       ? supportsDualGender
-        ? pickPlateauPersona()
+        ? pickPlateauPersona(assistantGenderFromEnv())
         : { ...pickPlateauMalePersona(), ...(vars.representative_name ? { name: vars.representative_name } : {}) }
       : resolvePersona(null);
     // Keep representative_name in sync with the chosen male/female persona so

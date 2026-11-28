@@ -474,6 +474,22 @@ export class SpitchTts implements SpeechEngine {
 }
 
 /**
+ * Which assistants answer the line, from LOCAL_VOICE_ASSISTANT_GENDER:
+ * "female" (every call a female Plateau assistant: her name, the Governor's
+ * introduction of her and the female voice), "male", or anything else / unset
+ * for either, chosen per call. Applies where the voice has both (Spitch); a
+ * voice with one gender is unchanged. Read on every call: an api restart
+ * applies a change.
+ *
+ * The owner asked for female only on 28 Nov 2026: the male voice was not
+ * saying words correctly.
+ */
+export function assistantGenderFromEnv(): 'male' | 'female' | undefined {
+  const v = process.env.LOCAL_VOICE_ASSISTANT_GENDER?.trim().toLowerCase();
+  return v === 'female' || v === 'male' ? v : undefined;
+}
+
+/**
  * Resolve the assistant's TTS engine from environment variables.
  * Honours `LOCAL_VOICE_TTS_PROVIDER` (`spitch` | `yarngpt` | `azure` | `openai` | `deepgram`) when set;
  * otherwise prefers Spitch (Nigerian English/languages), then YarnGPT, then Azure, then OpenAI, then Deepgram.
