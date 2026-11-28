@@ -17,9 +17,13 @@ server, where the voice key is (see `apps/api/src/voice-local/queue-sounds.ts`):
 
     cd /opt/customer-assistant/deploy/single-server
     for s in hold still callback later tone; do
-      docker compose exec -T api node apps/api/dist/voice-local/queue-sounds.js $s > bridge/sounds/queue-$s.wav
+      sudo docker compose --env-file server.env -f docker-compose.yml exec -T api node apps/api/dist/voice-local/queue-sounds.js $s > bridge/sounds/queue-$s.wav
     done
 
 Until they exist, Asterisk's own English prompts are played instead
 (`pls-hold-while-try`, `queue-periodic-announce`, `queue-thankyou`), so the
-waiting room works without them. They are not kept in git.
+waiting room works without them. They are not kept in git. Then check none
+is empty (`ls -l bridge/sounds/queue-*.wav`; delete any of 0 bytes) and restart
+the bridge:
+
+    sudo docker compose --env-file server.env -f docker-compose.yml --profile bridge restart bridge

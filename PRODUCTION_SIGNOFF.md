@@ -256,7 +256,7 @@ Current official prices were **not** retrieved in this assessment; the owner mus
 12. **NestJS 12 upgrade.** Schedule it, to close the remaining high vulnerabilities.
 13. **Waiting room.**
     - After deploying, make the five recordings (`deploy/single-server/bridge/sounds/README.md`) and listen to each.
-    - Restart the bridge.
+    - Check none is empty, then restart the bridge (`--env-file server.env --profile bridge`; the commands are in that README).
     - With two phones and `MAX_CONCURRENT_CALLS=1` set briefly, call twice. Confirm the second caller hears the hold message and is answered when the first hangs up, then set the limit back to 30.
 
 ## 15. Known limitations and residual risks

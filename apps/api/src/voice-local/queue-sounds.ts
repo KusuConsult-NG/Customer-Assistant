@@ -6,7 +6,7 @@
  *
  *   cd /opt/customer-assistant/deploy/single-server
  *   for s in hold still callback later tone; do
- *     docker compose exec -T api node apps/api/dist/voice-local/queue-sounds.js $s > bridge/sounds/queue-$s.wav
+ *     sudo docker compose --env-file server.env -f docker-compose.yml exec -T api node apps/api/dist/voice-local/queue-sounds.js $s > bridge/sounds/queue-$s.wav
  *   done
  *
  * Each sound is written to standard output as an 8 kHz, 16-bit mono WAV, the
