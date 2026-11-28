@@ -423,11 +423,16 @@ describe('voice-local: a whole call over AudioSocket', () => {
       stt.events!.onInterim('my name is');
       stt.events!.onInterim('my name is Steven');
       await new Promise((r) => setTimeout(r, 700)); // recognition waiting for silence
-      stt.events!.onFinal('My name is Steven.', true); // the end-of-turn result does not restart the wait
+      stt.events!.onFinal('My name is Steven.', true, 430); // the end-of-turn result does not restart the wait
       await until(() => logged.some((l) => l.startsWith('voice_local_turn')), 6_000);
       const turn = JSON.parse(logged.find((l) => l.startsWith('voice_local_turn'))!.replace(/^[^{]*/, ''));
       expect(turn.endpoint_ms).toBeGreaterThanOrEqual(650);
       expect(turn.endpoint_ms).toBeLessThan(1_500);
+      // How the turn ended and each step of the wait.
+      expect(turn).toMatchObject({ ended_by: 'speech_final', silence_heard_ms: 430 });
+      expect(turn.first_sentence_ms).toBeGreaterThanOrEqual(turn.model_ms);
+      expect(turn.first_clip_ms).toBeGreaterThanOrEqual(turn.first_sentence_ms);
+      expect(turn.first_audio_ms).toBeGreaterThanOrEqual(turn.first_clip_ms);
       // The next turn has only its end-of-turn result: no time is known, and the last turn's words are not reused.
       await new Promise((r) => setTimeout(r, 300));
       await until(() => pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000); // the reply has played
@@ -435,6 +440,8 @@ describe('voice-local: a whole call over AudioSocket', () => {
       await until(() => logged.filter((l) => l.startsWith('voice_local_turn')).length >= 2, 8_000);
       const next = JSON.parse(logged.filter((l) => l.startsWith('voice_local_turn'))[1].replace(/^[^{]*/, ''));
       expect(next.endpoint_ms).toBeNull();
+      expect(next.ended_by).toBe('speech_final');
+      expect(next.silence_heard_ms).toBeNull(); // not given by recognition: not invented
     } finally {
       spy.mockRestore();
       pbx.hangUp();

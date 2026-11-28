@@ -85,12 +85,18 @@ export const HOLDING_LINE = 'One moment, please.';
 export const CONTINUATION_WAIT_MS = 2_500;
 /**
  * Hold the start of a multi-sentence reply until either every sentence of the
- * round is synthesised, at least this much contiguous audio is buffered, or
- * MAX_PREBUFFER_WAIT_MS elapses after the first sentence arrives. Prevents
- * playQueue underruns (1–4 s mid-speech pauses) when a short first sentence
- * finishes playing before a slower non-streaming Spitch second sentence returns.
+ * round is synthesised, at least this much audio is ready, or the wait runs
+ * out. Prevents a pause after a very short first sentence when the next one
+ * is not back from the voice yet.
+ *
+ * Was 4.5 s: a ready first sentence (a 40-character one is about 2.5 s of
+ * speech) was held until the 2 s reply deadline on most turns. Measured on
+ * the server on 28 Nov 2026, Spitch returns a 46-character sentence in
+ * 0.6–1.1 s and the next sentence is made while the first plays (two at a
+ * time), so a second of speech in hand covers it. A pause that still happens
+ * is logged as voice_local_playback_underrun.
  */
-export const MIN_PREBUFFER_MS = 4_500;
+export const MIN_PREBUFFER_MS = 1_000;
 /**
  * Silence put between two sentences of a reply. Every clip is trimmed to 30 ms
  * before and 130 ms after its speech (pcm.ts forPlayback), and the voice is
@@ -140,6 +146,21 @@ export function replyDeadlineMs(): number {
 const MAX_TOOL_ROUNDS = 6;
 /** Caller audio louder than this, with words recognised, while we talk = barge-in. */
 const BARGE_IN_RMS = 900;
+/** Caller loudness counts for a barge-in this long after it was heard: recognition's words arrive after the sound. */
+export const BARGE_IN_LOUD_WINDOW_MS = 1_000;
+/**
+ * One word that stops the agent on its own, when it is ALL the caller has
+ * said so far. Other single words ("okay", "yes", "mm") are a listener
+ * following along and do not.
+ */
+export const STOP_WORD = /^(stop|wait|no|sorry|hello|excuse me|hold on|one second|one minute)[.!?,]*$/i;
+
+/** Whether what recognition has heard so far, while the agent speaks, is the caller taking the turn. */
+export function isBargeIn(text: string, loudForMs: number | null): boolean {
+  if (loudForMs === null || loudForMs > BARGE_IN_LOUD_WINDOW_MS) return false;
+  const t = text.trim();
+  return t.split(/\s+/).filter(Boolean).length >= 2 || STOP_WORD.test(t);
+}
 
 /** A caller frame louder than this is someone speaking; a phone line's own noise stays well below it. */
 export const CALLER_VOICE_RMS = 300;
@@ -206,6 +227,16 @@ export class VoiceSession {
   private prebufferTimer: NodeJS.Timeout | null = null;
   private turnStartedAt = 0;
   private turnFirstText = 0;
+  /** When the reply's first sentence was handed to the voice, and when its audio came back. */
+  private turnFirstSentence = 0;
+  private turnFirstClip = 0;
+  /** How recognition ended the turn now being answered, and the silence it had heard. */
+  private committedBy: { by: 'speech_final' | 'utterance_end'; silenceMs?: number } | null = null;
+  private turnEndedBy: { by: 'speech_final' | 'utterance_end'; silenceMs?: number } | null = null;
+  private endSignal: { by: 'speech_final' | 'utterance_end'; silenceMs?: number } | null = null;
+  /** The caller's loudness: when last above the barge-in level, and since when without a break. */
+  private lastLoudAt = 0;
+  private loudSince = 0;
   private turnFirstAudio = 0;
   private ackTimer: NodeJS.Timeout | null = null;
   private ackIndex = 0;
@@ -253,8 +284,11 @@ export class VoiceSession {
     try {
       this.stt = await this.deps.stt({
         onInterim: (text) => this.onInterim(text),
-        onFinal: (text, end) => this.onFinal(text, end),
-        onUtteranceEnd: () => this.commitTurn(),
+        onFinal: (text, end, silenceMs) => this.onFinal(text, end, silenceMs),
+        onUtteranceEnd: (silenceMs) => {
+          this.endSignal = { by: 'utterance_end', silenceMs };
+          this.commitTurn();
+        },
         onError: (err) => this.fail(`speech recognition: ${err.message}`),
       });
     } catch (err: any) {
@@ -305,6 +339,11 @@ export class VoiceSession {
     if (level > CALLER_VOICE_RMS) this.callerVoiceFrames++;
     if (level > this.callerPeak) this.callerPeak = level;
     this.recentLevel = this.recentLevel * 0.7 + level * 0.3;
+    if (level > BARGE_IN_RMS) {
+      const t = this.now();
+      if (!this.lastLoudAt || t - this.lastLoudAt > 300) this.loudSince = t;
+      this.lastLoudAt = t;
+    }
     this.stt?.send(frame);
   }
 
@@ -352,12 +391,13 @@ export class VoiceSession {
     // the recording notice are played whole, and a caller saying "good evening"
     // back to the Governor is not talking over anyone.
     if (this.inGreeting()) return;
-    if ((this.playQueue.length > 0 || this.responding) && text.split(/\s+/).length >= 2 && this.recentLevel > BARGE_IN_RMS) {
-      this.interrupt();
+    const loudFor = this.lastLoudAt ? this.now() - this.lastLoudAt : null;
+    if ((this.playQueue.length > 0 || this.responding) && isBargeIn(text, loudFor)) {
+      this.interrupt(text);
     }
   }
 
-  private onFinal(text: string, endOfTurn: boolean): void {
+  private onFinal(text: string, endOfTurn: boolean, silenceMs?: number): void {
     if (text) {
       this.finals++;
       this.heard.push(text);
@@ -367,12 +407,18 @@ export class VoiceSession {
       this.lastCallerSpeech = this.now();
       this.lastActivity = this.now();
     }
-    if (endOfTurn) this.commitTurn();
+    if (endOfTurn) {
+      this.endSignal = { by: 'speech_final', silenceMs };
+      this.commitTurn();
+    }
   }
 
   private commitTurn(): void {
     const said = this.heard.join(' ').trim();
+    const signal = this.endSignal;
+    this.endSignal = null;
     if (!said || this.outcome) return;
+    this.committedBy = signal;
     this.heard = [];
     this.nudges = 0;
     if (this.inGreeting()) {
@@ -408,7 +454,7 @@ export class VoiceSession {
       // has recorded it — pushed now, they would land before it, and the model
       // would read its own cut-off sentence as the latest thing in the call.
       this.queuedUser.push(said);
-      this.interrupt();
+      this.interrupt(said);
       this.pendingTurn = true;
       return;
     }
@@ -458,6 +504,10 @@ export class VoiceSession {
   /** The caller has finished: time the reply, and acknowledge only if genuinely slow. */
   private beginTurnClock(): void {
     this.turnStartedAt = this.now();
+    this.turnEndedBy = this.committedBy;
+    this.committedBy = null;
+    this.turnFirstSentence = 0;
+    this.turnFirstClip = 0;
     this.turnEndpointMs = this.lastWordsAt ? this.turnStartedAt - this.lastWordsAt : null;
     this.lastWordsAt = 0;
     this.turnFirstText = 0;
@@ -479,12 +529,18 @@ export class VoiceSession {
     this.ackTimer.unref?.();
   }
 
-  private interrupt(): void {
+  private interrupt(heard = ''): void {
+    const playing = this.playQueue.length > 0;
     this.clearPrebuffer();
     this.playQueue = [];
     this.turnAbort?.abort();
     this.speechChain = Promise.resolve();
-    this.deps.log('voice_local_barge_in');
+    // after_voice_ms: from the caller starting to talk to the agent going quiet.
+    this.deps.log('voice_local_barge_in', {
+      after_voice_ms: this.loudSince ? this.now() - this.loudSince : null,
+      words: heard.split(/\s+/).filter(Boolean).length,
+      was_playing: playing,
+    });
   }
 
   private checkSilence(): void {
@@ -724,6 +780,10 @@ export class VoiceSession {
       // speech synthesis. The caller's silence is endpoint_ms + first_audio_ms.
       this.deps.log('voice_local_turn', {
         endpoint_ms: this.turnEndpointMs,
+        ended_by: this.turnEndedBy?.by ?? null,
+        silence_heard_ms: this.turnEndedBy?.silenceMs ?? null,
+        first_sentence_ms: this.turnFirstSentence ? this.turnFirstSentence - this.turnStartedAt : null,
+        first_clip_ms: this.turnFirstClip ? this.turnFirstClip - this.turnStartedAt : null,
         model_ms: this.turnFirstText ? this.turnFirstText - this.turnStartedAt : null,
         first_audio_ms: this.turnFirstAudio - this.turnStartedAt,
         chars: text.length,
@@ -742,6 +802,7 @@ export class VoiceSession {
 
   /** One clip of a reply. `text` is what the caller is told (and recorded); the voice is given its spoken form. */
   private sayPart(text: string, clause: boolean, signal: AbortSignal): void {
+    if (this.turnStartedAt && !this.turnFirstSentence) this.turnFirstSentence = this.now();
     this.turnPendingSynths++;
     const synth = this.deps.assistantVoice.speak(pronounced(text), { personal: this.setup.personal, signal }).catch((err: any) => {
       if (!signal.aborted) this.fail(`speech: ${err?.message ?? err}`);
@@ -751,6 +812,7 @@ export class VoiceSession {
       const r = await synth;
       this.turnPendingSynths = Math.max(0, this.turnPendingSynths - 1);
       if (!r || signal.aborted || this.outcome) return;
+      if (this.turnStartedAt && !this.turnFirstClip) this.turnFirstClip = this.now();
       const clip = forPlayback(r.audio);
       if (this.turnPlaybackStarted) {
         if (this.playQueue.length === 0) {

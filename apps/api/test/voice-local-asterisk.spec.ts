@@ -254,6 +254,56 @@ run('voice-local against a real Asterisk', () => {
     expect(heardSecs).toBeGreaterThan((expectedSpeechSecs + 1) * 0.8);
   }, 90_000);
 
+  it('the caller talking over a reply stops the agent within a few frames, through Asterisk', async () => {
+    const savedLlm = voice.llm;
+    const long = Array.from({ length: 10 }, (_, i) => `This is sentence number ${['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][i]} of a long answer.`);
+    voice.llm = async function* (messages): AsyncGenerator<LlmEvent> {
+      const last = String(messages[messages.length - 1].content ?? '');
+      if (/projects/.test(last)) for (const a of long) yield { type: 'text', delta: a + ' ' };
+      else if (/wait/i.test(last)) {
+        yield { type: 'text', delta: 'Of course. Goodbye.' };
+        yield { type: 'tool_calls', calls: [{ id: 'e', type: 'function', function: { name: 'end_call', arguments: '{}' } }] };
+      }
+    };
+    const sent: Array<{ t: number; loud: boolean }> = [];
+    const realWrite = net.Socket.prototype.write;
+    (net.Socket.prototype as any).write = function (this: net.Socket, chunk: any, ...rest: any[]) {
+      if (this.localPort === 9192 && Buffer.isBuffer(chunk) && chunk[0] === 0x10 && chunk.length === 323) {
+        sent.push({ t: performance.now(), loud: rms(chunk.subarray(3)) > 500 });
+      }
+      return (realWrite as any).call(this, chunk, ...rest);
+    };
+    const logs: Array<{ m: string }> = [];
+    const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logs.push({ m: String(m) }));
+    try {
+      // The caller's side: quiet for 8 s (the opening, then the question), then talking.
+      rx('channel originate Local/s@bridge application Playback silence/8&tt-monkeys');
+      await until(() => events !== null);
+      await new Promise((r) => setTimeout(r, 4_000)); // the opening has played
+      events!.onFinal('Tell me about the projects.', true);
+      // The long answer is playing when the caller starts talking.
+      const voiceAt = loudFrames;
+      await until(() => loudFrames > voiceAt + 10, 15_000);
+      expect(sent.slice(-10).some((f) => f.loud)).toBe(true);
+      const said = performance.now();
+      events!.onInterim('wait');
+      await new Promise((r) => setTimeout(r, 400));
+      const after = sent.filter((f) => f.t > said);
+      // Speech stops within 100 ms (five frames) of recognition's word; only silence follows.
+      const lastLoud = after.filter((f) => f.loud).pop();
+      expect(lastLoud ? lastLoud.t - said : 0).toBeLessThan(100);
+      expect(after.length).toBeGreaterThan(10); // the stream itself carries on (silence), it is not cut
+      const line = logs.find((l) => l.m.startsWith('voice_local_barge_in'));
+      expect(line?.m).toMatch(/"was_playing":true/);
+      events!.onFinal('Wait.', true);
+      await until(() => !rx('core show channels concise').includes('bridge'), 25_000);
+    } finally {
+      spy.mockRestore();
+      (net.Socket.prototype as any).write = realWrite;
+      voice.llm = savedLlm;
+    }
+  }, 60_000);
+
   it('a failed local leg is handed to the ElevenLabs Dial by the dialplan itself', async () => {
     sttFails = true;
     const count = () =>
