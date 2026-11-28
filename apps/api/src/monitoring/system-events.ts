@@ -3,13 +3,14 @@ import { prisma } from '@ace/database';
 /**
  * What the platform's own monitoring records (SystemEvent): each result from
  * the external monitor, each nightly backup, and each call the local voice
- * line handed to the backup line.
+ * line handed to the backup line, and each step of a caller in the waiting
+ * room (joined, admitted, abandoned, timeout, full, callback).
  *
  * Best effort by design: recording an event must never break the thing it
  * records. A call whose failover could not be written still fails over, and a
  * backup whose result could not be stored is still a backup.
  */
-export type SystemEventKind = 'external_check' | 'backup' | 'voice_failover';
+export type SystemEventKind = 'external_check' | 'backup' | 'voice_failover' | 'voice_queue';
 
 export async function recordSystemEvent(kind: SystemEventKind, status: string, detail?: Record<string, unknown>): Promise<boolean> {
   try {

@@ -159,6 +159,21 @@ Live measurements, 28 Nov:
 
 The full scripted call matrix (C1–C10) is still to be run by the owner.
 
+**Callers beyond the call limit (added 28 Nov):** a caller beyond `MAX_CONCURRENT_CALLS` (30) no longer hears a busy tone. They are answered and hear "Thank you for calling the Plateau State Government Citizen Contact Centre. All our lines are busy at the moment. Please hold, and you will be answered shortly." They are then held and let in strictly in the order they called. Every 60 s they hear that they are still in the queue.
+
+After 3 minutes (`QUEUE_MAX_WAIT`), or straight away when 60 are already waiting (`QUEUE_MAX_CALLS`), a callback request is booked for their number and they are told a desk officer will call them back. A withheld number is asked to call again instead. At the defaults, 30 active + 60 waiting = 90, below AlphaTech's 100 channels (as reported by the owner; written confirmation is §14 item 4).
+
+- **Proven on a real Asterisk running the real dialplan, at a limit of 1 call** (`voice-local-queue-asterisk.spec.ts`, 7 tests, 3 consecutive passes):
+  - held, then answered as soon as the line is free, and the waiting caller hears sound throughout (recorded on their side);
+  - first come, first served, with nobody let in out of turn, even with a free line;
+  - a caller who hangs up does not hold up those behind;
+  - a dialplan reload while callers wait keeps their places;
+  - a time-out books one callback for the +234 number;
+  - a full room books the callback at once.
+- **Every dialplan fault tried was caught** (9 deliberate breakages), except one that changes nothing a caller sees: the callback code normalises the number itself.
+- **With the waiting room switched off** (`QUEUE_MAX_CALLS=0`), the caller gets `BUSY`, exactly as before.
+- **Not yet verified:** the waiting room on the live line, and the recordings in the assistant's own voice (§14 item 13). The sandbox has no Spitch key; until the recordings are made, Asterisk's stock English prompts play.
+
 ## 7. Thirty-call concurrency report and 8. Endurance report
 
 **Not performed.** There is no staging server, and the Spitch Tier 1 limit makes a pass impossible today. The test plan stands in `docs/reliability/LOAD_TEST_REPORT.md` (1 → 5 → 10 → 20 → 30 → 31 calls, then 24 h). **Do not claim 30-call capability.**
@@ -230,7 +245,7 @@ Current official prices were **not** retrieved in this assessment; the owner mus
 1. **Merge and deploy this release.** Confirm `releases.log` shows its commit.
 2. **Backups.** Set `BACKUP_REMOTE` and `BACKUP_ENCRYPTION_KEY` in `server.env`. Run `sudo ./backup.sh`, and confirm it ends with "copied off the server".
 3. **Spitch.** Request a tier that supports at least 30 simultaneous requests, and record the new limit.
-4. **AlphaTech.** Confirm the contracted channel count in writing.
+4. **AlphaTech.** Confirm the contracted channel count in writing (the owner reports 100; the waiting room's defaults assume it: 30 + 60 = 90).
 5. **Staging.** Provision the standby/staging VPS (Action 3), so restore, load, failover and endurance tests can be run there.
 6. **Monitoring.** Set up an external uptime and TLS monitor with alerts to named administrators (Action 6).
 7. **GitHub.** Protect `main` (require a PR, a passing CI, one review), and deploy only from green `main`.
@@ -239,11 +254,15 @@ Current official prices were **not** retrieved in this assessment; the owner mus
 10. **Knowledge counts on production.** Count the documents, chunks, MDAs and projects, and compare them with the claimed 82 / 369 / 58 / 545.
 11. **DPO.** Review §10 and `SECURITY_AND_PRIVACY_AUDIT.md`, and approve or require changes. Obtain written authorisation for the Governor's voice.
 12. **NestJS 12 upgrade.** Schedule it, to close the remaining high vulnerabilities.
+13. **Waiting room.**
+    - After deploying, make the five recordings (`deploy/single-server/bridge/sounds/README.md`) and listen to each.
+    - Restart the bridge.
+    - With two phones and `MAX_CONCURRENT_CALLS=1` set briefly, call twice. Confirm the second caller hears the hold message and is answered when the first hangs up, then set the limit back to 30.
 
 ## 15. Known limitations and residual risks
 
 - A single VPS: total loss of it means downtime until a restore elsewhere.
-- Spitch capacity limits how many calls can be answered at once.
+- Spitch capacity limits how many calls can be answered at once. Callers beyond the limit now wait (up to 3 minutes), then get a callback; they are no longer turned away.
 - An ElevenLabs takeover starts a fresh conversation: no mid-call context transfer.
 - Speech is not streamed: about 0.6–1.1 s per sentence.
 - The model can still miss script steps; the code guards cover confirmations, not every behaviour.

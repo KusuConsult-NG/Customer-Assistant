@@ -38,7 +38,7 @@ They are ordered strictly by **urgency**.
 - **Where:** AlphaTech NOC / Account Manager.
 - **What to do:**
   1. Share the Hop 9 (`197.253.11.119`) UDP packet-loss report and request peering/routing remediation to `<1%` loss.
-  2. Request written confirmation that toll-free trunk `+2348000000456` supports **≥30 simultaneous inbound channels**.
+  2. Request written confirmation that toll-free trunk `+2348000000456` supports **≥30 simultaneous inbound channels**. (The owner reports 100 on 28 Nov 2026. The waiting room uses up to 90: 30 answered + 60 waiting. If the written figure is lower, lower `QUEUE_MAX_CALLS` in `bridge.env` so the two add up to less than it.)
   3. Ask whether AlphaTech supports a **secondary SIP failover IP** (for Standby VPS #2).
 - **What succeeds once done:** Eliminates carrier-induced word clipping and confirms telephony capacity for 30 concurrent callers.
 

@@ -25,7 +25,52 @@ export const ALERTS = {
   backupMaxAgeHours: 26,
   /** Free space on the data volume below this is an alert. */
   diskMinFreePercent: 15,
+  /** Callers in the last hour who waited the whole limit (or found the waiting room full) before this is critical; one is a warning. */
+  queueUnansweredPerHour: 5,
 };
+
+/** The waiting room in numbers: who waited, for how long, and who could not be answered. */
+export interface QueueSummary {
+  /** Callers in the waiting room now: joined in the last 10 minutes, not yet out. */
+  waitingNow: number;
+  joined24h: number;
+  admitted24h: number;
+  abandoned24h: number;
+  /** Waited the whole limit. */
+  timedOut24h: number;
+  /** The waiting room itself was full. */
+  full24h: number;
+  callbacks24h: number;
+  /** Timed out or found it full, in the last hour. */
+  unansweredLastHour: number;
+  longestWaitSeconds24h: number | null;
+  averageWaitSeconds24h: number | null;
+}
+
+/** Pure: from the last 24 h of voice_queue events (any order). */
+export function summarizeQueue(events: Array<{ status: string; createdAt: Date; detail: any }>, now: Date): QueueSummary {
+  const hourAgo = now.getTime() - 3600_000;
+  const tenAgo = now.getTime() - 10 * 60_000;
+  const count = (st: string) => events.filter((e) => e.status === st).length;
+  const exits = new Set(['admitted', 'abandoned', 'timeout']);
+  const left = new Set(events.filter((e) => exits.has(e.status)).map((e) => e.detail?.ticket).filter((t) => t !== undefined));
+  const waitingNow = events.filter((e) => e.status === 'joined' && e.createdAt.getTime() >= tenAgo && e.detail?.ticket !== undefined && !left.has(e.detail.ticket)).length;
+  const waits = events
+    .filter((e) => exits.has(e.status) && Number.isFinite(Number(e.detail?.waitSeconds)))
+    .map((e) => Number(e.detail.waitSeconds));
+  return {
+    waitingNow,
+    joined24h: count('joined'),
+    admitted24h: count('admitted'),
+    abandoned24h: count('abandoned'),
+    timedOut24h: count('timeout'),
+    full24h: count('full'),
+    callbacks24h: count('callback'),
+    unansweredLastHour: events.filter((e) => (e.status === 'timeout' || e.status === 'full') && e.createdAt.getTime() >= hourAgo).length,
+    longestWaitSeconds24h: waits.length ? Math.max(...waits) : null,
+    averageWaitSeconds24h: waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null,
+  };
+}
 
 export interface HealthSnapshot {
   now: Date;
@@ -33,6 +78,7 @@ export interface HealthSnapshot {
   providers: ProviderCheck[];
   voice: { enabled: boolean; ready: boolean; missing: string[]; spitchCircuitOpen: boolean };
   phone: { callsToday: number; failoversLastHour: number; failovers24h: Array<{ reason: string; count: number }>; lastFailover: { at: Date; reason: string } | null };
+  queue: QueueSummary;
   backup: { last: { at: Date; status: string; detail: any } | null };
   disk: { freePercent: number; freeGb: number } | null;
 }
@@ -73,6 +119,16 @@ export function alertsFor(s: HealthSnapshot): Alert[] {
   if (s.phone.failoversLastHour >= ALERTS.failoversPerHour) {
     const top = s.phone.failovers24h[0];
     out.push({ id: 'failovers', severity: 'critical', title: `${s.phone.failoversLastHour} calls went to the backup line in the last hour`, detail: top ? `Most common reason today: ${top.reason} (${top.count}).` : '' });
+  }
+
+  if (s.queue.unansweredLastHour > 0) {
+    const n = s.queue.unansweredLastHour;
+    out.push({
+      id: 'queue-unanswered',
+      severity: n >= ALERTS.queueUnansweredPerHour ? 'critical' : 'warning',
+      title: `${n} caller${n === 1 ? '' : 's'} could not be answered in the last hour`,
+      detail: 'Every line stayed busy for their whole wait, or the waiting room was full. They were offered a callback: see Callbacks. More lines (MAX_CONCURRENT_CALLS, within the carrier and Spitch limits) would answer them.',
+    });
   }
 
   if (!s.backup.last) {
@@ -120,7 +176,7 @@ export class MonitoringService {
     const startOfDay = new Date(now);
     startOfDay.setUTCHours(0, 0, 0, 0);
 
-    const [lastExternal, checks24h, failed24h, failoversLastHour, failoverGroups, lastFailover, lastBackup, callsToday, providerReport] = await Promise.all([
+    const [lastExternal, checks24h, failed24h, failoversLastHour, failoverGroups, lastFailover, lastBackup, callsToday, providerReport, queueEvents] = await Promise.all([
       prisma.systemEvent.findFirst({ where: { kind: 'external_check' }, orderBy: { createdAt: 'desc' } }),
       prisma.systemEvent.count({ where: { kind: 'external_check', createdAt: { gte: dayAgo } } }),
       prisma.systemEvent.count({ where: { kind: 'external_check', createdAt: { gte: dayAgo }, NOT: { status: 'ok' } } }),
@@ -130,6 +186,7 @@ export class MonitoringService {
       prisma.systemEvent.findFirst({ where: { kind: 'backup' }, orderBy: { createdAt: 'desc' } }),
       prisma.callLog.count({ where: { organizationId, startedAt: { gte: startOfDay } } }),
       this.providers.check(organizationId),
+      prisma.systemEvent.findMany({ where: { kind: 'voice_queue', createdAt: { gte: dayAgo } }, select: { status: true, createdAt: true, detail: true }, orderBy: { createdAt: 'desc' }, take: 20_000 }),
     ]);
     const r = this.voice.readiness();
     return {
@@ -143,6 +200,7 @@ export class MonitoringService {
         failovers24h: failoverGroups.map((g: any) => ({ reason: g.status, count: g._count._all })).sort((a: any, b: any) => b.count - a.count),
         lastFailover: lastFailover ? { at: lastFailover.createdAt, reason: String((lastFailover.detail as any)?.reason ?? lastFailover.status) } : null,
       },
+      queue: summarizeQueue(queueEvents, now),
       backup: { last: lastBackup ? { at: lastBackup.createdAt, status: lastBackup.status, detail: lastBackup.detail } : null },
       disk: diskFree(storageRoot()),
     };

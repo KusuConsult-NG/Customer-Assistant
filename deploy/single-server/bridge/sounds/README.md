@@ -7,3 +7,19 @@ A file here, e.g. `governor-welcome.wav`, is played by setting in
 
 (the full path, without the extension). Empty: nothing is played before the
 assistant answers.
+
+## The waiting room (every line busy)
+
+`queue-hold`, `queue-still`, `queue-callback`, `queue-later` and `queue-tone`
+are what a caller hears while waiting for a free line (the dialplan's
+`[queue]`). They are spoken by the line's own assistant voice and made on the
+server, where the voice key is (see `apps/api/src/voice-local/queue-sounds.ts`):
+
+    cd /opt/customer-assistant/deploy/single-server
+    for s in hold still callback later tone; do
+      docker compose exec -T api node apps/api/dist/voice-local/queue-sounds.js $s > bridge/sounds/queue-$s.wav
+    done
+
+Until they exist, Asterisk's own English prompts are played instead
+(`pls-hold-while-try`, `queue-periodic-announce`, `queue-thankyou`), so the
+waiting room works without them. They are not kept in git.

@@ -31,4 +31,27 @@ export class LocalVoiceController {
     if (!this.voice.secretMatches(secret)) throw new ForbiddenException('fallback bad-secret');
     return this.voice.outcomeOf(uuid);
   }
+
+  /** The waiting room reports each step (joined, admitted, abandoned, timeout, full). Always `ok`. */
+  @Post('queue-event')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/plain')
+  async queueEvent(@Body() body: { secret?: string; event?: string; ticket?: string; wait?: string; waiting?: string }): Promise<string> {
+    if (!this.voice.secretMatches(body?.secret)) throw new ForbiddenException('bad-secret');
+    return this.voice.queueEvent(body ?? {});
+  }
+
+  /**
+   * A caller who could not be answered within the waiting room's limit:
+   * `ok <reference>` once a callback request is in the agency's queue, or
+   * `none <reason>` (withheld number, unknown dialled number) so the caller is
+   * asked to call again instead of being promised a call that cannot happen.
+   */
+  @Post('queue-callback')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/plain')
+  async queueCallback(@Body() body: { secret?: string; from?: string; to?: string }): Promise<string> {
+    if (!this.voice.secretMatches(body?.secret)) throw new ForbiddenException('none bad-secret');
+    return this.voice.queueCallback(body?.from ?? '', body?.to ?? '');
+  }
 }

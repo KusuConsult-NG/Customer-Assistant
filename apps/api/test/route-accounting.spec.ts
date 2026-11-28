@@ -186,6 +186,8 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   // register before AudioSocket, read the outcome after it.
   { method: 'POST', path: '/api/voice-local/register', calledBy: 'Asterisk dialplan CURL (same server)' },
   { method: 'GET', path: '/api/voice-local/outcome/:uuid', calledBy: 'Asterisk dialplan CURL (same server)' },
+  { method: 'POST', path: '/api/voice-local/queue-event', calledBy: 'Asterisk dialplan CURL (same server): the waiting room' },
+  { method: 'POST', path: '/api/voice-local/queue-callback', calledBy: 'Asterisk dialplan CURL (same server): the waiting room' },
 
   // ── Signed file links ──────────────────────────────────────────────────
   //

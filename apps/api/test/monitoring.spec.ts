@@ -12,7 +12,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '@ace/database';
 import { createTestApp } from './support/create-test-app';
 import { createTenant, dropTenant, type TestTenant } from './support/tenant';
-import { alertsFor, ALERTS, diskFree, type HealthSnapshot } from '../src/monitoring/monitoring.service';
+import { alertsFor, ALERTS, diskFree, summarizeQueue, type HealthSnapshot } from '../src/monitoring/monitoring.service';
 import { failoverReason, recordSystemEvent } from '../src/monitoring/system-events';
 import { monitorTokenMatches } from '../src/monitoring/monitoring.controller';
 import { clearProviderCheckCache, modelRefusal, ProviderHealthService } from '../src/diagnostics/provider-health.service';
@@ -25,6 +25,7 @@ const healthy = (): HealthSnapshot => ({
   providers: [{ id: 'openai', label: 'Answer synthesis (OpenAI)', state: 'ok', detail: 'ok', consequence: '' }],
   voice: { enabled: true, ready: true, missing: [], spitchCircuitOpen: false },
   phone: { callsToday: 12, failoversLastHour: 0, failovers24h: [], lastFailover: null },
+  queue: summarizeQueue([], NOW),
   backup: { last: { at: minsAgo(8 * 60), status: 'ok', detail: { offsite: true } } },
   disk: { freePercent: 60, freeGb: 120 },
 });
@@ -51,6 +52,45 @@ describe('alerts on the System Health page', () => {
     const phone = (n: number) => ({ ...healthy(), phone: { ...healthy().phone, failoversLastHour: n, failovers24h: [{ reason: 'openai_no_credit', count: n }] } });
     expect(ids(phone(ALERTS.failoversPerHour - 1))).toEqual([]);
     expect(alertsFor(phone(ALERTS.failoversPerHour))[0]).toMatchObject({ id: 'failovers', detail: `Most common reason today: openai_no_credit (${ALERTS.failoversPerHour}).` });
+  });
+
+  it('the waiting room: a caller not answered in time is a warning, several in an hour critical', () => {
+    const q = (n: number) => ({ ...healthy(), queue: { ...healthy().queue, unansweredLastHour: n } });
+    expect(ids(q(0))).toEqual([]);
+    expect(alertsFor(q(1))[0]).toMatchObject({ id: 'queue-unanswered', severity: 'warning', title: '1 caller could not be answered in the last hour' });
+    expect(alertsFor(q(ALERTS.queueUnansweredPerHour - 1))[0].severity).toBe('warning');
+    expect(alertsFor(q(ALERTS.queueUnansweredPerHour))[0]).toMatchObject({ severity: 'critical', title: `${ALERTS.queueUnansweredPerHour} callers could not be answered in the last hour` });
+  });
+
+  it('counts the waiting room: who is waiting now, waits, timeouts, the room full, callbacks', () => {
+    const e = (status: string, m: number, detail: any = {}) => ({ status, createdAt: minsAgo(m), detail });
+    const q = summarizeQueue(
+      [
+        e('joined', 300, { ticket: 1 }), e('admitted', 299, { ticket: 1, waitSeconds: 40 }),
+        e('joined', 200, { ticket: 2 }), e('abandoned', 199, { ticket: 2, waitSeconds: 20 }),
+        e('joined', 90, { ticket: 3 }), e('timeout', 87, { ticket: 3, waitSeconds: 180 }), e('callback', 87),
+        e('joined', 30, { ticket: 4 }), e('timeout', 27, { ticket: 4, waitSeconds: 180 }), e('callback', 27),
+        e('full', 20), e('callback', 20),
+        e('joined', 2, { ticket: 5 }), // still waiting
+        e('joined', 1, { ticket: 6 }), // still waiting
+        e('joined', 4, { ticket: 7 }), e('admitted', 3, { ticket: 7, waitSeconds: 60 }),
+        e('joined', 15, { ticket: 8 }), // joined long ago with no exit seen (Asterisk restarted): not "waiting now"
+      ],
+      NOW,
+    );
+    expect(q).toEqual({
+      waitingNow: 2,
+      joined24h: 8,
+      admitted24h: 2,
+      abandoned24h: 1,
+      timedOut24h: 2,
+      full24h: 1,
+      callbacks24h: 3,
+      unansweredLastHour: 2, // ticket 4's timeout and the full room; ticket 3 was 87 min ago
+      longestWaitSeconds24h: 180,
+      averageWaitSeconds24h: 96, // (40 + 20 + 180 + 180 + 60) / 5
+    });
+    expect(summarizeQueue([], NOW)).toMatchObject({ waitingNow: 0, longestWaitSeconds24h: null, averageWaitSeconds24h: null });
   });
 
   it('providers: the voice, model and recognition are critical; email is a warning', () => {

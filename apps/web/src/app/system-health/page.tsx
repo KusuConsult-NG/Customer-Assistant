@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { API_URL, apiFetch } from '@/lib/api';
 import { RoleNotice } from '@/components/RoleNotice';
-import { Activity, AlertTriangle, CheckCircle, HardDrive, PhoneCall, RefreshCw, Server, ShieldAlert, Archive } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, HardDrive, PhoneCall, RefreshCw, Server, ShieldAlert, Archive, Users } from 'lucide-react';
 
 /** `GET /api/monitoring/status` — see MonitoringService. */
 interface HealthStatus {
@@ -14,6 +14,10 @@ interface HealthStatus {
   providers: Array<{ id: string; label: string; state: 'ok' | 'failed' | 'not_configured'; detail: string; consequence: string }>;
   voice: { enabled: boolean; ready: boolean; missing: string[]; spitchCircuitOpen: boolean };
   phone: { callsToday: number; failoversLastHour: number; failovers24h: Array<{ reason: string; count: number }>; lastFailover: { at: string; reason: string } | null };
+  queue: {
+    waitingNow: number; joined24h: number; admitted24h: number; abandoned24h: number; timedOut24h: number; full24h: number;
+    callbacks24h: number; unansweredLastHour: number; longestWaitSeconds24h: number | null; averageWaitSeconds24h: number | null;
+  };
   backup: { last: { at: string; status: string; detail: any } | null };
   disk: { freePercent: number; freeGb: number } | null;
 }
@@ -25,6 +29,8 @@ const ago = (iso: string) => {
   const h = Math.round(m / 60);
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 };
+
+const secs = (n: number | null) => (n === null ? '—' : n < 60 ? `${n} s` : `${Math.floor(n / 60)} min ${n % 60} s`);
 
 const REASONS: Record<string, string> = {
   openai_no_credit: 'OpenAI account out of credit',
@@ -170,6 +176,22 @@ export default function SystemHealthPage() {
                 </div>
               )}
               {status.phone.lastFailover && <p className="text-xs text-slate-500">Last: {ago(status.phone.lastFailover.at)} — {status.phone.lastFailover.reason}</p>}
+            </Card>
+
+            <Card icon={<Users className="w-4 h-4" />} title="Waiting room (every line busy)">
+              {status.queue ? (
+                <>
+                  <Row label="Waiting now" value={status.queue.waitingNow} />
+                  <Row label="Callers who had to wait (24 h)" value={status.queue.joined24h} />
+                  <Row label="Answered after waiting" value={status.queue.admitted24h} />
+                  <Row label="Hung up while waiting" value={status.queue.abandoned24h} bad={status.queue.abandoned24h > 0} />
+                  <Row label="Not answered in time, or room full" value={status.queue.timedOut24h + status.queue.full24h} bad={status.queue.timedOut24h + status.queue.full24h > 0} />
+                  <Row label="Callbacks booked for them" value={status.queue.callbacks24h} />
+                  <Row label="Longest wait / average" value={`${secs(status.queue.longestWaitSeconds24h)} / ${secs(status.queue.averageWaitSeconds24h)}`} />
+                </>
+              ) : (
+                <p>Not reported by this server version.</p>
+              )}
             </Card>
 
             <Card icon={<Archive className="w-4 h-4" />} title="Backups">
