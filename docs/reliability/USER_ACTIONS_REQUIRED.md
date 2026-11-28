@@ -65,3 +65,11 @@ They are ordered strictly by **urgency**.
 ## Action 7 — MEDIUM (Governance): NDPA Data Protection Officer (DPO) Sign-Off
 - **Why:** Citizen records and recordings stay in Nigeria (MTN Cloud), but live AI inference traverses **Deepgram (US/EU)**, **OpenAI (US)**, **Meta WhatsApp (Global/US)**, and **ElevenLabs backup (US/EU)**.
 - **What to do:** Have the Ministry's DPO review `docs/reliability/SECURITY_AND_PRIVACY_AUDIT.md`, approve the cross-border processing basis/DPAs under NDPA 2023, confirm zero-data-retention / no-training toggles in Deepgram, OpenAI, and ElevenLabs consoles, and approve a recording retention window (e.g., 90 or 180 days).
+
+---
+
+## Action 8 — CRITICAL (Calls fail over without it): OpenAI Account Limits and Budget for the Phone Line
+- **Why:** The local phone line sends the call script with every reply, about 10,000–12,000 tokens. On 28 Nov 2026, an account with no credit, and then an account capped at 10,000 tokens per minute, made every model request fail. Calls went to the fallback line, with HTTP 429 errors in `voice_local_call_ended`.
+- **What to do:** In `https://platform.openai.com/settings/organization/limits`, confirm that the gpt-4o / gpt-4.1 tokens-per-minute limit covers the simultaneous calls expected (about 75,000 per busy call). Turn on auto-recharge, or a low-balance alert, under Billing. Then choose the model with `docs/reliability/PHONE_LINE_SIGN_OFF.md` §2.2.
+- **What succeeds once done:** Calls are answered by the agent, with no `failed_over`, and the conversation check completes.
+

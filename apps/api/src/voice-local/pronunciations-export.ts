@@ -11,7 +11,7 @@
 import { pronunciationDictionaryLocatorsFromEnv } from '../agent-tools/agent-tool-catalog';
 
 /** The State dictionary's latest version, as agent-tool-catalog resolves the legacy ids. */
-const PLATEAU_DICTIONARY = { pronunciationDictionaryId: '6Q0cOBoB6nXMLg2GHMEc', versionId: '9M5dKT0qPOVE0fGUie3h' };
+export const PLATEAU_DICTIONARY = { pronunciationDictionaryId: '6Q0cOBoB6nXMLg2GHMEc', versionId: '9M5dKT0qPOVE0fGUie3h' };
 
 export interface DictionaryRule {
   words: string[];

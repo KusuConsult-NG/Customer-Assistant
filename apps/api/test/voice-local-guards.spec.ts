@@ -12,8 +12,11 @@ import {
   knowledgeGuidance,
   lgaNamed,
   readBackGuard,
+  spellingPatienceMs,
+  stillSpelling,
   VoiceSession,
 } from '../src/voice-local/voice-session';
+import { reviewItems, renderReview, KNOWN_TROUBLE } from '../src/voice-local/pronunciation-review';
 import { callSystemPrompt, scriptForCaller } from '../src/voice-local/call-setup';
 import { PLATEAU_LGAS } from '@ace/database';
 
@@ -58,13 +61,14 @@ async function session(
   );
   await s.start();
   await new Promise((r) => setTimeout(r, 300));
+  const heardBy = () => stt;
   const say = async (line: string) => {
     stt.onFinal(line, true);
     await new Promise((r) => setTimeout(r, 60));
     const until = Date.now() + 5_000;
     while (Date.now() < until && s.busy) await new Promise((r) => setTimeout(r, 20));
   };
-  return { s, say, tools, logs, messages: () => (s as any).messages as ChatMessage[], modelCalls: () => modelCalls };
+  return { s, say, stt: heardBy, tools, logs, messages: () => (s as any).messages as ChatMessage[], modelCalls: () => modelCalls };
 }
 
 const last = (m: ChatMessage[]) => m[m.length - 1];
@@ -100,6 +104,23 @@ describe('helpers', () => {
     expect(held.note).toMatch(/NOT saved.*0 8 0 3 1 2 3 4 5 6 7/);
     const kept = readBackGuard('update-caller-profile', { alternativePhone: '08031234567', alternativePhoneConfirmed: true }, 'Let me read that back: 0803 123 4567. Is that correct?', 'Yes, that is correct.');
     expect(kept.args.alternativePhoneConfirmed).toBe(true);
+  });
+
+  it('a location is marked confirmed only after it was read back and not refused (both cheaper models saved it with the read-back)', () => {
+    const loc = { community: 'Rantya', ward: 'Rantya', lga: 'Jos North', locationConfirmed: true };
+    const early = readBackGuard('update-caller-profile', loc, 'Are you still calling from Kabong, Jos South?', "No. I'm now calling from Rantya, Rantya ward, still in Jos North.");
+    expect(early.args).toEqual({ community: 'Rantya', ward: 'Rantya', lga: 'Jos North' }); // the flag goes; the tool then asks for the read-back
+    expect(early.note).toMatch(/NOT marked confirmed/);
+    const readBack = readBackGuard('update-caller-profile', loc, 'So you are now in Rantya, Rantya ward, Jos North. Is that correct?', "Yes, that's correct.");
+    expect(readBack.args).toEqual(loc);
+    expect(readBack.note).toBeUndefined();
+    expect(readBackGuard('update-caller-profile', loc, 'So you are in Rantya, Rantya ward, Jos North?', 'No, Gyel B.').args.locationConfirmed).toBeUndefined();
+  });
+
+  it('a number is never saved unconfirmed, and never one the caller did not hear', () => {
+    const g = readBackGuard('update-caller-profile', { lga: 'Jos South', alternativePhone: '08012345678' }, 'Which LGA?', 'Jos South.');
+    expect(g.args).toEqual({ lga: 'Jos South' });
+    expect(g.note).toMatch(/NOT saved.*0 8 0 1 2 3 4 5 6 7 8/);
   });
 
   it('a knowledge answer comes with how to speak it: three at a time, or no answer and a callback offer', () => {
@@ -225,7 +246,130 @@ describe('the script sent per call', () => {
     expect(scriptForCaller('a\n- WHEN WE CALLED THEM x\nb', undefined)).toBe('a\nb');
   });
 
+  it('never asks what the caller already said', () => {
+    expect(prompt('new')).toMatch(/Never ask a question the caller has already answered in this call/);
+  });
+
   it('asks for the spoken reply in the same response as a save', () => {
     expect(prompt('new')).toMatch(/write your spoken reply \(your thanks and your next question\) in the SAME response as the save, never a save on its own/);
+  });
+});
+
+describe('spelling patience: a number read out in groups is one answer', () => {
+  it('knows when the caller is part-way through a number or a spelling', () => {
+    const asked = 'Could you please give me a telephone number we can reach you on?';
+    expect(stillSpelling('It is 0803 123', asked)).toBe(true);
+    expect(stillSpelling('zero eight zero three', asked)).toBe(true);
+    expect(stillSpelling('It is 0803 123 4567', asked)).toBe(false); // a whole number
+    expect(stillSpelling('Yes, use that one.', asked)).toBe(false); // words, not a number
+    expect(stillSpelling('R A N', 'Could you spell your community for me?')).toBe(true);
+    expect(stillSpelling('0803 123', 'How may I help you today?')).toBe(false); // not asked for one
+  });
+
+  it('reads LOCAL_VOICE_SPELLING_PATIENCE_MS, 0 to switch it off', () => {
+    const saved = process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS;
+    try {
+      delete process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS;
+      expect(spellingPatienceMs()).toBe(2_000);
+      process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS = '0';
+      expect(spellingPatienceMs()).toBe(0);
+      process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS = '9000';
+      expect(spellingPatienceMs()).toBe(2_000);
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS;
+      else process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS = saved;
+    }
+  });
+
+  const asksForNumber = (m: ChatMessage[]) => {
+    const u = lastUser(m);
+    if (/report/.test(u)) return [{ type: 'text' as const, delta: 'Could you please give me a telephone number we can reach you on?' }];
+    return [{ type: 'text' as const, delta: 'Thank you. Let me read that back.' }];
+  };
+
+  it('waits through a pause between groups, and answers the whole number', async () => {
+    const t = await session(asksForNumber);
+    await t.say('I want to report a broken road.');
+    const before = t.modelCalls();
+    t.stt().onInterim('it is 0803 123');
+    t.stt().onFinal('It is 0803 123', true);
+    await new Promise((r) => setTimeout(r, 800)); // the caller pauses mid-number
+    expect(t.modelCalls()).toBe(before); // not taken as the end
+    t.stt().onInterim('4567');
+    t.stt().onFinal('4567.', true); // now a whole number: answered at once
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.modelCalls()).toBe(before + 1);
+    expect(lastUser(t.messages())).toBe('It is 0803 123 4567.');
+    await t.s.finish('completed');
+  });
+
+  it('a part-number the caller stops at is answered after the patience wait, not lost', async () => {
+    const t = await session(asksForNumber);
+    await t.say('I want to report a broken road.');
+    const before = t.modelCalls();
+    const at = Date.now();
+    t.stt().onFinal('It is 0803 123', true);
+    while (Date.now() - at < 4_000 && t.modelCalls() === before) await new Promise((r) => setTimeout(r, 20));
+    expect(t.modelCalls()).toBe(before + 1);
+    expect(Date.now() - at).toBeGreaterThanOrEqual(1_800);
+    expect(t.logs).toContain('voice_local_spelling_patience');
+    await t.s.finish('completed');
+  });
+
+  it('the wait restarts when the caller carries on: two seconds after their LAST group, not their first', async () => {
+    const t = await session(asksForNumber);
+    await t.say('I want to report a broken road.');
+    const before = t.modelCalls();
+    const at = Date.now();
+    t.stt().onFinal('0803', true);
+    await new Promise((r) => setTimeout(r, 1_500));
+    // More words, with no end-of-turn signal from recognition yet: the wait must still restart.
+    t.stt().onInterim('123');
+    t.stt().onFinal('123', false);
+    while (Date.now() - at < 6_000 && t.modelCalls() === before) await new Promise((r) => setTimeout(r, 20));
+    expect(Date.now() - at).toBeGreaterThanOrEqual(3_300);
+    expect(lastUser(t.messages())).toBe('0803 123');
+    await t.s.finish('completed');
+  });
+
+  it('no patience when no number was asked for: the turn ends as usual', async () => {
+    const t = await session((m) => [{ type: 'text', delta: /report/.test(lastUser(m)) ? 'How may I help you today?' : 'Okay.' }]);
+    await t.say('I want to report a broken road.');
+    const before = t.modelCalls();
+    t.stt().onFinal('0803 123', true);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.modelCalls()).toBe(before + 1);
+    await t.s.finish('completed');
+  });
+});
+
+describe('pronunciation review: the old dictionary, heard in the line\'s own voice', () => {
+  it('lists every dictionary word and the known trouble words, without those already respelled', () => {
+    const items = reviewItems(
+      [
+        { words: ['Mutfwang'], alias: 'Moot-fwang' },
+        { words: ['Nanpan'], phoneme: 'nanpan', alphabet: 'ipa' },
+        { words: ['Plateau'], alias: 'Plah-toh' },
+      ],
+      [{ written: 'Plateau' }],
+    );
+    expect(items.map((i) => i.word)).toEqual(['Mutfwang', 'Nanpan', ...KNOWN_TROUBLE.map((k) => k.word)]);
+    expect(items[0]).toMatchObject({ spellings: ['Moot-fwang'], oldRule: 'said "Moot-fwang"' });
+    expect(items[1]).toMatchObject({ spellings: [], oldRule: 'ipa /nanpan/' }); // heard as written; the listener says if it is wrong
+    expect(items.find((i) => i.word === 'ward')!.sentence).toContain('{word} and community');
+  });
+
+  it('renders each take in each voice, numbered so a choice can be given back, and keeps going past a failure', async () => {
+    const said: string[] = [];
+    const engine = { name: 'spitch', synthesize: async (t: string) => { said.push(t); if (/wod/.test(t)) throw new Error('refused'); return Buffer.alloc(320); } } as any;
+    const review = await renderReview(reviewItems([], []), [{ name: 'lucy', engine }], {
+      upload: async (name) => name,
+      link: async (p) => `https://x.test/${p}`,
+    });
+    expect(review[0].word).toBe('ward');
+    expect(review[0].takes.map((t) => t.id)).toEqual(['1a', '1b', '1c', '1d']);
+    expect(said[0]).toBe('Could you also tell me your ward and community?');
+    expect(review[0].takes[3]).toMatchObject({ label: 'spelled: wod', failed: 'refused' });
+    expect(review[0].takes[1].link).toMatch(/^https:\/\/x\.test\//);
   });
 });

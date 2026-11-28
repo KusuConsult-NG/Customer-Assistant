@@ -250,6 +250,9 @@ export class VoiceSession {
   /** The caller carried on speaking before the reply was heard: the next words join the same turn. */
   private continuing = false;
   private continuationTimer: NodeJS.Timeout | null = null;
+  /** Holding a turn while the caller reads out digits or spells (turnEnded). */
+  private patienceTimer: NodeJS.Timeout | null = null;
+  private patienceSince = 0;
   /**
    * The opening's QUESTION (its last sentence) starts playing at this frame.
    * Until then the caller has not been asked anything: what they say is a
@@ -288,10 +291,7 @@ export class VoiceSession {
       this.stt = await this.deps.stt({
         onInterim: (text) => this.onInterim(text),
         onFinal: (text, end, silenceMs) => this.onFinal(text, end, silenceMs),
-        onUtteranceEnd: (silenceMs) => {
-          this.endSignal = { by: 'utterance_end', silenceMs };
-          this.commitTurn();
-        },
+        onUtteranceEnd: (silenceMs) => this.turnEnded({ by: 'utterance_end', silenceMs }),
         onError: (err) => this.fail(`speech recognition: ${err.message}`),
       });
     } catch (err: any) {
@@ -410,10 +410,42 @@ export class VoiceSession {
       this.lastCallerSpeech = this.now();
       this.lastActivity = this.now();
     }
-    if (endOfTurn) {
-      this.endSignal = { by: 'speech_final', silenceMs };
-      this.commitTurn();
+    if (endOfTurn) this.turnEnded({ by: 'speech_final', silenceMs });
+  }
+
+  /**
+   * Recognition says the caller has finished. While they are reading out a
+   * number or spelling a name, a short pause between groups ("0803 … 123 …")
+   * is not the end (the ElevenLabs line had spellingPatience for this): the
+   * turn is held until they have been quiet for spellingPatienceMs().
+   */
+  private turnEnded(signal: { by: 'speech_final' | 'utterance_end'; silenceMs?: number }): void {
+    this.endSignal = signal;
+    const heard = this.heard.join(' ');
+    const wait = spellingPatienceMs();
+    if (wait > 0 && !this.inGreeting() && stillSpelling(heard, lastAgentWords(this.messages))) {
+      const quietFor = this.now() - this.lastCallerSpeech;
+      if (this.patienceTimer) clearTimeout(this.patienceTimer);
+      if (!this.patienceSince) this.patienceSince = this.now();
+      this.patienceTimer = setTimeout(() => {
+        this.patienceTimer = null;
+        if (this.outcome || !this.heard.length) return;
+        // More words came while waiting: wait for the quiet after them.
+        if (this.now() - this.lastCallerSpeech < wait - 20) return this.turnEnded(signal);
+        this.deps.log('voice_local_spelling_patience', { waited_ms: this.now() - this.patienceSince, digits: digitsSpoken(this.heard.join(' ')).length });
+        this.patienceSince = 0;
+        this.endSignal = signal;
+        this.commitTurn();
+      }, Math.max(0, wait - quietFor));
+      this.patienceTimer.unref?.();
+      return;
     }
+    if (this.patienceTimer) {
+      clearTimeout(this.patienceTimer);
+      this.patienceTimer = null;
+      this.patienceSince = 0;
+    }
+    this.commitTurn();
   }
 
   private commitTurn(): void {
@@ -1024,6 +1056,7 @@ export class VoiceSession {
       this.clearPrebuffer();
       if (this.ackTimer) clearTimeout(this.ackTimer);
       if (this.continuationTimer) clearTimeout(this.continuationTimer);
+      if (this.patienceTimer) clearTimeout(this.patienceTimer);
       if (this.pump) clearTimeout(this.pump);
       if (this.watchdog) clearInterval(this.watchdog);
       this.playQueue = [];
@@ -1210,6 +1243,43 @@ export function lastCallerWords(messages: ChatMessage[]): string {
  * emergency still happening (isOngoing) is never held for a summary, so it is
  * never refused here.
  */
+/**
+ * How long the caller must be quiet before a number or a spelling counts as
+ * finished, from LOCAL_VOICE_SPELLING_PATIENCE_MS (0 turns it off, at most
+ * 5000), else 2000 ms. A normal turn ends after recognition's ~0.4 s.
+ */
+export function spellingPatienceMs(): number {
+  const raw = process.env.LOCAL_VOICE_SPELLING_PATIENCE_MS?.trim();
+  if (!raw) return 2_000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= 5_000 ? Math.round(n) : 2_000;
+}
+
+/** The agent's most recent spoken words in the history. */
+export function lastAgentWords(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) return m.content;
+  }
+  return '';
+}
+
+/**
+ * The caller is part-way through a number or a spelling: the agent asked for
+ * one, and what they said so far is a group of digits or more but short of
+ * a whole Nigerian number (11), or ends in single letters ("R A N T"). A complete number, or
+ * words ("Use this number"), end the turn as usual.
+ */
+export function stillSpelling(heard: string, agentAsked: string): boolean {
+  if (!/\b(spell|phone number|telephone number|number (we|i) can|reach you on|digit|number to call)\b/i.test(agentAsked)) return false;
+  const digits = digitsSpoken(heard).length;
+  if (digits >= 11) return false;
+  // At least a group ("0803"): a stray "one" ("Use that one") is not a number being read out.
+  if (digits >= 3) return true;
+  const words = heard.trim().split(/[\s,.-]+/).filter(Boolean);
+  return words.length >= 2 && words.slice(-2).every((w) => /^[a-z]$/i.test(w));
+}
+
 const DIGIT_WORDS: Record<string, string> = { zero: '0', oh: '0', o: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
 
 /** The digits a sentence says, written or as words ("0803, one two three" → "0803123"). */
@@ -1257,19 +1327,42 @@ export function readBackGuard(
       note: 'Not booked yet: the caller has not heard the number read back. Read it back digit by digit as this result gives it, wait for a clear yes, then call request-callback again with numberConfirmed=true.',
     };
   }
+  let out = args;
+  const notes: string[] = [];
+  // A location marked confirmed must have been read back: the reply the
+  // caller answered names the community or ward being saved (conversation
+  // check, 28 Nov 2026: gpt-4.1 and gpt-4.1-mini saved it in the same breath
+  // as the read-back). Without the flag the tool saves a first location and
+  // asks for a read-back of a changed one.
+  if (tool === 'update-caller-profile' && yes(args.locationConfirmed)) {
+    const said = agentSaid.toLowerCase();
+    const named = [args.community, args.ward].filter((v) => typeof v === 'string' && v.trim()).some((v: string) => said.includes(v.trim().toLowerCase()));
+    if (!named || saidNo) {
+      const { locationConfirmed: _l, ...rest } = out;
+      out = rest;
+      notes.push('The location was NOT marked confirmed: read the whole location (community, ward and LGA) back to the caller, wait for a clear yes, then save it with locationConfirmed=true.');
+    }
+  }
+  // A number for a hidden caller is saved only once read back and confirmed,
+  // never on its own (gpt-4.1-mini saved one the caller had not given).
+  if (tool === 'update-caller-profile' && out.alternativePhone && !yes(out.alternativePhoneConfirmed)) {
+    const { alternativePhone: p, alternativePhoneConfirmed: _c, ...rest } = out;
+    out = rest;
+    const digits = String(p).replace(/\D/g, '').split('').join(' ');
+    notes.push(`The number was NOT saved: read it back digit by digit ("${digits}"), ask if it is correct, and only after a clear yes save it with alternativePhoneConfirmed=true.`);
+  }
+  if (notes.length) args = out;
   if (tool === 'update-caller-profile' && yes(args.alternativePhoneConfirmed)) {
     const number = String(args.alternativePhone ?? '').replace(/\D/g, '');
     const last7 = number.slice(-7);
     if (!last7 || !spoken.includes(last7) || saidNo) {
       const { alternativePhone: _p, alternativePhoneConfirmed: _c, ...rest } = args;
       const digits = number.split('').join(' ');
-      return {
-        args: rest,
-        note: `The number was NOT saved: the caller has not heard it read back. Read it back digit by digit ("${digits}"), ask if it is correct, and only after a clear yes save it with alternativePhoneConfirmed=true.`,
-      };
+      notes.push(`The number was NOT saved: the caller has not heard it read back. Read it back digit by digit ("${digits}"), ask if it is correct, and only after a clear yes save it with alternativePhoneConfirmed=true.`);
+      return { args: rest, note: notes.join(' ') };
     }
   }
-  return { args };
+  return notes.length ? { args, note: notes.join(' ') } : { args };
 }
 
 /** What the model is told with every knowledge answer on the phone line: lists three at a time, and no answer means a callback offer. */

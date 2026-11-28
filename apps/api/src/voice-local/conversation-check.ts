@@ -398,7 +398,8 @@ export function scenarios(org: { name: string }): Scenario[] {
         const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
         if (!called(1, 'search-knowledge')) p.push('answered without searching the knowledge base');
         if (!/\b(five|5)\b/i.test(said(1))) p.push(`did not say how many events there are: "${said(1)}"`);
-        if (!/continue/i.test(said(1))) p.push(`did not ask whether to continue: "${said(1)}"`);
+        // "Would you like to hear about the remaining two events?" asks it too.
+        if (!asks(said(1), /continue|the rest|remaining|the other|more of them|go on/i)) p.push(`did not ask whether to continue: "${said(1)}"`);
         if (/durbar|lantern/i.test(said(1))) p.push(`gave more than three in the first part: "${said(1)}"`);
         if (!/durbar/i.test(said(2)) || !/lantern/i.test(said(2))) p.push(`did not give the rest when asked to continue: "${said(2)}"`);
         return p;
