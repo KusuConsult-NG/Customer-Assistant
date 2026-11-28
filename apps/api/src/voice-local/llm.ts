@@ -125,6 +125,34 @@ export async function warmPromptCache(messages: ChatMessage[], tools: OpenAiTool
 }
 
 /**
+ * Titles and abbreviations written with a full stop that never end a sentence
+ * here: "Dr. Nicholas Ba'amlong", "Rt. Hon. Joyce Ramnap". Cut after the full
+ * stop, the voice paused between the title and the name.
+ */
+export const TITLE_ABBREVIATIONS = new Set([
+  'dr', 'mr', 'mrs', 'ms', 'hon', 'rt', 'engr', 'arc', 'barr', 'prof', 'comr', 'pharm', 'bldr', 'brig', 'gen', 'col', 'capt',
+  'lt', 'maj', 'sgt', 'rev', 'fr', 'pst', 'sen', 'gov', 'st', 'vs', 'esq', 'surv', 'amb', 'alh', 'hrh',
+]);
+
+/**
+ * Where the first sentence in `buf` ends (the index just past its . ! or ?),
+ * when whitespace follows it; -1 when none has ended yet. A full stop after a
+ * title is not an end.
+ */
+export function sentenceEnd(buf: string): number {
+  const re = /[.!?](?=\s)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(buf))) {
+    if (buf[m.index] === '.') {
+      const word = /([\p{L}]+)$/u.exec(buf.slice(0, m.index))?.[1]?.toLowerCase();
+      if (word && TITLE_ABBREVIATIONS.has(word)) continue;
+    }
+    return m.index + 1;
+  }
+  return -1;
+}
+
+/**
  * Cuts streamed text into sentences worth speaking on their own. Short
  * fragments wait for more, so "Yes." is not a separate synthesis call.
  */
@@ -158,17 +186,12 @@ export class SentenceSplitter {
       }
     }
     for (;;) {
-      const m = this.buf.match(/^([\s\S]*?[.!?])(\s+)([\s\S]*)$/);
-      if (!m || m[1].trim().length < 12) {
-        if (m && this.buf.length > 200) {
-          out.push(m[1].trim());
-          this.buf = m[3];
-          continue;
-        }
-        break;
-      }
-      out.push(m[1].trim());
-      this.buf = m[3];
+      const end = sentenceEnd(this.buf);
+      if (end < 0) break;
+      const sentence = this.buf.slice(0, end).trim();
+      if (sentence.length < 12 && this.buf.length <= 200) break;
+      out.push(sentence);
+      this.buf = this.buf.slice(end).replace(/^\s+/, '');
     }
     this.emitted += out.length;
     return out;

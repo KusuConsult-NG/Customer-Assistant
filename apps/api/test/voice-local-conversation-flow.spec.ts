@@ -311,6 +311,12 @@ describe('a report is registered only after a clear yes', () => {
     expect(local).toMatch(/clearly names their Local Government Area, call update-caller-profile with that lga in the SAME reply/);
   });
 
+  it('reads a location back whole: community, ward and LGA, the on-file value for any part not just given', () => {
+    // 28 Nov call: the caller corrected the ward and the agent read back only "Gyel B".
+    expect(local).toMatch(/read a caller's location back to them, say ALL of it: community, ward and LGA/);
+    expect(local).toMatch(/using the value on file for any part they did not just give\. Never read back only the part that changed\./);
+  });
+
   it('refuses create-ticket after the caller says "No…", and only then', () => {
     const confirmed = { summaryConfirmed: true };
     expect(unconfirmedReport('create-ticket', confirmed, 'No, nothing else.')).toMatchObject({ ok: false });

@@ -187,6 +187,10 @@ export class VoiceSession {
   private pendingTurn = false;
   private queuedUser: string[] = [];
   private lastCallerSpeech: number;
+  /** When recognition last returned the caller's words during this turn (0: none since the last turn began). */
+  private lastWordsAt = 0;
+  /** From those words to the turn starting: how long recognition took to decide the caller had finished. */
+  private turnEndpointMs: number | null = null;
   private lastActivity: number;
   private nudges = 0;
   private hangupRequested = false;
@@ -312,7 +316,10 @@ export class VoiceSession {
   // ── Listening ─────────────────────────────────────────────────────────────
 
   private onInterim(text: string): void {
-    if (text) this.interims++;
+    if (text) {
+      this.interims++;
+      this.lastWordsAt = this.now();
+    }
     this.lastCallerSpeech = this.now();
     this.lastActivity = this.now();
     // The caller carries on after a pause, before any of the reply has been
@@ -354,6 +361,9 @@ export class VoiceSession {
     if (text) {
       this.finals++;
       this.heard.push(text);
+      // The end-of-turn result comes AFTER recognition's own silence wait, so
+      // it is not when the caller stopped; segments within the turn are.
+      if (!endOfTurn) this.lastWordsAt = this.now();
       this.lastCallerSpeech = this.now();
       this.lastActivity = this.now();
     }
@@ -448,6 +458,8 @@ export class VoiceSession {
   /** The caller has finished: time the reply, and acknowledge only if genuinely slow. */
   private beginTurnClock(): void {
     this.turnStartedAt = this.now();
+    this.turnEndpointMs = this.lastWordsAt ? this.turnStartedAt - this.lastWordsAt : null;
+    this.lastWordsAt = 0;
     this.turnFirstText = 0;
     this.turnFirstAudio = 0;
     this.ackPlayedThisTurn = false;
@@ -707,8 +719,11 @@ export class VoiceSession {
     this.spokenThisTurn += (this.spokenThisTurn ? ' ' : '') + text;
     if (this.turnStartedAt && !this.turnFirstAudio) {
       this.turnFirstAudio = this.now();
-      // Where the wait went: model to first words, then speech synthesis.
+      // Where the wait went: recognition deciding the caller had finished
+      // (endpoint_ms, before the clock starts), the model's first words, then
+      // speech synthesis. The caller's silence is endpoint_ms + first_audio_ms.
       this.deps.log('voice_local_turn', {
+        endpoint_ms: this.turnEndpointMs,
         model_ms: this.turnFirstText ? this.turnFirstText - this.turnStartedAt : null,
         first_audio_ms: this.turnFirstAudio - this.turnStartedAt,
         chars: text.length,
@@ -1030,6 +1045,17 @@ export function openingSegments(opening: string): OpeningSegment[] {
   }
   pushText(opening.slice(last));
   return out;
+}
+
+/**
+ * Exactly the texts the voice is given for one sentence of a reply: what
+ * say() and sayPart() send (stage directions dropped, a long sentence split
+ * at a comma, then respelled for pronunciation). The prerender uses this, so
+ * a clip it renders is under the key a live reply asks for.
+ */
+export function spokenParts(sentence: string): string[] {
+  const text = speakable(sentence);
+  return text ? splitLongSentence(text).map((part) => pronounced(part)) : [];
 }
 
 /**

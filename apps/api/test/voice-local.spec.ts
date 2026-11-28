@@ -23,9 +23,9 @@ import { SentenceSplitter, type ChatMessage, type LlmEvent } from '../src/voice-
 import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local/tts';
 import { TtsCache } from '../src/voice-local/tts-cache';
 import { localToolDefinitions, runLocalTool } from '../src/voice-local/voice-tools';
-import { ACKS, HOLDING_LINE, isGreetingReply, openingSegments, speakable } from '../src/voice-local/voice-session';
-import { assistantStaticLines, governorLines, prerender } from '../src/voice-local/prerender';
-import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES } from '../src/agent-tools/agent-tool-catalog';
+import { ACKS, HOLDING_LINE, isGreetingReply, openingSegments, speakable, spokenParts } from '../src/voice-local/voice-session';
+import { assistantStaticLines, governorLines, prerender, SCRIPT_QUOTES, scriptLines } from '../src/voice-local/prerender';
+import { PLATEAU_FEMALE_NAMES, PLATEAU_MALE_NAMES, SYSTEM_PROMPT } from '../src/agent-tools/agent-tool-catalog';
 import type { SttEvents } from '../src/voice-local/stt';
 
 const SECRET = 'local-voice-test-secret-0123456789';
@@ -412,6 +412,36 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
   }, 20_000);
 
+  it('logs how long recognition took to decide the caller had finished (endpoint_ms)', async () => {
+    const logged: string[] = [];
+    const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
+    const reg = await register('+2348031110012');
+    const pbx = asterisk(reg.text.split(' ')[1]);
+    try {
+      await until(() => stt.events !== null);
+      await until(() => pbx.played.length > 100 && pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000);
+      stt.events!.onInterim('my name is');
+      stt.events!.onInterim('my name is Steven');
+      await new Promise((r) => setTimeout(r, 700)); // recognition waiting for silence
+      stt.events!.onFinal('My name is Steven.', true); // the end-of-turn result does not restart the wait
+      await until(() => logged.some((l) => l.startsWith('voice_local_turn')), 6_000);
+      const turn = JSON.parse(logged.find((l) => l.startsWith('voice_local_turn'))!.replace(/^[^{]*/, ''));
+      expect(turn.endpoint_ms).toBeGreaterThanOrEqual(650);
+      expect(turn.endpoint_ms).toBeLessThan(1_500);
+      // The next turn has only its end-of-turn result: no time is known, and the last turn's words are not reused.
+      await new Promise((r) => setTimeout(r, 300));
+      await until(() => pbx.played.slice(-70).every((f) => f.every((b) => b === 0)), 10_000); // the reply has played
+      stt.events!.onFinal('Yes.', true);
+      await until(() => logged.filter((l) => l.startsWith('voice_local_turn')).length >= 2, 8_000);
+      const next = JSON.parse(logged.filter((l) => l.startsWith('voice_local_turn'))[1].replace(/^[^{]*/, ''));
+      expect(next.endpoint_ms).toBeNull();
+    } finally {
+      spy.mockRestore();
+      pbx.hangUp();
+      pbx.stop();
+    }
+  }, 20_000);
+
   it('sends every call the SAME script up front, with this call\'s values after it, and warms the cache with it', async () => {
     warmed = [];
     for (const from of ['+2348031110008', '+2348031110009']) {
@@ -737,6 +767,34 @@ describe('voice-local: parts', () => {
     expect(s.flush()).toBe('Ok.');
   });
 
+  it('never ends a sentence after a title, so there is no pause between "Dr." and the name', () => {
+    const run = (text: string, step: number) => {
+      const sp = new SentenceSplitter({ firstAtComma: true });
+      const out: string[] = [];
+      for (let i = 0; i < text.length; i += step) out.push(...sp.push(text.slice(i, i + step)));
+      const rest = sp.flush();
+      return rest ? [...out, rest] : out;
+    };
+    for (const step of [1, 4, 1000]) {
+      expect(run("The Commissioner for Health in Plateau State is Dr. Nicholas Ba'amlong. Is there anything else?", step)).toEqual([
+        "The Commissioner for Health in Plateau State is Dr. Nicholas Ba'amlong.",
+        'Is there anything else?',
+      ]);
+      expect(run('The Speaker of the House is Rt. Hon. Joyce Lohya Ramnap. Anything else?', step)).toEqual([
+        'The Speaker of the House is Rt. Hon. Joyce Lohya Ramnap.',
+        'Anything else?',
+      ]);
+      expect(run('Please contact Engr. Davou Gyang or Mrs. Ladi Pam at the ministry. Thank you.', step)).toEqual([
+        'Please contact Engr. Davou Gyang or Mrs. Ladi Pam at the ministry.',
+        'Thank you.',
+      ]);
+    }
+    // Words that merely end like a title still end a sentence; "no." ends one too.
+    expect(run('The office is closed on Sundays, I am afraid. Is there anything else?', 1000)[0]).toBe('The office is closed on Sundays, I am afraid.');
+    expect(run("I'm sorry, the answer is no. Is there anything else?", 1000)).toEqual(["I'm sorry, the answer is no.", 'Is there anything else?']);
+    expect(run('You are in Gyel B. Is that correct?', 1000)).toEqual(['You are in Gyel B.', 'Is that correct?']);
+  });
+
   it('pre-renders the assistant\'s fixed opening sentences, never one carrying a name', () => {
     const org: any = {
       name: 'Plateau State Government Citizen Contact Centre',
@@ -750,6 +808,28 @@ describe('voice-local: parts', () => {
     expect(lines).toContain('How may I help you today?');
     for (const t of [...ACKS, HOLDING_LINE]) expect(lines).toContain(t);
     expect(lines.some((t) => /virtual assistant|Gwaman|Chundung|\{/.test(t))).toBe(false);
+  });
+
+  it('pre-renders the call script\'s fixed sentences exactly as a live reply sends them to the voice', () => {
+    // Every quote is still in the script, word for word.
+    for (const q of SCRIPT_QUOTES) expect(SYSTEM_PROMPT).toContain(`"${q}"`);
+    const lines = scriptLines();
+    // Respelled as a reply is (Plateau → Platoe), never the written form.
+    expect(lines).toContain('Please, which Local Government Area of Platoe State are you calling from?');
+    expect(lines.some((t) => /\bPlateau\b/.test(t))).toBe(false);
+    // A sentence with a blank to fill differs per call: left out. The rest of its quote is kept.
+    expect(lines.some((t) => /[[\]{}]|\d/.test(t))).toBe(false);
+    expect(lines).not.toContain('You are reporting.'); // "[description]" removed: a sentence no call says
+    expect(lines.some((t) => /reference number is/.test(t))).toBe(false);
+    expect(lines).toContain('Is this an accurate summary of your complaint?');
+    expect(lines).toContain('Please keep this number safe, as it will help you track the progress of your report and make subsequent enquiries.');
+    // A long sentence is split at its comma, as say() splits it: the halves, not the whole, are what a call asks for.
+    const long = 'Your voice matters, and we encourage you to continue using this platform to communicate your concerns, seek information and provide feedback on government services.';
+    expect(spokenParts(long).length).toBeGreaterThan(1);
+    for (const part of spokenParts(long)) expect(lines).toContain(part);
+    expect(lines).not.toContain(long);
+    // Exactly what say() sends for each sentence of each quote.
+    expect(lines).toContain(spokenParts('Thank you for calling the Plateau State Government Citizen Contact Centre.')[0]);
   });
 
   it('pre-renders every Governor line once, so none needs ElevenLabs on a call', async () => {
