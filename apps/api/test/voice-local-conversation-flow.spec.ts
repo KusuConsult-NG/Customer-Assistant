@@ -16,6 +16,7 @@
  */
 import { agentPromptFor, CONTACT_CENTRE_TOOLS, SYSTEM_PROMPT } from '../src/agent-tools/agent-tool-catalog';
 import { callSystemPrompt } from '../src/voice-local/call-setup';
+import { scriptLines } from '../src/voice-local/prerender';
 import { callSummaryRequest, NO_CALLER_SPEECH_SUMMARY } from '../src/voice-local/local-voice.service';
 import { parseSampleArgs, renderVoiceSamples, SAMPLE_SENTENCE, SPITCH_VOICES } from '../src/voice-local/voice-samples';
 import { voiceModel } from '../src/voice-local/llm';
@@ -26,6 +27,7 @@ import { rms } from '../src/voice-local/pcm';
 import { CachedSpeech, KEEP_COMMAS_MAX_CHARS, RESAMPLER_VERSION, SpitchTts } from '../src/voice-local/tts';
 import { localToolDefinitions } from '../src/voice-local/voice-tools';
 import {
+  isBargeIn,
   lastCallerWords,
   LONG_SENTENCE_CHARS,
   MAX_PREBUFFER_WAIT_MS,
@@ -34,6 +36,7 @@ import {
   replyDeadlineMs,
   SENTENCE_GAP_MS,
   splitLongSentence,
+  STOP_WORD,
   unconfirmedReport,
   VoiceSession,
 } from '../src/voice-local/voice-session';
@@ -120,9 +123,9 @@ describe('the model', () => {
     if (saved === undefined) delete process.env.LOCAL_VOICE_LLM_MODEL;
     else process.env.LOCAL_VOICE_LLM_MODEL = saved;
   });
-  it('defaults to gpt-4o, and the server setting still decides', () => {
+  it('defaults to gpt-4.1 (fastest first words measured on the server), and the server setting still decides', () => {
     delete process.env.LOCAL_VOICE_LLM_MODEL;
-    expect(voiceModel()).toBe('gpt-4o');
+    expect(voiceModel()).toBe('gpt-4.1');
     process.env.LOCAL_VOICE_LLM_MODEL = 'gpt-4o-mini';
     expect(voiceModel()).toBe('gpt-4o-mini');
   });
@@ -311,6 +314,14 @@ describe('a report is registered only after a clear yes', () => {
     expect(local).toMatch(/clearly names their Local Government Area, call update-caller-profile with that lga in the SAME reply/);
   });
 
+  it('may open with the script\'s own short acknowledgements (ready on disk), varied, and not when the caller asked something', () => {
+    expect(local).toMatch(/"Okay, thank you\.", "Thank you for that information\." or "Thank you for confirming that\."/);
+    expect(local).toMatch(/Vary them and never use the same one twice in a row/);
+    expect(local).toMatch(/When the caller has asked you something, is upset, or is reporting an emergency, answer them directly instead/);
+    // Each is a pre-rendered script line, so it plays from disk.
+    for (const ack of ['Okay, thank you.', 'Thank you for that information.', 'Thank you for confirming that.']) expect(scriptLines()).toContain(ack);
+  });
+
   it('reads a location back whole: community, ward and LGA, the on-file value for any part not just given', () => {
     // 28 Nov call: the caller corrected the ward and the agent read back only "Gyel B".
     expect(local).toMatch(/read a caller's location back to them, say ALL of it: community, ward and LGA/);
@@ -462,6 +473,56 @@ describe('the pause before a reply is a server setting', () => {
     return firstLoud - askedAt;
   }
 
+  it('starts a first sentence of a second or more at once, without waiting for a slow second sentence (28 Nov: held to the deadline)', async () => {
+    let stt: any = null;
+    let askedAt = 0;
+    let firstLoud = 0;
+    const speech = (ms: number) => {
+      const b = Buffer.alloc(16 * ms);
+      for (let i = 0; i < b.length / 2; i++) b.writeInt16LE(Math.round(5000 * Math.sin(i / 3)), i * 2);
+      return b;
+    };
+    delete process.env.LOCAL_VOICE_PREBUFFER_WAIT_MS;
+    const session = new VoiceSession(
+      {
+        sendAudio: (f) => {
+          if (askedAt && !firstLoud && rms(f) > 200) firstLoud = Date.now();
+        },
+        close: () => undefined,
+        stt: async (ev) => {
+          stt = ev;
+          return { send: () => undefined, close: () => undefined };
+        },
+        assistantVoice: new CachedSpeech(
+          {
+            name: 't',
+            synthesize: async (text: string) => {
+              await new Promise((r) => setTimeout(r, /slow/.test(text) ? 1_800 : 20));
+              return speech(/slow/.test(text) ? 300 : 2_500);
+            },
+          } as any,
+          null,
+        ),
+        governorVoice: null,
+        llm: async function* () {
+          yield { type: 'text' as const, delta: 'Thank you, which ward and community are you calling from? This second sentence is slow to make.' };
+        },
+        tools: [],
+        runTool: async () => ({ ok: true }),
+        log: () => undefined,
+      },
+      { systemPrompt: 'test', opening: 'Hello there.', personal: [] },
+    );
+    await session.start();
+    await new Promise((r) => setTimeout(r, 3_200)); // the 2.5 s opening has finished
+    askedAt = Date.now();
+    stt.onFinal('Hello', true);
+    const until = Date.now() + 5_000;
+    while (Date.now() < until && !firstLoud) await new Promise((r) => setTimeout(r, 20));
+    await session.finish('completed');
+    expect(firstLoud - askedAt).toBeLessThan(600);
+  }, 20_000);
+
   it('at 0 the reply starts without waiting for its slow second sentence; by default it waits', async () => {
     expect(await firstSoundAfter('0')).toBeLessThan(600);
     expect(await firstSoundAfter(undefined)).toBeGreaterThan(1_200);
@@ -609,6 +670,80 @@ describe('checklist A4: the agent stops when the caller talks over it', () => {
     expect(answered.some((a) => /wait/i.test(a))).toBe(true);
     await session.finish('completed');
   }, 20_000);
+});
+
+describe('the caller can stop the agent with one word', () => {
+  async function talkOver(word: string): Promise<{ stopped: boolean; logs: Array<{ e: string; d: any }> }> {
+    let stt: any = null;
+    const sent: Buffer[] = [];
+    const logs: Array<{ e: string; d: any }> = [];
+    const tone = Buffer.alloc(16 * 4_000);
+    for (let i = 0; i < tone.length / 2; i++) tone.writeInt16LE(Math.round(5000 * Math.sin(i / 3)), i * 2);
+    const session = new VoiceSession(
+      {
+        sendAudio: (f) => sent.push(f),
+        close: () => undefined,
+        stt: async (ev) => {
+          stt = ev;
+          return { send: () => undefined, close: () => undefined };
+        },
+        assistantVoice: new CachedSpeech({ name: 't', synthesize: async () => tone } as any, null),
+        governorVoice: null,
+        llm: async function* () {
+          yield { type: 'text' as const, delta: 'Here is a long answer that takes a while to say.' };
+        },
+        tools: [],
+        runTool: async () => ({ ok: true }),
+        log: (e, d) => logs.push({ e, d }),
+      },
+      { systemPrompt: 'test', opening: 'Hello.', personal: [] },
+    );
+    await session.start();
+    await new Promise((r) => setTimeout(r, 4_300));
+    stt.onFinal('Tell me about the projects.', true);
+    const until = Date.now() + 3_000;
+    while (Date.now() < until && !sent.slice(-5).some((f) => rms(f) > 200)) await new Promise((r) => setTimeout(r, 20));
+    const loud = Buffer.alloc(320);
+    for (let i = 0; i < 160; i++) loud.writeInt16LE(Math.round(6000 * Math.sin(i / 2)), i * 2);
+    for (let i = 0; i < 10; i++) session.onCallerAudio(loud);
+    // Recognition's words come after the sound: a short quiet gap first.
+    for (let i = 0; i < 10; i++) session.onCallerAudio(Buffer.alloc(320));
+    const before = sent.length;
+    stt.onInterim(word);
+    await new Promise((r) => setTimeout(r, 200));
+    const stopped = sent.slice(before + 2).every((f) => rms(f) <= 200);
+    await session.finish('completed');
+    return { stopped, logs };
+  }
+
+  it('"Wait", "Stop", "No", "Excuse me" stop it at once, and the log says how soon after the caller\'s voice', async () => {
+    for (const w of ['Wait.', 'stop', 'No', 'Excuse me']) {
+      const { stopped, logs } = await talkOver(w);
+      expect(stopped).toBe(true);
+      const b = logs.find((l) => l.e === 'voice_local_barge_in');
+      expect(b?.d).toMatchObject({ words: w.split(' ').length, was_playing: true });
+      expect(b?.d.after_voice_ms).toBeGreaterThanOrEqual(0);
+      expect(b?.d.after_voice_ms).toBeLessThan(1_000);
+    }
+  }, 40_000);
+
+  it('"Okay" or "Yes" from a caller following along does not stop it', async () => {
+    for (const w of ['Okay', 'yes']) {
+      const { stopped, logs } = await talkOver(w);
+      expect(stopped).toBe(false);
+      expect(logs.some((l) => l.e === 'voice_local_barge_in')).toBe(false);
+    }
+  }, 30_000);
+
+  it('decides from loudness heard in the last second, and from the words', () => {
+    expect(isBargeIn('wait', 120)).toBe(true);
+    expect(isBargeIn('hold on', 120)).toBe(true);
+    expect(isBargeIn('I want to report', 900)).toBe(true);
+    expect(isBargeIn('okay', 50)).toBe(false);
+    expect(isBargeIn('wait', null)).toBe(false); // nothing loud heard: the agent's own echo or noise
+    expect(isBargeIn('wait please', 1_500)).toBe(false); // the loud sound was long ago
+    expect(STOP_WORD.test('waiting')).toBe(false);
+  });
 });
 
 describe('checklist H2: a silent caller is asked whether they are there, then the call ends', () => {

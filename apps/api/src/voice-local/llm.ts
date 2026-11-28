@@ -15,12 +15,14 @@ export interface ToolCall {
 export type LlmEvent = { type: 'text'; delta: string } | { type: 'tool_calls'; calls: ToolCall[] };
 
 /**
- * The model the phone line uses: gpt-4o by default, the model the line was
- * built and tested on, as for the ElevenLabs agent. LOCAL_VOICE_LLM_MODEL
- * overrides it; compare models on the server with conversation-check.ts.
+ * The model the phone line uses: gpt-4.1 by default, chosen by the owner on
+ * 28 Nov 2026 after the latency probe on the server measured its first words
+ * at 0.86–0.90 s with the real script, against gpt-4o's 1.03 s cached and 1.45 s
+ * uncached (gpt-4o-mini: about 2.1 s). LOCAL_VOICE_LLM_MODEL overrides it;
+ * compare models on the server with conversation-check.ts.
  */
 export function voiceModel(): string {
-  return process.env.LOCAL_VOICE_LLM_MODEL?.trim() || 'gpt-4o';
+  return process.env.LOCAL_VOICE_LLM_MODEL?.trim() || 'gpt-4.1';
 }
 
 /**
