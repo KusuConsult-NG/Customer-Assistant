@@ -34,7 +34,7 @@ import {
   type AgentOrganization,
   type TeamPersona,
 } from '../agent-tools/agent-tool-catalog';
-import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
+import { assistantGenderFromEnv, assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromEnv, type SpeechEngine } from './tts';
 import { TtsCache } from './tts-cache';
 import { clipCheckFromEnv } from './speech-check';
 import { WELCOME_DEFAULT } from '../agent-tools/caller-profile';
@@ -53,13 +53,18 @@ const SAMPLE_TIMES = ['2026-01-05T07:00:00Z', '2026-01-05T12:30:00Z', '2026-01-0
  * fetched live on the call, or — with no ElevenLabs key — spoken in the female
  * assistant's own voice in place of the Governor's.
  */
-export function governorLines(org: AgentOrganization, includeFemale = assistantTtsFromEnv()?.name === 'spitch'): string[] {
+export function governorLines(
+  org: AgentOrganization,
+  includeFemale = assistantTtsFromEnv()?.name === 'spitch',
+  only: 'male' | 'female' | undefined = includeFemale ? assistantGenderFromEnv() : undefined,
+): string[] {
   const named = (names: readonly string[], base: TeamPersona) =>
     names.map((name) => ({ ...base, id: name.toLowerCase(), name, greetingPhrase: `my name is ${name}` }));
+  // With LOCAL_VOICE_ASSISTANT_GENDER set, only the assistants who answer are named.
   const personas: TeamPersona[] = isPlateauStateOrg(org)
     ? [
-        ...named(PLATEAU_MALE_NAMES, TEAM_PERSONAS.nanpan),
-        ...(includeFemale ? named(PLATEAU_FEMALE_NAMES, { ...TEAM_PERSONAS.sarah, gender: 'female' }) : []),
+        ...(only === 'female' ? [] : named(PLATEAU_MALE_NAMES, TEAM_PERSONAS.nanpan)),
+        ...(includeFemale && only !== 'male' ? named(PLATEAU_FEMALE_NAMES, { ...TEAM_PERSONAS.sarah, gender: 'female' }) : []),
       ]
     : [resolvePersona(org.persona)];
   const lines = new Set<string>();
@@ -273,7 +278,10 @@ async function main() {
     process.exit(1);
   }
   let failedCount = 0;
-  const genders: Array<'male' | 'female' | undefined> = assistantTtsFromEnv()?.name === 'spitch' ? ['male', 'female'] : [undefined];
+  // Only the voices that answer calls (LOCAL_VOICE_ASSISTANT_GENDER), both when unset.
+  const only = assistantGenderFromEnv();
+  const genders: Array<'male' | 'female' | undefined> =
+    assistantTtsFromEnv()?.name === 'spitch' ? (only ? [only] : ['male', 'female']) : [undefined];
   for (const gender of genders) {
     const engine = assistantTtsFromEnv(gender);
     if (!engine) {

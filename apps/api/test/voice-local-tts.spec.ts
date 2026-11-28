@@ -5,6 +5,7 @@ import {
   AzureTts,
   CachedSpeech,
   DeepgramTts,
+  assistantGenderFromEnv,
   ElevenLabsTts,
   isCacheable,
   OpenAiTts,
@@ -295,6 +296,21 @@ describe('voice-local TTS providers & PCM downsampling', () => {
     const maleEngine = assistantTtsFromEnv(malePersona.gender) as SpitchTts;
     expect(maleEngine).toBeInstanceOf(SpitchTts);
     expect(maleEngine.voice).toBe('jude');
+  });
+
+  it('reads LOCAL_VOICE_ASSISTANT_GENDER: female, male, or either when unset or unknown', () => {
+    const saved = process.env.LOCAL_VOICE_ASSISTANT_GENDER;
+    try {
+      for (const [v, want] of [['female', 'female'], [' Female ', 'female'], ['male', 'male'], ['', undefined], ['both', undefined]] as const) {
+        process.env.LOCAL_VOICE_ASSISTANT_GENDER = v;
+        expect(assistantGenderFromEnv()).toBe(want);
+      }
+      delete process.env.LOCAL_VOICE_ASSISTANT_GENDER;
+      expect(assistantGenderFromEnv()).toBeUndefined();
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_VOICE_ASSISTANT_GENDER;
+      else process.env.LOCAL_VOICE_ASSISTANT_GENDER = saved;
+    }
   });
 
   it('opens the Spitch circuit breaker after 3 consecutive failures and fails fast without calling fetch', async () => {

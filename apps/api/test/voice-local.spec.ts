@@ -412,6 +412,43 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
   }, 20_000);
 
+  it('with LOCAL_VOICE_ASSISTANT_GENDER=female every call gets a female assistant: her name, the Governor naming her, the female voice', async () => {
+    const savedEngine = voice.assistantEngine;
+    const savedGender = process.env.LOCAL_VOICE_ASSISTANT_GENDER;
+    const asked: Array<string | undefined> = [];
+    voice.assistantEngine = (gender) => {
+      asked.push(gender);
+      return Object.assign(assistant, { name: 'spitch' }); // a voice with both genders, as Spitch is
+    };
+    try {
+      for (const [setting, roster] of [['female', PLATEAU_FEMALE_NAMES], ['male', PLATEAU_MALE_NAMES]] as const) {
+        process.env.LOCAL_VOICE_ASSISTANT_GENDER = setting;
+        for (let i = 0; i < 4; i++) {
+          asked.length = 0;
+          assistant.said = [];
+          governor.said = [];
+          const reg = await register(`+23480311200${setting === 'female' ? 1 : 2}${i}`);
+          const pbx = asterisk(reg.text.split(' ')[1]);
+          try {
+            await until(() => assistant.said.some((t) => /^I'm \S+, the virtual assistant\.$/.test(t)));
+            const name = assistant.said.find((t) => /^I'm \S+, the virtual assistant\.$/.test(t))!.match(/^I'm (\S+),/)![1];
+            expect(roster as readonly string[]).toContain(name);
+            expect(governor.said[0]).toContain(name); // the Governor introduces the same assistant
+            // The voice asked for: the probe (no gender), then only the chosen gender.
+            expect(asked.filter(Boolean)).toEqual([setting]);
+          } finally {
+            pbx.hangUp();
+            pbx.stop();
+          }
+        }
+      }
+    } finally {
+      voice.assistantEngine = savedEngine;
+      if (savedGender === undefined) delete process.env.LOCAL_VOICE_ASSISTANT_GENDER;
+      else process.env.LOCAL_VOICE_ASSISTANT_GENDER = savedGender;
+    }
+  }, 60_000);
+
   it('logs how long recognition took to decide the caller had finished (endpoint_ms)', async () => {
     const logged: string[] = [];
     const spy = jest.spyOn((voice as any).log, 'log').mockImplementation((m: any) => void logged.push(String(m)));
@@ -857,6 +894,12 @@ describe('voice-local: parts', () => {
     // "Naankang" is on both rosters (Ngas "Naan-" names are unisex): same line, counted once.
     expect(both.length).toBe(new Set([...PLATEAU_MALE_NAMES, ...PLATEAU_FEMALE_NAMES]).size * 3);
     expect(both.some((l) => l.includes(PLATEAU_FEMALE_NAMES[0]))).toBe(true);
+    // Female only (LOCAL_VOICE_ASSISTANT_GENDER=female): only the female assistants are named.
+    const femaleOnly = governorLines(org, true, 'female');
+    expect(femaleOnly.length).toBe(PLATEAU_FEMALE_NAMES.length * 3);
+    const maleOnlyNames = PLATEAU_MALE_NAMES.filter((n) => !(PLATEAU_FEMALE_NAMES as readonly string[]).includes(n));
+    expect(femaleOnly.some((l) => maleOnlyNames.some((n) => l.includes(`, ${n},`)))).toBe(false);
+    expect(governorLines(org, true, 'male').length).toBe(PLATEAU_MALE_NAMES.length * 3);
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-gov-'));
     const cache = new TtsCache(dir);
