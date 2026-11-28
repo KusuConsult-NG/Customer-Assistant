@@ -469,10 +469,11 @@ export function scenarios(org: { name: string }): Scenario[] {
         const called = (i: number, tool: string) => !!turns[i]?.calls.some((c) => c.name === tool);
         const everCalled = (tool: string) => turns.some((t) => t.calls.some((c) => c.name === tool));
         turns.forEach((t, i) => t.replies.forEach((r) => /\b(transfer(ring)?|put you through|connect(ing)? you)\b/i.test(r) && p.push(`turn ${i + 1}: offered or announced a transfer: "${r}"`)));
-        if (!everCalled('request-callback')) p.push('no callback was booked');
+        // A call WITHOUT numberConfirmed books nothing: it is the step that returns the number to read back.
+        const booked = (c: { name: string; args: Record<string, any> }) => c.name === 'request-callback' && /^(true|yes)$/i.test(String(c.args.numberConfirmed));
+        if (!turns.some((t) => t.calls.some(booked))) p.push('no callback was booked');
         turns.forEach((t, i) => t.calls.forEach((c) => {
-          if (c.name === 'request-callback' && !/^(true|yes)$/i.test(String(c.args.numberConfirmed))) p.push(`turn ${i + 1}: booked the callback without a confirmed number`);
-          if (c.name === 'request-callback' && i < 3) p.push(`turn ${i + 1}: booked the callback before the caller confirmed the number`);
+          if (booked(c) && i < 3) p.push(`turn ${i + 1}: booked the callback before the caller confirmed the number`);
         }));
         return p;
       },
@@ -541,7 +542,12 @@ function standIn(sc: Scenario, name: string, args: Record<string, any>): unknown
   if (name === 'request-callback') {
     return /^(true|yes)$/i.test(String(args.numberConfirmed))
       ? { ok: true, speak: 'That is arranged — your reference is 5 2 7 1 9. A desk officer will call you back on that number.', data: { reference: '52719' } }
-      : { ok: false, speak: '', data: { instruction: 'Read the number back digit by digit and wait for a clear yes, then call again with numberConfirmed=true.' } };
+      : // As the real tool answers (agent-tools.service requestCallback): the number to read back, spoken.
+        {
+          ok: false,
+          speak: 'Before I book your call back — shall we call you on the number you are calling from, 0 8 0 3 1 2 3 4 5 0 0, or would you prefer a different number?',
+          data: { reason: 'number_not_confirmed', numberToConfirm: '+2348031234500', instruction: 'Read the number back digit by digit and wait for a clear yes. Only then call request-callback again with numberConfirmed=true.' },
+        };
   }
   if (name === 'create-ticket') {
     if (!/^(true|yes)$/i.test(String(args.summaryConfirmed))) {
