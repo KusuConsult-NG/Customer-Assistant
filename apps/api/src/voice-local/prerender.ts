@@ -38,7 +38,8 @@ import { assistantTtsFromEnv, CachedSpeech, ElevenLabsTts, SpitchTts, speedFromE
 import { TtsCache } from './tts-cache';
 import { clipCheckFromEnv } from './speech-check';
 import { WELCOME_DEFAULT } from '../agent-tools/caller-profile';
-import { ACKS, HOLDING_LINE, openingSegments, openingSentences } from './voice-session';
+import { ACKS, HOLDING_LINE, openingSegments, openingSentences, spokenParts } from './voice-session';
+import { SentenceSplitter } from './llm';
 
 /** A moment in each greeting period at the agency's clock (Lagos is UTC+1 with no DST). */
 const SAMPLE_TIMES = ['2026-01-05T07:00:00Z', '2026-01-05T12:30:00Z', '2026-01-05T18:00:00Z'].map((t) => new Date(t));
@@ -98,6 +99,73 @@ export function assistantStaticLines(org: AgentOrganization): string[] {
   const b = sentences(sample('Chundung'));
   const shared = [...a].filter((t) => b.has(t) && !/\{\{|\{[a-z]+\}/.test(t));
   return [...new Set([...shared, WELCOME_DEFAULT, ...ACKS, HOLDING_LINE])];
+}
+
+/**
+ * The call script's own words (agent-tool-catalog SYSTEM_PROMPT), quoted
+ * exactly as the script gives them to the model. Each must stay a quote in the
+ * script (a test checks it); a line the script no longer has is a wasted render.
+ */
+export const SCRIPT_QUOTES = [
+  'Yes, I can hear you clearly.',
+  'Thank you for sharing that — I am ready to assist you. To get started, may I kindly know your full name?',
+  'That is perfectly fine. We can proceed with your report. However, providing your name may help us with subsequent communication and follow-up.',
+  'Please, which Local Government Area of Plateau State are you calling from?',
+  'Thank you. Could you also tell me your ward and community?',
+  'Thank you for that information.',
+  'Are you comfortable with us using the telephone number you are calling from for subsequent communication?',
+  'Could you please give me a telephone number we can reach you on for subsequent communication?',
+  'Thank you for providing those details. Now, how may the Plateau State Government assist you today? Please state the reason for your call.',
+  'Thank you for sharing this information with us. I appreciate you taking the time to bring this matter to our attention. Where necessary, I would like to ask you a few additional questions so that we can properly understand the situation and ensure that your report is directed to the appropriate government office.',
+  'Could you please identify the exact location of the affected road or infrastructure?',
+  'When did you first notice this problem?',
+  'Is the situation affecting movement, businesses or residents in the area?',
+  'Has this matter previously been reported to any government office?',
+  'Which hospital or health facility is involved?',
+  'Could you explain the nature of the problem?',
+  'When did this incident occur?',
+  'Is anyone currently in need of urgent medical attention?',
+  'Which school or educational institution is involved?',
+  'Which community and LGA is the school located in?',
+  'Could you explain the specific concern?',
+  'When did the issue occur?',
+  'Which government office or institution is involved?',
+  'Could you explain what happened?',
+  'Have you previously attempted to resolve this matter?',
+  'Is there any additional information, evidence or detail you would like us to include in your report?',
+  'Thank you very much for providing those details. Let me briefly summarise what you have reported to ensure that I have captured everything correctly. You are reporting [description]. The incident or problem is located at [community or location], in [ward], [LGA]. You indicated that [relevant additional details]. Is this an accurate summary of your complaint?',
+  'Thank you. I have captured the information as you have explained it.',
+  'Thank you for correcting that information. I will update the report accordingly.',
+  'Thank you for your patience. Your report has now been registered in our system. Your unique complaint reference number is [REFERENCE NUMBER]. Please keep this number safe, as it will help you track the progress of your report and make subsequent enquiries.',
+  "Once again, thank you, [Caller's Name], for contacting the Plateau State Government Citizen Contact Centre. Your report has been recorded under reference number [REFERENCE NUMBER]. We appreciate your contribution towards improving governance and public service delivery across Plateau State. Your voice matters, and we encourage you to continue using this platform to communicate your concerns, seek information and provide feedback on government services. Is there anything else I can assist you with today, or may I go ahead and end the call?",
+  'Thank you for calling the Plateau State Government Citizen Contact Centre. We wish you a pleasant day. Goodbye.',
+  'Thank you for that information!',
+  'Thank you for confirming that.',
+  'Okay, thank you.',
+  "I'm sorry, I can only speak English on this line. I will speak slowly — please tell me in English if you can.",
+];
+
+/**
+ * The script's fixed sentences exactly as a live reply sends them to the
+ * voice: cut into sentences the way a reply is (SentenceSplitter), then
+ * transformed as say() transforms them (spokenParts). A sentence with a
+ * blank to fill ([REFERENCE NUMBER], a name) differs per call and is left out.
+ * A clip helps only when the model says the sentence word for word; the
+ * `cached` field of voice_local_turn shows how often that happens.
+ */
+export function scriptLines(quotes: readonly string[] = SCRIPT_QUOTES): string[] {
+  const out = new Set<string>();
+  for (const quote of quotes) {
+    const splitter = new SentenceSplitter({ firstAtComma: false });
+    const sentences = [...splitter.push(quote + ' ')];
+    const rest = splitter.flush();
+    if (rest) sentences.push(rest);
+    for (const sentence of sentences) {
+      if (/[[\]{}]|\d/.test(sentence)) continue;
+      for (const part of spokenParts(sentence)) out.add(part);
+    }
+  }
+  return [...out];
 }
 
 export async function prerender(
@@ -195,7 +263,8 @@ async function main() {
   const cache = new TtsCache(dir, Number(process.env.VOICE_CACHE_MAX_MB || 2048) * 1024 * 1024);
 
   // 1. The assistant's fixed sentences, in every assistant voice the line uses.
-  const assistantLines = assistantStaticLines(org);
+  // 2. The call script's fixed sentences, in the form a live reply sends them.
+  const assistantLines = [...new Set([...assistantStaticLines(org), ...scriptLines()])];
   // Every clip is HEARD before it is kept: Spitch sometimes reads punctuation
   // aloud, and a clip on disk is played on every call (speech-check.ts).
   const check = clipCheckFromEnv();
