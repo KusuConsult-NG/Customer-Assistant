@@ -286,12 +286,13 @@ describe('the call loop speaks with pauses, in parts, and in the right words', (
   }, 15_000);
 
   it('gives the voice the listed spelling in a reply, but never in the opening or the record', async () => {
-    PRONUNCIATIONS.push({ written: 'Gyel', say: 'Jel', confirmed: 'test only' });
+    // A test-only word that no real entry uses (Gyel now has one of its own).
+    PRONUNCIATIONS.push({ written: 'Rantya', say: 'Ran-tya', confirmed: 'test only' });
     try {
-      const { asked, transcript } = await run('Welcome to Gyel ward.', 'You are in Gyel B ward.');
-      expect(asked).toContain('Welcome to Gyel ward.');
-      expect(asked).toContain('You are in Jel B ward.');
-      expect(transcript.some((t) => t.role === 'agent' && t.message === 'You are in Gyel B ward.')).toBe(true);
+      const { asked, transcript } = await run('Welcome to Rantya ward.', 'You are in Rantya ward.');
+      expect(asked).toContain('Welcome to Rantya ward.');
+      expect(asked).toContain('You are in Ran-tya ward.');
+      expect(transcript.some((t) => t.role === 'agent' && t.message === 'You are in Rantya ward.')).toBe(true);
     } finally {
       PRONUNCIATIONS.pop();
     }
@@ -702,5 +703,13 @@ describe('hearing every voice before choosing one', () => {
       if (saved === undefined) delete process.env.LOCAL_VOICE_PRONOUNCE;
       else process.env.LOCAL_VOICE_PRONOUNCE = saved;
     }
+  });
+});
+
+describe('permanent pronunciations confirmed by the owner', () => {
+  it('says Gyel B as "Gyell B", in replies, whatever the case, and never inside another word', () => {
+    expect(pronounced('You are in Gyel B ward, Jos South.')).toBe('You are in Gyell B ward, Jos South.');
+    expect(pronounced('GYEL D')).toBe('Gyell D');
+    expect(pronounced('Gyelbo')).toBe('Gyelbo');
   });
 });
