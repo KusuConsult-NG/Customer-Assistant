@@ -60,6 +60,7 @@ export const SCREENS: Record<string, { view: Role[]; write: Role[]; label: strin
   '/cases':               { view: ALL,    write: DESK,   label: 'Cases' },
   '/white-label':         { view: ADMINS, write: ADMINS, label: 'Branding & White Label' },
   '/settings':            { view: ALL,    write: ADMINS, label: 'System Settings' },
+  '/system-health':       { view: ADMINS, write: ADMINS, label: 'System Health' },
 };
 
 /** The signed-in member's role, as the stored session reports it. */

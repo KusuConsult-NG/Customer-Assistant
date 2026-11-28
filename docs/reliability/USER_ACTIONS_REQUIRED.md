@@ -38,7 +38,7 @@ They are ordered strictly by **urgency**.
 - **Where:** AlphaTech NOC / Account Manager.
 - **What to do:**
   1. Share the Hop 9 (`197.253.11.119`) UDP packet-loss report and request peering/routing remediation to `<1%` loss.
-  2. Request written confirmation that toll-free trunk `+2348000000456` supports **≥30 simultaneous inbound channels**.
+  2. Request written confirmation that toll-free trunk `+2348000000456` supports **≥30 simultaneous inbound channels**. (The owner reports 100 on 28 Nov 2026. The waiting room uses up to 90: 30 answered + 60 waiting. If the written figure is lower, lower `QUEUE_MAX_CALLS` in `bridge.env` so the two add up to less than it.)
   3. Ask whether AlphaTech supports a **secondary SIP failover IP** (for Standby VPS #2).
 - **What succeeds once done:** Eliminates carrier-induced word clipping and confirms telephony capacity for 30 concurrent callers.
 
@@ -65,3 +65,11 @@ They are ordered strictly by **urgency**.
 ## Action 7 — MEDIUM (Governance): NDPA Data Protection Officer (DPO) Sign-Off
 - **Why:** Citizen records and recordings stay in Nigeria (MTN Cloud), but live AI inference traverses **Deepgram (US/EU)**, **OpenAI (US)**, **Meta WhatsApp (Global/US)**, and **ElevenLabs backup (US/EU)**.
 - **What to do:** Have the Ministry's DPO review `docs/reliability/SECURITY_AND_PRIVACY_AUDIT.md`, approve the cross-border processing basis/DPAs under NDPA 2023, confirm zero-data-retention / no-training toggles in Deepgram, OpenAI, and ElevenLabs consoles, and approve a recording retention window (e.g., 90 or 180 days).
+
+---
+
+## Action 8 — CRITICAL (Calls fail over without it): OpenAI Account Limits and Budget for the Phone Line
+- **Why:** The local phone line sends the call script with every reply, about 10,000–12,000 tokens. On 28 Nov 2026, an account with no credit, and then an account capped at 10,000 tokens per minute, made every model request fail. Calls went to the fallback line, with HTTP 429 errors in `voice_local_call_ended`.
+- **What to do:** In `https://platform.openai.com/settings/organization/limits`, confirm that the gpt-4o / gpt-4.1 tokens-per-minute limit covers the simultaneous calls expected (about 75,000 per busy call). Turn on auto-recharge, or a low-balance alert, under Billing. Then choose the model with `docs/reliability/PHONE_LINE_SIGN_OFF.md` §2.2.
+- **What succeeds once done:** Calls are answered by the agent, with no `failed_over`, and the conversation check completes.
+

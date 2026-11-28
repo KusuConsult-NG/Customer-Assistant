@@ -19,6 +19,8 @@ tsconfig.tsbuildinfo
 !.env.example
 *.env
 apps/*/.env
+# Backups hold citizen data: never in git (they are in .dockerignore too).
+deploy/single-server/backups/
 
 # Logs
 *.log
@@ -67,3 +69,6 @@ infra/sip-bridge/bridge.env
 # Speech cache written by the local voice line when no STORAGE_DIR is set
 tts-cache/
 uploads/
+
+# The waiting room recordings, made on the server (bridge/sounds/README.md)
+deploy/single-server/bridge/sounds/queue-*.wav

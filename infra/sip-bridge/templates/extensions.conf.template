@@ -12,15 +12,18 @@ exten => s,1,Goto(bridge,s,1)
 
 [bridge]
 exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTEN})
- ; Hard ceiling on total simultaneous calls (default 30) across all voice paths
- same => n,Set(GROUP()=inbound)
- same => n,GotoIf($[${GROUP_COUNT(inbound)} > ${MAX_CONCURRENT_CALLS}]?ceiling)
- ; Callers' numbers to E.164, so officers can ring them back:
+ ; Callers' numbers to E.164, so officers can ring them back (also from the
+ ; waiting room's callback):
  ;   08031234567 → +2348031234567 ; 2348031234567 → +2348031234567
  same => n,Set(CN=${CALLERID(num)})
  same => n,ExecIf($[${REGEX("^0[789][01][0-9]{8}$" ${CN})}]?Set(CALLERID(num)=+234${CN:1}))
  same => n,ExecIf($[${REGEX("^234[0-9]{10}$" ${CN})}]?Set(CALLERID(num)=+${CN}))
- same => n,GotoIf($["${LOCAL_VOICE}" != "1"]?elevenlabs)
+ ; Hard ceiling on total simultaneous calls (default 30) across all voice paths.
+ ; A caller beyond it, or arriving while others already wait, goes to the
+ ; waiting room ([queue]) instead of a busy tone: first come, first served.
+ same => n,Set(GROUP()=inbound)
+ same => n,GotoIf($[${GROUP_COUNT(inbound)} > ${MAX_CONCURRENT_CALLS} | ${GROUP_COUNT(waiting)} > 0]?queue,s,1)
+ same => n(admitted),GotoIf($["${LOCAL_VOICE}" != "1"]?elevenlabs)
 
  ; ── The server's own voice line (LOCAL_VOICE=1) ──────────────────────────
  ; Ask the API whether it can take this call. Anything but "ok <uuid>" — the
@@ -83,10 +86,99 @@ exten => s,1,NoOp(Inbound from Alphatech: caller=${CALLERID(num)} dialled=${EXTE
  same => n,ExecIf($["${DIALSTATUS}" != "ANSWER"]?Playback(${FALLBACK_SOUND}))
  same => n,Hangup()
 
- ; Hard ceiling reached (default 30 simultaneous calls): return SIP 486 Busy Here
+ ; Hard ceiling reached with the waiting room switched off (QUEUE_MAX_CALLS=0):
+ ; SIP 486 Busy Here, as before the waiting room existed.
  same => n(ceiling),NoOp(Concurrent call ceiling reached: ${GROUP_COUNT(inbound)} > ${MAX_CONCURRENT_CALLS})
  same => n,Busy(5)
  same => n,Hangup(17)
+
+; ── The waiting room ──────────────────────────────────────────────────────
+; Every line is busy: the caller is answered, told so, and held, strictly in
+; the order they called (a numbered ticket taken under a lock). As soon as a
+; line is free and their ticket is next, they continue into the normal path
+; above (bridge,s,admitted). After QUEUE_MAX_WAIT seconds, or when the room
+; itself is full (QUEUE_MAX_CALLS), they are offered a callback instead: a
+; callback request for their number is put in the agency's queue and they
+; hear that a desk officer will call them back. Each step is reported to the
+; API for the System Health page. A caller who hangs up while waiting leaves
+; their ticket marked, and the queue moves past it.
+[queue]
+exten => s,1,NoOp(Every line busy: ${GROUP_COUNT(inbound)} active, ${GROUP_COUNT(waiting)} waiting)
+ same => n,GotoIf($[${QUEUE_MAX_CALLS} <= 0]?bridge,s,ceiling)
+ same => n,Set(GROUP()=waiting)
+ same => n,Set(CURLOPT(conntimeout)=2)
+ same => n,Set(CURLOPT(httptimeout)=4)
+ same => n,GotoIf($[${GROUP_COUNT(waiting)} > ${QUEUE_MAX_CALLS}]?full)
+ same => n,Answer()
+ ; The tickets: QNEXT is the last one handed out, QSERVE the last one let
+ ; through, and QGONE_n marks a ticket whose caller left. NOT set in [globals]:
+ ; a `dialplan reload` re-applies [globals], and resetting the counters while
+ ; callers wait would hand out their ticket numbers again (found in testing,
+ ; 28 Nov 2026). Unset (Asterisk just started) counts as 0.
+ same => n,Set(L=${LOCK(ace-queue)})
+ same => n,ExecIf($["${GLOBAL(QNEXT)}" = ""]?Set(GLOBAL(QNEXT)=0))
+ same => n,ExecIf($["${GLOBAL(QSERVE)}" = ""]?Set(GLOBAL(QSERVE)=0))
+ same => n,Set(GLOBAL(QNEXT)=$[${GLOBAL(QNEXT)} + 1])
+ same => n,Set(MYT=${GLOBAL(QNEXT)})
+ ; A fresh ticket is never already marked as left.
+ same => n,Set(GLOBAL(QGONE_${MYT})=)
+ same => n,Set(U=${UNLOCK(ace-queue)})
+ same => n,Set(QSTART=${EPOCH})
+ same => n,Set(CHANNEL(hangup_handler_push)=queue-gone,s,1)
+ same => n,Set(QEV=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/queue-event,secret=${LOCAL_VOICE_SECRET}&event=joined&ticket=${MYT}&waiting=${GROUP_COUNT(waiting)})})
+ same => n,Playback(${QUEUE_SOUNDS}/queue-hold)
+ same => n,ExecIf($["${PLAYBACKSTATUS}" != "SUCCESS"]?Playback(pls-hold-while-try))
+ same => n,Set(QANN=$[${EPOCH} + 60])
+ same => n(loop),GotoIf($[${EPOCH} - ${QSTART} >= ${QUEUE_MAX_WAIT}]?timeout)
+ same => n,Set(L=${LOCK(ace-queue)})
+ ; Move the queue past tickets whose callers hung up.
+ same => n(skip),GotoIf($["${GLOBAL(QGONE_$[${GLOBAL(QSERVE)} + 1])}" != "1"]?head)
+ same => n,Set(GLOBAL(QGONE_$[${GLOBAL(QSERVE)} + 1])=)
+ same => n,Set(GLOBAL(QSERVE)=$[${GLOBAL(QSERVE)} + 1])
+ same => n,Goto(skip)
+ ; Next in line (or already passed: never left waiting for a turn that went by).
+ same => n(head),GotoIf($[${MYT} > $[${GLOBAL(QSERVE)} + 1] | ${GROUP_COUNT(inbound)} >= ${MAX_CONCURRENT_CALLS}]?notyet)
+ ; This caller's turn, and a line is free.
+ same => n,ExecIf($[${MYT} > ${GLOBAL(QSERVE)}]?Set(GLOBAL(QSERVE)=${MYT}))
+ same => n,Set(GROUP()=inbound)
+ same => n,Set(U=${UNLOCK(ace-queue)})
+ same => n,Set(CHANNEL(hangup_handler_pop)=)
+ same => n,Set(QEV=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/queue-event,secret=${LOCAL_VOICE_SECRET}&event=admitted&ticket=${MYT}&wait=$[${EPOCH} - ${QSTART}])})
+ same => n,Goto(bridge,s,admitted)
+ same => n(notyet),Set(U=${UNLOCK(ace-queue)})
+ same => n,GotoIf($[${EPOCH} < ${QANN}]?tone)
+ same => n,Playback(${QUEUE_SOUNDS}/queue-still)
+ same => n,ExecIf($["${PLAYBACKSTATUS}" != "SUCCESS"]?Playback(queue-periodic-announce))
+ same => n,Set(QANN=$[${EPOCH} + 60])
+ same => n(tone),Playback(${QUEUE_SOUNDS}/queue-tone)
+ same => n,ExecIf($["${PLAYBACKSTATUS}" != "SUCCESS"]?Wait(2))
+ same => n,Goto(loop)
+ ; Waited QUEUE_MAX_WAIT: give up the place (the ticket is skipped) and offer the callback.
+ same => n(timeout),Set(CHANNEL(hangup_handler_pop)=)
+ same => n,Set(GLOBAL(QGONE_${MYT})=1)
+ same => n,Set(GROUP()=)
+ same => n,Set(QEV=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/queue-event,secret=${LOCAL_VOICE_SECRET}&event=timeout&ticket=${MYT}&wait=$[${EPOCH} - ${QSTART}])})
+ same => n,Goto(callback)
+ ; The waiting room itself is full: straight to the callback.
+ same => n(full),Set(GROUP()=)
+ same => n,Answer()
+ same => n,Set(QEV=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/queue-event,secret=${LOCAL_VOICE_SECRET}&event=full)})
+ same => n(callback),Set(QCB=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/queue-callback,secret=${LOCAL_VOICE_SECRET}&from=${URIENCODE(${CALLERID(num)})}&to=${URIENCODE(${TOLLFREE_E164})})})
+ same => n,NoOp(queue callback: ${QCB})
+ same => n,GotoIf($["${QCB:0:3}" = "ok "]?promised)
+ ; No number to call back (withheld) or the API did not answer: ask them to call again.
+ same => n,Playback(${QUEUE_SOUNDS}/queue-later)
+ same => n,ExecIf($["${PLAYBACKSTATUS}" != "SUCCESS"]?Playback(queue-thankyou))
+ same => n,Hangup()
+ same => n(promised),Playback(${QUEUE_SOUNDS}/queue-callback)
+ same => n,ExecIf($["${PLAYBACKSTATUS}" != "SUCCESS"]?Playback(queue-thankyou))
+ same => n,Hangup()
+
+; A caller who hangs up in the waiting room: their ticket is skipped.
+[queue-gone]
+exten => s,1,Set(GLOBAL(QGONE_${MYT})=1)
+ same => n,Set(QEV=${CURL(http://127.0.0.1:${API_PORT}/api/voice-local/queue-event,secret=${LOCAL_VOICE_SECRET}&event=abandoned&ticket=${MYT}&wait=$[${EPOCH} - ${QSTART}])})
+ same => n,Return()
 
 ; Runs on the OUTGOING leg to ElevenLabs just before the INVITE is sent: the
 ; caller lookup as headers. X-Callerstatus becomes {{sip_callerstatus}}, etc.

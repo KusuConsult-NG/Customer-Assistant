@@ -17,7 +17,7 @@ import { INestApplication } from '@nestjs/common';
 import { prisma } from '@ace/database';
 import { createTestApp } from './support/create-test-app';
 import { createTenant, dropTenant, type TestTenant } from './support/tenant';
-import { LocalVoiceService } from '../src/voice-local/local-voice.service';
+import { LocalVoiceService, QUEUE_CALLBACK_REASON } from '../src/voice-local/local-voice.service';
 import { FRAME_BYTES, FrameReader, KIND, encodeFrame, uuidFromPayload, uuidToPayload } from '../src/voice-local/audiosocket';
 import { SentenceSplitter, type ChatMessage, type LlmEvent } from '../src/voice-local/llm';
 import { CachedSpeech, isCacheable, type SpeechEngine } from '../src/voice-local/tts';
@@ -269,6 +269,7 @@ describe('voice-local: a whole call over AudioSocket', () => {
   }, 30_000);
 
   it('falls back to ElevenLabs when speech recognition cannot connect — the caller is never left in silence', async () => {
+    const since = new Date();
     stt.fail = true;
     const reg = await register('+2348031110002');
     const uuid = reg.text.split(' ')[1];
@@ -280,6 +281,13 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
     const out = await request(app.getHttpServer()).get(`/api/voice-local/outcome/${uuid}`).query({ secret: SECRET });
     expect(out.text).toBe('fallback');
+    // Counted for the System Health page, with the real reason.
+    let recorded = 0;
+    for (let i = 0; i < 50 && !recorded; i++) {
+      recorded = await prisma.systemEvent.count({ where: { kind: 'voice_failover', status: 'deepgram', createdAt: { gte: since } } });
+      if (!recorded) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(recorded).toBe(1);
   }, 15_000);
 
   it('falls back when the assistant voice fails during the opening', async () => {
@@ -700,6 +708,72 @@ describe('voice-local: registration never costs a call', () => {
     await pbx.closed;
     pbx.stop();
     expect(voice.outcomeOf('11111111-2222-3333-4444-555555555555')).toBe('fallback');
+  });
+});
+
+describe('voice-local: the waiting room (every line busy)', () => {
+  const post = (path: string, body: Record<string, string>) =>
+    request(app.getHttpServer()).post(`/api/voice-local/${path}`).type('form').send(body);
+  const queueEvents = () =>
+    prisma.systemEvent.findMany({ where: { kind: 'voice_queue', createdAt: { gte: started } }, orderBy: { createdAt: 'asc' } });
+  let started: Date;
+  beforeAll(() => {
+    started = new Date(Date.now() - 1000);
+  });
+  afterAll(async () => {
+    await prisma.systemEvent.deleteMany({ where: { kind: 'voice_queue', createdAt: { gte: started } } }).catch(() => undefined);
+  });
+
+  it('a caller who waited too long gets ONE callback request for the number they called from, marked for the officer', async () => {
+    const from = '+2348031119001';
+    const first = await post('queue-callback', { secret: SECRET, from, to: '+2348000000456' }).expect(200);
+    expect(first.text).toMatch(/^ok \S+$/);
+    const rows = await prisma.callbackRequest.findMany({ where: { organizationId: tenant.orgId, phoneNumber: from } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].reason).toBe(QUEUE_CALLBACK_REASON);
+    expect(rows[0].status).toBe('PENDING');
+    // Calling again while the first is still open: still one promise.
+    expect((await post('queue-callback', { secret: SECRET, from, to: '+2348000000456' })).text).toMatch(/^ok /);
+    expect(await prisma.callbackRequest.count({ where: { organizationId: tenant.orgId, phoneNumber: from } })).toBe(1);
+    const cbs = async () => (await queueEvents()).filter((e) => e.status === 'callback');
+    for (let i = 0; i < 100 && (await cbs()).length < 2; i++) await new Promise((r) => setTimeout(r, 30));
+    const ev = await cbs();
+    expect(ev.map((e) => (e.detail as any).duplicate)).toEqual([false, true]);
+    // The caller's number is never in the event.
+    expect(JSON.stringify(ev)).not.toContain('8031119001');
+  });
+
+  it('never promises a callback it cannot make: withheld or nonsense number, unknown dialled number, wrong secret', async () => {
+    for (const from of ['', 'anonymous', 'Restricted', '123']) {
+      expect((await post('queue-callback', { secret: SECRET, from, to: '+2348000000456' })).text).toBe('none withheld');
+    }
+    const slug = process.env.LOCAL_VOICE_ORGANIZATION_SLUG;
+    delete process.env.LOCAL_VOICE_ORGANIZATION_SLUG;
+    try {
+      expect((await post('queue-callback', { secret: SECRET, from: '+2348031119002', to: '+2340000000000' })).text).toBe('none unknown-number');
+    } finally {
+      process.env.LOCAL_VOICE_ORGANIZATION_SLUG = slug;
+    }
+    const bad = await post('queue-callback', { secret: 'wrong', from: '+2348031119003', to: '+2348000000456' });
+    expect(bad.status).toBe(403);
+    expect(bad.text.startsWith('ok')).toBe(false);
+    expect(await prisma.callbackRequest.count({ where: { organizationId: tenant.orgId, phoneNumber: { in: ['+2348031119002', '+2348031119003'] } } })).toBe(0);
+  });
+
+  it('records each waiting-room step as numbers only, and ignores anything else', async () => {
+    expect((await post('queue-event', { secret: SECRET, event: 'joined', ticket: '7', waiting: '2' })).text).toBe('ok');
+    expect((await post('queue-event', { secret: SECRET, event: 'admitted', ticket: '7', wait: '41' })).text).toBe('ok');
+    expect((await post('queue-event', { secret: SECRET, event: 'drop table', ticket: '7' })).text).toBe('ignored');
+    expect((await post('queue-event', { secret: SECRET, event: 'joined', ticket: '+2348031119004' })).text).toBe('ok');
+    expect((await post('queue-event', { secret: 'wrong', event: 'joined', ticket: '8' })).status).toBe(403);
+    const steps = async () => (await queueEvents()).filter((e) => e.status !== 'callback' && e.status !== 'callback_none');
+    for (let i = 0; i < 100 && (await steps()).length < 3; i++) await new Promise((r) => setTimeout(r, 30));
+    const ev = await steps();
+    expect(ev.map((e) => [e.status, e.detail])).toEqual([
+      ['joined', { ticket: 7, waiting: 2 }],
+      ['admitted', { ticket: 7, waitSeconds: 41 }],
+      ['joined', {}], // a phone number is never kept, even sent as a ticket
+    ]);
   });
 });
 

@@ -186,6 +186,8 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   // register before AudioSocket, read the outcome after it.
   { method: 'POST', path: '/api/voice-local/register', calledBy: 'Asterisk dialplan CURL (same server)' },
   { method: 'GET', path: '/api/voice-local/outcome/:uuid', calledBy: 'Asterisk dialplan CURL (same server)' },
+  { method: 'POST', path: '/api/voice-local/queue-event', calledBy: 'Asterisk dialplan CURL (same server): the waiting room' },
+  { method: 'POST', path: '/api/voice-local/queue-callback', calledBy: 'Asterisk dialplan CURL (same server): the waiting room' },
 
   // ── Signed file links ──────────────────────────────────────────────────
   //
@@ -200,6 +202,8 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   // readiness is deep and answers 503 without a database.
   { method: 'GET', path: '/api/health', calledBy: 'Container liveness probe' },
   { method: 'GET', path: '/api/health/ready', calledBy: 'Load balancer readiness probe' },
+  { method: 'GET', path: '/api/health/voice', calledBy: 'Production monitor outside the server (GitHub Actions, production-monitor.yml): ok / degraded / down only' },
+  { method: 'POST', path: '/api/monitoring/heartbeat', calledBy: 'Production monitor outside the server (GitHub Actions), with MONITOR_TOKEN' },
 ];
 
 const key = (r: { method: string; path: string }) => `${r.method} ${r.path}`;

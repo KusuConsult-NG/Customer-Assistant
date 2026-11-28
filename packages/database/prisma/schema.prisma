@@ -1636,3 +1636,20 @@ model KnowledgeGap {
   @@index([organizationId, status, count])
   @@map("knowledge_gaps")
 }
+
+/// What the platform's own monitoring saw (system health page): each external
+/// check from the monitor outside the server, each nightly backup's result, and
+/// each call the local voice line handed to the backup line, with the reason.
+/// Platform-wide, not per agency. Never holds a credential or a caller's words.
+model SystemEvent {
+  id        String   @id @default(uuid())
+  /// external_check | backup | voice_failover
+  kind      String
+  /// ok | failed (external_check, backup) | the reason class (voice_failover)
+  status    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@map("system_events")
+}

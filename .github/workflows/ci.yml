@@ -172,3 +172,23 @@ jobs:
         run: |
           echo "── api.log ──"; tail -80 /tmp/api.log || true
           echo "── web.log ──"; tail -40 /tmp/web.log || true
+
+  # The real backup.sh and restore.sh, end to end, against the production
+  # Postgres 17 and Qdrant v1.12.6 images with synthetic data: back up
+  # (encrypted, copied off-server), lose the server, restore onto an empty one
+  # from the off-site copy only, and compare everything. Added 28 Nov 2026,
+  # when this drill found that encrypted backups never left the server and
+  # the knowledge-base snapshot could not be restored.
+  disaster-recovery-drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rclone (the off-site copy tool backup.sh uses)
+        run: sudo apt-get update -q && sudo apt-get install -y -q rclone
+      - name: Back up, lose the server, restore from the off-site copy
+        run: bash deploy/single-server/tests/dr-drill.sh
+      - name: Deploy keeps the previous images; rollback restores them
+        run: bash deploy/single-server/tests/release-test.sh
+      - name: The production monitor judges failures right and opens one alert issue
+        run: bash scripts/monitor/tests/monitor-test.sh

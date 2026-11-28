@@ -3,6 +3,7 @@
 # database schema up to date. Safe to re-run; this is also how an update is
 # deployed (git pull, then ./deploy.sh).
 source "$(dirname "$0")/lib.sh"
+source "$(dirname "$0")/release.sh"
 
 DOMAIN="$(env_get DOMAIN)"
 [ -n "$DOMAIN" ] || die "DOMAIN is empty in server.env."
@@ -19,6 +20,20 @@ if [ -n "$TUNNEL" ]; then
     || die "CLOUDFLARE_TUNNEL_TOKEN is set, so set CADDY_PUBLIC_SITE=http://:8081 in server.env as well."
   case "$DOMAIN" in *.trycloudflare.com) die "DOMAIN is still the temporary tunnel address. Set it to the hostname you gave the named tunnel in Cloudflare." ;; esac
 fi
+
+release="$(release_commit)"
+say "Deploying commit $release"
+case "$release" in *+uncommitted) echo "WARNING: the checkout has changes that are not committed: this release cannot be identified exactly." ;; esac
+
+# A backup of what is live, taken before anything changes (skipped on a first
+# install, when nothing runs yet). DEPLOY_SKIP_BACKUP=1 deploys without one.
+if [ "${DEPLOY_SKIP_BACKUP:-}" != "1" ] && [ -n "$(dc ps -q api 2>/dev/null)" ] && [ -n "$(dc ps -q postgres 2>/dev/null)" ]; then
+  say "Backing up the live data before deploying"
+  ./backup.sh || die "the pre-deploy backup failed, so nothing was changed. Fix it, or re-run with DEPLOY_SKIP_BACKUP=1 to deploy without a backup."
+fi
+
+kept="$(save_previous_images | tr '\n' ' ')"
+if [ -n "$kept" ]; then say "Kept the running images as :previous, for ./rollback.sh: $kept"; fi
 
 say "Building images (the dashboard is built for https://$DOMAIN)"
 dc build
@@ -98,6 +113,7 @@ if [ -n "$TUNNEL" ]; then
     docker rm -f ace-tunnel >/dev/null
   fi
   dc ps
+  record_release deployed
   say "Deployed: https://$DOMAIN (through the Cloudflare Tunnel)"
   exit 0
 fi
@@ -117,4 +133,5 @@ if [ -z "$ok" ]; then
   exit 1
 fi
 dc ps
+record_release deployed
 say "Deployed: https://$DOMAIN"

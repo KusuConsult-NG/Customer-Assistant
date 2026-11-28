@@ -1,3 +1,4 @@
+import { recordFailover, recordSystemEvent } from '../monitoring/system-events';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import * as net from 'net';
@@ -65,6 +66,12 @@ import { VoiceSession, type Outcome } from './voice-session';
  */
 
 const REGISTRATION_TTL_MS = 30_000;
+
+/** What the waiting room may report (anything else is ignored). */
+const QUEUE_EVENTS = new Set(['joined', 'admitted', 'abandoned', 'timeout', 'full']);
+/** The callback request's reason, as the desk officer reads it. */
+export const QUEUE_CALLBACK_REASON =
+  'Called the contact centre while every line was busy and could not be answered in time. Please call back and ask how we can help.';
 
 /**
  * End the AudioSocket leg with an explicit HANGUP frame, then close. Tested on
@@ -184,6 +191,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     if (!r.enabled) return 'fallback disabled';
     if (!r.ready) {
       this.log.warn(`voice_local_not_ready missing=${r.missing.join(',') || 'listener'}`);
+      void recordFailover('register', 'fallback not-ready');
       return 'fallback not-ready';
     }
     const primaryTts = this.assistantEngine();
@@ -191,13 +199,18 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       const cb = spitchCircuitState();
       if (cb.open) {
         this.log.warn(`voice_local_spitch_circuit_open failures=${cb.consecutiveFailures} retryAfterMs=${cb.retryAfterMs}`);
+        void recordFailover('register', 'fallback spitch-circuit-open');
         return 'fallback spitch-circuit-open';
       }
     }
-    if (this.live.size >= (this.server?.maxConnections ?? 30)) return 'fallback busy';
+    if (this.live.size >= (this.server?.maxConnections ?? 30)) {
+      void recordFailover('register', 'fallback busy');
+      return 'fallback busy';
+    }
     const organizationId = await this.organizationFor(calledNumber).catch(() => null);
     if (!organizationId) {
       this.log.warn(`voice_local_unknown_number called=${calledNumber}`);
+      void recordFailover('register', 'fallback unknown-number');
       return 'fallback unknown-number';
     }
     this.sweep();
@@ -215,6 +228,56 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     return organizationForDialledNumber(calledNumber, process.env.LOCAL_VOICE_ORGANIZATION_SLUG);
   }
 
+
+  // ── The waiting room (extensions.conf [queue]) ────────────────────────────
+
+  /** One step of a caller in the waiting room, for the System Health page. Never a caller's number. */
+  async queueEvent(body: { event?: string; ticket?: string; wait?: string; waiting?: string }): Promise<string> {
+    const event = String(body.event ?? '').trim();
+    if (!QUEUE_EVENTS.has(event)) return 'ignored';
+    // Small whole numbers only (a ticket, seconds, a count): nothing that could be a phone number.
+    const num = (v: unknown) => (/^[0-9]{1,6}$/.test(String(v ?? '').trim()) ? Number(v) : undefined);
+    const detail: Record<string, unknown> = {};
+    for (const [k, v] of [['ticket', num(body.ticket)], ['waitSeconds', num(body.wait)], ['waiting', num(body.waiting)]] as const) {
+      if (v !== undefined) detail[k] = v;
+    }
+    this.log.log(`voice_queue_${event} ${Object.entries(detail).map(([k, v]) => `${k}=${v}`).join(' ')}`.trim());
+    void recordSystemEvent('voice_queue', event, detail);
+    return 'ok';
+  }
+
+  /**
+   * Every line stayed busy for the caller's whole wait (or the waiting room
+   * was full): a callback request for the number they called from, so a desk
+   * officer rings them back. Only for a number that can be called back.
+   */
+  async queueCallback(callerNumber: string, calledNumber: string): Promise<string> {
+    const from = callerNumber.trim();
+    if (!/^\+?[0-9]{10,15}$/.test(from)) {
+      void recordSystemEvent('voice_queue', 'callback_none', { why: 'withheld' });
+      return 'none withheld';
+    }
+    const organizationId = await this.organizationFor(calledNumber).catch(() => null);
+    if (!organizationId) {
+      void recordSystemEvent('voice_queue', 'callback_none', { why: 'unknown_number' });
+      return 'none unknown-number';
+    }
+    const r = await this.tools.requestCallback(organizationId, {
+      phoneNumber: from,
+      reason: QUEUE_CALLBACK_REASON,
+      // The number Asterisk received is the one to ring; there was no
+      // conversation in which to read it back.
+      numberConfirmed: true,
+    });
+    if (!r.ok) {
+      this.log.warn(`voice_queue_callback_failed ${String((r.data as any)?.reason ?? r.speak ?? '').slice(0, 120)}`);
+      void recordSystemEvent('voice_queue', 'callback_failed', {});
+      return 'none failed';
+    }
+    const d = (r.data ?? {}) as { reference?: string; duplicate?: boolean };
+    void recordSystemEvent('voice_queue', 'callback', { duplicate: d.duplicate === true });
+    return `ok ${d.reference || '-'}`;
+  }
 
   // ── Step 3: what happened ─────────────────────────────────────────────────
 
@@ -434,6 +497,8 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   private async after(reg: Registration, session: VoiceSession): Promise<void> {
     this.live.delete(session);
     const outcome = session.outcome ?? 'completed';
+    // Counted for the system health page: why calls reach the backup line.
+    if (outcome === 'fallback') void recordFailover('session', session.failure ?? 'unknown');
     this.outcomes.set(reg.uuid, { outcome, at: Date.now() });
     // What reached us from the caller: tells "no audio from the line",
     // "audio but silent" and "voice but no words" apart (CallerHearing).

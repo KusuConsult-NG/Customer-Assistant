@@ -33,6 +33,19 @@ const call = (name: string, args: object): LlmEvent => ({ type: 'tool_calls', ca
 jest.setTimeout(60_000);
 
 describe('conversation check: the checker itself', () => {
+  it('D6: "would you like to hear about the remaining two?" asks whether to continue; reading all five does not', async () => {
+    const d6 = byName(/three at a time/);
+    const three = async function* (messages: ChatMessage[]): AsyncGenerator<LlmEvent> {
+      const last = messages[messages.length - 1];
+      const said = String([...messages].reverse().find((m) => m.role === 'user')?.content ?? '');
+      if (last.role === 'tool') return void (yield { type: 'text', delta: 'There are five events. The Jos Carnival, the Plateau Christmas Choir Festival and the Rock Haven Art Fair. Would you like to hear about the remaining two events?' });
+      if (/December/.test(said)) return void (yield call('search-knowledge', { query: 'December events' }));
+      if (/continue/.test(said)) return void (yield { type: 'text', delta: 'The fourth is the Berom Durbar, and the fifth is the New Year Lantern Walk.' });
+      yield { type: 'text', delta: 'How may the Plateau State Government assist you today?' };
+    };
+    expect(d6.check(await runScenario(org, persona, d6, three as any, { settleMs: 300 })).join('\n')).not.toMatch(/did not ask whether to continue/);
+  });
+
   it('G1: passes an agent that reads the number back before booking; fails one that never does (the line itself refuses the booking)', async () => {
     const g1 = byName(/asks for a person gets a callback/);
     const careful = model((said, msgs) => {
@@ -103,7 +116,9 @@ describe('conversation check: the checker itself', () => {
         ? [call('update-caller-profile', { community: 'Rantya', ward: 'Rantya', lga: 'Jos North', locationConfirmed: true })]
         : [{ type: 'text', delta: 'How may the Plateau State Government assist you today?' }],
     );
-    expect(correction.check(await runScenario(org, persona, correction, sameReply as any, { settleMs: 300 })).join('\n')).toMatch(/before the caller had heard it read back/);
+    // The line now strips the confirmation itself, so the tool refuses the save and
+    // the check reports the missing read-back instead; either way the model fails.
+    expect(correction.check(await runScenario(org, persona, correction, sameReply as any, { settleMs: 300 })).join('\n')).toMatch(/before the caller had heard it read back|not read back in full before saving/);
   });
 
   it('passes a model that reads a misheard place back, or asks, before saving anything', async () => {
@@ -170,11 +185,20 @@ describe('conversation check: the checker itself', () => {
     expect(heard).toMatch(/Thank you for that correction/);
     expect(seen.some((c) => /^\[Note from the system/.test(c))).toBe(true);
     // 2. Told, it saves: the claim is then heard, after the write that makes it true.
+    // (The location was read back first — here by the opening — or the line
+    // itself would not let it be marked confirmed: readBackGuard.)
     seen.length = 0;
     saveOnRetry = true;
-    turns = await runScenario(org, persona, { ...correction, lines: [correction.lines[0]] }, claims as any, { settleMs: 300 });
-    expect(turns[0].calls.map((c) => c.name)).toEqual(['update-caller-profile']);
-    expect(turns[0].replies.join(' ')).toMatch(/I've updated your location to Rantya/);
+    const readBackFirst = async function* (messages: ChatMessage[]): AsyncGenerator<LlmEvent> {
+      const last = messages[messages.length - 1];
+      if (last.role === 'user' && /^No\./.test(String(last.content))) {
+        return void (yield { type: 'text', delta: 'So you are now in Rantya, Rantya ward, Jos North. Is that correct?' });
+      }
+      yield* claims(messages);
+    };
+    turns = await runScenario(org, persona, { ...correction, lines: correction.lines.slice(0, 2) }, readBackFirst as any, { settleMs: 300 });
+    expect(turns[1].calls.map((c) => c.name)).toEqual(['update-caller-profile']);
+    expect(turns[1].replies.join(' ')).toMatch(/I've updated your location to Rantya/);
     expect(correction.check(turns).filter((p) => /hears that something was saved/.test(p))).toEqual([]);
     // 3. A save the tool REFUSES (an unconfirmed location change) is not a save: the claim stays unheard.
     confirmOnRetry = false;
