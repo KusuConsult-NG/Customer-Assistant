@@ -19,6 +19,7 @@ W="${DRILL_DIR:-$(mktemp -d)}"
 rm -rf "$W"; mkdir -p "$W/remote"
 cp -r "$REPO/deploy/single-server" "$W/site"
 cd "$W/site"; rm -rf backups
+export DRILL_REPORTS="$W/reports.txt"; : > "$DRILL_REPORTS"
 cat > server.env <<EOF
 QDRANT_API_KEY=drill-qdrant-key
 BACKUP_ENCRYPTION_KEY=drill-encryption-key-0123456789
@@ -30,7 +31,10 @@ cat > test-shim.sh <<'EOF'
 dc() {
   local cmd="$1"; shift
   case "$cmd" in
-    exec) [ "$1" = "-T" ] && shift; local svc="$1"; shift; docker exec -i "drill-$svc" "$@" ;;
+    exec) [ "$1" = "-T" ] && shift; local svc="$1"; shift
+      # The api's event recorder (no Node in the drill's api stand-in): what it is asked to record is kept.
+      if [ "$svc" = api ] && [ "${1:-}" = node ] && [[ "${2:-}" == */record-event.js ]]; then shift 2; printf '%s\n' "$*" >> "$DRILL_REPORTS"; return 0; fi
+      docker exec -i "drill-$svc" "$@" ;;
     run)
       local ep="" ; while [ "$#" -gt 0 ]; do case "$1" in --rm|--no-deps|-T) shift ;; --entrypoint) ep="$2"; shift 2 ;; *) break ;; esac; done
       local svc="$1"; shift
@@ -93,6 +97,9 @@ counts | tee "$W/before.txt"
 echo "=== 2. backup.sh (encrypted, copied off the server with rclone)"
 ./backup.sh
 echo "  off-site copy holds: $(cd "$W/remote" && find . -type f | sort | tr '\n' ' ')"
+echo "  reported to the system health page: $(cat "$DRILL_REPORTS")"
+grep -q '^backup ok {"stamp":"[0-9TZ]*","offsite":true,"exit":0' "$DRILL_REPORTS" || { echo "FAIL: the backup did not report ok with offsite:true"; exit 1; }
+[ -z "$(cd "$W/remote" && find . -name database.dump)" ] || { echo "FAIL: the unencrypted dump left the server"; exit 1; }
 
 echo "=== 3. The server is lost: everything destroyed, a fresh empty server"
 server_up
@@ -105,6 +112,13 @@ mkdir -p "$W/site/backups/from-remote"; cp -r "$W/remote/$stamp/." "$W/site/back
 docker start drill-api >/dev/null
 counts | tee "$W/after.txt"
 
+echo "=== 5. A backup that cannot reach its off-site copy reports a failure"
+sed -i "s#^BACKUP_REMOTE=.*#BACKUP_REMOTE=nosuchremote:drill#" server.env
+: > "$DRILL_REPORTS"
+if ./backup.sh > /dev/null 2>&1; then echo "FAIL: a backup with an unreachable remote succeeded"; exit 1; fi
+echo "  reported: $(cat "$DRILL_REPORTS")"
+grep -q '^backup failed {"stamp":"[0-9TZ]*","offsite":false,"exit":1' "$DRILL_REPORTS" || { echo "FAIL: the failed backup was not reported as failed"; exit 1; }
+
 docker rm -f drill-postgres drill-qdrant drill-api >/dev/null 2>&1 || true
-echo "=== 5. Verdict"
+echo "=== 6. Verdict"
 if diff -u "$W/before.txt" "$W/after.txt"; then echo "RESTORE MATCHES THE ORIGINAL"; else echo "RESTORE DIFFERS"; exit 1; fi

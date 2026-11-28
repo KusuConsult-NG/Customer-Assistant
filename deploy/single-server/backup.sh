@@ -10,6 +10,20 @@ KEEP="$(env_get BACKUP_KEEP_DAYS)"; KEEP="${KEEP:-14}"
 REMOTE="$(env_get BACKUP_REMOTE)"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dir="backups/$stamp"
+
+# Reported to the system health page however this ends: success, or the exit
+# code of a failure. The report itself can never fail the backup.
+offsite=false
+report_backup() {
+  local st=$? result=ok
+  [ "$st" = 0 ] || result=failed
+  dc exec -T api node apps/api/dist/monitoring/record-event.js backup "$result" \
+    "{\"stamp\":\"$stamp\",\"offsite\":$offsite,\"exit\":$st,\"error\":\"$([ "$st" = 0 ] || echo "backup.sh exited $st: see journalctl -u ace-backup")\"}" \
+    > /dev/null 2>&1 || true
+  exit "$st"
+}
+trap report_backup EXIT
+
 mkdir -p "$dir"
 chmod 700 backups "$dir"
 
@@ -65,5 +79,6 @@ fi
 say "Copying off this server to $REMOTE/$stamp$([ "$upload" = "$dir" ] || echo ' (encrypted archive only)')"
 rclone copy "$upload" "$REMOTE/$stamp" --retries 5 || die "copy to $REMOTE failed — tonight's backup is on this server only"
 rclone check "$upload" "$REMOTE/$stamp" --one-way || die "the copy at $REMOTE/$stamp does not match"
+offsite=true
 finish_offsite
 say "Backup $stamp done and copied off the server"

@@ -190,3 +190,5 @@ jobs:
         run: bash deploy/single-server/tests/dr-drill.sh
       - name: Deploy keeps the previous images; rollback restores them
         run: bash deploy/single-server/tests/release-test.sh
+      - name: The production monitor judges failures right and opens one alert issue
+        run: bash scripts/monitor/tests/monitor-test.sh

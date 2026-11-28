@@ -71,6 +71,7 @@ import { LocalVoiceService } from '../voice-local/local-voice.service';
   ],
   exports: [
     AgentToolsService,
+    LocalVoiceService,
     ElevenLabsAgentService,
     ElevenLabsLiveService,
     ElevenLabsNumbersService,

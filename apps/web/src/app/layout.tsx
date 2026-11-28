@@ -27,7 +27,8 @@ import {
   Landmark,
   Briefcase,
   ClipboardList,
-  Bot
+  Bot,
+  Activity
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -386,6 +387,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                           link('/budget', <Landmark className="w-4 h-4" />, 'Budget & Projects'),
                           link('/white-label', <Building2 className="w-4 h-4" />, 'Branding & White Label'),
                           link('/settings', <Settings className="w-4 h-4" />, 'System Settings'),
+                          link('/system-health', <Activity className="w-4 h-4" />, 'System Health'),
                         ])}
                       </>
                     );

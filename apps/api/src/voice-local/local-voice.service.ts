@@ -1,3 +1,4 @@
+import { recordFailover } from '../monitoring/system-events';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import * as net from 'net';
@@ -184,6 +185,7 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
     if (!r.enabled) return 'fallback disabled';
     if (!r.ready) {
       this.log.warn(`voice_local_not_ready missing=${r.missing.join(',') || 'listener'}`);
+      void recordFailover('register', 'fallback not-ready');
       return 'fallback not-ready';
     }
     const primaryTts = this.assistantEngine();
@@ -191,13 +193,18 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
       const cb = spitchCircuitState();
       if (cb.open) {
         this.log.warn(`voice_local_spitch_circuit_open failures=${cb.consecutiveFailures} retryAfterMs=${cb.retryAfterMs}`);
+        void recordFailover('register', 'fallback spitch-circuit-open');
         return 'fallback spitch-circuit-open';
       }
     }
-    if (this.live.size >= (this.server?.maxConnections ?? 30)) return 'fallback busy';
+    if (this.live.size >= (this.server?.maxConnections ?? 30)) {
+      void recordFailover('register', 'fallback busy');
+      return 'fallback busy';
+    }
     const organizationId = await this.organizationFor(calledNumber).catch(() => null);
     if (!organizationId) {
       this.log.warn(`voice_local_unknown_number called=${calledNumber}`);
+      void recordFailover('register', 'fallback unknown-number');
       return 'fallback unknown-number';
     }
     this.sweep();
@@ -434,6 +441,8 @@ export class LocalVoiceService implements OnModuleInit, OnModuleDestroy {
   private async after(reg: Registration, session: VoiceSession): Promise<void> {
     this.live.delete(session);
     const outcome = session.outcome ?? 'completed';
+    // Counted for the system health page: why calls reach the backup line.
+    if (outcome === 'fallback') void recordFailover('session', session.failure ?? 'unknown');
     this.outcomes.set(reg.uuid, { outcome, at: Date.now() });
     // What reached us from the caller: tells "no audio from the line",
     // "audio but silent" and "voice but no words" apart (CallerHearing).

@@ -200,6 +200,8 @@ const MACHINE_FACING: Array<{ method: string; path: string; calledBy: string }> 
   // readiness is deep and answers 503 without a database.
   { method: 'GET', path: '/api/health', calledBy: 'Container liveness probe' },
   { method: 'GET', path: '/api/health/ready', calledBy: 'Load balancer readiness probe' },
+  { method: 'GET', path: '/api/health/voice', calledBy: 'Production monitor outside the server (GitHub Actions, production-monitor.yml): ok / degraded / down only' },
+  { method: 'POST', path: '/api/monitoring/heartbeat', calledBy: 'Production monitor outside the server (GitHub Actions), with MONITOR_TOKEN' },
 ];
 
 const key = (r: { method: string; path: string }) => `${r.method} ${r.path}`;

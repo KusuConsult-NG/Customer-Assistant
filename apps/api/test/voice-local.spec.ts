@@ -269,6 +269,7 @@ describe('voice-local: a whole call over AudioSocket', () => {
   }, 30_000);
 
   it('falls back to ElevenLabs when speech recognition cannot connect — the caller is never left in silence', async () => {
+    const since = new Date();
     stt.fail = true;
     const reg = await register('+2348031110002');
     const uuid = reg.text.split(' ')[1];
@@ -280,6 +281,13 @@ describe('voice-local: a whole call over AudioSocket', () => {
     }
     const out = await request(app.getHttpServer()).get(`/api/voice-local/outcome/${uuid}`).query({ secret: SECRET });
     expect(out.text).toBe('fallback');
+    // Counted for the System Health page, with the real reason.
+    let recorded = 0;
+    for (let i = 0; i < 50 && !recorded; i++) {
+      recorded = await prisma.systemEvent.count({ where: { kind: 'voice_failover', status: 'deepgram', createdAt: { gte: since } } });
+      if (!recorded) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(recorded).toBe(1);
   }, 15_000);
 
   it('falls back when the assistant voice fails during the opening', async () => {

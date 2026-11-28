@@ -27,7 +27,14 @@ import * as path from 'path';
  *
  * So this ASKS each provider. One cheap, read-only request per provider —
  * listing projects, fetching models, naming the authenticated user — never a
- * request that sends a message, places a call, or spends credit.
+ * request that sends a message or places a call.
+ *
+ * Two checks DO spend a fraction of a cent, because nothing free can tell a
+ * funded account from an empty one: on 28 Nov 2026 OpenAI's model list
+ * answered 200 while every phone call failed over with "You have no credits
+ * remaining". So the language model is asked for ONE token, and Spitch for
+ * one word of speech. Each result is reused for CHECK_CACHE_MS, so opening a
+ * page repeatedly does not repeat the spend.
  *
  * ── Three states, and the middle one is the point ───────────────────────────
  *
@@ -56,6 +63,30 @@ export interface ProviderCheck {
 }
 
 const TIMEOUT_MS = 8_000;
+/** How long a check that spends credit (the model's one token, Spitch's one word) is reused. */
+export const CHECK_CACHE_MS = 5 * 60_000;
+const spendCache = new Map<string, { at: number; result: ProviderCheck }>();
+async function cached(key: string, run: () => Promise<ProviderCheck>, now = Date.now()): Promise<ProviderCheck> {
+  const hit = spendCache.get(key);
+  if (hit && now - hit.at < CHECK_CACHE_MS) return hit.result;
+  const result = await run();
+  spendCache.set(key, { at: now, result });
+  return result;
+}
+/** For tests. */
+export function clearProviderCheckCache(): void {
+  spendCache.clear();
+}
+
+/** What an HTTP refusal from the model provider means for the phone line. */
+export function modelRefusal(status: number | undefined, body: string): string {
+  const b = body.toLowerCase();
+  if (/insufficient_quota|no credits|billing/.test(b)) return 'The account has NO CREDIT: every phone call fails over to the backup line. Add credit under Billing.';
+  if (status === 429 && /tokens per min|request too large/.test(b)) return 'The account\'s tokens-per-minute limit is too low for the call script: calls fail over. Raise it under Limits.';
+  if (status === 429) return 'The account is being rate limited: calls may fail over.';
+  if (status === 401 || status === 403) return 'The key was refused.';
+  return `HTTP ${status ?? '?'}.`;
+}
 
 /** A provider answered, or it did not. Never throws — a failed check is data. */
 async function probe(
@@ -116,6 +147,7 @@ export class ProviderHealthService {
 
     providers.push(await this.speechToText());
     providers.push(await this.textToSpeech(organizationId));
+    providers.push(await this.spitch());
     providers.push(await this.languageModel());
     providers.push(await this.vectorSearch());
     providers.push(await this.objectStorage());
@@ -287,18 +319,67 @@ export class ProviderHealthService {
     if (!key) {
       return { ...base, state: 'not_configured', detail: 'OPENAI_API_KEY is not set.' };
     }
-    const r = await probe(`${process.env.LLM_BASE_URL || 'https://api.openai.com/v1'}/models`, {
+    const root = process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
+    const r = await probe(`${root}/models`, {
       headers: { Authorization: `Bearer ${key}` },
     });
-    return {
-      ...base,
-      state: r.ok ? 'ok' : 'failed',
-      detail: r.ok
-        ? 'OpenAI accepted the key.'
-        : r.error
-          ? `Could not reach OpenAI: ${r.error}`
-          : `OpenAI refused the key (HTTP ${r.status}). ${r.body ?? ''}`,
+    if (!r.ok) {
+      return {
+        ...base,
+        state: 'failed',
+        detail: r.error ? `Could not reach OpenAI: ${r.error}` : `OpenAI refused the key (HTTP ${r.status}). ${r.body ?? ''}`,
+      };
+    }
+    // The model list answers even with no credit: ask for one token of the
+    // model the phone line uses, which does not.
+    const model = process.env.LOCAL_VOICE_LLM_MODEL?.trim() || 'gpt-4.1';
+    return cached(`openai:${root}:${model}`, async () => {
+      const c = await probe(`${root}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'ok' }], max_tokens: 1 }),
+      });
+      return {
+        ...base,
+        consequence: base.consequence + ' On the phone line, every call fails over to the backup line.',
+        state: c.ok ? 'ok' : 'failed',
+        detail: c.ok
+          ? `OpenAI accepted the key and answered with ${model} (the account has credit).`
+          : c.error
+            ? `Could not reach OpenAI: ${c.error}`
+            : `${model} refused a one-token request (HTTP ${c.status}). ${modelRefusal(c.status, c.body ?? '')}`,
+      };
+    });
+  }
+
+  /** Spitch, the phone line's voice. Without it calls go to the backup line. */
+  private async spitch(): Promise<ProviderCheck> {
+    const key = process.env.SPITCH_API_KEY?.trim();
+    const base = {
+      id: 'spitch',
+      label: 'Phone line voice (Spitch)',
+      consequence: 'The local phone line cannot speak: calls go to the backup line (ElevenLabs).',
     };
+    if (!key) return { ...base, state: 'not_configured', detail: 'SPITCH_API_KEY is not set.' };
+    const voice = process.env.SPITCH_FEMALE_VOICE?.trim() || process.env.SPITCH_VOICE?.trim() || 'lucy';
+    const url = `${(process.env.SPITCH_API_URL?.trim() || 'https://api.spitch.app').replace(/\/+$/, '')}/v1/speech`;
+    return cached(`spitch:${url}:${voice}`, async () => {
+      // Spitch offers no free account endpoint: one word of speech is the check.
+      const r = await probe(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Okay', language: process.env.SPITCH_LANGUAGE?.trim() || 'en', voice, format: 'wav' }),
+      });
+      return {
+        ...base,
+        state: r.ok ? 'ok' : 'failed',
+        detail: r.ok
+          ? `Spitch spoke with the ${voice} voice.`
+          : r.error
+            ? `Could not reach Spitch: ${r.error}`
+            : `Spitch refused (HTTP ${r.status}). ${r.body ?? ''}`,
+      };
+    });
   }
 
   /** Qdrant. Without it RAG falls back to a Postgres ILIKE scan. */

@@ -1,0 +1,56 @@
+# The monitor OUTSIDE the production server. Every 5 minutes (GitHub may delay
+# a scheduled run by a few minutes) it checks the live site, the database
+# (ready check), the phone line and the HTTPS certificate. While anything
+# fails, ONE "Production alert" issue stays open on this repository, updated
+# when the problem changes, closed when everything passes again: GitHub
+# notifies everyone watching the repository. To get the emails, Watch this
+# repository (All activity, or Custom → Issues).
+#
+# Each result is also reported to the dashboard's System Health page when the
+# repository secret MONITOR_TOKEN is set (the same value as MONITOR_TOKEN in
+# server.env); without it the alerts still open here.
+name: Production monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      BASE_URL: ${{ vars.API_BASE_URL || 'https://contact.plateaustate.gov.ng' }}
+      MONITOR_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production
+        run: |
+          bash scripts/monitor/check-production.sh "$BASE_URL" | tee result.json
+      - name: Report to the System Health page
+        env:
+          MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
+        run: |
+          if [ -z "$MONITOR_TOKEN" ]; then echo "MONITOR_TOKEN is not set: the dashboard does not get this result (alerts still open here)."; exit 0; fi
+          curl -sS --max-time 20 -o /dev/null -w 'reported: HTTP %{http_code}\n' -X POST \
+            -H "x-monitor-token: $MONITOR_TOKEN" -H 'Content-Type: application/json' \
+            --data @result.json "${BASE_URL%/}/api/monitoring/heartbeat" || echo "::warning::could not report to the dashboard"
+      - name: Open, update or close the alert issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/monitor/alert-issue.sh result.json
+      - name: Fail the run while production fails
+        run: |
+          if grep -q '"status":"failed"' result.json; then
+            echo "::error::$(sed -n 's/.*"summary":"\([^"]*\)".*/\1/p' result.json)"
+            exit 1
+          fi
