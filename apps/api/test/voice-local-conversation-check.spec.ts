@@ -33,6 +33,23 @@ const call = (name: string, args: object): LlmEvent => ({ type: 'tool_calls', ca
 jest.setTimeout(60_000);
 
 describe('conversation check: the checker itself', () => {
+  it('G1: passes an agent that reads the number back before booking; fails one that never does (the line itself refuses the booking)', async () => {
+    const g1 = byName(/asks for a person gets a callback/);
+    const careful = model((said, msgs) => {
+      const last = msgs[msgs.length - 1];
+      if (last.role === 'tool') return [{ type: 'text', delta: 'Thank you.' }];
+      if (/human officer/.test(said)) return [{ type: 'text', delta: 'A desk officer can call you back. Shall we call you on the number you are calling from?' }];
+      if (/number I am calling from/.test(said)) return [{ type: 'text', delta: 'That is 0 8 0 3 1 2 3 4 5 0 0. Is that correct?' }];
+      if (/that is right/.test(said)) return [call('request-callback', { reason: 'officer', numberConfirmed: true, whenMinutes: 60 })];
+      return [{ type: 'text', delta: 'How may the Plateau State Government assist you today?' }];
+    });
+    expect(g1.check(await runScenario(org, persona, g1, careful as any, { settleMs: 300 }))).toEqual([]);
+    const hasty = model((said, msgs) =>
+      msgs[msgs.length - 1].role === 'tool' ? [{ type: 'text', delta: 'Okay.' }] : /number|right/.test(said) ? [call('request-callback', { reason: 'officer', numberConfirmed: true, whenMinutes: 60 })] : [{ type: 'text', delta: 'How may I help?' }],
+    );
+    expect(g1.check(await runScenario(org, persona, g1, hasty as any, { settleMs: 300 })).join('\n')).toMatch(/no callback was booked/);
+  });
+
   it("C3: the script's own line about the name is not a question; asking for it again is", async () => {
     const c3 = byName(/will not give their name/);
     const scriptLine = model((said) =>

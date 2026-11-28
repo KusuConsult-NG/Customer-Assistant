@@ -5,6 +5,7 @@ import type { CachedSpeech } from './tts';
 import type { SttFactory, SttStream } from './stt';
 import type { OpenAiTool } from './voice-tools';
 import { pronounced } from './pronounce';
+import { PLATEAU_LGAS } from '@ace/database';
 
 /**
  * One phone call answered by the server's own voice pipeline:
@@ -210,6 +211,8 @@ export class VoiceSession {
   private lastCallerSpeech: number;
   /** When recognition last returned the caller's words during this turn (0: none since the last turn began). */
   private lastWordsAt = 0;
+  /** The LGA this call saved on the agent's behalf (saveNamedLga), so it is saved once. */
+  private lgaSaved = '';
   /** From those words to the turn starting: how long recognition took to decide the caller had finished. */
   private turnEndpointMs: number | null = null;
   private lastActivity: number;
@@ -639,9 +642,13 @@ export class VoiceSession {
           });
         }
 
+        let allOk = true;
         if (calls.length) {
-          if (await this.runTools(calls, abort.signal)) wrote = true;
+          const ran = await this.runTools(calls, abort.signal);
+          if (ran.wrote) wrote = true;
+          allOk = ran.allOk;
         }
+        await this.saveNamedLga(calls, told());
         if (held.length) {
           if (wrote && !abort.signal.aborted) {
             // Now true: say it, after the write that makes it so.
@@ -669,6 +676,14 @@ export class VoiceSession {
         }
         if (!calls.length) break;
         if (this.hangupRequested) break;
+        // Spoken and saved in one response: the reply already asked its next
+        // question and every save succeeded, so there is nothing for a second
+        // trip to the model to add. It would cost a whole request and, when
+        // the model saves first and speaks after, about two seconds of silence.
+        if (allOk && !held.length && /\?\s*$/.test(told()) && calls.every((c) => c.function.name === 'update-caller-profile')) {
+          this.deps.log('voice_local_second_trip_skipped');
+          break;
+        }
       }
       await this.speechChain;
       if (!abort.signal.aborted && !this.outcome && this.turnPrebuffer.length > 0) {
@@ -692,9 +707,31 @@ export class VoiceSession {
     }
   }
 
-  /** Run the model's tool calls. Returns true when a WRITE tool succeeded. */
-  private async runTools(calls: ToolCall[], signal: AbortSignal): Promise<boolean> {
+  /**
+   * The caller named their LGA in answer to the LGA question, and the agent
+   * moved on to ward and community without saving it (conversation check,
+   * 28 Nov 2026: 2 of 3 new callers). Saved here, once. A change to a location
+   * already on file is still refused by the tool until it is read back.
+   */
+  private async saveNamedLga(calls: ToolCall[], told: string): Promise<void> {
+    if (!/\bward\b/i.test(told)) return;
+    if (calls.some((c) => c.function.name === 'update-caller-profile' && /"lga"\s*:/.test(c.function.arguments || ''))) return;
+    if (!/local government area|\bLGA\b/i.test(agentWordsBeforeCaller(this.messages))) return;
+    const lga = lgaNamed(lastCallerWords(this.messages), PLATEAU_LGAS);
+    if (!lga || this.lgaSaved === lga) return;
+    this.lgaSaved = lga;
+    try {
+      const r: any = await this.deps.runTool('update-caller-profile', { lga });
+      this.deps.log('voice_local_lga_saved', { ok: r?.ok !== false });
+    } catch {
+      this.deps.log('voice_local_lga_saved', { ok: false });
+    }
+  }
+
+  /** Run the model's tool calls. Returns whether a WRITE tool succeeded, and whether every call did. */
+  private async runTools(calls: ToolCall[], signal: AbortSignal): Promise<{ wrote: boolean; allOk: boolean }> {
     let wrote = false;
+    let allOk = true;
     // Every call the model made gets an answer, even after a barge-in: a
     // history with an unanswered tool call is refused by the model API, and a
     // write it already decided on (a confirmed report) should still happen.
@@ -719,8 +756,15 @@ export class VoiceSession {
         // The caller's own words are not logged: only that it happened.
         this.deps.log('voice_local_report_not_confirmed');
         this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(refusal) });
+        allOk = false;
         continue;
       }
+      const guard = readBackGuard(call.function.name, args, agentWordsBeforeCaller(this.messages), lastCallerWords(this.messages));
+      if (guard.note) {
+        this.deps.log('voice_local_readback_required', { tool: call.function.name });
+        allOk = false;
+      }
+      args = guard.args;
       // A slow lookup gets a short spoken holding line — only when fillers are enabled and at most once per turn.
       const filler =
         ackAfterMs() > 0
@@ -741,11 +785,15 @@ export class VoiceSession {
         if (filler) clearTimeout(filler);
       }
       const ok = (result as any)?.ok !== false;
+      if (!ok) allOk = false;
       if (ok && WRITE_TOOLS.has(call.function.name)) wrote = true;
       this.deps.log('voice_local_tool', { tool: call.function.name, ms: this.now() - started, ok });
-      this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result ?? {}).slice(0, 12_000) });
+      let content: Record<string, unknown> = result && typeof result === 'object' ? { ...(result as any) } : { result };
+      if (guard.note) content = { ...content, note: guard.note };
+      if (call.function.name === 'search-knowledge') content = { ...content, howToSpeakIt: knowledgeGuidance(result) };
+      this.messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(content).slice(0, 12_000) });
     }
-    return wrote;
+    return { wrote, allOk };
   }
 
   private clearPrebuffer(): void {
@@ -1162,6 +1210,82 @@ export function lastCallerWords(messages: ChatMessage[]): string {
  * emergency still happening (isOngoing) is never held for a summary, so it is
  * never refused here.
  */
+const DIGIT_WORDS: Record<string, string> = { zero: '0', oh: '0', o: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
+
+/** The digits a sentence says, written or as words ("0803, one two three" → "0803123"). */
+export function digitsSpoken(text: string): string {
+  return (text.toLowerCase().match(/\d|[a-z]+/g) ?? []).map((t) => (/\d/.test(t) ? t : DIGIT_WORDS[t] ?? '')).join('');
+}
+
+/** What the agent said in its last reply BEFORE the caller's latest words: the read-back the caller answered. */
+export function agentWordsBeforeCaller(messages: ChatMessage[]): string {
+  let i = messages.length - 1;
+  while (i >= 0 && !(messages[i].role === 'user' && !/^\[/.test(String(messages[i].content ?? '').trim()))) i--;
+  for (let j = i - 1; j >= 0; j--) {
+    const m = messages[j];
+    if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) return m.content;
+    if (m.role === 'user' && !/^\[/.test(String(m.content ?? '').trim())) break;
+  }
+  return '';
+}
+
+/**
+ * A number the caller has not heard read back is not treated as confirmed,
+ * whatever the model says (conversation check, 28 Nov 2026: callbacks booked
+ * and hidden-number callers' numbers saved with no read-back).
+ * - request-callback with numberConfirmed=true: the agent's last reply must
+ *   have said at least seven digits and the caller's answer not be a "no";
+ *   otherwise it is sent unconfirmed, and the tool returns the number to read.
+ * - update-caller-profile with alternativePhoneConfirmed=true: the agent's
+ *   last reply must have said that number's last seven digits; otherwise the
+ *   number is left out of the save (everything else is saved) and the model
+ *   is told to read it back.
+ * Returns the arguments to use and, when something was held back, a note for the model.
+ */
+export function readBackGuard(
+  tool: string,
+  args: Record<string, any>,
+  agentSaid: string,
+  callerSaid: string,
+): { args: Record<string, any>; note?: string } {
+  const yes = (v: unknown) => /^(true|yes)$/i.test(String(v ?? ''));
+  const saidNo = /^\W*no\b/i.test(callerSaid);
+  const spoken = digitsSpoken(agentSaid);
+  if (tool === 'request-callback' && yes(args.numberConfirmed) && (spoken.length < 7 || saidNo)) {
+    return {
+      args: { ...args, numberConfirmed: false },
+      note: 'Not booked yet: the caller has not heard the number read back. Read it back digit by digit as this result gives it, wait for a clear yes, then call request-callback again with numberConfirmed=true.',
+    };
+  }
+  if (tool === 'update-caller-profile' && yes(args.alternativePhoneConfirmed)) {
+    const number = String(args.alternativePhone ?? '').replace(/\D/g, '');
+    const last7 = number.slice(-7);
+    if (!last7 || !spoken.includes(last7) || saidNo) {
+      const { alternativePhone: _p, alternativePhoneConfirmed: _c, ...rest } = args;
+      const digits = number.split('').join(' ');
+      return {
+        args: rest,
+        note: `The number was NOT saved: the caller has not heard it read back. Read it back digit by digit ("${digits}"), ask if it is correct, and only after a clear yes save it with alternativePhoneConfirmed=true.`,
+      };
+    }
+  }
+  return { args };
+}
+
+/** What the model is told with every knowledge answer on the phone line: lists three at a time, and no answer means a callback offer. */
+export function knowledgeGuidance(result: any): string {
+  const found = result?.data?.found !== false && String(result?.speak ?? '').trim() !== '';
+  return found
+    ? 'Speak this on the phone: if it lists more than three items (events, offices, programmes, steps), first say how many there are, give the first three, and ask whether to continue; give the rest only if they say yes.'
+    : 'Nothing verified was found. Say plainly, in one sentence, that you do not have that information, then offer to have a desk officer call them back (request-callback). Do not suggest other places to ask.';
+}
+
+/** The one Plateau LGA the caller's words name, if exactly one. */
+export function lgaNamed(text: string, lgas: readonly string[]): string | null {
+  const hits = lgas.filter((l) => new RegExp(`(^|[^a-z])${l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`, 'i').test(text));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 export function unconfirmedReport(tool: string, args: Record<string, any>, callerSaid: string): Record<string, unknown> | null {
   if (tool !== 'create-ticket') return null;
   if (!/^(true|yes)$/i.test(String(args.summaryConfirmed ?? ''))) return null;

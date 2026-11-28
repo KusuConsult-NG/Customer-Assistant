@@ -29,8 +29,29 @@ export function fillVariables(text: string, vars: CallVariables): string {
  * from scratch on every call's first reply. With a shared beginning, the
  * provider's prompt cache serves it.
  */
+/**
+ * The script with only what this kind of caller needs. Every reply sends the
+ * whole script (about 10,000 tokens), so instructions for another kind of
+ * caller are paid for on every turn: a new caller never needs the
+ * returning-caller and correction rules, a returning caller never needs the
+ * new-caller steps, and this line never places calls, so the rule for a call
+ * WE made is never used. A caller whose status is not known keeps them all.
+ * Still identical for every call of the same kind, so the provider's prompt
+ * cache serves it.
+ */
+export function scriptForCaller(template: string, status: string | undefined): string {
+  const drop = (text: string, start: string) => text.split('\n').filter((line) => !line.startsWith(start)).join('\n');
+  let out = drop(template, '- WHEN WE CALLED THEM');
+  if (status === 'new' || status === 'withheld') {
+    out = drop(drop(out, '  - RETURNING CALLER'), '  - CORRECTIONS:');
+  } else if (status === 'returning') {
+    out = drop(out, '  - NEW OR UNPROFILED CALLER');
+  }
+  return out;
+}
+
 export function callSystemPrompt(org: AgentOrganization & { timezone?: string | null }, persona: TeamPersona, vars: CallVariables, now: Date): string {
-  const template = agentPromptFor(org, persona);
+  const template = scriptForCaller(agentPromptFor(org, persona), vars.sip_callerstatus);
   const used = [...new Set([...template.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]))];
   return (
     template +
@@ -41,6 +62,7 @@ export function callSystemPrompt(org: AgentOrganization & { timezone?: string | 
     `\nYou are speaking on a telephone line. Sound like a warm, natural Nigerian colleague in a free-flowing conversation — NEVER like a robot or newsreader. Keep each turn short: usually one or two sentences and ONE question, then stop and let the caller answer. Longer turns only for the script's read-backs (a name, a location, the PHASE 6 summary), a reference number, and details the caller asked for (three items at a time, then ask whether to continue). Never use lists, headings, or symbols.` +
     `\nNEVER say filler phrases like "let me check", "wait a second", "one moment", or "hold on" — this overrides any such expression suggested by the agency's text above. Call any tool silently and answer directly. Never repeat "How may I assist you today?" or repeat a location confirmation question you already asked.` +
     `\nEvery character you write is read aloud. Never write stage directions or notes such as "[Ending the call now.]"; to end the call, say goodbye and call end_call.` +
+    `\nWhen you save a detail with update-caller-profile, write your spoken reply (your thanks and your next question) in the SAME response as the save, never a save on its own: the caller then hears you at once.` +
     `\nSave each detail the caller confirms with update-caller-profile straight away, in the same reply in which they confirm it. Never say you have updated, saved, registered or noted something unless the tool that does it was called in that reply and succeeded.` +
     `\nWhen a caller clearly names their Local Government Area, call update-caller-profile with that lga in the SAME reply in which you ask for their ward and community — do not wait to save it together with them. If you are not sure which LGA they said, read it back first.` +
     `\nWhen the caller has just answered your question, you may open your reply with one of the script's own short acknowledgements, word for word: "Okay, thank you.", "Thank you for that information." or "Thank you for confirming that." (the voice has these ready, so the caller hears you at once), then go on in the same reply. Vary them and never use the same one twice in a row. When the caller has asked you something, is upset, or is reporting an emergency, answer them directly instead.` +
