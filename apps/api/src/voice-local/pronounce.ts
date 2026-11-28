@@ -47,6 +47,12 @@ export const PRONUNCIATIONS: Pronunciation[] = [
     confirmed:
       'Confirmed by ear by the owner (Steven) on 27 Nov 2026 in both spitch-jude-3.wav and spitch-lucy-3.wav (Option 3: "Platoe"). Permanent entry.',
   },
+  {
+    written: 'Gyel',
+    say: 'Gyell',
+    confirmed:
+      'Confirmed by ear by the owner (Steven) on 28 Nov 2026 from the pronunciation takes of "You are in Gyel B ward." (spelling "Gyell"; the ward is said "Gyell-B"). Permanent entry.',
+  },
 ];
 
 /** The code table with any word the server setting also lists replaced by the server's spelling. */
